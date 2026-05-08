@@ -103,5 +103,6 @@ Templates for the 4 most common video genres. Each is sized for ~75s at `speech_
 - **数字写中文**：`二零二六` not `2026`，`一百五十` not `150`，`百分之百` not `100%`
 - **英文专有名词保留原样**：`Anthropic`、`Claude Code`、`Boris`、`Agent`、`PR`、`CI`
 - **段落空一行 = 自然停顿点**（CosyVoice 会在段落间稍停）
+- **Avoid the full-width Chinese colon `：`.** CosyVoice can occasionally insert a 0.5-1 s silence after a full-width colon followed immediately by a long compound sentence, which makes the video feel stuck mid-scene. Use an em dash `——`, split the sentence with commas, or rewrite it.
 - **避免长定语从句**：中文 TTS 在 30 字以上的长句容易吃字
 - **避免连续多个英文词**：`Claude Code 的创造者 Boris Cherny` 比 `Claude Code Boris Cherny` 流畅

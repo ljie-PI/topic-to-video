@@ -43,7 +43,7 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
    - Use Rosé Pine Moon Serious (`templates/design-moon.md`) when the user says "moon", "严肃", "深色", "技术感", "技术评论", "AI", "SaaS", or "编程" and wants a serious tone
    - If topic is AI/SaaS/programming but style is not explicit, ask whether they want Dawn warm explainer or Moon serious technical editorial
 4. Length: usually 60-120s — derive from user's request or default to 75-90s.
-5. Language: default Chinese (CosyVoice is the cloned voice). Ask if user wants a different language.
+5. Language: default Chinese. Ask if user wants a different language.
 
 **If a sister project already exists** (e.g. user says "same style as `claude-code-video/`"), copy `design.md` + `fonts/` from it and skip phase 4.
 
@@ -118,6 +118,7 @@ Goals:
 - 8-10 paragraphs, separated by blank lines (each ≈ one scene = 6-12s of audio).
 - Numbers in Chinese characters (`二零二六` not `2026`) — TTS reads them more naturally.
 - English proper nouns in original Latin (`Anthropic`, `Claude Code`, `Boris`).
+- **Avoid the full-width Chinese colon `：`.** CosyVoice can occasionally insert a 0.5-1 s silence after a full-width colon followed immediately by a long compound sentence, which makes the video feel stuck mid-scene. Use an em dash `——`, split the sentence with commas, or rewrite it. Example: `某品牌：日均消耗一百万` → `某品牌 —— 日均消耗一百万`.
 - Last paragraph should be a CTA (`点赞、关注、收藏，下期见`) if user wants social-media style.
 
 **Show the script to the user before generating TTS.** Lets them tweak tone, add/remove a beat, or reject a direction before you spend API budget.

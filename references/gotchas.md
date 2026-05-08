@@ -329,3 +329,38 @@ await page.screenshot({ path: out, clip: { x: 0, y: 0, width: 1920, height: 1080
 joined.find('Hugging')                  # → -1 (fails)
 joined.lower().find('Hugging'.lower())  # → matches
 ```
+
+---
+
+## 18. Punchline / summary elements containing Chinese must explicitly use a CJK font
+
+**Symptom:** The summary line at the end of a scene, such as a one-sentence punchline or closing summary, uses a visibly different font from nearby content and often overlaps the grid or cards above it.
+
+**Root cause:** When designing the punchline, it is easy to reuse the `.eyebrow` / `.brand` Caveat or PatrickHand styling, which is Latin-only. If an element containing Chinese declares Caveat, CJK characters fall back to Chromium's system font, changing line height, weight, and visual style:
+- The font appearance changes abruptly and breaks the unified handwritten look.
+- System Chinese fonts have a taller line box than Caveat, often overflowing the bottom boundary and overlapping content above.
+
+**Reproducer:**
+```css
+/* WRONG */
+.scene .conclude {
+  font-family: 'Caveat', cursive;
+  font-size: 78px;
+  bottom: 130px;
+}
+```
+```html
+<div class="conclude">某句中文总结。</div>   <!-- CJK fallback -->
+```
+
+**Fix:** For any element that contains CJK summary or punchline text, explicitly set a Chinese font and leave enough room for CJK glyph width:
+```css
+/* RIGHT */
+.scene .conclude {
+  font-family: 'MaShanZheng', serif;   /* explicit CJK family */
+  font-size: 56px;                      /* CJK is ~1.4x wider than Latin; reduce by about one third */
+  bottom: 70px;                         /* leave more room to avoid overlapping the grid */
+}
+```
+
+**Tooling caveat:** `check-cjk-fonts.py` can produce many false positives from ancestor selectors such as `.scene`, `.eyebrow`, `.brand`, and `.corner-mark`, so the real punchline-frame problem can be hidden by noise. **Manually inspect final rendered scene frames that contain punchlines.**
