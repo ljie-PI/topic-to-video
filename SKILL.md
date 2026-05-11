@@ -33,7 +33,7 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 10. **Audio clip start/duration must be 6-decimal precision.** 3-decimal rounding causes `30.773 overlaps 30.772` lint errors when chaining 8 segments back-to-back.
 11. **Material search is optional but recommended.** Phase 3-4 can be skipped if user says "skip materials" or provides all visual content. But for most topics, searched images make scenes 10x more engaging than text-only.
 12. **Image animations = GSAP in HTML, not FFmpeg.** Never pre-render Ken Burns clips with FFmpeg for HyperFrames compositions. Use GSAP zoompan/pan/fade animations on `<img>` elements directly. See `references/image-animations.md`.
-13. **Downloaded assets go in the unified workspace tree.** Keep tool outputs under `~/.hermes/workspace/{topic_name}/` using the standard subdirectories (`search_images/`, `video_download/`, `extract_frames/`, `vision_analyze/`, `fonts/`, `verify/`, `renders/`). Copy needed files into the HyperFrames project dir before composing.
+13. **Downloaded assets go in the unified workspace tree.** Keep tool outputs under `~/.hermes/workspace/{topic_name}/` using the standard subdirectories (`extract_frames/`, `vision_analyze/`, `fonts/`, `verify/`, `renders/`). Copy needed files into the HyperFrames project dir before composing.
 
 ## Output Conventions
 
@@ -45,18 +45,6 @@ Each video project lives under `~/.hermes/workspace/{topic_name}/`, where `topic
 
 ```
 ~/.hermes/workspace/{topic_name}/
-├── search_images/              # Phase 3: Bing image search results
-│   ├── image_search_result.md
-│   └── image_search_result.json
-├── search_youtube/             # Phase 3: YouTube search results
-│   ├── youtube_search_result.md
-│   └── youtube_search_result.json
-├── search_bilibili/            # Phase 3: Bilibili search results
-│   ├── bilibili_search_result.md
-│   └── bilibili_search_result.json
-├── video_download/             # Phase 4: Downloaded videos and subtitles
-│   ├── {video_id}.mp4
-│   └── {video_id}.{lang}.vtt
 ├── extract_frames/             # Phase 4: Extracted video frames
 │   └── frame_0001.jpg ...
 ├── vision_analyze/             # Phase 4: Vision analysis results
@@ -85,7 +73,7 @@ Each video project lives under `~/.hermes/workspace/{topic_name}/`, where `topic
 Every script emits **JSON to stdout** and **human-readable logs to stderr**:
 
 - **stdout** (machine-readable): `{"success": true, ...}` or `{"success": false, "error": "..."}`
-- **stderr** (human-readable): Progress and errors prefixed with `[tool-name]`, e.g., `[search-images] Searching: AI chip...`
+- **stderr** (human-readable): Progress and errors prefixed with `[tool-name]`, e.g., `[extract-frames] Probing duration...`
 - **Exit codes**: `0` = success, `1` = runtime error, `2` = invalid arguments
 
 Parse script results with: `result=$(python3 script.py ... 2>/dev/null)` or capture both channels separately.
@@ -141,24 +129,18 @@ Parse script results with: `result=$(python3 script.py ... 2>/dev/null)` or capt
 
 **Anti-pattern:** Searching once, then writing as if the brief is complete. Real research is iterative — you find one fact, it raises a new question, you search again. Plan for 2-3 rounds.
 
-### Phase 3 — Material Search (NEW)
+### Phase 3 — Material Search
 
-Search for visual materials based on the research brief.
+Search for visual materials based on the research brief using `web_search` and `web_fetch` (the agent's built-in tools). Save useful image URLs and reference links for use in later phases.
 
-1. **Image search** — `scripts/search-images.py --keywords "keyword1,keyword2" --limit 8 --output-dir ~/.hermes/workspace/{topic_name}/search_images`
-2. **Video search** — `scripts/search-youtube.py --keywords "keyword1,keyword2" --limit 8 --output-dir ~/.hermes/workspace/{topic_name}/search_youtube` and/or `scripts/search-bilibili.py --keywords "keyword1,keyword2" --limit 8 --output-dir ~/.hermes/workspace/{topic_name}/search_bilibili` for reference footage
-3. **Outputs** — `search_images/`, `search_youtube/`, and/or `search_bilibili/` under `~/.hermes/workspace/{topic_name}/`
-4. **Review step** — show the search results summary to the user and confirm which materials to use
+### Phase 4 — Material Processing
 
-### Phase 4 — Material Processing (NEW)
+Process visual materials for use in the composition.
 
-Process the selected materials.
-
-1. **Download videos** — `scripts/video-download.py --url URL --output-dir ~/.hermes/workspace/{topic_name}/video_download`
-2. **Extract frames** — `scripts/extract-frames.py ~/.hermes/workspace/{topic_name}/video_download/video.mp4 ~/.hermes/workspace/{topic_name}/extract_frames/ --max-frames 20`
-3. **Parse subtitles** — `scripts/subtitle-parse.py ~/.hermes/workspace/{topic_name}/video_download/video.srt` (if subtitles downloaded)
-4. **Vision analysis** — `scripts/vision-analyze.py --prompt "Describe content and assess quality" --images ~/.hermes/workspace/{topic_name}/extract_frames/frame_0001.jpg frame_0002.jpg ...`
-5. **Outputs** — `extract_frames/` + `vision_analyze/analysis.json`
+1. **Extract frames** — `scripts/extract-frames.py <video_path> ~/.hermes/workspace/{topic_name}/extract_frames/ --max-frames 20`
+2. **Parse subtitles** — `scripts/subtitle-parse.py <subtitle_file>` (if subtitles available)
+3. **Vision analysis** — `scripts/vision-analyze.py --prompt "Describe content and assess quality" --images ~/.hermes/workspace/{topic_name}/extract_frames/frame_0001.jpg frame_0002.jpg ...`
+4. **Outputs** — `extract_frames/` + `vision_analyze/analysis.json`
 
 ### Phase 5 — Write Narration Script
 
@@ -326,9 +308,7 @@ done
 | Inspect: text overflow on inline highlight | Padding+lineheight too tight for CJK | `padding: 4px 16px 12px; line-height: 1.15;` |
 | Paraformer transcript missing capitals (`hugging face` not `Hugging Face`) | Paraformer normalizes English to lowercase | Use case-insensitive anchor matching (shipped script handles this) |
 | `WARN: anchor not found for X` from scene-anchor.py | Case mismatch OR audio doesn't say that exact phrase | Run `cat transcript.json` first, pick anchors from the actual ASR text |
-| Playwright `TimeoutError` on search | Site layout changed or network blocked | Check selectors; try with `--headless=false` for debugging |
 | `vision-analyze.py` returns empty | DASHSCOPE_API_KEY not set or expired | `export DASHSCOPE_API_KEY="sk-..."` in venv |
-| Downloaded video too large / timeout | Long video without `--max-file-size` | Use `--max-file-size 200M`; prefer `--subtitles-only` for long videos |
 | Images don't render in HyperFrames | Image path not relative to project dir | Copy images into project dir; use relative paths in `<img src>` |
 | Ken Burns animation jitters | Image too small, upscaled poorly | Use source images ≥1920px wide; `object-fit: cover` |
 
@@ -341,10 +321,6 @@ done
 - `scripts/transcribe-paraformer.py` — Paraformer ASR (handles sample_rate auto-detect)
 - `scripts/scene-anchor.py` — anchor scenes to ASR word stream
 - `scripts/check-cjk-fonts.py` — flags Chinese text inside Caveat/PatrickHand contexts before render
-- `scripts/search-images.py` — Bing image search via Playwright (keywords → markdown + JSON)
-- `scripts/search-youtube.py` — YouTube search via Playwright
-- `scripts/search-bilibili.py` — Bilibili search via Playwright
-- `scripts/video-download.py` — yt-dlp wrapper (video + subtitle download)
 - `scripts/extract-frames.py` — FFmpeg frame extraction (uniform sampling or time window)
 - `scripts/subtitle-parse.py` — SRT/VTT parser with keyword filtering
 - `scripts/vision-analyze.py` — DashScope qwen-vl multimodal image analysis
@@ -358,19 +334,10 @@ done
 
 ## Dependencies for Material Tools
 
-The material search and processing scripts require additional dependencies beyond the base skill:
+The material processing scripts require additional dependencies beyond the base skill:
 
-- **Playwright** (for search scripts): `pip install playwright && playwright install chromium`
-- **yt-dlp** (for video download): `pip install yt-dlp`
 - **ffmpeg/ffprobe** (for frame extraction): usually pre-installed on Linux
 - **dashscope** (for vision analysis): already in the project venv (shared with TTS/ASR)
-
-Install all at once:
-```bash
-source .venv/bin/activate
-pip install playwright yt-dlp
-playwright install chromium
-```
 
 ## Red Flags — STOP if you see any of these
 
@@ -380,7 +347,6 @@ You are about to make a known mistake if you find yourself:
 - **Pre-rendering Ken Burns clips with FFmpeg** instead of using GSAP in HyperFrames HTML
 - **Skipping vision-analyze** when you have 20+ frames and need to pick the best 3-4
 - **Using absolute paths** for images in index.html (breaks HyperFrames render)
-- **Downloading full-length videos** without `--max-file-size` or `--subtitles-only`
 - Reaching for `npx hyperframes transcribe` for Chinese audio
 - Reaching for `npx hyperframes tts` because you forgot CosyVoice
 - Picking system Chinese fonts via `fc-match`
