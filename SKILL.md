@@ -14,7 +14,7 @@ A short narrated video (60-120s) using:
 - **Paraformer** (via DashScope) for word-level ASR timestamps
 - A configurable visual style: default Rosé Pine Dawn handdrawn × Notion minimalism, or optional Rosé Pine Moon Serious for darker technical/editorial videos
 
-**Output:** `renders/<name>-final.mp4` ready to publish.
+**Output:** `~/.hermes/workspace/{topic_name}/composition/renders/final.mp4` ready to publish (produced by the Phase 8 coding sub-agent).
 
 ## Iron Rules (Non-Negotiable)
 
@@ -27,14 +27,10 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 4. **Always `source .venv/bin/activate` before Python.** `dashscope` is in the venv. Use `python3` (no `python` alias).
 5. **Use Google Fonts woff2, never `fc-match` system fonts.** System Chinese fonts (e.g. `AR PL UKai CN`) trigger `[Compiler] No deterministic font mapping` at render. Download the selected style's fonts with `scripts/fonts-download.sh`: Dawn = handdrawn fonts; Moon = `NotoSerifSC`/`NotoSansSC`/`IBMPlexMono`.
 6. **`Caveat` and `PatrickHand` have NO Chinese glyphs.** They are Dawn-only English/numeric handwriting fonts. For Dawn mixed Chinese + Latin text, split by script: Chinese spans use `MaShanZheng`/`LongCang`; English/numeric spans use `Caveat`/`PatrickHand`. For Moon, use `NotoSerifSC`/`NotoSansSC` for Chinese and `IBMPlexMono` for English/data/code. Do not rely on fallback chains for mixed badges.
-7. **Render with `--workers 1`.** Multi-worker render fails on this machine: "FFmpeg exited with code 187 — height not divisible by 2 (1920×993)" from a Chromium fallback bug.
-8. **Banned in any `tl.from()`/`tl.to()`:** animating `textContent` on an element with nested `<span>` children (produces NaN). Use `scale`/`opacity` for emphasis on numbers with units.
-9. **`class="clip"` is required on every visible timed element.** Or it stays visible the whole video.
-10. **Audio clip start/duration must be 6-decimal precision.** 3-decimal rounding causes `30.773 overlaps 30.772` lint errors when chaining 8 segments back-to-back.
-11. **Material search is optional but recommended.** Phase 3-4 can be skipped if user says "skip materials" or provides all visual content. But for most topics, searched images make scenes 10x more engaging than text-only.
-12. **Image animations = GSAP in HTML, not FFmpeg.** Never pre-render Ken Burns clips with FFmpeg for HyperFrames compositions. Use GSAP zoompan/pan/fade animations on `<img>` elements directly. See `references/image-animations.md`.
-13. **Downloaded assets go in the unified workspace tree, and every asset that reaches `index.html` must be cited by `material-catalog.json`.** Keep tool outputs under `~/.hermes/workspace/{topic_name}/` using the standard subdirectories (`extract_frames/`, `vision_analyze/`, `fonts/`, `verify/`, `renders/`). Copy needed files into the HyperFrames project dir before composing — but only files referenced by a `material_ref` in scenes-config. No catalog citation → no asset on screen.
-14. **Material selection happens in Phase 4, not Phase 5.** The agent picks 3-6 URLs in Phase 3 and passes them as one array to `harvest-pages.py`. In Phase 4, run vision-analyze on every image and every video's extracted frames, then write `material-catalog.json` with `selected_clips`. The narration script (Phase 5) only references catalog entries — never a raw harvest result. Prevents writing a scene around a video span that turns out to be a transition or an ad.
+7. **Material search is optional but recommended.** Phase 3-4 can be skipped if user says "skip materials" or provides all visual content. But for most topics, harvested images and clips make scenes 10× more engaging than text-only.
+8. **Every on-screen asset must trace to `material-catalog.json`.** Keep tool outputs under `~/.hermes/workspace/{topic_name}/` using the standard subdirectories (`harvest_page/`, `extract_frames/`, `vision_analyze/`, `fonts/`, `composition/`). The coding sub-agent in Phase 8 resolves `material_ref` → catalog entry → `local_path`; no catalog citation → no asset on screen. Never invent or borrow generic stock assets.
+9. **Material selection happens in Phase 4, not Phase 5.** The agent picks 3-6 URLs in Phase 3 and passes them as one array to `harvest-pages.py`. In Phase 4, run vision-analyze on every image and every video's extracted frames, then write `material-catalog.json` with `selected_clips`. The narration script (Phase 5) only references catalog entries — never a raw harvest result. Prevents writing a scene around a video span that turns out to be a transition or an ad.
+10. **Composition + render is delegated.** Phases 8 onward run in a coding sub-agent (Copilot CLI / Claude Code) with the `hyperframes` skill loaded — not in the main agent. The main agent's job ends at producing the inputs the brief points at; the sub-agent owns scaffold / DESIGN.md / composition / lint / render. Do not try to hand-write `index.html` from the main conversation.
 
 ## Output Conventions
 
@@ -64,18 +60,16 @@ Each video project lives under `~/.hermes/workspace/{topic_name}/`, where `topic
 ├── transcribe/                 # Phase 7: ASR transcript and scene timing
 │   ├── transcript.json
 │   └── scene-timing.json
-├── fonts/                      # Phase 9: Downloaded font assets
+├── fonts/                      # Phase 7.5: Downloaded font assets (pre-staged for the sub-agent)
 │   ├── *.woff2
 │   └── rose-pine-moon-fonts.css
 ├── narration.txt               # Phase 5: Narration script (written by agent)
-├── scenes-config.json          # Phase 7: Scene config (written by agent)
-├── index.html                  # Phase 10: HyperFrames composition
-├── images/                     # Phase 10: Images copied for composition
-├── verify/                     # Phase 11: Verification frames
-│   └── f-*s.jpg
-└── renders/                    # Phase 11: Final video output
-    ├── draft.mp4
-    └── {topic_name}-final.mp4
+├── composition-brief.md        # Phase 8: Brief handed to the coding sub-agent
+└── composition/                # Phase 8: HyperFrames project owned by the sub-agent
+    ├── index.html              #   ↳ scaffolded via `hyperframes init`
+    ├── DESIGN.md               #   ↳ palette/typography/motion gate
+    ├── fonts/ images/ videos/  #   ↳ symlinked or copied from the workspace
+    └── renders/final.mp4       #   ↳ rendered with --workers 1
 ```
 
 Plus one shared (cross-topic) browser profile reused across the `harvest-pages.py` tool and TuberUp's `gemini-deep-research`:
@@ -92,21 +86,21 @@ Every script emits **JSON to stdout** and **human-readable logs to stderr**:
 
 Parse script results with: `result=$(python3 script.py ... 2>/dev/null)` or capture both channels separately.
 
-## Workflow (11 Phases)
+## Workflow (8 Phases)
 
 ### Phase 1 — Gather Inputs (ask user, ONE question at a time)
 
 1. Source: URL to fetch, pasted text, or just a topic.
 2. Orientation: `1920×1080` (horizontal), `1080×1920` (vertical), or `1080×1440` (3:4 portrait).
 3. Style: read `style-prompt.md` if it exists in cwd, else infer from user wording:
-   - Default: Rosé Pine Dawn handdrawn (`templates/design.md`)
-   - Use Rosé Pine Moon Serious (`templates/design-moon.md`) when the user says "moon", "严肃", "深色", "技术感", "技术评论", "AI", "SaaS", or "编程" and wants a serious tone
+   - Default: Rosé Pine Dawn handdrawn (`references/design-dawn.md`)
+   - Use Rosé Pine Moon Serious (`references/design-moon.md`) when the user says "moon", "严肃", "深色", "技术感", "技术评论", "AI", "SaaS", or "编程" and wants a serious tone
    - If topic is AI/SaaS/programming but style is not explicit, ask whether they want Dawn warm explainer or Moon serious technical editorial
 4. Length: usually 60-120s — derive from user's request or default to 75-90s.
 5. Language: default Chinese. Ask if user wants a different language.
 6. Ask whether to search for visual materials (images/video clips) to enrich scenes. Default: yes.
 
-**If a sister project already exists** (e.g. user says "same style as `claude-code-video/`"), copy `design.md` + `fonts/` from it and skip phase 9.
+**If a sister project already exists** (e.g. user says "same style as `claude-code-video/`"), copy `composition/DESIGN.md` + `fonts/` from it and note "reuse this DESIGN.md" inside the brief; the sub-agent will skip fresh design and font work.
 
 ### Phase 2 — Topic Research (CRITICAL — do this BEFORE writing)
 
@@ -235,7 +229,7 @@ Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entr
    - **Mode 1 (explicit VLM):** if `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` are set → direct OpenAI-compatible call.
    - **Mode 2 (delegate):** otherwise → script returns `delegate_to_agent` with image paths; the agent uses its own `view` tool.
 
-4. **Combine** `entry.text_excerpt` + image descriptions + per-frame descriptions into the catalog entry. **CRITICAL:** for each video, write a `selected_clips` list of `{start, end, reason, frame_paths[]}` — these are the spans Phase 5 (narration) and Phase 10 (compose) draw from.
+4. **Combine** `entry.text_excerpt` + image descriptions + per-frame descriptions into the catalog entry. **CRITICAL:** for each video, write a `selected_clips` list of `{start, end, reason, frame_paths[]}` — these are the spans Phase 5 (narration) and Phase 8 (compose) draw from.
 
 5. **Filter:** drop assets the VLM rated <5/10 or that are off-topic. Don't carry junk into the narration phase.
 
@@ -267,14 +261,14 @@ Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entr
 ```
 
 - `entries[*].slug` is unique per URL and matches the harvest output directory name.
-- Every image/video carries an `id` (file stem the harvester wrote, e.g. `img_001` or the YouTube video id). Phases 5/7/10 cite materials via a **`material_ref`** — the schema is defined where it's first used in Phase 7. Never reference a raw `local_path` outside the resolution step in Phase 10.
-- `semantic_description` is the VLM-generated caption; Phase 10 uses it to pick the best GSAP effect.
+- Every image/video carries an `id` (file stem the harvester wrote, e.g. `img_001` or the YouTube video id). Phases 5/7/8 cite materials via a **`material_ref`** — the schema is defined where it's first used in Phase 7. The coding sub-agent in Phase 8 resolves `material_ref` → catalog entry → `local_path`; the main agent never touches `local_path` directly.
+- `semantic_description` is the VLM-generated caption; the sub-agent in Phase 8 uses it to pick an appropriate motion/GSAP effect.
 
 **Outputs:** `extract_frames/<slug>/<video-name>/`, `vision_analyze/<slug>/`, `material-catalog.json`.
 
 ### Phase 5 — Write Narration Script
 
-**Inputs:** the research brief from Phase 2 + `material-catalog.json` from Phase 4 + the user's preferred angle/length. Annotate each scene with a recommended `material_ref` (the full schema is defined in Phase 7); the actual `local_path` resolution happens in Phase 10.
+**Inputs:** the research brief from Phase 2 + `material-catalog.json` from Phase 4 + the user's preferred angle/length. Annotate each scene with a recommended `material_ref` (the full schema is defined in Phase 7); the actual `local_path` resolution happens later, inside the sub-agent in Phase 8.
 
 Goals:
 - Use **only facts from the research brief** — every number, name, date, and quote must be traceable.
@@ -315,22 +309,11 @@ Then design 8-10 scenes, each with:
 
 **Every scene must cite at least one catalog entry.** If no harvested material fits a scene, go back to Phase 3 and harvest more URLs — never invent assets or fall back to a generic stock image. This is the structural guarantee that the materials gathered by `harvest-pages.py` actually reach the final video.
 
-Run `scripts/scene-anchor.py ~/.hermes/workspace/{topic_name}/transcribe/transcript.json scenes-config.json ~/.hermes/workspace/{topic_name}/transcribe/scene-timing.json` to get exact `begin_ms`/`duration_ms` per scene.
+Write the scene list to `~/.hermes/workspace/{topic_name}/transcribe/scenes-config.json` (intermediate file, consumed in the next step), then run `scripts/scene-anchor.py ~/.hermes/workspace/{topic_name}/transcribe/transcript.json ~/.hermes/workspace/{topic_name}/transcribe/scenes-config.json ~/.hermes/workspace/{topic_name}/transcribe/scene-timing.json`. The script anchors each scene to the ASR word stream, computes `begin_ms` / `duration_s`, and **passes every per-scene field (including `material_ref` and `display_text`) straight through** to the output. `scene-timing.json` is the single authoritative input the Phase 8 brief points the sub-agent at — it contains both the timing and the `material_ref` per scene, so the sub-agent never needs to read `scenes-config.json`.
 
-### Phase 8 — Scaffold + Install
+### Phase 7.5 — Pre-stage fonts (so the sub-agent doesn't re-download)
 
-```bash
-# Run from a parent directory that already has hyperframes installed
-./node_modules/.bin/hyperframes init <project-name> --example blank --non-interactive
-
-# If hyperframes not installed, install with --ignore-scripts
-# (onnxruntime-node postinstall fails on this network)
-npm install --no-save --ignore-scripts hyperframes
-```
-
-### Phase 9 — Fonts (one-time per project)
-
-Download the fonts for the selected style as local deterministic WOFF2 assets:
+Download the fonts for the selected style as local deterministic WOFF2 assets into the workspace, where Phase 8's brief points the sub-agent:
 
 ```bash
 # Dawn default handdrawn style
@@ -343,90 +326,145 @@ bash scripts/fonts-download.sh ~/.hermes/workspace/{topic_name}/fonts moon
 bash scripts/fonts-download.sh ~/.hermes/workspace/{topic_name}/fonts all
 ```
 
-### Phase 10 — Compose `index.html`
+Why pre-stage instead of letting the sub-agent do it: this skill owns the CJK-font setup story (Iron Rules #5 and #6). Fonts in `~/.hermes/workspace/{topic_name}/fonts/` come from a known-good Google Fonts mirror; without them the sub-agent may regress to `fc-match` system fonts and trip the `[Compiler] No deterministic font mapping` failure at render time.
 
-Read `templates/composition-skeleton.html` for the skeleton. Key conventions:
+### Phase 8 — Hand off composition + render to a coding sub-agent
 
-- Root: `<div id="root" data-composition-id="main" data-start="0" data-duration="<TOTAL_S>" data-width="<W>" data-height="<H>">`
-- Background ambient div: `class="clip"`, full-duration, contains grain + drifting doodles.
-- One `<audio class="clip">` for narration on a high track-index.
-- One `<div class="scene clip s<N>">` per scene, with exact `data-start` / `data-duration` from scene-timing.json.
-- **Resolve each scene's `material_ref` against `material-catalog.json` BEFORE writing the `<img>` / `<video>` tags:**
-  - Look up `entries[*]` where `slug == material_ref.entry_slug`, then look up the image / video where `id == material_ref.asset_id`.
-  - `kind = image` → copy the resolved asset's `local_path` into the project's `images/` directory, embed as `<img>` inside the scene div, and pick a GSAP animation effect from `references/image-animations.md` using the catalog asset's `semantic_description` plus the scene's intent (table below).
-  - `kind = video_clip` → resolve the same way, then cut the chosen item from `selected_clips[clip_index]` (use `ffmpeg -ss <start> -to <end> -i <local_path> -c copy ...`) into the project's `videos/` directory, embed as `<video class="clip" data-start="..." data-duration="..." muted>` instead of `<img>`, and **skip the GSAP image-animation step** for that scene — the clip itself carries the motion.
-  - Never reference `local_path` values that aren't reachable through a `material_ref → entry_slug → asset_id` lookup. If a scene's recommended visual doesn't exist in the catalog, go back to Phase 3 (harvest more URLs) or Phase 4 (re-run vision-analyze and re-filter).
-- **13 GSAP image animation effects available** — see `references/image-animations.md` for complete code templates. Quick selection guide:
+Everything from this point — scaffolding a HyperFrames project, deciding the look (`DESIGN.md`), composing `index.html` with GSAP, running `lint`/`inspect`, and rendering — is a deep iterative HTML+CSS+GSAP task with its own dedicated skill (`hyperframes`). It is owned by a **coding sub-agent**, not the main agent.
 
-  | Scene type | Recommended effect |
-  |------------|-------------------|
-  | One strong image + documentary / emotional | Ken Burns |
-  | Panorama / dashboard | Pan |
-  | 2-4 related stills in progression | Slideshow Fade |
-  | Compare multiple sources at once | Grid Layout |
-  | Rapid walk-through of many examples | Montage |
-  | Depth feel (subject + background) | Parallax |
-  | Suspense reveal / before-after | Reveal/Wipe |
-  | Highlight a specific region | Zoom to Detail |
-  | Long screenshot / code / webpage | Vertical Pan |
-  | A vs B comparison | Split Screen |
-  | Main image + auxiliary context | Picture-in-Picture |
-  | Suspenseful opening / focus shift | Blur-to-Sharp |
-  | Energetic entrance / product showcase | Scale Bounce |
-  | A harvested video clip from `material-catalog.json` | *(none — use `<video class="clip">`, not `<img>`; the clip carries its own motion)* |
+The main agent's job ends here: produce the upstream artifacts (`narration.mp3`, `scene-timing.json`, `material-catalog.json`, `narration.txt`, `fonts/`), write a brief, invoke the sub-agent, then sanity-check the resulting mp4.
 
-- Use `object-fit: cover` + `overflow: hidden` on image containers.
-- Layer text over images with `z-index` + a semi-transparent overlay for readability.
-- All animations in ONE `gsap.timeline({ paused: true })` registered on `window.__timelines["main"]`.
-- For scene-N animations, use absolute time positions (e.g. `tl.from('#s3-title', {...}, 13.5)`).
+The sub-agent's job is to turn those into a rendered video using the `hyperframes` skill — freely picking templates, design, palette, motion, and pacing within the constraints the brief lists.
 
-**Style application:**
-- Read the design template selected in Phase 1:
-  - Dawn: `templates/design.md`
-  - Moon: `templates/design-moon.md`
-- If Moon is selected, add `<link rel="stylesheet" href="fonts/rose-pine-moon-fonts.css" />` before the composition `<style>` block, replace the Dawn palette/font variables with the Moon variables from `templates/design-moon.md`, and keep the HyperFrames timing structure unchanged.
-- Use accent color sparingly: ONE per scene.
-- Headlines 100-160px, body 32-56px (these are video sizes, not web sizes).
-- For portrait orientation: stack horizontal layouts vertically; reduce headline to 70-130px.
+#### 8.1 — Write `composition-brief.md`
 
-**Mixed-language typography:**
-- Apply the font stack from the selected design template, not a global Dawn-only stack.
-- Dawn: Chinese uses `MaShanZheng`/`LongCang`; English and numbers use `Caveat`/`PatrickHand`.
-- Moon: Chinese headlines use `NotoSerifSC`; Chinese body/captions use `NotoSansSC`; English, data, and code use `IBMPlexMono`.
-- When one line mixes scripts, split into spans and let `.zh` / `.latin` resolve through the selected style's CSS variables:
-  ```html
-  <div class="mixed-text">
-    <span class="zh">效率提升</span>
-    <span class="latin">42%</span>
-  </div>
-  ```
-- In Dawn, never put Chinese characters directly inside `.font-latin-emphasis`, `.font-latin-body`, `.corner-mark`, `.scene-num`, or any selector whose `font-family` is `Caveat`/`PatrickHand`.
-- In Moon, do not introduce Dawn handwriting fonts unless the user explicitly asks for a handdrawn contrast.
+Write `~/.hermes/workspace/{topic_name}/composition-brief.md` using this exact template, filling in the bracketed fields from the project's Phase 1-7 outputs:
 
-### Phase 11 — Verify + Render
+```markdown
+# Composition Brief — <TOPIC>
+
+## Project
+- Topic: <one-line description from Phase 1>
+- Target duration: <N> s (matches narration.mp3 exactly — do not retime)
+- Orientation: <1920×1080 | 1080×1920 | 1080×1440>
+- Output: ./composition/renders/final.mp4 (--quality high --fps 30 --workers 1)
+
+## Inputs (paths are relative to this brief, which lives in the workspace root)
+- Audio (final, do not regenerate): voice_clone/narration.mp3   # 22050 Hz MP3, CosyVoice clone
+- Scene timing (authoritative): transcribe/scene-timing.json     # begin_ms / duration_s / material_ref per scene
+- Material catalog: material-catalog.json                        # every visual must trace here
+- Narration script (for context only): narration.txt
+- Pre-downloaded fonts (use these, do NOT fc-match): fonts/
+
+## Style hints
+<free-form description — tone, mood, palette, pacing.
+Examples:
+  "Chinese narrated explainer, muted handdrawn warmth, slow contemplative pacing."
+  "AI/SaaS technical editorial, dark serious typography, Bloomberg-style data callouts."
+>
+
+<Optionally point at one of the bundled style references if the user picked a look:
+  - references/design-dawn.md  → Rosé Pine Dawn handdrawn warm
+  - references/design-moon.md  → Rosé Pine Moon dark technical/editorial
+You may also ignore both and design from scratch — both files are reference, not canon.>
+
+You are free to:
+- Pick any of the built-in hyperframes templates (`blank`, `warm-grain`, `play-mode`,
+  `swiss-grid`, `vignelli`, `decision-tree`, `kinetic-type`, `product-promo`, `nyt-graph`)
+  or scaffold from `blank`.
+- Run the hyperframes DESIGN.md gate to lock palette / typography / motion before
+  composing `index.html`.
+- Choose any GSAP image animations. The parent skill's `references/image-animations.md`
+  is a curated catalog you MAY consult; it is suggestive, not prescriptive.
+
+## Hard constraints (do NOT override — these are upstream contracts)
+
+1. **Audio is final.** Do not regenerate TTS. Do not call `hyperframes tts` or
+   `hyperframes transcribe`. Use `narration.mp3` and `scene-timing.json` as-is.
+2. **Scene timing is authoritative.** Each scene's `data-start` / `data-duration`
+   must match `scene-timing.json` exactly; preserve 6-decimal precision so chained
+   clips don't trip lint's "Track N overlaps" rule.
+3. **Every on-screen visual must trace to `material_ref` in `material-catalog.json`.**
+   Resolution: look up `entries[*]` where `slug == material_ref.entry_slug`, then
+   look up the image (`kind="image"`) or video (`kind="video_clip"`) where
+   `id == material_ref.asset_id`. For videos, cut `selected_clips[clip_index]`
+   with `ffmpeg -ss <start> -to <end> -c copy` before embedding as
+   `<video class="clip" muted>`. Never invent stock images. If a scene needs a
+   visual the catalog cannot supply, stop and report back — do not improvise.
+4. **CJK font handling.** Narration is Chinese with Latin proper nouns. Fonts
+   in `fonts/` are already downloaded — use them via relative `@font-face`,
+   never `fc-match` system fonts. For mixed runs split spans by script:
+     - Dawn style: Chinese in `MaShanZheng`/`LongCang`; English/numbers in
+       `Caveat`/`PatrickHand`. NEVER put Chinese characters inside a Caveat
+       or PatrickHand element — they have no CJK glyphs and render as boxes.
+     - Moon style: Chinese in `NotoSerifSC`/`NotoSansSC`; English/data/code
+       in `IBMPlexMono`.
+5. **Render env quirks on this machine:**
+   - Pass `--workers 1` to `hyperframes render`. Multi-worker hits a Chromium
+     fallback bug ("FFmpeg exited 187 — height not divisible by 2").
+   - `hyperframes lint` and `hyperframes inspect` must both pass (0 errors)
+     before the final render.
+6. **GSAP text animation pitfall.** Do not animate `textContent` from a number
+   (e.g. `tl.from(el, { textContent: 0 })`) on an element that has nested
+   `<span>` children — GSAP overwrites the children and the count renders as
+   `NaN%`. For emphasis on numbers with units, animate `scale` / `opacity`
+   instead, or split the number and unit into separate sibling spans.
+
+## Deliverable
+- `composition/index.html` (GSAP timeline + scenes)
+- `composition/DESIGN.md` (so future runs can match the look)
+- `composition/renders/final.mp4`
+- Print a short summary at the end: path, duration (`ffprobe -i ...`), file size.
+```
+
+#### 8.2 — Invoke the coding sub-agent
+
+From the workspace, hand the brief to a coding agent that has access to the
+`hyperframes` skill:
 
 ```bash
-cd <project>
-../node_modules/.bin/hyperframes lint        # MUST: 0 errors
-../node_modules/.bin/hyperframes inspect     # MUST: 0 layout issues
-python3 /home_ext/ljie/.copilot/skills/topic-to-video/scripts/check-cjk-fonts.py index.html
-# Optionally: validate (WCAG contrast — Rosé Pine Dawn is muted, expect informational warnings)
+cd ~/.hermes/workspace/{topic_name}
 
-# Draft render to verify visually before committing to high-quality
-../node_modules/.bin/hyperframes render --quality draft --workers 1 --output renders/draft.mp4
+# Default: GitHub Copilot CLI
+copilot --allow-all-tools --add-dir . \
+  -p "$(cat composition-brief.md)
 
-# Extract sample frames at scene boundaries (every ~10s)
-mkdir -p verify
-for t in 2 13 24 33 42 52 60 68 73; do
-  ffmpeg -y -ss $t -i renders/draft.mp4 -frames:v 1 -q:v 2 verify/f-${t}s.jpg 2>/dev/null
-done
-# View each frame; look for: NaN/undefined text, garbled Chinese (font fallback),
-# overlapping text, missing elements, broken count-ups.
-
-# Once draft looks good, render final:
-../node_modules/.bin/hyperframes render --quality high --fps 30 --workers 1 \
-  --output renders/<name>-final.mp4
+Read the brief above and produce the deliverables. Use the hyperframes skill
+(installed under ~/.hermes/hermes-agent/optional-skills/creative/hyperframes/).
+Workflow: scaffold ./composition with hyperframes init, write DESIGN.md, compose
+index.html, run hyperframes lint && hyperframes inspect, fix issues, then render
+with --workers 1. Iterate until lint and inspect pass and renders/final.mp4 exists."
 ```
+
+Alternative — Claude Code with the same brief:
+
+```bash
+claude --add-dir . --allowedTools "Bash Edit Write Read Glob Grep" \
+       -p "$(cat composition-brief.md)
+
+Read the brief above and produce the deliverables. Use the hyperframes skill.
+Iterate hyperframes init → DESIGN.md → compose → lint → inspect → render."
+```
+
+Do **not** drive composition from the main agent's session. Composition needs
+many small file edits, lint loops, and render attempts; running it inside a
+coding sub-agent with the hyperframes skill loaded is dramatically faster and
+keeps the main agent's context clean.
+
+#### 8.3 — Sanity-check the result
+
+After the sub-agent returns, verify from the main agent:
+
+```bash
+ffprobe -v error -show_entries format=duration -of csv=p=0 \
+  ~/.hermes/workspace/{topic_name}/composition/renders/final.mp4
+ls -la ~/.hermes/workspace/{topic_name}/composition/renders/final.mp4
+```
+
+Expect: duration within ±0.1 s of `narration.mp3`; file size > 1 MB; an audio
+stream present. If anything looks off, send the failure back to the sub-agent
+(`copilot resume` or a fresh `claude -p ...`) with a pointer to the symptom —
+don't try to hand-patch the composition from the main agent.
 
 ## Gotchas Quick Table (read `references/gotchas.md` for details)
 
@@ -434,22 +472,13 @@ done
 |---|---|---|
 | `Failed to download model small.en` | Whisper download blocked | Use Paraformer instead |
 | `status_code=44 sample rate 16000 not equals with real 22050` | Paraformer sample_rate mismatch | `sample_rate=22050` for CosyVoice MP3 |
-| `Conversion failed! Try --docker` | multi-worker chromium fallback bug | `--workers 1` |
-| `[Compiler] No deterministic font mapping for: AR PL UKai CN` | Using system Chinese font | Download Google Fonts woff2 |
-| Chinese badge shows ★▢□ garbage | Caveat font has no CJK glyphs | Use `MaShanZheng` for the Chinese span |
-| Number animates to "NaN%" | `tl.from(textContent: 0)` on element with nested `<span>` | Use `scale`/`opacity` only |
-| `Track N: clip ending at X overlaps with clip starting at X` | 3-decimal rounding | 6-decimal precision OR subtract 0.001 |
-| Lint: `composition_self_attribute_selector` | CSS uses `[data-composition-id="main"]` | Use `#root` selector |
-| Lint: `gsap_repeat_ceil_overshoot` | `repeat: Math.ceil(N/M)-1` | `Math.floor` instead |
-| Lint: `overlapping_gsap_tweens` on consecutive same-property tweens | No overwrite | Add `overwrite: 'auto'` |
-| Console: `GSAP target #X not found` | Selector matches no elements in some scenes | Filter empty: `if (gsap.utils.toArray(sel).length === 0) return;` |
-| Inspect: text overflow on inline highlight | Padding+lineheight too tight for CJK | `padding: 4px 16px 12px; line-height: 1.15;` |
+| `Conversion failed! Try --docker` from hyperframes render | multi-worker chromium fallback bug | Pin `--workers 1` in the brief |
+| `[Compiler] No deterministic font mapping for: AR PL UKai CN` | Sub-agent reached for `fc-match` system fonts | Re-run with the brief explicitly pointing at `fonts/` and forbidding `fc-match` |
+| Chinese badge shows ★▢□ garbage in final render | Caveat/PatrickHand applied to Chinese characters | Tighten CJK rule in the brief (Iron Rule #6); re-render |
 | Paraformer transcript missing capitals (`hugging face` not `Hugging Face`) | Paraformer normalizes English to lowercase | Use case-insensitive anchor matching (shipped script handles this) |
 | `WARN: anchor not found for X` from scene-anchor.py | Case mismatch OR audio doesn't say that exact phrase | Run `cat transcript.json` first, pick anchors from the actual ASR text |
 | `vision-analyze.py` returns `mode: "delegate_to_agent"` | `VLM_API_KEY` not set — this is **not** an error | Either set `VLM_API_KEY`/`VLM_BASE_URL`/`VLM_MODEL` for explicit VLM, OR honor the directive: use your `view` tool on each path in `images.local` |
 | `vision-analyze.py` errors with "VLM_API_KEY is set but missing required config" | Partial VLM_* setup | Set both `VLM_BASE_URL` and `VLM_MODEL` (or pass `--model`) |
-| Images don't render in HyperFrames | Image path not relative to project dir | Copy images into project dir; use relative paths in `<img src>` |
-| Ken Burns animation jitters | Image too small, upscaled poorly | Use source images ≥1920px wide; `object-fit: cover` |
 | `harvest-pages.py` blocked by cookie banner | EU/cookie wall absorbs scroll/clicks | Re-run after accepting the banner once in the shared profile (`~/.hermes/workspace/chrome_profile`) — cookie state persists across CDP sessions |
 | `harvest-pages.py` returns 0 images on a real gallery | Lazy-loaded images need scroll | Already handled (auto-scroll-to-bottom); if still 0, raise `--page-load-timeout` |
 | External video download fails | yt-dlp upstream issue (geoblock, age-gate, 410, etc.) — manifests in Phase 3.b | Leave that `videos[]` entry with `download_required: true`; Phase 4 ignores it. If the clip is essential, `web_search` for a re-uploaded mirror and rerun `harvest-pages.py` with the new URL |
@@ -459,7 +488,6 @@ done
 | Chrome exits with sandbox errors as root | Running inside a container | `--no-sandbox` is auto-enabled when running as root or inside Docker; pass explicitly with `--no-sandbox` if needed |
 | CDP port 9222 busy with the wrong Chrome | Another tool launched Chrome on that port | If it's a Chrome we WANT, that's fine (reuse). If not, pass `--cdp-url http://localhost:9223` |
 | Scene references an asset not in `material-catalog.json` | Phase 7 wrote a `material_ref` whose `entry_slug`/`asset_id` pair doesn't resolve in the catalog, or skipped `material_ref` entirely | Re-run Phase 4 vision-analyze and re-build the catalog; every scene must have a `material_ref` that resolves via `entry_slug → asset_id` (and `clip_index` for videos). If no entry fits, harvest more URLs (Phase 3) — do not invent or borrow generic stock assets |
-| HyperFrames scene shows nothing where a video clip was planned | Embedded the full source video instead of cutting `selected_clips[clip_index]`, OR added a GSAP image animation on top of a `<video>` element | Use `ffmpeg -ss <start> -to <end>` to cut the clip into the project's `videos/` dir; embed as `<video class="clip">` with no GSAP animation — the clip carries its own motion |
 
 ## Resources Bundled With This Skill
 
@@ -469,19 +497,18 @@ done
 - `scripts/voice-clone-template.py` — CosyVoice template (replace `input_text`)
 - `scripts/transcribe-paraformer.py` — Paraformer ASR (handles sample_rate auto-detect)
 - `scripts/scene-anchor.py` — anchor scenes to ASR word stream
-- `scripts/check-cjk-fonts.py` — flags Chinese text inside Caveat/PatrickHand contexts before render
+- `scripts/check-cjk-fonts.py` — flags Chinese text inside Caveat/PatrickHand contexts (use it as a Phase 8 sanity check on the sub-agent's `composition/index.html`)
 - `scripts/extract-frames.py` — FFmpeg frame extraction (uniform sampling or time window)
 - `scripts/subtitle-parse.py` — SRT/VTT parser with keyword filtering
 - `scripts/vision-analyze.py` — model-agnostic vision analysis: calls any OpenAI-compatible VLM via `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL`, or delegates to the agent's `view` tool when no VLM is configured
 - `scripts/harvest-pages.py` — Playwright/CDP batch URL harvester: takes an array of URLs (official sites, GitHub, docs, etc.), extracts ≥512px images and embedded videos per URL, OR records a scroll-through video for text-heavy pages. Downloads native HTML5 `<video>` clips inline; **lists** YouTube/Bilibili URLs in `manifest.pending_downloads[]` for Phase 3.b to fetch. Reuses one Chrome process across the whole batch.
 - `scripts/video-download.py` — yt-dlp wrapper for YouTube/Bilibili. Called by the agent in Phase 3.b, once per `pending_downloads[]` entry.
-- `templates/design.md` — Rosé Pine Dawn boilerplate
-- `templates/design-moon.md` — Rosé Pine Moon Serious boilerplate for dark technical/editorial videos
-- `templates/composition-skeleton.html` — annotated index.html starting point
+- `references/design-dawn.md` — Rosé Pine Dawn handdrawn warm style reference (optional input to the Phase 8 brief)
+- `references/design-moon.md` — Rosé Pine Moon dark technical/editorial style reference (optional input to the Phase 8 brief)
 - `references/gotchas.md` — full pitfall catalog with reproductions
 - `references/palettes.md` — style routing for Rosé Pine Dawn, Rosé Pine Moon Serious, warm-editorial, and dark-premium
 - `references/script-templates.md` — narration patterns (interview-recap, news, tutorial, story)
-- `references/image-animations.md` — GSAP image animation patterns (Ken Burns, pan, slideshow, grid, montage)
+- `references/image-animations.md` — suggestive GSAP image animation patterns the sub-agent MAY consult in Phase 8 (Ken Burns, pan, slideshow, grid, montage, …)
 
 ## Dependencies for Material Tools
 
@@ -492,28 +519,22 @@ The material processing scripts require additional dependencies beyond the base 
 - **system Chrome** (already at `/usr/bin/google-chrome` on this machine): auto-launched on demand with `--remote-debugging-port=9222 --user-data-dir=~/.hermes/workspace/chrome_profile`. Shared with the `gemini-deep-research` agent so cookies/logins persist.
 - **yt-dlp** (for `video-download.py`): on PATH (`/home/jieliu1/.local/bin/yt-dlp`).
 - **vision model** (optional): set `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` to enable `vision-analyze.py` Mode 1 (e.g. point at DashScope's OpenAI-compatible endpoint with `qwen-vl-max`). When unset, the script delegates to the calling agent's own `view` tool — no extra dependency required.
+- **coding sub-agent** (Phase 8): GitHub `copilot` CLI or `claude` CLI on PATH, with the `hyperframes` skill installed under `~/.hermes/hermes-agent/optional-skills/creative/hyperframes/`.
 
 ## Red Flags — STOP if you see any of these
 
 You are about to make a known mistake if you find yourself:
 
 - **Writing the script without doing Phase 2 research first** (or skipping web_search/web_fetch)
-- **Pre-rendering Ken Burns clips with FFmpeg** instead of using GSAP in HyperFrames HTML
 - **Skipping vision-analyze** when you have 20+ frames and need to pick the best 3-4
 - Writing narration before running vision-analyze on harvested videos and building `material-catalog.json`
 - **Designing a scene without a `material_ref`** into `material-catalog.json`, or referencing an `<img src>` / `<video src>` whose path is not a catalog entry
-- **Adding a GSAP image animation on top of a `<video>` clip** — clips already carry motion; pick one or the other
 - **Embedding the full source video** instead of an ffmpeg-cut `selected_clips[i]` range
-- **Using absolute paths** for images in index.html (breaks HyperFrames render)
+- **Hand-writing `composition/index.html` from the main agent** instead of handing the brief to a coding sub-agent
+- **Skipping `composition-brief.md`** and dropping the sub-agent into a workspace with no instructions
 - Reaching for `npx hyperframes transcribe` for Chinese audio
 - Reaching for `npx hyperframes tts` because you forgot CosyVoice
 - Picking system Chinese fonts via `fc-match`
-- Adding `tl.from(el, { textContent: 0 })` for a number with units
 - Setting Paraformer `sample_rate=16000`
-- Running render with default `--workers auto`
-- Using `Math.ceil` to compute `repeat:`
-- Putting back-to-back audio clips with 3-decimal precision
-- Using `[data-composition-id="..."]` as a CSS selector
-- Putting Chinese text inside a Caveat/PatrickHand styled badge instead of splitting `.zh` and `.latin` spans
 
 Stop and re-read the relevant Iron Rule above.

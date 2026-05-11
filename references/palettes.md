@@ -2,11 +2,11 @@
 
 Default is **Rosé Pine Dawn** (warm, light, handdrawn). Alternates are available when the user wants something different.
 
-## Rosé Pine Dawn (Default — see `templates/design.md`)
+## Rosé Pine Dawn (Default — see `references/design-dawn.md`)
 
 Mood: warm, calm, intimate. Pairs with handdrawn fonts.
 
-## Rosé Pine Moon Serious (Optional — see `templates/design-moon.md`)
+## Rosé Pine Moon Serious (Optional — see `references/design-moon.md`)
 
 Mood: serious, technical, restrained, editorial. Use for AI, SaaS, programming, business analysis, technical commentary, and any user request for "moon", "严肃", "深色", or "技术感".
 

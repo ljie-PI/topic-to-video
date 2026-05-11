@@ -1,8 +1,11 @@
-# Design — Rosé Pine Moon × Serious Technical Editorial
+# Design — Rosé Pine Moon × Serious Technical Editorial (Optional style reference)
 
-> Optional dark style for `topic-to-video`.
-> Use when the user asks for "moon", "严肃", "深色", "技术感", "技术评论", "AI", "SaaS", or "编程" and wants a more serious presentation.
-> Dawn remains the default handdrawn style in `templates/design.md`.
+> Optional dark style reference for `topic-to-video`'s Phase 8 composition brief.
+> The coding sub-agent reads this if (and only if) the brief points at
+> `references/design-moon.md` — typically when the user asks for "moon",
+> "严肃", "深色", "技术感", "技术评论", "AI", "SaaS", or "编程" and wants a
+> more serious presentation.
+> The companion handdrawn reference is `references/design-dawn.md`.
 
 ## Palette (use ONLY these colors)
 

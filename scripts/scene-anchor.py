@@ -8,14 +8,20 @@ Usage:
 
 scenes.json format:
   [
-    {"id": "s1-hook",  "anchor": "Anthropic", "display": "...optional onscreen text..."},
-    {"id": "s2-stat",  "anchor": "他说编程问题"},
+    {"id": "s1-hook",  "anchor": "Anthropic", "display_text": "...optional onscreen text...",
+     "material_ref": {"entry_slug": "...", "kind": "image", "asset_id": "img_001"}},
+    {"id": "s2-stat",  "anchor": "他说编程问题",
+     "material_ref": {"entry_slug": "...", "kind": "video_clip", "asset_id": "vid_xxx", "clip_index": 0}},
     ...
   ]
 
 The anchor is searched IN ORDER through the joined ASR text. Each scene's
 begin = the start time of the word at the matched position; end = the begin
 of the next scene (last scene ends at the audio end).
+
+Any extra keys per scene (e.g. `material_ref`, `display_text`, custom labels)
+are passed through to the output so the downstream composition agent can read
+the full scene record from `scene-timing.json` alone.
 
 Output:
   {
@@ -96,18 +102,17 @@ def main() -> int:
                     continue
             word_idx = char_to_word[idx]
             begin_ms = words[word_idx]['begin']
-            results.append(
+            result = dict(scene)
+            result.update(
                 {
-                    'id': scene['id'],
-                    'anchor': anchor,
                     'matched_text': joined[idx:idx + len(anchor)],
                     'matched_at_char': idx,
                     'matched_word_index': word_idx,
                     'begin_ms': begin_ms,
                     'begin_s': round(begin_ms / 1000, 3),
-                    'display': scene.get('display'),
                 }
             )
+            results.append(result)
             cursor = idx + len(anchor)
 
         total_ms = words[-1]['end']

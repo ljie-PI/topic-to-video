@@ -1,5 +1,10 @@
 # Image Animations Reference — HyperFrames + GSAP
 
+> **Suggestive catalog, not prescriptive.** The Phase 8 coding sub-agent MAY
+> consult this when a scene is driven by still images and needs motion. It is
+> free to remix, simplify, or invent its own effects — the hyperframes skill
+> sets the lint/timing rules; aesthetics are the sub-agent's call.
+
 Use these patterns when a scene is driven by still images (search results, screenshots, extracted video frames) and you want motion directly in the HTML composition instead of pre-rendering video clips with FFmpeg. All examples target the shared HyperFrames GSAP timeline on `window.__timelines["main"]` and use absolute time positions.
 
 ## General pattern

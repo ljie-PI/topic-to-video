@@ -1,7 +1,10 @@
-# Design — Rosé Pine Dawn × Notion Handdrawn (Boilerplate)
+# Design — Rosé Pine Dawn × Notion Handdrawn (Optional style reference)
 
-> Adapted from `style-prompt.md` (Xiaohongshu / 小红书 Notion-style minimalism)
-> Adjust colors and accents per project, but **keep the palette bounded**.
+> Optional style reference for `topic-to-video`'s Phase 8 composition brief.
+> The coding sub-agent reads this if (and only if) the brief points at
+> `references/design-dawn.md`. Otherwise the sub-agent picks its own palette
+> via the hyperframes DESIGN.md gate. Adjust colors and accents per project,
+> but **keep the palette bounded** if you adopt it.
 
 ## Palette (use ONLY these colors)
 
