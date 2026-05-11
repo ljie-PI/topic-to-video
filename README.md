@@ -8,9 +8,10 @@ A Copilot CLI skill that turns a topic, article URL, or text into a short narrat
 |------|-------|
 | Node.js + `hyperframes` | `npm install --no-save --ignore-scripts hyperframes` |
 | Python 3 + venv | `source .venv/bin/activate` before any Python script |
-| `dashscope` | In the venv — powers CosyVoice TTS, Paraformer ASR, and vision analysis |
+| `dashscope` | In the venv — powers CosyVoice TTS and Paraformer ASR |
 | `ffmpeg` / `ffprobe` | Audio probing and frame extraction |
-| `DASHSCOPE_API_KEY` | Set in env (e.g. `~/.zshrc`) |
+| `DASHSCOPE_API_KEY` | Set in env (e.g. `~/.zshrc`) — required for TTS/ASR |
+| `VLM_*` (optional) | `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` to enable explicit vision; otherwise `vision-analyze.py` delegates back to the agent's own `view` tool |
 
 ## Quick Start
 
@@ -39,7 +40,7 @@ bash scripts/fonts-download.sh my-video/fonts dawn
 |--------|---------|
 | `scripts/voice-clone-template.py` | CosyVoice TTS template (`speech_rate=1.5`) |
 | `scripts/transcribe-paraformer.py` | Paraformer ASR — word-level timestamps |
-| `scripts/vision-analyze.py` | Qwen-VL image analysis CLI via DashScope multimodal conversation |
+| `scripts/vision-analyze.py` | Model-agnostic vision analysis — calls any OpenAI-compatible VLM via `VLM_*` env vars, or delegates to the agent's `view` tool when unset |
 | `scripts/scene-anchor.py` | Anchor scenes to ASR word stream |
 | `scripts/extract-frames.py` | Extract JPEG frames with ffmpeg / ffprobe |
 | `scripts/subtitle-parse.py` | Parse SRT/VTT subtitles with keyword filtering |

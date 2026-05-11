@@ -3,7 +3,7 @@ name: topic-to-video
 description: Use when the user provides a topic, article URL, or text and asks to make a short narrated video (typically 60-120s). Covers the full pipeline — topic research with web search, optional visual material search and processing, video understanding, script writing, CosyVoice cloned-voice TTS via DashScope, Paraformer ASR for word-level timestamps, scene timing, HyperFrames composition with GSAP image animation, lint/inspect, and rendering. Avoids 17+ pitfalls discovered in baseline testing.
 ---
 
-# Topic → 视频 (HyperFrames + CosyVoice 流水线)
+# Topic → Video (HyperFrames + CosyVoice Workflow)
 
 ## What This Skill Builds
 
@@ -140,6 +140,9 @@ Process visual materials for use in the composition.
 1. **Extract frames** — `scripts/extract-frames.py <video_path> ~/.hermes/workspace/{topic_name}/extract_frames/ --max-frames 20`
 2. **Parse subtitles** — `scripts/subtitle-parse.py <subtitle_file>` (if subtitles available)
 3. **Vision analysis** — `scripts/vision-analyze.py --prompt "Describe content and assess quality" --images ~/.hermes/workspace/{topic_name}/extract_frames/frame_0001.jpg frame_0002.jpg ...`
+   - **Mode 1 (explicit VLM):** if `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` are set, the script POSTs to `{VLM_BASE_URL}/chat/completions` (OpenAI-compatible) and returns `{success: true, mode: "vlm", analysis: "..."}`.
+   - **Mode 2 (delegate):** if `VLM_API_KEY` is unset, the script returns `{success: true, mode: "delegate_to_agent", prompt, images: {local: [...], remote: [...]}}`. The agent must then call its own `view` tool on each path in `images.local` (and `web_fetch` for `images.remote` if needed) and reason over them with its own vision-capable model.
+   - Save the resulting analysis to `vision_analyze/analysis.json` for downstream steps.
 4. **Outputs** — `extract_frames/` + `vision_analyze/analysis.json`
 
 ### Phase 5 — Write Narration Script
@@ -308,7 +311,8 @@ done
 | Inspect: text overflow on inline highlight | Padding+lineheight too tight for CJK | `padding: 4px 16px 12px; line-height: 1.15;` |
 | Paraformer transcript missing capitals (`hugging face` not `Hugging Face`) | Paraformer normalizes English to lowercase | Use case-insensitive anchor matching (shipped script handles this) |
 | `WARN: anchor not found for X` from scene-anchor.py | Case mismatch OR audio doesn't say that exact phrase | Run `cat transcript.json` first, pick anchors from the actual ASR text |
-| `vision-analyze.py` returns empty | DASHSCOPE_API_KEY not set or expired | `export DASHSCOPE_API_KEY="sk-..."` in venv |
+| `vision-analyze.py` returns `mode: "delegate_to_agent"` | `VLM_API_KEY` not set — this is **not** an error | Either set `VLM_API_KEY`/`VLM_BASE_URL`/`VLM_MODEL` for explicit VLM, OR honor the directive: use your `view` tool on each path in `images.local` |
+| `vision-analyze.py` errors with "VLM_API_KEY is set but missing required config" | Partial VLM_* setup | Set both `VLM_BASE_URL` and `VLM_MODEL` (or pass `--model`) |
 | Images don't render in HyperFrames | Image path not relative to project dir | Copy images into project dir; use relative paths in `<img src>` |
 | Ken Burns animation jitters | Image too small, upscaled poorly | Use source images ≥1920px wide; `object-fit: cover` |
 
@@ -323,7 +327,7 @@ done
 - `scripts/check-cjk-fonts.py` — flags Chinese text inside Caveat/PatrickHand contexts before render
 - `scripts/extract-frames.py` — FFmpeg frame extraction (uniform sampling or time window)
 - `scripts/subtitle-parse.py` — SRT/VTT parser with keyword filtering
-- `scripts/vision-analyze.py` — DashScope qwen-vl multimodal image analysis
+- `scripts/vision-analyze.py` — model-agnostic vision analysis: calls any OpenAI-compatible VLM via `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL`, or delegates to the agent's `view` tool when no VLM is configured
 - `templates/design.md` — Rosé Pine Dawn boilerplate
 - `templates/design-moon.md` — Rosé Pine Moon Serious boilerplate for dark technical/editorial videos
 - `templates/composition-skeleton.html` — annotated index.html starting point
@@ -337,7 +341,7 @@ done
 The material processing scripts require additional dependencies beyond the base skill:
 
 - **ffmpeg/ffprobe** (for frame extraction): usually pre-installed on Linux
-- **dashscope** (for vision analysis): already in the project venv (shared with TTS/ASR)
+- **vision model** (optional): set `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` to enable `vision-analyze.py` Mode 1 (e.g. point at DashScope's OpenAI-compatible endpoint with `qwen-vl-max`). When unset, the script delegates to the calling agent's own `view` tool — no extra dependency required.
 
 ## Red Flags — STOP if you see any of these
 
