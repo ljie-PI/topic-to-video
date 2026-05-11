@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from dataclasses import dataclass
@@ -25,6 +26,21 @@ class Finding:
     col: int
     source: str
     text: str
+
+
+def print_json(payload: dict[str, object]) -> None:
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+def log(message: str) -> None:
+    print(f'[check-cjk] {message}', file=sys.stderr)
+
+
+class JsonArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        log(f'bad arguments: {message}')
+        print_json({'success': False, 'error': message})
+        raise SystemExit(2)
 
 
 def extract_unsafe_css_variables(html: str) -> set[str]:
@@ -118,28 +134,48 @@ def check_file(path: Path) -> list[Finding]:
 
 
 def main() -> int:
-    arg_parser = argparse.ArgumentParser(
+    arg_parser = JsonArgumentParser(
         description="Detect Chinese text inside elements styled with Caveat or PatrickHand."
     )
     arg_parser.add_argument("html_file", type=Path, help="Path to a HyperFrames HTML file, usually index.html")
-    args = arg_parser.parse_args()
 
-    findings = check_file(args.html_file)
-    if not findings:
-        print(f"OK: no CJK text found in Caveat/PatrickHand contexts: {args.html_file}")
-        return 0
+    try:
+        args = arg_parser.parse_args()
+        findings = check_file(args.html_file)
+        if not findings:
+            log(f'OK: no CJK text found in Caveat/PatrickHand contexts: {args.html_file}')
+            print_json({'success': True, 'findings_count': 0})
+            return 0
 
-    print(f"ERROR: CJK text is using Latin-only font contexts in {args.html_file}", file=sys.stderr)
-    for finding in findings:
-        print(
-            f"  line {finding.line}:{finding.col} via {finding.source}: {finding.text}",
-            file=sys.stderr,
+        log(f'ERROR: CJK text is using Latin-only font contexts in {args.html_file}')
+        for finding in findings:
+            log(f'line {finding.line}:{finding.col} via {finding.source}: {finding.text}')
+        log(
+            'Fix: split mixed text into spans and use MaShanZheng/LongCang for Chinese, '
+            'Caveat/PatrickHand only for Latin/numbers.'
         )
-    print(
-        "Fix: split mixed text into spans and use MaShanZheng/LongCang for Chinese, Caveat/PatrickHand only for Latin/numbers.",
-        file=sys.stderr,
-    )
-    return 1
+        print_json(
+            {
+                'success': False,
+                'findings_count': len(findings),
+                'findings': [
+                    {
+                        'line': finding.line,
+                        'col': finding.col,
+                        'source': finding.source,
+                        'text': finding.text,
+                    }
+                    for finding in findings
+                ],
+            }
+        )
+        return 1
+    except SystemExit:
+        raise
+    except Exception as exc:
+        log(f'error: {exc}')
+        print_json({'success': False, 'error': str(exc)})
+        return 1
 
 
 if __name__ == "__main__":

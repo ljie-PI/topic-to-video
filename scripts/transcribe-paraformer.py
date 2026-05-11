@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 DashScope Paraformer-realtime-v2 ASR for Chinese audio.
 
@@ -36,72 +37,105 @@ import os
 import subprocess
 import sys
 
-import dashscope
-from dashscope.audio.asr import Recognition
+def print_json(payload: dict[str, object]) -> None:
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+def log(message: str) -> None:
+    print(f'[transcribe] {message}', file=sys.stderr)
 
 
 def detect_sample_rate(path: str) -> int:
     out = subprocess.run(
-        ['ffprobe', '-v', 'error', '-select_streams', 'a:0',
-         '-show_entries', 'stream=sample_rate',
-         '-of', 'default=noprint_wrappers=1:nokey=1', path],
-        check=True, capture_output=True, text=True
+        [
+            'ffprobe',
+            '-v',
+            'error',
+            '-select_streams',
+            'a:0',
+            '-show_entries',
+            'stream=sample_rate',
+            '-of',
+            'default=noprint_wrappers=1:nokey=1',
+            path,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
     )
     return int(out.stdout.strip())
 
 
-def main():
+def main() -> int:
     if len(sys.argv) != 3:
-        print('Usage: transcribe-paraformer.py <input.mp3> <output.json>')
-        sys.exit(2)
+        message = 'Usage: transcribe-paraformer.py <input.mp3> <output.json>'
+        log(message)
+        print_json({'success': False, 'error': message})
+        return 2
 
-    audio_path, out_path = sys.argv[1], sys.argv[2]
-    if not os.path.isfile(audio_path):
-        print(f'ERR: not found: {audio_path}')
-        sys.exit(1)
+    try:
+        from dashscope.audio.asr import Recognition
+        import dashscope
 
-    api_key = os.environ.get('DASHSCOPE_API_KEY')
-    if not api_key:
-        print('ERR: DASHSCOPE_API_KEY env var not set')
-        sys.exit(1)
-    dashscope.api_key = api_key
+        audio_path, out_path = sys.argv[1], sys.argv[2]
+        if not os.path.isfile(audio_path):
+            raise FileNotFoundError(f'not found: {audio_path}')
 
-    fmt = os.path.splitext(audio_path)[1][1:].lower() or 'mp3'
-    sr = detect_sample_rate(audio_path)
-    print(f'[Paraformer] file={audio_path} format={fmt} sample_rate={sr}')
+        api_key = os.environ.get('DASHSCOPE_API_KEY')
+        if not api_key:
+            raise EnvironmentError('DASHSCOPE_API_KEY env var not set')
+        dashscope.api_key = api_key
 
-    rec = Recognition(
-        model='paraformer-realtime-v2',
-        format=fmt,
-        sample_rate=sr,
-        language_hints=['zh'],
-        callback=None,
-    )
-    result = rec.call(audio_path)
-    if result.status_code != 200:
-        msg = getattr(result, 'message', '<no message>')
-        print(f'ERR: status_code={result.status_code} message={msg}')
-        sys.exit(1)
+        fmt = os.path.splitext(audio_path)[1][1:].lower() or 'mp3'
+        sr = detect_sample_rate(audio_path)
+        log(f'file={audio_path} format={fmt} sample_rate={sr}')
 
-    sentences = result.get_sentence() or []
-    out = []
-    for s in sentences:
-        out.append({
-            'begin': s.get('begin_time'),
-            'end': s.get('end_time'),
-            'text': s.get('text'),
-            'words': [
-                {'text': w.get('text'), 'begin': w.get('begin_time'), 'end': w.get('end_time')}
-                for w in (s.get('words') or [])
-            ],
-        })
+        rec = Recognition(
+            model='paraformer-realtime-v2',
+            format=fmt,
+            sample_rate=sr,
+            language_hints=['zh'],
+            callback=None,
+        )
+        result = rec.call(audio_path)
+        if result.status_code != 200:
+            msg = getattr(result, 'message', '<no message>')
+            raise RuntimeError(f'status_code={result.status_code} message={msg}')
 
-    with open(out_path, 'w', encoding='utf-8') as f:
-        json.dump(out, f, ensure_ascii=False, indent=2)
+        sentences = result.get_sentence() or []
+        out = []
+        for sentence in sentences:
+            out.append(
+                {
+                    'begin': sentence.get('begin_time'),
+                    'end': sentence.get('end_time'),
+                    'text': sentence.get('text'),
+                    'words': [
+                        {'text': word.get('text'), 'begin': word.get('begin_time'), 'end': word.get('end_time')}
+                        for word in (sentence.get('words') or [])
+                    ],
+                }
+            )
 
-    total_words = sum(len(s['words']) for s in out)
-    print(f'✓ wrote {out_path}: {len(out)} sentences, {total_words} words')
+        with open(out_path, 'w', encoding='utf-8') as f:
+            json.dump(out, f, ensure_ascii=False, indent=2)
+
+        total_words = sum(len(sentence['words']) for sentence in out)
+        log(f'wrote {out_path}: {len(out)} sentences, {total_words} words')
+        print_json(
+            {
+                'success': True,
+                'output_path': os.path.abspath(out_path),
+                'sentence_count': len(out),
+                'word_count': total_words,
+            }
+        )
+        return 0
+    except Exception as exc:
+        log(f'error: {exc}')
+        print_json({'success': False, 'error': str(exc)})
+        return 1
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())
