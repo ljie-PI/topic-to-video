@@ -718,6 +718,7 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
                 }
                 if local:
                     meta['local_path'] = str(local.resolve())
+                    meta['id'] = local.stem
                 else:
                     meta['downloaded'] = False
                     meta['error'] = 'download failed'
@@ -752,6 +753,7 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
                         if video_files:
                             video_path = Path(video_files[0])
                             meta['local_path'] = str(video_path.resolve())
+                            meta['id'] = video_path.stem
                             sub = find_subtitle_for(video_path, files)
                             if sub:
                                 meta['subtitle_path'] = sub
@@ -766,6 +768,7 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
                     if local:
                         meta['downloaded'] = True
                         meta['local_path'] = str(local.resolve())
+                        meta['id'] = local.stem
                     else:
                         meta['downloaded'] = False
                         meta['error'] = 'native download failed'
@@ -833,15 +836,34 @@ def main() -> None:
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # dedupe URL list preserving order
+    # dedupe URL list preserving order, and reject any URL whose scheme isn't http(s).
+    # Without this guard `harvest-pages.py file:///etc/passwd` or `chrome://settings`
+    # would be passed straight to Playwright and could read local files or trigger
+    # privileged Chrome UIs.
     seen = set()
     urls = []
+    bad_urls: List[Dict[str, str]] = []
     for u in args.urls:
         if u in seen:
             continue
         seen.add(u)
+        try:
+            scheme = urlparse(u).scheme.lower()
+        except Exception:
+            scheme = ''
+        if scheme not in ('http', 'https'):
+            bad_urls.append({'url': u, 'error': f'unsupported URL scheme {scheme!r}; only http(s) is allowed'})
+            log(f'  reject: {u} (scheme={scheme!r} — only http/https allowed)')
+            continue
         urls.append(u)
-    log(f'Batch size: {len(urls)} URL(s); output={output_dir}')
+    if not urls:
+        fail(
+            'no http(s) URLs to harvest after scheme filtering. '
+            f'Rejected: {[b["url"] for b in bad_urls]}',
+            exit_code=2,
+        )
+    log(f'Batch size: {len(urls)} URL(s); output={output_dir}'
+        + (f' (rejected {len(bad_urls)} non-http(s) URL(s))' if bad_urls else ''))
 
     # ensure Playwright is available
     try:
@@ -915,6 +937,8 @@ def main() -> None:
         'succeeded': succeeded,
         'entries': entries,
     }
+    if bad_urls:
+        manifest['rejected'] = bad_urls
     if not batch_success:
         manifest['error'] = 'All URLs failed; see entries[].error for details.'
 

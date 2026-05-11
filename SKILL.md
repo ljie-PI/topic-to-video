@@ -229,23 +229,33 @@ Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entr
     {
       "url": "...", "slug": "...", "title": "...", "page_type": "...",
       "text_excerpt": "...",
-      "images": [{"local_path": "...", "description": "...", "score": 8}, ...],
-      "videos": [{
-        "local_path": "...",
-        "selected_clips": [
-          {"start": 12.0, "end": 18.5, "reason": "...", "frame_paths": [...]}
-        ]
-      }, ...]
+      "images": [
+        {"id": "img_001", "local_path": ".../images/img_001.webp", "semantic_description": "...", "score": 8}
+      ],
+      "videos": [
+        {
+          "id": "2MJDdzSXL74",
+          "local_path": ".../videos/2MJDdzSXL74.webm",
+          "semantic_description": "...",
+          "selected_clips": [
+            {"start": 12.0, "end": 18.5, "reason": "...", "frame_paths": [...]}
+          ]
+        }
+      ]
     }
   ]
 }
 ```
 
+- `entries[*].slug` is unique per URL and matches the harvest output directory name.
+- Each image/video gets an `id` (the file stem the harvester already wrote, e.g. `img_001` or the YouTube video id). Scenes in Phase 7 reference materials by `{entry_slug, asset_id}` — never by raw `local_path`, which is brittle.
+- `semantic_description` is the VLM-generated caption; Phase 10 uses it to pick the best GSAP effect.
+
 **Outputs:** `extract_frames/<slug>/<video-name>/`, `vision_analyze/<slug>/`, `material-catalog.json`.
 
 ### Phase 5 — Write Narration Script
 
-**Inputs:** the research brief from Phase 2 + `material-catalog.json` from Phase 4 + the user's preferred angle/length. Reference specific catalog entries when annotating each scene's recommended visual — by `local_path` for images, by `local_path` + `selected_clips[i]` for video chunks.
+**Inputs:** the research brief from Phase 2 + `material-catalog.json` from Phase 4 + the user's preferred angle/length. Reference specific catalog entries when annotating each scene's recommended visual — cite them as `{entry_slug, asset_id}` (and `clip_index` for video chunks); the actual `local_path` resolution happens in Phase 10.
 
 Goals:
 - Use **only facts from the research brief** — every number, name, date, and quote must be traceable.
@@ -282,7 +292,7 @@ Then design 8-10 scenes, each with:
 - `id` (e.g. `s1-hook`, `s2-stat`)
 - `anchor` (a 4-8 char substring that appears uniquely in the ASR text, signalling this scene starts when this phrase is spoken)
 - `display_text` (what shows on screen — usually different from spoken text, much shorter)
-- `material_ref` (required) — `{ catalog_id, kind: "image" | "video_clip", clip_index?: int }`. Picks one entry from `~/.hermes/workspace/{topic_name}/material-catalog.json` from Phase 4; `clip_index` is required when `kind = video_clip` and points at the chosen item inside that entry's `selected_clips`.
+- `material_ref` (required) — `{ entry_slug, kind: "image" | "video_clip", asset_id, clip_index?: int }`. Picks one asset from `~/.hermes/workspace/{topic_name}/material-catalog.json`: locate the entry where `entries[*].slug == entry_slug`, then locate the image (`kind=image`) or video (`kind=video_clip`) where `id == asset_id`. When `kind = video_clip`, `clip_index` (0-based) points at the chosen item inside that video's `selected_clips`.
 
 **Every scene must cite at least one catalog entry.** If no harvested material fits a scene, go back to Phase 3 and harvest more URLs — never invent assets or fall back to a generic stock image. This is the structural guarantee that the materials gathered by `harvest-pages.py` actually reach the final video.
 
@@ -323,9 +333,10 @@ Read `templates/composition-skeleton.html` for the skeleton. Key conventions:
 - One `<audio class="clip">` for narration on a high track-index.
 - One `<div class="scene clip s<N>">` per scene, with exact `data-start` / `data-duration` from scene-timing.json.
 - **Resolve each scene's `material_ref` against `material-catalog.json` BEFORE writing the `<img>` / `<video>` tags:**
-  - `kind = image` → copy the catalog entry's `local_path` into the project's `images/` directory, embed as `<img>` inside the scene div, and pick a GSAP animation effect from `references/image-animations.md` using the catalog's `semantic_description` plus the scene's intent (table below).
-  - `kind = video_clip` → cut the chosen item from `selected_clips[clip_index]` (use `ffmpeg -ss <start> -to <end> -i <local_path> -c copy ...`) into the project's `videos/` directory, embed as `<video class="clip" data-start="..." data-duration="..." muted>` instead of `<img>`, and **skip the GSAP image-animation step** for that scene — the clip itself carries the motion.
-  - Never reference `local_path` values that aren't in `material-catalog.json`. If a scene's recommended visual doesn't exist in the catalog, go back to Phase 3 (harvest more URLs) or Phase 4 (re-run vision-analyze and re-filter).
+  - Look up `entries[*]` where `slug == material_ref.entry_slug`, then look up the image / video where `id == material_ref.asset_id`.
+  - `kind = image` → copy the resolved asset's `local_path` into the project's `images/` directory, embed as `<img>` inside the scene div, and pick a GSAP animation effect from `references/image-animations.md` using the catalog asset's `semantic_description` plus the scene's intent (table below).
+  - `kind = video_clip` → resolve the same way, then cut the chosen item from `selected_clips[clip_index]` (use `ffmpeg -ss <start> -to <end> -i <local_path> -c copy ...`) into the project's `videos/` directory, embed as `<video class="clip" data-start="..." data-duration="..." muted>` instead of `<img>`, and **skip the GSAP image-animation step** for that scene — the clip itself carries the motion.
+  - Never reference `local_path` values that aren't reachable through a `material_ref → entry_slug → asset_id` lookup. If a scene's recommended visual doesn't exist in the catalog, go back to Phase 3 (harvest more URLs) or Phase 4 (re-run vision-analyze and re-filter).
 - **13 GSAP image animation effects available** — see `references/image-animations.md` for complete code templates. Quick selection guide:
 
   | Scene type | Recommended effect |
@@ -429,7 +440,7 @@ done
 | Chrome exits with sandbox errors as root | Running inside a container | `--no-sandbox` is auto-enabled when running as root or inside Docker; pass explicitly with `--no-sandbox` if needed |
 | CDP port 9222 busy with the wrong Chrome | Another tool launched Chrome on that port | If it's a Chrome we WANT, that's fine (reuse). If not, pass `--cdp-url http://localhost:9223` |
 | `harvest-pages.py` picks search-result pages | Agent included google.com/bing.com in `--urls` | Re-read Phase 3 URL selection rules; exclude search/feed/aggregator pages |
-| Scene references an asset not in `material-catalog.json` | Phase 7 wrote a `material_ref` to a `local_path` that wasn't in the catalog, or skipped `material_ref` entirely | Re-run Phase 4 vision-analyze and re-build the catalog; every scene must have a `material_ref` pointing into the catalog. If no entry fits, harvest more URLs (Phase 3) — do not invent or borrow generic stock assets |
+| Scene references an asset not in `material-catalog.json` | Phase 7 wrote a `material_ref` whose `entry_slug`/`asset_id` pair doesn't resolve in the catalog, or skipped `material_ref` entirely | Re-run Phase 4 vision-analyze and re-build the catalog; every scene must have a `material_ref` that resolves via `entry_slug → asset_id` (and `clip_index` for videos). If no entry fits, harvest more URLs (Phase 3) — do not invent or borrow generic stock assets |
 | HyperFrames scene shows nothing where a video clip was planned | Embedded the full source video instead of cutting `selected_clips[clip_index]`, OR added a GSAP image animation on top of a `<video>` element | Use `ffmpeg -ss <start> -to <end>` to cut the clip into the project's `videos/` dir; embed as `<video class="clip">` with no GSAP animation — the clip carries its own motion |
 
 ## Resources Bundled With This Skill
