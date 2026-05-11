@@ -8,7 +8,7 @@ Usage:
 
 scenes.json format:
   [
-    {"id": "s1-hook",  "anchor": "Anthropic", "display": "...optional onscreen text...",
+    {"id": "s1-hook",  "anchor": "Anthropic", "display_text": "...optional onscreen text...",
      "material_ref": {"entry_slug": "...", "kind": "image", "asset_id": "img_001"}},
     {"id": "s2-stat",  "anchor": "他说编程问题",
      "material_ref": {"entry_slug": "...", "kind": "video_clip", "asset_id": "vid_xxx", "clip_index": 0}},
