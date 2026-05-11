@@ -27,6 +27,20 @@ VIDEO_LINK_SELECTOR = "a[href*='/video/']"
 STAT_SELECTOR = ".bili-video-card__info--icon-text"
 WAIT_TIMEOUT_MS = 15_000
 POST_LOAD_DELAY_MS = 1_500
+TOOL_NAME = "search-bilibili"
+
+
+def log(msg: str) -> None:
+    print(f"[{TOOL_NAME}] {msg}", file=sys.stderr)
+
+
+def emit_result(payload: dict[str, object]) -> None:
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+class JsonArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise ValueError(message)
 
 
 @dataclass
@@ -47,7 +61,7 @@ class KeywordResult:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Search Bilibili and export results as Markdown and JSON.")
+    parser = JsonArgumentParser(description="Search Bilibili and export results as Markdown and JSON.")
     parser.add_argument(
         "--keywords",
         required=True,
@@ -65,13 +79,11 @@ def parse_args() -> argparse.Namespace:
         default=Path.cwd(),
         help="Output directory for bilibili_search_result.md/json (default: current directory)",
     )
-    args = parser.parse_args()
-    if args.limit <= 0:
-        parser.error("--limit must be greater than 0")
-    args.keywords = [keyword.strip() for keyword in args.keywords.split(",") if keyword.strip()]
-    if not args.keywords:
-        parser.error("--keywords must contain at least one non-empty keyword")
-    return args
+    return parser.parse_args()
+
+
+def parse_keywords(raw_keywords: str) -> list[str]:
+    return [keyword.strip() for keyword in raw_keywords.split(",") if keyword.strip()]
 
 
 def clean_text(value: str | None) -> str:
@@ -235,28 +247,55 @@ def run_search(keywords: list[str], limit: int) -> list[KeywordResult]:
             browser.close()
 
 
-def print_summary(keyword_results: list[KeywordResult], markdown_path: Path, json_path: Path) -> None:
-    print(f"Wrote: {markdown_path}")
-    print(f"Wrote: {json_path}")
-    for item in keyword_results:
-        if item.error:
-            print(f"- {item.keyword}: ERROR - {item.error}")
-        else:
-            print(f"- {item.keyword}: {len(item.results)} result(s)")
+def build_success_payload(keyword_results: list[KeywordResult], output_dir: Path, files: list[str]) -> dict[str, object]:
+    return {
+        "success": True,
+        "output_dir": str(output_dir.resolve()),
+        "keywords_searched": len(keyword_results),
+        "total_results": sum(len(item.results) for item in keyword_results),
+        "files": files,
+    }
 
 
 def main() -> int:
-    args = parse_args()
     try:
-        keyword_results = run_search(args.keywords, args.limit)
+        args = parse_args()
+    except ValueError as exc:
+        error = str(exc)
+        log(f"Bad arguments: {error}")
+        emit_result({"success": False, "error": error})
+        return 2
+
+    keywords = parse_keywords(args.keywords)
+    if args.limit <= 0:
+        error = "--limit must be greater than 0"
+        log(f"Bad arguments: {error}")
+        emit_result({"success": False, "error": error})
+        return 2
+    if not keywords:
+        error = "--keywords must contain at least one non-empty keyword"
+        log(f"Bad arguments: {error}")
+        emit_result({"success": False, "error": error})
+        return 2
+
+    try:
+        for keyword in keywords:
+            log(f"Searching: {keyword}")
+        keyword_results = run_search(keywords, args.limit)
         markdown_path, json_path = write_outputs(args.output_dir, keyword_results)
-        print_summary(keyword_results, markdown_path, json_path)
-        return 0 if any(not item.error for item in keyword_results) else 1
+        log(f"Wrote: {markdown_path}")
+        log(f"Wrote: {json_path}")
+        emit_result(build_success_payload(keyword_results, args.output_dir, [markdown_path.name, json_path.name]))
+        return 0
     except KeyboardInterrupt:
-        print("Interrupted.", file=sys.stderr)
-        return 130
+        error = "Interrupted."
+        log(error)
+        emit_result({"success": False, "error": error})
+        return 1
     except Exception as exc:  # pragma: no cover - runtime environment dependent
-        print(f"ERROR: {exc}", file=sys.stderr)
+        error = str(exc)
+        log(error)
+        emit_result({"success": False, "error": error})
         return 1
 
 

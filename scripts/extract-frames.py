@@ -20,6 +20,18 @@ FFMPEG_TIMEOUT_SECONDS = 300
 FFPROBE_TIMEOUT_SECONDS = 30
 FRAME_GLOB = 'frame_*.jpg'
 FRAME_PATTERN = 'frame_%04d.jpg'
+TOOL_NAME = 'extract-frames'
+
+
+class ArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        log(f'Argument error: {message}')
+        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
+        self.exit(2)
+
+
+def log(message: str) -> None:
+    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
 
 
 def print_json(payload: dict[str, object]) -> int:
@@ -28,11 +40,12 @@ def print_json(payload: dict[str, object]) -> int:
 
 
 def error_json(message: str) -> int:
+    log(message)
     return print_json({'success': False, 'error': message})
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Extract JPEG frames from a video with ffmpeg.')
+    parser = ArgumentParser(description='Extract JPEG frames from a video with ffmpeg.')
     parser.add_argument('video_path', help='Video file path')
     parser.add_argument('output_dir', help='Output directory for extracted frames')
     parser.add_argument('--max-frames', type=int, default=20, help='Maximum frames to extract (default: 20)')
@@ -87,6 +100,7 @@ def remove_existing_frames(output_dir: Path) -> None:
 
 
 def get_duration_seconds(video_path: Path) -> float:
+    log(f'Probing duration for {video_path}...')
     result = subprocess.run(
         [
             'ffprobe',
@@ -160,6 +174,7 @@ def main() -> int:
         output_dir = prepare_output_dir(args.output_dir)
         remove_existing_frames(output_dir)
         command = build_ffmpeg_command(args, video_path, output_dir)
+        log(f'Extracting up to {args.max_frames} frames into {output_dir}...')
         subprocess.run(
             command,
             check=True,
@@ -168,6 +183,7 @@ def main() -> int:
             timeout=FFMPEG_TIMEOUT_SECONDS,
         )
         frames = list_frames(output_dir)
+        log(f'Extracted {len(frames)} frame(s)')
         return print_json(
             {
                 'success': True,

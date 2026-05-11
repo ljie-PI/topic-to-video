@@ -36,10 +36,24 @@ except ImportError:  # pragma: no cover - runtime dependency check
 DEFAULT_LIMIT = 8
 RESULT_WAIT_TIMEOUT_MS = 15_000
 PAGE_TIMEOUT_MS = 30_000
+TOOL_NAME = "search-images"
+
+
+def log(msg: str) -> None:
+    print(f"[{TOOL_NAME}] {msg}", file=sys.stderr)
+
+
+def emit_result(payload: dict[str, Any]) -> None:
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+class JsonArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise ValueError(message)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Search Bing Images and export markdown and JSON results.")
+    parser = JsonArgumentParser(description="Search Bing Images and export markdown and JSON results.")
     parser.add_argument(
         "--keywords",
         required=True,
@@ -258,34 +272,40 @@ def write_outputs(groups: list[dict[str, Any]], output_dir: Path) -> tuple[Path,
     return markdown_path, json_path
 
 
-def print_summary(groups: list[dict[str, Any]], markdown_path: Path, json_path: Path) -> None:
-    print("Bing image search complete:")
-    for group in groups:
-        keyword = group["keyword"]
-        count = len(group.get("results") or [])
-        error = group.get("error")
-        if error and count == 0:
-            print(f"- {keyword}: 0 results ({error})")
-        else:
-            print(f"- {keyword}: {count} results")
-    print(f"- Markdown: {markdown_path}")
-    print(f"- JSON: {json_path}")
+def build_success_payload(groups: list[dict[str, Any]], output_dir: Path, files: list[str]) -> dict[str, Any]:
+    return {
+        "success": True,
+        "output_dir": str(output_dir.resolve()),
+        "keywords_searched": len(groups),
+        "total_results": sum(len(group.get("results") or []) for group in groups),
+        "files": files,
+    }
 
 
 def main() -> int:
-    args = parse_args()
+    try:
+        args = parse_args()
+    except ValueError as exc:
+        error = str(exc)
+        log(f"Bad arguments: {error}")
+        emit_result({"success": False, "error": error})
+        return 2
+
     keywords = parse_keywords(args.keywords)
     if not keywords:
-        print("ERR: --keywords must contain at least one non-empty keyword", file=sys.stderr)
+        error = "--keywords must contain at least one non-empty keyword"
+        log(f"Bad arguments: {error}")
+        emit_result({"success": False, "error": error})
         return 2
     if args.limit <= 0:
-        print("ERR: --limit must be greater than 0", file=sys.stderr)
+        error = "--limit must be greater than 0"
+        log(f"Bad arguments: {error}")
+        emit_result({"success": False, "error": error})
         return 2
     if sync_playwright is None:
-        print(
-            "ERR: Playwright is not installed. Install it with 'pip install playwright' and 'playwright install chromium'.",
-            file=sys.stderr,
-        )
+        error = "Playwright is not installed. Install it with 'pip install playwright' and 'playwright install chromium'."
+        log(error)
+        emit_result({"success": False, "error": error})
         return 1
 
     groups: list[dict[str, Any]] = []
@@ -297,6 +317,7 @@ def main() -> int:
             context = browser.new_context()
             try:
                 for keyword in keywords:
+                    log(f"Searching: {keyword}")
                     page = context.new_page()
                     try:
                         groups.append(search_keyword(page, keyword, args.limit))
@@ -306,15 +327,18 @@ def main() -> int:
                 context.close()
                 browser.close()
     except Exception as exc:  # pragma: no cover - defensive runtime handling
-        print(
-            "ERR: failed to run Playwright search: "
-            f"{exc}. If Chromium is missing, run 'playwright install chromium'.",
-            file=sys.stderr,
+        error = (
+            "failed to run Playwright search: "
+            f"{exc}. If Chromium is missing, run 'playwright install chromium'."
         )
+        log(error)
+        emit_result({"success": False, "error": error})
         return 1
 
     markdown_path, json_path = write_outputs(groups, output_dir)
-    print_summary(groups, markdown_path, json_path)
+    log(f"Wrote: {markdown_path}")
+    log(f"Wrote: {json_path}")
+    emit_result(build_success_payload(groups, output_dir, [markdown_path.name, json_path.name]))
     return 0
 
 

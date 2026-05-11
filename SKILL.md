@@ -33,7 +33,62 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 10. **Audio clip start/duration must be 6-decimal precision.** 3-decimal rounding causes `30.773 overlaps 30.772` lint errors when chaining 8 segments back-to-back.
 11. **Material search is optional but recommended.** Phase 3-4 can be skipped if user says "skip materials" or provides all visual content. But for most topics, searched images make scenes 10x more engaging than text-only.
 12. **Image animations = GSAP in HTML, not FFmpeg.** Never pre-render Ken Burns clips with FFmpeg for HyperFrames compositions. Use GSAP zoompan/pan/fade animations on `<img>` elements directly. See `references/image-animations.md`.
-13. **Downloaded images/frames go in `materials/` dir.** Keep them organized: `materials/images/`, `materials/frames/`, `materials/downloads/`. Copy needed files into the HyperFrames project dir before composing.
+13. **Downloaded assets go in the unified workspace tree.** Keep tool outputs under `~/.hermes/workspace/{topic_name}/` using the standard subdirectories (`search_images/`, `video_download/`, `extract_frames/`, `vision_analyze/`, `fonts/`, `verify/`, `renders/`). Copy needed files into the HyperFrames project dir before composing.
+
+## Output Conventions
+
+All scripts in this skill follow a unified output protocol:
+
+### Workspace Layout
+
+Each video project lives under `~/.hermes/workspace/{topic_name}/`, where `topic_name` is a 2-5 word slug derived from the topic (e.g., `claude-code-review`, `gpu-ai-training`). Tool outputs go into per-tool subdirectories:
+
+```
+~/.hermes/workspace/{topic_name}/
+├── search_images/              # Phase 3: Bing image search results
+│   ├── image_search_result.md
+│   └── image_search_result.json
+├── search_youtube/             # Phase 3: YouTube search results
+│   ├── youtube_search_result.md
+│   └── youtube_search_result.json
+├── search_bilibili/            # Phase 3: Bilibili search results
+│   ├── bilibili_search_result.md
+│   └── bilibili_search_result.json
+├── video_download/             # Phase 4: Downloaded videos and subtitles
+│   ├── {video_id}.mp4
+│   └── {video_id}.{lang}.vtt
+├── extract_frames/             # Phase 4: Extracted video frames
+│   └── frame_0001.jpg ...
+├── vision_analyze/             # Phase 4: Vision analysis results
+│   └── analysis.json
+├── voice_clone/                # Phase 6: TTS audio
+│   └── narration.mp3
+├── transcribe/                 # Phase 7: ASR transcript and scene timing
+│   ├── transcript.json
+│   └── scene-timing.json
+├── fonts/                      # Phase 9: Downloaded font assets
+│   ├── *.woff2
+│   └── rose-pine-moon-fonts.css
+├── narration.txt               # Phase 5: Narration script (written by agent)
+├── scenes-config.json          # Phase 7: Scene config (written by agent)
+├── index.html                  # Phase 10: HyperFrames composition
+├── images/                     # Phase 10: Images copied for composition
+├── verify/                     # Phase 11: Verification frames
+│   └── f-*s.jpg
+└── renders/                    # Phase 11: Final video output
+    ├── draft.mp4
+    └── {topic_name}-final.mp4
+```
+
+### Script I/O Protocol
+
+Every script emits **JSON to stdout** and **human-readable logs to stderr**:
+
+- **stdout** (machine-readable): `{"success": true, ...}` or `{"success": false, "error": "..."}`
+- **stderr** (human-readable): Progress and errors prefixed with `[tool-name]`, e.g., `[search-images] Searching: AI chip...`
+- **Exit codes**: `0` = success, `1` = runtime error, `2` = invalid arguments
+
+Parse script results with: `result=$(python3 script.py ... 2>/dev/null)` or capture both channels separately.
 
 ## Workflow (11 Phases)
 
@@ -90,20 +145,20 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 
 Search for visual materials based on the research brief.
 
-1. **Image search** — `scripts/search-images.py --keywords "keyword1,keyword2" --limit 8 --output-dir materials`
-2. **Video search** — `scripts/search-youtube.py` and/or `scripts/search-bilibili.py` for reference footage
-3. **Outputs** — `materials/image_search_result.md` + `materials/video_search_result.md`
+1. **Image search** — `scripts/search-images.py --keywords "keyword1,keyword2" --limit 8 --output-dir ~/.hermes/workspace/{topic_name}/search_images`
+2. **Video search** — `scripts/search-youtube.py --keywords "keyword1,keyword2" --limit 8 --output-dir ~/.hermes/workspace/{topic_name}/search_youtube` and/or `scripts/search-bilibili.py --keywords "keyword1,keyword2" --limit 8 --output-dir ~/.hermes/workspace/{topic_name}/search_bilibili` for reference footage
+3. **Outputs** — `search_images/`, `search_youtube/`, and/or `search_bilibili/` under `~/.hermes/workspace/{topic_name}/`
 4. **Review step** — show the search results summary to the user and confirm which materials to use
 
 ### Phase 4 — Material Processing (NEW)
 
 Process the selected materials.
 
-1. **Download videos** — `scripts/video-download.py --url URL --output-dir materials/downloads`
-2. **Extract frames** — `scripts/extract-frames.py materials/downloads/video.mp4 materials/frames/ --max-frames 20`
-3. **Parse subtitles** — `scripts/subtitle-parse.py materials/downloads/video.srt` (if subtitles downloaded)
-4. **Vision analysis** — `scripts/vision-analyze.py --prompt "Describe content and assess quality" --images materials/frames/frame_0001.jpg frame_0002.jpg ...`
-5. **Outputs** — `materials/frames/` + `materials/analysis.md`
+1. **Download videos** — `scripts/video-download.py --url URL --output-dir ~/.hermes/workspace/{topic_name}/video_download`
+2. **Extract frames** — `scripts/extract-frames.py ~/.hermes/workspace/{topic_name}/video_download/video.mp4 ~/.hermes/workspace/{topic_name}/extract_frames/ --max-frames 20`
+3. **Parse subtitles** — `scripts/subtitle-parse.py ~/.hermes/workspace/{topic_name}/video_download/video.srt` (if subtitles downloaded)
+4. **Vision analysis** — `scripts/vision-analyze.py --prompt "Describe content and assess quality" --images ~/.hermes/workspace/{topic_name}/extract_frames/frame_0001.jpg frame_0002.jpg ...`
+5. **Outputs** — `extract_frames/` + `vision_analyze/analysis.json`
 
 ### Phase 5 — Write Narration Script
 
@@ -130,24 +185,22 @@ Copy `scripts/voice-clone-template.py` to project root, paste `narration.txt` co
 ```bash
 source .venv/bin/activate  # from parent dir, or wherever the venv is
 export DASHSCOPE_API_KEY="sk-..."
-python3 voice-clone.py
-ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 output.mp3
+python3 voice-clone.py --output-dir ~/.hermes/workspace/{topic_name}/voice_clone
+ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ~/.hermes/workspace/{topic_name}/voice_clone/narration.mp3
 ```
-
-Move `output.mp3 → <project>/narration.mp3`.
 
 If duration is much longer than user wanted, retry with higher `speech_rate` (1.5 default; try 1.7 for shorter, 1.2 for slower).
 
 ### Phase 7 — ASR + Scene Anchoring
 
-Run `scripts/transcribe-paraformer.py <project>/narration.mp3 <project>/transcript.json`.
+Run `scripts/transcribe-paraformer.py ~/.hermes/workspace/{topic_name}/voice_clone/narration.mp3 ~/.hermes/workspace/{topic_name}/transcribe/transcript.json`.
 
 Then design 8-10 scenes, each with:
 - `id` (e.g. `s1-hook`, `s2-stat`)
 - `anchor` (a 4-8 char substring that appears uniquely in the ASR text, signalling this scene starts when this phrase is spoken)
 - `display_text` (what shows on screen — usually different from spoken text, much shorter)
 
-Run `scripts/scene-anchor.py <transcript.json> <scenes-config.json> <output: scene-timing.json>` to get exact `begin_ms`/`duration_ms` per scene.
+Run `scripts/scene-anchor.py ~/.hermes/workspace/{topic_name}/transcribe/transcript.json scenes-config.json ~/.hermes/workspace/{topic_name}/transcribe/scene-timing.json` to get exact `begin_ms`/`duration_ms` per scene.
 
 ### Phase 8 — Scaffold + Install
 
@@ -166,13 +219,13 @@ Download the fonts for the selected style as local deterministic WOFF2 assets:
 
 ```bash
 # Dawn default handdrawn style
-bash /home_ext/ljie/.copilot/skills/topic-to-video/scripts/fonts-download.sh fonts dawn
+bash scripts/fonts-download.sh ~/.hermes/workspace/{topic_name}/fonts dawn
 
 # Moon serious technical/editorial style
-bash /home_ext/ljie/.copilot/skills/topic-to-video/scripts/fonts-download.sh fonts moon
+bash scripts/fonts-download.sh ~/.hermes/workspace/{topic_name}/fonts moon
 
 # If creating a reusable project template that may switch styles later
-bash /home_ext/ljie/.copilot/skills/topic-to-video/scripts/fonts-download.sh fonts all
+bash scripts/fonts-download.sh ~/.hermes/workspace/{topic_name}/fonts all
 ```
 
 ### Phase 10 — Compose `index.html`
@@ -243,9 +296,9 @@ python3 /home_ext/ljie/.copilot/skills/topic-to-video/scripts/check-cjk-fonts.py
 ../node_modules/.bin/hyperframes render --quality draft --workers 1 --output renders/draft.mp4
 
 # Extract sample frames at scene boundaries (every ~10s)
-mkdir -p frames
+mkdir -p verify
 for t in 2 13 24 33 42 52 60 68 73; do
-  ffmpeg -y -ss $t -i renders/draft.mp4 -frames:v 1 -q:v 2 frames/f-${t}s.jpg 2>/dev/null
+  ffmpeg -y -ss $t -i renders/draft.mp4 -frames:v 1 -q:v 2 verify/f-${t}s.jpg 2>/dev/null
 done
 # View each frame; look for: NaN/undefined text, garbled Chinese (font fallback),
 # overlapping text, missing elements, broken count-ups.
@@ -280,6 +333,8 @@ done
 | Ken Burns animation jitters | Image too small, upscaled poorly | Use source images ≥1920px wide; `object-fit: cover` |
 
 ## Resources Bundled With This Skill
+
+> All scripts follow the unified I/O protocol: JSON stdout, `[tool-name]` stderr logs, exit codes 0/1/2. See "Output Conventions" above.
 
 - `scripts/fonts-download.sh` — bulletproof font download + WOFF2 conversion
 - `scripts/voice-clone-template.py` — CosyVoice template (replace `input_text`)

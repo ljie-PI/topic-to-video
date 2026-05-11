@@ -20,15 +20,34 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
 
+PLAYWRIGHT_IMPORT_ERROR: Exception | None = None
+
 try:
     from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
     from playwright.sync_api import sync_playwright
 except ImportError as exc:  # pragma: no cover - import guard for CLI use
-    print("ERR: playwright is not installed. Install with: pip install playwright && playwright install chromium", file=sys.stderr)
-    raise SystemExit(1) from exc
+    PlaywrightTimeoutError = TimeoutError  # type: ignore[assignment]
+    sync_playwright = None  # type: ignore[assignment]
+    PLAYWRIGHT_IMPORT_ERROR = exc
 
 YOUTUBE_BASE_URL = "https://www.youtube.com"
 SEARCH_TIMEOUT_MS = 15_000
+TOOL_NAME = "search-youtube"
+
+
+def log(msg: str) -> None:
+    print(f"[{TOOL_NAME}] {msg}", file=sys.stderr)
+
+
+def emit_result(payload: dict[str, Any]) -> None:
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+class JsonArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise ValueError(message)
+
+
 CONSENT_SELECTORS = [
     'button:has-text("Accept all")',
     'button:has-text("I agree")',
@@ -42,7 +61,7 @@ CONSENT_SELECTORS = [
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Search YouTube for one or more keywords and save results.")
+    parser = JsonArgumentParser(description="Search YouTube for one or more keywords and save results.")
     parser.add_argument(
         "--keywords",
         required=True,
@@ -60,10 +79,7 @@ def parse_args() -> argparse.Namespace:
         default=Path.cwd(),
         help="Directory for youtube_search_result.md/json (default: current directory)",
     )
-    args = parser.parse_args()
-    if args.limit < 1:
-        parser.error("--limit must be at least 1")
-    return args
+    return parser.parse_args()
 
 
 def normalize_keywords(raw_keywords: str) -> list[str]:
@@ -199,13 +215,44 @@ def write_outputs(output_dir: Path, report: dict[str, Any]) -> tuple[Path, Path]
     return markdown_path, json_path
 
 
+def build_success_payload(report: dict[str, Any], output_dir: Path, files: list[str]) -> dict[str, Any]:
+    return {
+        "success": True,
+        "output_dir": str(output_dir.resolve()),
+        "keywords_searched": len(report["searches"]),
+        "total_results": sum(len(item["results"]) for item in report["searches"]),
+        "files": files,
+    }
+
+
 def main() -> int:
-    args = parse_args()
+    try:
+        args = parse_args()
+    except ValueError as exc:
+        error = str(exc)
+        log(f"Bad arguments: {error}")
+        emit_result({"success": False, "error": error})
+        return 2
+
+    if args.limit < 1:
+        error = "--limit must be at least 1"
+        log(f"Bad arguments: {error}")
+        emit_result({"success": False, "error": error})
+        return 2
+
     try:
         keywords = normalize_keywords(args.keywords)
     except ValueError as exc:
-        print(f"ERR: {exc}", file=sys.stderr)
+        error = str(exc)
+        log(f"Bad arguments: {error}")
+        emit_result({"success": False, "error": error})
         return 2
+
+    if sync_playwright is None:
+        error = "playwright is not installed. Install with: pip install playwright && playwright install chromium"
+        log(error)
+        emit_result({"success": False, "error": error})
+        return 1
 
     report: dict[str, Any] = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -218,41 +265,45 @@ def main() -> int:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
             context = browser.new_context(locale="en-US")
-            page = context.new_page()
-
-            for keyword in keywords:
+            try:
+                page = context.new_page()
                 try:
-                    report["searches"].append(search_keyword(page, keyword, args.limit))
-                except PlaywrightTimeoutError:
-                    report["searches"].append({
-                        "keyword": keyword,
-                        "search_url": f"{YOUTUBE_BASE_URL}/results?search_query={quote_plus(keyword)}",
-                        "results": [],
-                        "error": "Timed out waiting for YouTube search results",
-                    })
-                except Exception as exc:
-                    report["searches"].append({
-                        "keyword": keyword,
-                        "search_url": f"{YOUTUBE_BASE_URL}/results?search_query={quote_plus(keyword)}",
-                        "results": [],
-                        "error": str(exc),
-                    })
-
-            context.close()
-            browser.close()
+                    for keyword in keywords:
+                        log(f"Searching: {keyword}")
+                        try:
+                            report["searches"].append(search_keyword(page, keyword, args.limit))
+                        except PlaywrightTimeoutError:
+                            report["searches"].append({
+                                "keyword": keyword,
+                                "search_url": f"{YOUTUBE_BASE_URL}/results?search_query={quote_plus(keyword)}",
+                                "results": [],
+                                "error": "Timed out waiting for YouTube search results",
+                            })
+                        except Exception as exc:
+                            report["searches"].append({
+                                "keyword": keyword,
+                                "search_url": f"{YOUTUBE_BASE_URL}/results?search_query={quote_plus(keyword)}",
+                                "results": [],
+                                "error": str(exc),
+                            })
+                finally:
+                    page.close()
+            finally:
+                context.close()
+                browser.close()
     except Exception as exc:
-        print(f"ERR: failed to start Playwright Chromium: {exc}", file=sys.stderr)
+        error = f"failed to start Playwright Chromium: {exc}"
+        if PLAYWRIGHT_IMPORT_ERROR is not None:
+            error = "playwright is not installed. Install with: pip install playwright && playwright install chromium"
+        log(error)
+        emit_result({"success": False, "error": error})
         return 1
 
     markdown_path, json_path = write_outputs(args.output_dir, report)
-    success_count = sum(1 for item in report["searches"] if not item.get("error"))
-    result_count = sum(len(item["results"]) for item in report["searches"])
-    failure_count = len(report["searches"]) - success_count
-
-    print(f"Processed {len(report['searches'])} keyword(s): {result_count} result(s), {failure_count} failure(s)")
-    print(f"Markdown: {markdown_path}")
-    print(f"JSON: {json_path}")
-    return 0 if success_count or not report["searches"] else 1
+    log(f"Wrote: {markdown_path}")
+    log(f"Wrote: {json_path}")
+    emit_result(build_success_payload(report, args.output_dir, [markdown_path.name, json_path.name]))
+    return 0
 
 
 if __name__ == "__main__":

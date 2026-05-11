@@ -14,16 +14,29 @@ import base64
 import json
 import mimetypes
 import os
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
 MAX_IMAGES = 10
 DEFAULT_MODEL = 'qwen-vl-max'
 DETAIL_LEVELS = ('low', 'high', 'auto')
+TOOL_NAME = 'vision-analyze'
+
+
+class ArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        log(f'Argument error: {message}')
+        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
+        self.exit(2)
+
+
+def log(message: str) -> None:
+    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Analyze one or more images with DashScope Qwen-VL models.')
+    parser = ArgumentParser(description='Analyze one or more images with DashScope Qwen-VL models.')
     parser.add_argument('--prompt', required=True, help='Analysis prompt or question.')
     parser.add_argument('--images', required=True, nargs='+', help='One or more local image paths or http/https URLs.')
     parser.add_argument('--model', default=DEFAULT_MODEL, help=f'Model name (default: {DEFAULT_MODEL}).')
@@ -103,6 +116,7 @@ def extract_analysis_text(response) -> str:
 
 
 def fail(message: str, exit_code: int = 1) -> None:
+    log(message)
     print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
     raise SystemExit(exit_code)
 
@@ -123,6 +137,7 @@ def main() -> None:
 
         dashscope.api_key = api_key
 
+        log(f'Analyzing {len(args.images)} images with {args.model}...')
         content = [{'image': normalize_image_source(image)} for image in args.images]
         content.append({'text': args.prompt})
 
@@ -138,6 +153,7 @@ def main() -> None:
             fail(f'status_code={status_code} message={message}')
 
         analysis = extract_analysis_text(response)
+        log('Vision analysis completed')
         print(
             json.dumps(
                 {

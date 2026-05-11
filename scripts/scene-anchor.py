@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Map scene IDs to precise audio timestamps by anchoring each scene to a unique
 substring in the ASR word stream.
@@ -26,93 +27,119 @@ Output:
   }
 """
 import json
+import os
 import sys
 
 
-def main():
+def print_json(payload: dict[str, object]) -> None:
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+def log(message: str) -> None:
+    print(f'[scene-anchor] {message}', file=sys.stderr)
+
+
+def main() -> int:
     if len(sys.argv) != 4:
-        print('Usage: scene-anchor.py <transcript.json> <scenes.json> <output.json>')
-        sys.exit(2)
+        message = 'Usage: scene-anchor.py <transcript.json> <scenes.json> <output.json>'
+        log(message)
+        print_json({'success': False, 'error': message})
+        return 2
 
-    transcript_path, scenes_path, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
+    try:
+        transcript_path, scenes_path, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
 
-    with open(transcript_path, encoding='utf-8') as f:
-        sentences = json.load(f)
+        with open(transcript_path, encoding='utf-8') as f:
+            sentences = json.load(f)
 
-    # Flatten word stream
-    words = []
-    for s in sentences:
-        for w in s['words']:
-            words.append({
-                'text': w['text'].strip(),
-                'begin': w['begin'],
-                'end': w['end'],
-            })
-    if not words:
-        print('ERR: transcript has no words')
-        sys.exit(1)
+        words = []
+        for sentence in sentences:
+            for word in sentence['words']:
+                words.append(
+                    {
+                        'text': word['text'].strip(),
+                        'begin': word['begin'],
+                        'end': word['end'],
+                    }
+                )
+        if not words:
+            raise ValueError('transcript has no words')
 
-    # Build clean joined text + per-char index → word index
-    # Note: lowercase joined text — Paraformer normalizes English to lowercase,
-    # so anchors should be matched case-insensitively.
-    char_to_word = []
-    chars = []
-    for i, w in enumerate(words):
-        for c in w['text']:
-            if c.strip():
-                chars.append(c)
-                char_to_word.append(i)
-    joined = ''.join(chars)
-    joined_lower = joined.lower()
-    print(f'[anchor] transcript = {len(joined)} chars, {len(words)} words')
+        char_to_word = []
+        chars = []
+        for index, word in enumerate(words):
+            for char in word['text']:
+                if char.strip():
+                    chars.append(char)
+                    char_to_word.append(index)
+        joined = ''.join(chars)
+        joined_lower = joined.lower()
+        log(f'transcript = {len(joined)} chars, {len(words)} words')
 
-    with open(scenes_path, encoding='utf-8') as f:
-        scenes = json.load(f)
+        with open(scenes_path, encoding='utf-8') as f:
+            scenes = json.load(f)
 
-    results = []
-    cursor = 0
-    for scene in scenes:
-        anchor = scene['anchor']
-        anchor_lower = anchor.lower()
-        idx = joined_lower.find(anchor_lower, cursor)
-        if idx == -1:
-            # Try a shorter softer search
-            short = anchor_lower[:max(2, len(anchor_lower) // 2)]
-            idx = joined_lower.find(short, cursor)
+        results = []
+        warnings = []
+        cursor = 0
+        for scene in scenes:
+            anchor = scene['anchor']
+            anchor_lower = anchor.lower()
+            idx = joined_lower.find(anchor_lower, cursor)
             if idx == -1:
-                print(f'WARN: anchor not found for {scene["id"]!r}: {anchor!r}')
-                continue
-        word_idx = char_to_word[idx]
-        begin_ms = words[word_idx]['begin']
-        results.append({
-            'id': scene['id'],
-            'anchor': anchor,
-            'matched_text': joined[idx:idx + len(anchor)],
-            'matched_at_char': idx,
-            'matched_word_index': word_idx,
-            'begin_ms': begin_ms,
-            'begin_s': round(begin_ms / 1000, 3),
-            'display': scene.get('display'),
-        })
-        cursor = idx + len(anchor)
+                short = anchor_lower[:max(2, len(anchor_lower) // 2)]
+                idx = joined_lower.find(short, cursor)
+                if idx == -1:
+                    warning = f'anchor not found for {scene["id"]!r}: {anchor!r}'
+                    warnings.append(warning)
+                    log(f'warning: {warning}')
+                    continue
+            word_idx = char_to_word[idx]
+            begin_ms = words[word_idx]['begin']
+            results.append(
+                {
+                    'id': scene['id'],
+                    'anchor': anchor,
+                    'matched_text': joined[idx:idx + len(anchor)],
+                    'matched_at_char': idx,
+                    'matched_word_index': word_idx,
+                    'begin_ms': begin_ms,
+                    'begin_s': round(begin_ms / 1000, 3),
+                    'display': scene.get('display'),
+                }
+            )
+            cursor = idx + len(anchor)
 
-    # Compute durations
-    total_ms = words[-1]['end']
-    for i, r in enumerate(results):
-        next_begin = results[i + 1]['begin_ms'] if i + 1 < len(results) else total_ms
-        r['end_ms'] = next_begin
-        r['duration_s'] = round((next_begin - r['begin_ms']) / 1000, 3)
-        # Subtract a hair off the duration to avoid 0.001s float overlap on the
-        # next scene's start when both live on the same hyperframes track.
-        if i + 1 < len(results):
-            r['duration_s'] = round(r['duration_s'] - 0.001, 3)
-        print(f'  {r["id"]:14s} begin={r["begin_s"]:6.2f}s dur={r["duration_s"]:5.2f}s')
+        total_ms = words[-1]['end']
+        for index, result in enumerate(results):
+            next_begin = results[index + 1]['begin_ms'] if index + 1 < len(results) else total_ms
+            result['end_ms'] = next_begin
+            result['duration_s'] = round((next_begin - result['begin_ms']) / 1000, 3)
+            if index + 1 < len(results):
+                result['duration_s'] = round(result['duration_s'] - 0.001, 3)
+            log(
+                f'{result["id"]:14s} begin={result["begin_s"]:6.2f}s '
+                f'dur={result["duration_s"]:5.2f}s'
+            )
 
-    out = {'total_s': round(total_ms / 1000, 3), 'scenes': results}
-    with open(out_path, 'w', encoding='utf-8') as f:
-        json.dump(out, f, ensure_ascii=False, indent=2)
-    print(f'\n✓ wrote {out_path}')
+        out = {'total_s': round(total_ms / 1000, 3), 'scenes': results}
+        with open(out_path, 'w', encoding='utf-8') as f:
+            json.dump(out, f, ensure_ascii=False, indent=2)
+        log(f'wrote {out_path}')
+        print_json(
+            {
+                'success': True,
+                'output_path': os.path.abspath(out_path),
+                'scenes_anchored': len(results),
+                'warnings': warnings,
+            }
+        )
+        return 0
+    except Exception as exc:
+        log(f'error: {exc}')
+        print_json({'success': False, 'error': str(exc)})
+        return 1
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

@@ -13,9 +13,22 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 
+TOOL_NAME = 'video-download'
+
+
+class ArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        log(f'Argument error: {message}')
+        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
+        self.exit(2)
+
+
+def log(message: str) -> None:
+    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
+
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Download a video and subtitles with yt-dlp.')
+    parser = ArgumentParser(description='Download a video and subtitles with yt-dlp.')
     parser.add_argument('--url', required=True, help='Video URL to download')
     parser.add_argument('--output-dir', default='downloads', help='Output directory (default: downloads)')
     parser.add_argument(
@@ -105,6 +118,8 @@ def main() -> int:
         command = build_command(args, output_dir)
         timeout = 120 if args.subtitles_only else 600
 
+        log(f'Downloading from {args.url}...')
+        log(f'Writing outputs to {output_dir}')
         completed = subprocess.run(
             command,
             capture_output=True,
@@ -116,12 +131,14 @@ def main() -> int:
 
         if completed.returncode != 0:
             error_message = detect_common_issue(combined_output)
+            log(f'Download failed: {error_message}')
             print(json.dumps({'success': False, 'error': error_message}, ensure_ascii=False))
             return 1
 
         files = collect_changed_files(output_dir, before_stats)
         if not files:
             files = [str(path.resolve()) for path in sorted(output_dir.iterdir()) if path.is_file()]
+        log(f'Download complete with {len(files)} output file(s)')
         result = {
             'success': True,
             'output_dir': str(output_dir),
@@ -131,7 +148,9 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False))
         return 0
     except FileNotFoundError:
-        print(json.dumps({'success': False, 'error': 'yt-dlp is not installed or not available on PATH.'}, ensure_ascii=False))
+        message = 'yt-dlp is not installed or not available on PATH.'
+        log(message)
+        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
         return 1
     except subprocess.TimeoutExpired as exc:
         output = '\n'.join(
@@ -139,18 +158,14 @@ def main() -> int:
             for part in [exc.stdout, exc.stderr]
             if part
         )
-        print(
-            json.dumps(
-                {
-                    'success': False,
-                    'error': f'yt-dlp timed out after {exc.timeout} seconds. {tail_text(output)}'.strip(),
-                },
-                ensure_ascii=False,
-            )
-        )
+        message = f'yt-dlp timed out after {exc.timeout} seconds. {tail_text(output)}'.strip()
+        log(message)
+        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
         return 1
     except Exception as exc:
-        print(json.dumps({'success': False, 'error': str(exc)}, ensure_ascii=False))
+        message = str(exc)
+        log(message)
+        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
         return 1
 
 

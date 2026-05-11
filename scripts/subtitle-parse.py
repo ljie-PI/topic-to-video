@@ -15,10 +15,32 @@ import sys
 TIMESTAMP_RE = re.compile(r'^([\d:.,]+)\s*-->\s*([\d:.,]+)')
 HTML_TAG_RE = re.compile(r'<[^>]+>')
 BLOCK_SPLIT_RE = re.compile(r'\n\n+')
+TOOL_NAME = 'subtitle-parse'
+
+
+class ArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        log(f'Argument error: {message}')
+        print_json({'success': False, 'error': message})
+        self.exit(2)
+
+
+def log(message: str) -> None:
+    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
+
+
+def print_json(payload: dict) -> None:
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+def fail(message: str, exit_code: int = 1) -> None:
+    log(message)
+    print_json({'success': False, 'error': message})
+    raise SystemExit(exit_code)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Parse SRT/VTT subtitle files and print JSON.')
+    parser = ArgumentParser(description='Parse SRT/VTT subtitle files and print JSON.')
     parser.add_argument('file_path', help='Path to a .srt or .vtt subtitle file')
     parser.add_argument(
         '--keywords',
@@ -27,10 +49,8 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-
 def normalize_timestamp(value: str) -> str:
     return value.replace(',', '.')
-
 
 
 def timestamp_to_seconds(value: str) -> float:
@@ -44,10 +64,8 @@ def timestamp_to_seconds(value: str) -> float:
     return hours * 3600 + minutes * 60 + seconds
 
 
-
 def strip_html(text: str) -> str:
     return HTML_TAG_RE.sub('', text).strip()
-
 
 
 def parse_block(block: str) -> dict | None:
@@ -87,7 +105,6 @@ def parse_block(block: str) -> dict | None:
     }
 
 
-
 def parse_srt(content: str) -> list[dict]:
     entries = []
     for block in BLOCK_SPLIT_RE.split(content.strip()):
@@ -102,7 +119,6 @@ def parse_srt(content: str) -> list[dict]:
     return entries
 
 
-
 def parse_vtt(content: str) -> list[dict]:
     content = content.lstrip('\ufeff')
     if content.startswith('WEBVTT'):
@@ -114,7 +130,6 @@ def parse_vtt(content: str) -> list[dict]:
     return parse_srt(content)
 
 
-
 def filter_entries(entries: list[dict], keywords_arg: str | None) -> tuple[list[dict], list[str]]:
     if not keywords_arg:
         return entries, []
@@ -123,12 +138,8 @@ def filter_entries(entries: list[dict], keywords_arg: str | None) -> tuple[list[
     if not keywords:
         return entries, []
 
-    filtered = [
-        entry for entry in entries
-        if any(keyword in entry['text'].lower() for keyword in keywords)
-    ]
+    filtered = [entry for entry in entries if any(keyword in entry['text'].lower() for keyword in keywords)]
     return filtered, keywords
-
 
 
 def parse_file(file_path: str) -> list[dict]:
@@ -143,29 +154,30 @@ def parse_file(file_path: str) -> list[dict]:
     raise ValueError('Unsupported subtitle format. Use .srt or .vtt files.')
 
 
-
 def main() -> None:
     args = parse_args()
 
     try:
+        log(f'Parsing subtitle file {args.file_path}...')
         entries = parse_file(args.file_path)
+        filtered_entries, keywords = filter_entries(entries, args.keywords)
+        if keywords:
+            log(f'Filtering entries with keywords: {", ".join(keywords)}')
+
+        output = {
+            'success': True,
+            'total_entries': len(entries),
+            'entries': filtered_entries,
+        }
+        if keywords:
+            output['matched_entries'] = len(filtered_entries)
+
+        log(f'Parsed {len(entries)} subtitle entries')
+        print_json(output)
     except FileNotFoundError:
-        print(json.dumps({'error': f'File not found: {args.file_path}'}, ensure_ascii=False), file=sys.stderr)
-        sys.exit(1)
+        fail(f'File not found: {args.file_path}')
     except ValueError as exc:
-        print(json.dumps({'error': str(exc)}, ensure_ascii=False), file=sys.stderr)
-        sys.exit(1)
-
-    filtered_entries, keywords = filter_entries(entries, args.keywords)
-
-    output = {
-        'total_entries': len(entries),
-        'entries': filtered_entries,
-    }
-    if keywords:
-        output['matched_entries'] = len(filtered_entries)
-
-    print(json.dumps(output, ensure_ascii=False, indent=2))
+        fail(str(exc))
 
 
 if __name__ == '__main__':
