@@ -9,7 +9,9 @@ A Copilot CLI skill that turns a topic, article URL, or text into a short narrat
 | Node.js + `hyperframes` | `npm install --no-save --ignore-scripts hyperframes` |
 | Python 3 + venv | `source .venv/bin/activate` before any Python script |
 | `dashscope` | In the venv — powers CosyVoice TTS and Paraformer ASR |
+| `playwright` + Chromium | Needed by `scripts/search-youtube.py` for YouTube search scraping |
 | `ffmpeg` / `ffprobe` | Audio probing and frame extraction |
+| `yt-dlp` | Downloads source videos and subtitles |
 | `DASHSCOPE_API_KEY` | Set in env (e.g. `~/.zshrc`) |
 
 ## Quick Start
@@ -38,8 +40,13 @@ bash scripts/fonts-download.sh my-video/fonts dawn
 | Script | Purpose |
 |--------|---------|
 | `scripts/voice-clone-template.py` | CosyVoice TTS template (`speech_rate=1.5`) |
+| `scripts/video-download.py` | yt-dlp wrapper for video + subtitle download |
 | `scripts/transcribe-paraformer.py` | Paraformer ASR — word-level timestamps |
+| `scripts/vision-analyze.py` | Qwen-VL image analysis CLI via DashScope multimodal conversation |
 | `scripts/scene-anchor.py` | Anchor scenes to ASR word stream |
+| `scripts/search-bilibili.py` | Playwright-based Bilibili video search → Markdown/JSON export |
+| `scripts/search-youtube.py` | Playwright YouTube search → markdown + JSON results |
+| `scripts/extract-frames.py` | Extract JPEG frames with ffmpeg / ffprobe |
 | `scripts/fonts-download.sh` | Download WOFF2 fonts (`dawn` / `moon` / `all`) |
 | `scripts/check-cjk-fonts.py` | Flag Chinese text inside Latin-only font contexts |
 
@@ -64,6 +71,7 @@ templates/
 scripts/                          # TTS, ASR, fonts, CJK checker
 references/
   gotchas.md                      # Pitfall catalog with reproductions
+  image-animations.md             # GSAP + CSS patterns for animating still images
   palettes.md                     # Style routing rules
   script-templates.md             # Narration genre templates
 ```

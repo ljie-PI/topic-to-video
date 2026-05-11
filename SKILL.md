@@ -1,6 +1,6 @@
 ---
 name: topic-to-video
-description: Use when the user provides a topic, article URL, or text and asks to make a short narrated video (typically 60-120s). Covers the full pipeline — topic research with web search, script writing, CosyVoice cloned-voice TTS via DashScope, Paraformer ASR for word-level timestamps, scene timing, HyperFrames composition, lint/inspect, and rendering. Avoids 17+ pitfalls discovered in baseline testing.
+description: Use when the user provides a topic, article URL, or text and asks to make a short narrated video (typically 60-120s). Covers the full pipeline — topic research with web search, optional visual material search and processing, video understanding, script writing, CosyVoice cloned-voice TTS via DashScope, Paraformer ASR for word-level timestamps, scene timing, HyperFrames composition with GSAP image animation, lint/inspect, and rendering. Avoids 17+ pitfalls discovered in baseline testing.
 ---
 
 # Topic → 视频 (HyperFrames + CosyVoice 流水线)
@@ -31,8 +31,11 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 8. **Banned in any `tl.from()`/`tl.to()`:** animating `textContent` on an element with nested `<span>` children (produces NaN). Use `scale`/`opacity` for emphasis on numbers with units.
 9. **`class="clip"` is required on every visible timed element.** Or it stays visible the whole video.
 10. **Audio clip start/duration must be 6-decimal precision.** 3-decimal rounding causes `30.773 overlaps 30.772` lint errors when chaining 8 segments back-to-back.
+11. **Material search is optional but recommended.** Phase 3-4 can be skipped if user says "skip materials" or provides all visual content. But for most topics, searched images make scenes 10x more engaging than text-only.
+12. **Image animations = GSAP in HTML, not FFmpeg.** Never pre-render Ken Burns clips with FFmpeg for HyperFrames compositions. Use GSAP zoompan/pan/fade animations on `<img>` elements directly. See `references/image-animations.md`.
+13. **Downloaded images/frames go in `materials/` dir.** Keep them organized: `materials/images/`, `materials/frames/`, `materials/downloads/`. Copy needed files into the HyperFrames project dir before composing.
 
-## Workflow (9 Phases)
+## Workflow (11 Phases)
 
 ### Phase 1 — Gather Inputs (ask user, ONE question at a time)
 
@@ -44,8 +47,9 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
    - If topic is AI/SaaS/programming but style is not explicit, ask whether they want Dawn warm explainer or Moon serious technical editorial
 4. Length: usually 60-120s — derive from user's request or default to 75-90s.
 5. Language: default Chinese. Ask if user wants a different language.
+6. Ask whether to search for visual materials (images/video clips) to enrich scenes. Default: yes.
 
-**If a sister project already exists** (e.g. user says "same style as `claude-code-video/`"), copy `design.md` + `fonts/` from it and skip phase 4.
+**If a sister project already exists** (e.g. user says "same style as `claude-code-video/`"), copy `design.md` + `fonts/` from it and skip phase 9.
 
 ### Phase 2 — Topic Research (CRITICAL — do this BEFORE writing)
 
@@ -82,38 +86,32 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 
 **Anti-pattern:** Searching once, then writing as if the brief is complete. Real research is iterative — you find one fact, it raises a new question, you search again. Plan for 2-3 rounds.
 
-### Phase 3 — Scaffold + Install
+### Phase 3 — Material Search (NEW)
 
-```bash
-# Run from a parent directory that already has hyperframes installed
-./node_modules/.bin/hyperframes init <project-name> --example blank --non-interactive
+Search for visual materials based on the research brief.
 
-# If hyperframes not installed, install with --ignore-scripts
-# (onnxruntime-node postinstall fails on this network)
-npm install --no-save --ignore-scripts hyperframes
-```
+1. **Image search** — `scripts/search-images.py --keywords "keyword1,keyword2" --limit 8 --output-dir materials`
+2. **Video search** — `scripts/search-youtube.py` and/or `scripts/search-bilibili.py` for reference footage
+3. **Outputs** — `materials/image_search_result.md` + `materials/video_search_result.md`
+4. **Review step** — show the search results summary to the user and confirm which materials to use
 
-### Phase 4 — Fonts (one-time per project)
+### Phase 4 — Material Processing (NEW)
 
-Download the fonts for the selected style as local deterministic WOFF2 assets:
+Process the selected materials.
 
-```bash
-# Dawn default handdrawn style
-bash /home_ext/ljie/.copilot/skills/topic-to-video/scripts/fonts-download.sh fonts dawn
-
-# Moon serious technical/editorial style
-bash /home_ext/ljie/.copilot/skills/topic-to-video/scripts/fonts-download.sh fonts moon
-
-# If creating a reusable project template that may switch styles later
-bash /home_ext/ljie/.copilot/skills/topic-to-video/scripts/fonts-download.sh fonts all
-```
+1. **Download videos** — `scripts/video-download.py --url URL --output-dir materials/downloads`
+2. **Extract frames** — `scripts/extract-frames.py materials/downloads/video.mp4 materials/frames/ --max-frames 20`
+3. **Parse subtitles** — `scripts/subtitle-parse.py materials/downloads/video.srt` (if subtitles downloaded)
+4. **Vision analysis** — `scripts/vision-analyze.py --prompt "Describe content and assess quality" --images materials/frames/frame_0001.jpg frame_0002.jpg ...`
+5. **Outputs** — `materials/frames/` + `materials/analysis.md`
 
 ### Phase 5 — Write Narration Script
 
-**Inputs:** the research brief from Phase 2 + the user's preferred angle/length.
+**Inputs:** the research brief from Phase 2 + selected materials from Phase 3-4 + the user's preferred angle/length.
 
 Goals:
 - Use **only facts from the research brief** — every number, name, date, and quote must be traceable.
+- Reference the collected materials where helpful, and annotate each scene with recommended visual material.
 - 60-120 seconds at `speech_rate=1.5` ≈ **3.7 chars/sec** → `60s×3.7 ≈ 220 chars`, `90s×3.7 ≈ 330 chars`, `120s×3.7 ≈ 440 chars`.
 - 8-10 paragraphs, separated by blank lines (each ≈ one scene = 6-12s of audio).
 - Numbers in Chinese characters (`二零二六` not `2026`) — TTS reads them more naturally.
@@ -151,7 +149,33 @@ Then design 8-10 scenes, each with:
 
 Run `scripts/scene-anchor.py <transcript.json> <scenes-config.json> <output: scene-timing.json>` to get exact `begin_ms`/`duration_ms` per scene.
 
-### Phase 8 — Compose `index.html`
+### Phase 8 — Scaffold + Install
+
+```bash
+# Run from a parent directory that already has hyperframes installed
+./node_modules/.bin/hyperframes init <project-name> --example blank --non-interactive
+
+# If hyperframes not installed, install with --ignore-scripts
+# (onnxruntime-node postinstall fails on this network)
+npm install --no-save --ignore-scripts hyperframes
+```
+
+### Phase 9 — Fonts (one-time per project)
+
+Download the fonts for the selected style as local deterministic WOFF2 assets:
+
+```bash
+# Dawn default handdrawn style
+bash /home_ext/ljie/.copilot/skills/topic-to-video/scripts/fonts-download.sh fonts dawn
+
+# Moon serious technical/editorial style
+bash /home_ext/ljie/.copilot/skills/topic-to-video/scripts/fonts-download.sh fonts moon
+
+# If creating a reusable project template that may switch styles later
+bash /home_ext/ljie/.copilot/skills/topic-to-video/scripts/fonts-download.sh fonts all
+```
+
+### Phase 10 — Compose `index.html`
 
 Read `templates/composition-skeleton.html` for the skeleton. Key conventions:
 
@@ -159,6 +183,10 @@ Read `templates/composition-skeleton.html` for the skeleton. Key conventions:
 - Background ambient div: `class="clip"`, full-duration, contains grain + drifting doodles.
 - One `<audio class="clip">` for narration on a high track-index.
 - One `<div class="scene clip s<N>">` per scene, with exact `data-start` / `data-duration` from scene-timing.json.
+- Images from search results or extracted frames can be embedded as `<img>` inside scene divs.
+- Use GSAP image animations directly in HTML: Ken Burns zoom, horizontal pan, slideshow fade, grid layout, montage. See `references/image-animations.md` for code templates.
+- Use `object-fit: cover` + `overflow: hidden` on image containers.
+- Layer text over images with `z-index` + a semi-transparent overlay for readability.
 - All animations in ONE `gsap.timeline({ paused: true })` registered on `window.__timelines["main"]`.
 - For scene-N animations, use absolute time positions (e.g. `tl.from('#s3-title', {...}, 13.5)`).
 
@@ -185,7 +213,7 @@ Read `templates/composition-skeleton.html` for the skeleton. Key conventions:
 - In Dawn, never put Chinese characters directly inside `.font-latin-emphasis`, `.font-latin-body`, `.corner-mark`, `.scene-num`, or any selector whose `font-family` is `Caveat`/`PatrickHand`.
 - In Moon, do not introduce Dawn handwriting fonts unless the user explicitly asks for a handdrawn contrast.
 
-### Phase 9 — Verify + Render
+### Phase 11 — Verify + Render
 
 ```bash
 cd <project>
@@ -228,6 +256,11 @@ done
 | Inspect: text overflow on inline highlight | Padding+lineheight too tight for CJK | `padding: 4px 16px 12px; line-height: 1.15;` |
 | Paraformer transcript missing capitals (`hugging face` not `Hugging Face`) | Paraformer normalizes English to lowercase | Use case-insensitive anchor matching (shipped script handles this) |
 | `WARN: anchor not found for X` from scene-anchor.py | Case mismatch OR audio doesn't say that exact phrase | Run `cat transcript.json` first, pick anchors from the actual ASR text |
+| Playwright `TimeoutError` on search | Site layout changed or network blocked | Check selectors; try with `--headless=false` for debugging |
+| `vision-analyze.py` returns empty | DASHSCOPE_API_KEY not set or expired | `export DASHSCOPE_API_KEY="sk-..."` in venv |
+| Downloaded video too large / timeout | Long video without `--max-file-size` | Use `--max-file-size 200M`; prefer `--subtitles-only` for long videos |
+| Images don't render in HyperFrames | Image path not relative to project dir | Copy images into project dir; use relative paths in `<img src>` |
+| Ken Burns animation jitters | Image too small, upscaled poorly | Use source images ≥1920px wide; `object-fit: cover` |
 
 ## Resources Bundled With This Skill
 
@@ -236,18 +269,46 @@ done
 - `scripts/transcribe-paraformer.py` — Paraformer ASR (handles sample_rate auto-detect)
 - `scripts/scene-anchor.py` — anchor scenes to ASR word stream
 - `scripts/check-cjk-fonts.py` — flags Chinese text inside Caveat/PatrickHand contexts before render
+- `scripts/search-images.py` — Bing image search via Playwright (keywords → markdown + JSON)
+- `scripts/search-youtube.py` — YouTube search via Playwright
+- `scripts/search-bilibili.py` — Bilibili search via Playwright
+- `scripts/video-download.py` — yt-dlp wrapper (video + subtitle download)
+- `scripts/extract-frames.py` — FFmpeg frame extraction (uniform sampling or time window)
+- `scripts/subtitle-parse.py` — SRT/VTT parser with keyword filtering
+- `scripts/vision-analyze.py` — DashScope qwen-vl multimodal image analysis
 - `templates/design.md` — Rosé Pine Dawn boilerplate
 - `templates/design-moon.md` — Rosé Pine Moon Serious boilerplate for dark technical/editorial videos
 - `templates/composition-skeleton.html` — annotated index.html starting point
 - `references/gotchas.md` — full pitfall catalog with reproductions
 - `references/palettes.md` — style routing for Rosé Pine Dawn, Rosé Pine Moon Serious, warm-editorial, and dark-premium
 - `references/script-templates.md` — narration patterns (interview-recap, news, tutorial, story)
+- `references/image-animations.md` — GSAP image animation patterns (Ken Burns, pan, slideshow, grid, montage)
+
+## Dependencies for Material Tools
+
+The material search and processing scripts require additional dependencies beyond the base skill:
+
+- **Playwright** (for search scripts): `pip install playwright && playwright install chromium`
+- **yt-dlp** (for video download): `pip install yt-dlp`
+- **ffmpeg/ffprobe** (for frame extraction): usually pre-installed on Linux
+- **dashscope** (for vision analysis): already in the project venv (shared with TTS/ASR)
+
+Install all at once:
+```bash
+source .venv/bin/activate
+pip install playwright yt-dlp
+playwright install chromium
+```
 
 ## Red Flags — STOP if you see any of these
 
 You are about to make a known mistake if you find yourself:
 
 - **Writing the script without doing Phase 2 research first** (or skipping web_search/web_fetch)
+- **Pre-rendering Ken Burns clips with FFmpeg** instead of using GSAP in HyperFrames HTML
+- **Skipping vision-analyze** when you have 20+ frames and need to pick the best 3-4
+- **Using absolute paths** for images in index.html (breaks HyperFrames render)
+- **Downloading full-length videos** without `--max-file-size` or `--subtitles-only`
 - Reaching for `npx hyperframes transcribe` for Chinese audio
 - Reaching for `npx hyperframes tts` because you forgot CosyVoice
 - Picking system Chinese fonts via `fc-match`
