@@ -558,12 +558,711 @@ Layering text over animated images is common and works well if readability is de
 
 ---
 
+## 6. Parallax (视差分层)
+
+**Effect:** Foreground and background layers move at different speeds, creating a sense of depth. Works beautifully for product shots, concept illustrations, or any scene where you can separate a subject from its background.
+
+### HTML
+
+```html
+<div class="scene clip s6" data-start="39" data-duration="8">
+  <img id="s6-bg" src="images/parallax-bg.jpg" alt="Background layer" />
+  <img id="s6-fg" src="images/parallax-fg.png" alt="Foreground layer" />
+</div>
+```
+
+### CSS
+
+```css
+.s6 {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.s6 img {
+  position: absolute;
+  inset: 0;
+  width: 110%;
+  height: 110%;
+  object-fit: cover;
+  display: block;
+  will-change: transform;
+}
+
+.s6 #s6-fg {
+  z-index: 2;
+}
+
+.s6 #s6-bg {
+  z-index: 1;
+}
+```
+
+### GSAP
+
+```html
+<script>
+  const tl = window.__timelines["main"];
+  const sceneStart = 39;
+  const sceneDuration = 8;
+
+  // Background moves slowly
+  tl.fromTo('#s6-bg', {
+    x: '0%', y: '0%'
+  }, {
+    x: '-3%', y: '-2%',
+    duration: sceneDuration,
+    ease: 'none'
+  }, sceneStart);
+
+  // Foreground moves faster — creates depth illusion
+  tl.fromTo('#s6-fg', {
+    x: '0%', y: '0%'
+  }, {
+    x: '-7%', y: '-4%',
+    duration: sceneDuration,
+    ease: 'none'
+  }, sceneStart);
+</script>
+```
+
+### Usage notes / gotchas
+
+- Foreground should ideally be a PNG with transparency (cutout subject) for the best depth effect.
+- If you only have one image, you can fake parallax by duplicating it: blur one copy as the "background" and crop the subject for the "foreground".
+- Both layers need to be slightly oversized (`110%`) so the movement doesn't reveal empty edges.
+- Speed ratio of ~2:1 (foreground:background) feels natural.
+
+---
+
+## 7. Reveal / Wipe (揭示)
+
+**Effect:** An image is progressively revealed from one direction using CSS `clip-path` animation. Great for before/after comparisons or dramatic unveils.
+
+### HTML
+
+```html
+<div class="scene clip s7" data-start="47" data-duration="6">
+  <img id="s7-img" src="images/reveal.jpg" alt="Revealed image" />
+</div>
+```
+
+### CSS
+
+```css
+.s7 {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.s7 img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  will-change: clip-path;
+}
+```
+
+### GSAP — Left-to-right wipe
+
+```html
+<script>
+  const tl = window.__timelines["main"];
+  const sceneStart = 47;
+
+  tl.fromTo('#s7-img', {
+    clipPath: 'inset(0 100% 0 0)'
+  }, {
+    clipPath: 'inset(0 0% 0 0)',
+    duration: 1.5,
+    ease: 'power2.out'
+  }, sceneStart);
+</script>
+```
+
+### Variant — Circle reveal from center
+
+```html
+<script>
+  tl.fromTo('#s7-img', {
+    clipPath: 'circle(0% at 50% 50%)'
+  }, {
+    clipPath: 'circle(75% at 50% 50%)',
+    duration: 1.2,
+    ease: 'power2.out'
+  }, sceneStart);
+</script>
+```
+
+### Variant — Before/after comparison (two images)
+
+```html
+<div class="scene clip s7b" data-start="47" data-duration="6">
+  <img id="s7b-before" src="images/before.jpg" alt="Before" />
+  <img id="s7b-after" src="images/after.jpg" alt="After" />
+</div>
+
+<script>
+  // After image sits on top, revealed via wipe
+  gsap.set('#s7b-before', { zIndex: 1 });
+  gsap.set('#s7b-after', { zIndex: 2, clipPath: 'inset(0 100% 0 0)' });
+
+  tl.to('#s7b-after', {
+    clipPath: 'inset(0 0% 0 0)',
+    duration: 2,
+    ease: 'power1.inOut'
+  }, sceneStart + 1.5);
+</script>
+```
+
+### Usage notes / gotchas
+
+- `clip-path` animations are GPU-accelerated in modern Chromium — perfect for HyperFrames render.
+- Use `inset()` for rectangular wipes, `circle()` for spotlight reveals, `polygon()` for diagonal wipes.
+- Diagonal wipe: `clipPath: 'polygon(0 0, 0% 0, 0% 100%, 0 100%)'` → `'polygon(0 0, 100% 0, 100% 100%, 0 100%)'`.
+- Don't animate `clip-path` on the container — animate it on the `<img>` directly.
+
+---
+
+## 8. Zoom to Detail (聚焦局部)
+
+**Effect:** Start with a full view of an image, then zoom into a specific region to highlight a detail. Ideal for UI screenshots, code snippets, charts, or any image where a specific area needs emphasis.
+
+### HTML
+
+```html
+<div class="scene clip s8" data-start="53" data-duration="6">
+  <img id="s8-img" src="images/screenshot.jpg" alt="Full screenshot" />
+</div>
+```
+
+### CSS
+
+```css
+.s8 {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.s8 img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  will-change: transform;
+}
+```
+
+### GSAP — Zoom to top-right area (e.g., a button)
+
+```html
+<script>
+  const tl = window.__timelines["main"];
+  const sceneStart = 53;
+  const sceneDuration = 6;
+
+  // Show full image for 2 seconds, then zoom to detail
+  tl.to('#s8-img', {
+    scale: 2.5,
+    transformOrigin: '75% 30%',  // point of interest coordinates
+    duration: 2,
+    ease: 'power2.inOut'
+  }, sceneStart + 2);
+
+  // Hold zoomed view, then optionally zoom back
+  tl.to('#s8-img', {
+    scale: 1,
+    duration: 1.5,
+    ease: 'power2.inOut'
+  }, sceneStart + 4.5);
+</script>
+```
+
+### Usage notes / gotchas
+
+- `transformOrigin` is the key — it sets the zoom target. `'75% 30%'` means 75% from left, 30% from top.
+- Use high-resolution source images (≥ 2x the output resolution) so the zoomed detail stays sharp.
+- Hold the zoomed view long enough for the viewer to read/process the detail (at least 1.5s).
+- Add a highlight overlay (circle or box) at the zoom target for extra clarity if the detail is small.
+- For code screenshots: `transformOrigin: '50% 40%'` with `scale: 3` works well to focus on a specific function.
+
+---
+
+## 9. Vertical Pan (纵向滚动)
+
+**Effect:** Slowly scroll down a tall image (long screenshot, webpage capture, chat log, code listing). The image is taller than the viewport and pans vertically.
+
+### HTML
+
+```html
+<div class="scene clip s9" data-start="59" data-duration="8">
+  <img id="s9-img" src="images/long-screenshot.jpg" alt="Long screenshot" />
+</div>
+```
+
+### CSS
+
+```css
+.s9 {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.s9 img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: auto;  /* natural height, taller than viewport */
+  display: block;
+  will-change: transform;
+}
+```
+
+### GSAP
+
+```html
+<script>
+  const tl = window.__timelines["main"];
+  const sceneStart = 59;
+  const sceneDuration = 8;
+
+  // Calculate scroll distance based on image vs viewport ratio
+  // For an image 3x the viewport height, we need to scroll ~67%
+  const scrollPercent = 65;  // adjust based on actual image aspect ratio
+
+  tl.fromTo('#s9-img', {
+    y: '0%'
+  }, {
+    y: `-${scrollPercent}%`,
+    duration: sceneDuration,
+    ease: 'power1.inOut'  // slight ease for natural scroll feel
+  }, sceneStart);
+</script>
+```
+
+### Usage notes / gotchas
+
+- The image must be taller than the scene viewport. Set `height: auto` (not `100%`) to preserve the natural aspect ratio.
+- Calculate `scrollPercent` from the image's aspect ratio: if image height = 3× viewport height, scroll ~67%.
+- Use `ease: 'power1.inOut'` for a gentle start/stop, mimicking human scrolling.
+- For very long images, `ease: 'none'` (constant speed) may feel more natural.
+- Consider pausing at key sections: split the scroll into 2-3 `tl.to()` calls with small gaps.
+
+---
+
+## 10. Split Screen (分屏对比)
+
+**Effect:** Two images shown side-by-side with an animated divider. Perfect for A vs B comparisons, before/after, or contrasting two concepts.
+
+### HTML
+
+```html
+<div class="scene clip s10" data-start="67" data-duration="6">
+  <div id="s10-left" class="split-half">
+    <img src="images/split-left.jpg" alt="Option A" />
+    <div class="split-label">Before</div>
+  </div>
+  <div id="s10-right" class="split-half">
+    <img src="images/split-right.jpg" alt="Option B" />
+    <div class="split-label">After</div>
+  </div>
+  <div id="s10-divider" class="split-divider"></div>
+</div>
+```
+
+### CSS
+
+```css
+.s10 {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.s10 .split-half {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 50%;
+  overflow: hidden;
+}
+
+.s10 #s10-left { left: 0; }
+.s10 #s10-right { right: 0; }
+
+.s10 .split-half img {
+  width: 200%;  /* each image is full-width, clipped to half */
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.s10 #s10-right img {
+  margin-left: -100%;  /* show right half of the image */
+}
+
+.s10 .split-divider {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 4px;
+  height: 100%;
+  background: white;
+  z-index: 10;
+  transform: translateX(-50%);
+}
+
+.s10 .split-label {
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: white;
+  font-size: 48px;
+  font-weight: bold;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  z-index: 5;
+}
+```
+
+### GSAP — Animate entry
+
+```html
+<script>
+  const tl = window.__timelines["main"];
+  const sceneStart = 67;
+
+  // Left half slides in from left
+  tl.fromTo('#s10-left', {
+    x: '-100%'
+  }, {
+    x: '0%',
+    duration: 0.8,
+    ease: 'power2.out'
+  }, sceneStart);
+
+  // Right half slides in from right
+  tl.fromTo('#s10-right', {
+    x: '100%'
+  }, {
+    x: '0%',
+    duration: 0.8,
+    ease: 'power2.out'
+  }, sceneStart);
+
+  // Divider fades in
+  tl.fromTo('#s10-divider', {
+    opacity: 0, scaleY: 0
+  }, {
+    opacity: 1, scaleY: 1,
+    duration: 0.5,
+    ease: 'power2.out'
+  }, sceneStart + 0.6);
+</script>
+```
+
+### Usage notes / gotchas
+
+- If using two separate images, set each half's img to `width: 100%; object-fit: cover`.
+- If using one wide image split in half, use the `width: 200%` + `margin-left: -100%` trick shown above.
+- Labels help the viewer understand which side is which — add them below or above each half.
+- Keep the divider line thin (2-4px) and white or a contrast color from the palette.
+- For vertical split (top/bottom), swap width↔height and left↔top in the CSS.
+
+---
+
+## 11. Picture-in-Picture (画中画)
+
+**Effect:** A small inset window floats over the main image. Common for showing a person's avatar alongside a product shot, or quoting a source while showing its context.
+
+### HTML
+
+```html
+<div class="scene clip s11" data-start="73" data-duration="6">
+  <img id="s11-main" src="images/pip-main.jpg" alt="Main image" />
+  <div id="s11-pip" class="pip-window">
+    <img src="images/pip-inset.jpg" alt="Inset image" />
+  </div>
+</div>
+```
+
+### CSS
+
+```css
+.s11 {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.s11 #s11-main {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+}
+
+.s11 .pip-window {
+  position: absolute;
+  bottom: 60px;
+  right: 60px;
+  width: 320px;
+  height: 240px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 3px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  z-index: 5;
+  will-change: transform, opacity;
+}
+
+.s11 .pip-window img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+```
+
+### GSAP
+
+```html
+<script>
+  const tl = window.__timelines["main"];
+  const sceneStart = 73;
+  const sceneDuration = 6;
+
+  // Main image: subtle Ken Burns
+  tl.fromTo('#s11-main', {
+    scale: 1
+  }, {
+    scale: 1.08,
+    duration: sceneDuration,
+    ease: 'none',
+    transformOrigin: '50% 50%'
+  }, sceneStart);
+
+  // PiP window slides in from bottom-right
+  tl.fromTo('#s11-pip', {
+    y: 80, opacity: 0, scale: 0.8
+  }, {
+    y: 0, opacity: 1, scale: 1,
+    duration: 0.6,
+    ease: 'back.out(1.4)'
+  }, sceneStart + 0.5);
+</script>
+```
+
+### Usage notes / gotchas
+
+- PiP window should be small enough not to block key content — typically 15-25% of frame width.
+- Position in a corner where the main image has less detail (bottom-right is the default).
+- Add `border` and `box-shadow` to separate the inset from the background visually.
+- `ease: 'back.out'` gives a satisfying "pop-in" entrance.
+- For vertical video, position at top-right to avoid thumb zone.
+
+---
+
+## 12. Blur-to-Sharp (模糊到清晰)
+
+**Effect:** Image starts blurred (out of focus) and gradually sharpens into clarity. Creates suspense or a "loading into focus" feeling.
+
+### HTML
+
+```html
+<div class="scene clip s12" data-start="79" data-duration="6">
+  <img id="s12-img" src="images/blur-sharp.jpg" alt="Focusing image" />
+</div>
+```
+
+### CSS
+
+```css
+.s12 {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.s12 img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  will-change: filter, transform;
+}
+```
+
+### GSAP
+
+```html
+<script>
+  const tl = window.__timelines["main"];
+  const sceneStart = 79;
+  const sceneDuration = 6;
+
+  // Blur-to-sharp over first 2 seconds
+  tl.fromTo('#s12-img', {
+    filter: 'blur(20px)',
+    scale: 1.1
+  }, {
+    filter: 'blur(0px)',
+    scale: 1,
+    duration: 2,
+    ease: 'power2.out'
+  }, sceneStart);
+</script>
+```
+
+### Variant — Sharp then blur out (exit)
+
+```html
+<script>
+  // Image starts sharp, blurs out at end of scene
+  tl.to('#s12-img', {
+    filter: 'blur(15px)',
+    scale: 1.05,
+    duration: 1.5,
+    ease: 'power2.in'
+  }, sceneStart + sceneDuration - 1.5);
+</script>
+```
+
+### Usage notes / gotchas
+
+- GSAP can animate CSS `filter` properties directly — `blur()`, `brightness()`, `saturate()` all work.
+- Combine blur-to-sharp with a slight scale (`1.1` → `1.0`) for a cinematic "rack focus" feel.
+- Heavy blur values (> 30px) on very large images may cause jank in the render — keep ≤ 20px.
+- Works well as a scene entrance or exit transition, paired with other effects.
+
+---
+
+## 13. Scale Bounce (弹性入场)
+
+**Effect:** Image enters the frame with an elastic spring animation — overshoots then settles. Ideal for playful, energetic, or product-announcement style scenes.
+
+### HTML
+
+```html
+<div class="scene clip s13" data-start="85" data-duration="6">
+  <img id="s13-img" src="images/bounce-product.jpg" alt="Product shot" />
+</div>
+```
+
+### CSS
+
+```css
+.s13 {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.s13 img {
+  width: 80%;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  will-change: transform, opacity;
+  /* Drop shadow to lift product off background */
+  filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.3));
+}
+```
+
+### GSAP
+
+```html
+<script>
+  const tl = window.__timelines["main"];
+  const sceneStart = 85;
+
+  // Bounce in from small scale
+  tl.fromTo('#s13-img', {
+    scale: 0,
+    opacity: 0,
+    rotation: -5
+  }, {
+    scale: 1,
+    opacity: 1,
+    rotation: 0,
+    duration: 0.8,
+    ease: 'elastic.out(1, 0.5)'
+  }, sceneStart + 0.3);
+</script>
+```
+
+### Variant — Multiple items bouncing in with stagger
+
+```html
+<script>
+  // For multiple product images / icons
+  tl.fromTo('.s13 .bounce-item', {
+    scale: 0,
+    opacity: 0
+  }, {
+    scale: 1,
+    opacity: 1,
+    duration: 0.6,
+    ease: 'back.out(2)',
+    stagger: 0.15
+  }, sceneStart + 0.3);
+</script>
+```
+
+### Usage notes / gotchas
+
+- `elastic.out(1, 0.5)` creates a spring-like bounce; adjust the second parameter (0.3-0.8) for more or less bounce.
+- `back.out(2)` is a simpler overshoot without oscillation — use when elastic feels too playful.
+- This effect works best with `object-fit: contain` (not `cover`) so the full image is visible.
+- Add `drop-shadow` to the image for a "floating" product-shot feel.
+- Good for: product announcements, logo reveals, icon/badge animations, app screenshots.
+- Bad for: documentary tone, serious technical content (use Ken Burns instead).
+
+---
+
 ## Choosing the right pattern
 
-- **Ken Burns:** one strong image, emotional or documentary tone.
-- **Pan:** wide scene, landscape photo, architecture, screenshots of dashboards or timelines.
-- **Slideshow Fade:** 2-4 related stills, visual progression without hard cuts.
-- **Grid Layout:** compare multiple sources at once.
-- **Montage:** fastest-paced option; best when the narration is moving through several examples in quick succession.
+| 效果 | 适用场景 | 情绪/风格 | 图片类型 |
+|------|----------|-----------|----------|
+| **Ken Burns** | 一张强图撑一个场景 | 纪录片、情感化、沉稳 | 人物照片、产品图、风景 |
+| **Pan** | 展示宽幅画面 | 开阔、从容 | 全景图、建筑、Dashboard、时间线 |
+| **Slideshow Fade** | 2-4 张相关图的渐进展示 | 平稳、叙事感 | 系列截图、产品迭代、团队照 |
+| **Grid** | 同时对比多个来源 | 信息密集、理性 | 多个产品、多帧截图、数据卡片 |
+| **Montage** | 快速穿过多个例子 | 快节奏、丰富 | 混合素材、新闻集锦 |
+| **Parallax** | 需要深度感和高级感 | 精致、产品化 | 前景主体+背景分层（或PNG抠图） |
+| **Reveal/Wipe** | 揭晓悬念、before/after 对比 | 戏剧性、转折 | 对比图、产品发布、数据变化 |
+| **Zoom to Detail** | 强调图中某个局部 | 聚焦、教学 | UI 截图、代码、图表、数据面板 |
+| **Vertical Pan** | 展示长内容 | 信息展示、流畅 | 网页长截图、聊天记录、代码清单 |
+| **Split Screen** | A vs B 对比 | 对比、决策 | 两个产品、新旧版本、竞品对比 |
+| **Picture-in-Picture** | 主画面+辅助信息 | 丰富、多层 | 产品+人物、引用+出处 |
+| **Blur-to-Sharp** | 悬念开场、焦点转移 | 电影感、神秘 | 任何图，特别适合场景开头 |
+| **Scale Bounce** | 活泼入场、强调 | 轻快、年轻 | 产品、Logo、图标、App 截图 |
 
-These five patterns cover most of the FFmpeg-style still-image motions from TuberUp's `imageToVideo.ts`, but implemented natively in the browser with GSAP so they stay editable inside the HyperFrames composition.
+### 组合建议
+
+效果之间可以组合使用：
+
+- **Ken Burns + Blur-to-Sharp**: 场景以模糊开场，聚焦后缓慢缩放 → 电影感开场
+- **Zoom to Detail + Reveal**: 先揭示全图，再聚焦细节 → 教学类内容
+- **Parallax + PiP**: 分层背景上浮动画中画窗口 → 高级产品展示
+- **Slideshow + Scale Bounce**: 图片以弹入方式依次出现而非淡入 → 活泼的产品展示
+- **Split Screen + Vertical Pan**: 左右分屏各滚动不同的长截图 → 代码/文档对比
+
+All thirteen patterns are implemented natively in the browser with GSAP, keeping them editable inside the HyperFrames composition without any FFmpeg pre-processing.
