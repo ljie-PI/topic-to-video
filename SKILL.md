@@ -33,7 +33,7 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 10. **Audio clip start/duration must be 6-decimal precision.** 3-decimal rounding causes `30.773 overlaps 30.772` lint errors when chaining 8 segments back-to-back.
 11. **Material search is optional but recommended.** Phase 3-4 can be skipped if user says "skip materials" or provides all visual content. But for most topics, searched images make scenes 10x more engaging than text-only.
 12. **Image animations = GSAP in HTML, not FFmpeg.** Never pre-render Ken Burns clips with FFmpeg for HyperFrames compositions. Use GSAP zoompan/pan/fade animations on `<img>` elements directly. See `references/image-animations.md`.
-13. **Downloaded assets go in the unified workspace tree.** Keep tool outputs under `~/.hermes/workspace/{topic_name}/` using the standard subdirectories (`extract_frames/`, `vision_analyze/`, `fonts/`, `verify/`, `renders/`). Copy needed files into the HyperFrames project dir before composing.
+13. **Downloaded assets go in the unified workspace tree, and every asset that reaches `index.html` must be cited by `material-catalog.json`.** Keep tool outputs under `~/.hermes/workspace/{topic_name}/` using the standard subdirectories (`extract_frames/`, `vision_analyze/`, `fonts/`, `verify/`, `renders/`). Copy needed files into the HyperFrames project dir before composing — but only files referenced by a `material_ref` in scenes-config. No catalog citation → no asset on screen.
 14. **Material selection happens in Phase 4, not Phase 5.** The agent picks 3-6 URLs in Phase 3 and passes them as one array to `harvest-pages.py`. In Phase 4, run vision-analyze on every image and every video's extracted frames, then write `material-catalog.json` with `selected_clips`. The narration script (Phase 5) only references catalog entries — never a raw harvest result. Prevents writing a scene around a video span that turns out to be a transition or an ad.
 
 ## Output Conventions
@@ -282,6 +282,9 @@ Then design 8-10 scenes, each with:
 - `id` (e.g. `s1-hook`, `s2-stat`)
 - `anchor` (a 4-8 char substring that appears uniquely in the ASR text, signalling this scene starts when this phrase is spoken)
 - `display_text` (what shows on screen — usually different from spoken text, much shorter)
+- `material_ref` (required) — `{ catalog_id, kind: "image" | "video_clip", clip_index?: int }`. Picks one entry from `~/.hermes/workspace/{topic_name}/material-catalog.json` from Phase 4; `clip_index` is required when `kind = video_clip` and points at the chosen item inside that entry's `selected_clips`.
+
+**Every scene must cite at least one catalog entry.** If no harvested material fits a scene, go back to Phase 3 and harvest more URLs — never invent assets or fall back to a generic stock image. This is the structural guarantee that the materials gathered by `harvest-pages.py` actually reach the final video.
 
 Run `scripts/scene-anchor.py ~/.hermes/workspace/{topic_name}/transcribe/transcript.json scenes-config.json ~/.hermes/workspace/{topic_name}/transcribe/scene-timing.json` to get exact `begin_ms`/`duration_ms` per scene.
 
@@ -319,7 +322,10 @@ Read `templates/composition-skeleton.html` for the skeleton. Key conventions:
 - Background ambient div: `class="clip"`, full-duration, contains grain + drifting doodles.
 - One `<audio class="clip">` for narration on a high track-index.
 - One `<div class="scene clip s<N>">` per scene, with exact `data-start` / `data-duration` from scene-timing.json.
-- Images from search results or extracted frames can be embedded as `<img>` inside scene divs.
+- **Resolve each scene's `material_ref` against `material-catalog.json` BEFORE writing the `<img>` / `<video>` tags:**
+  - `kind = image` → copy the catalog entry's `local_path` into the project's `images/` directory, embed as `<img>` inside the scene div, and pick a GSAP animation effect from `references/image-animations.md` using the catalog's `semantic_description` plus the scene's intent (table below).
+  - `kind = video_clip` → cut the chosen item from `selected_clips[clip_index]` (use `ffmpeg -ss <start> -to <end> -i <local_path> -c copy ...`) into the project's `videos/` directory, embed as `<video class="clip" data-start="..." data-duration="..." muted>` instead of `<img>`, and **skip the GSAP image-animation step** for that scene — the clip itself carries the motion.
+  - Never reference `local_path` values that aren't in `material-catalog.json`. If a scene's recommended visual doesn't exist in the catalog, go back to Phase 3 (harvest more URLs) or Phase 4 (re-run vision-analyze and re-filter).
 - **13 GSAP image animation effects available** — see `references/image-animations.md` for complete code templates. Quick selection guide:
 
   | Scene type | Recommended effect |
@@ -337,6 +343,7 @@ Read `templates/composition-skeleton.html` for the skeleton. Key conventions:
   | Main image + auxiliary context | Picture-in-Picture |
   | Suspenseful opening / focus shift | Blur-to-Sharp |
   | Energetic entrance / product showcase | Scale Bounce |
+  | A harvested video clip from `material-catalog.json` | *(none — use `<video class="clip">`, not `<img>`; the clip carries its own motion)* |
 
 - Use `object-fit: cover` + `overflow: hidden` on image containers.
 - Layer text over images with `z-index` + a semi-transparent overlay for readability.
@@ -422,6 +429,8 @@ done
 | Chrome exits with sandbox errors as root | Running inside a container | `--no-sandbox` is auto-enabled when running as root or inside Docker; pass explicitly with `--no-sandbox` if needed |
 | CDP port 9222 busy with the wrong Chrome | Another tool launched Chrome on that port | If it's a Chrome we WANT, that's fine (reuse). If not, pass `--cdp-url http://localhost:9223` |
 | `harvest-pages.py` picks search-result pages | Agent included google.com/bing.com in `--urls` | Re-read Phase 3 URL selection rules; exclude search/feed/aggregator pages |
+| Scene references an asset not in `material-catalog.json` | Phase 7 wrote a `material_ref` to a `local_path` that wasn't in the catalog, or skipped `material_ref` entirely | Re-run Phase 4 vision-analyze and re-build the catalog; every scene must have a `material_ref` pointing into the catalog. If no entry fits, harvest more URLs (Phase 3) — do not invent or borrow generic stock assets |
+| HyperFrames scene shows nothing where a video clip was planned | Embedded the full source video instead of cutting `selected_clips[clip_index]`, OR added a GSAP image animation on top of a `<video>` element | Use `ffmpeg -ss <start> -to <end>` to cut the clip into the project's `videos/` dir; embed as `<video class="clip">` with no GSAP animation — the clip carries its own motion |
 
 ## Resources Bundled With This Skill
 
@@ -463,6 +472,9 @@ You are about to make a known mistake if you find yourself:
 - **Pre-rendering Ken Burns clips with FFmpeg** instead of using GSAP in HyperFrames HTML
 - **Skipping vision-analyze** when you have 20+ frames and need to pick the best 3-4
 - Writing narration before running vision-analyze on harvested videos and building `material-catalog.json`
+- **Designing a scene without a `material_ref`** into `material-catalog.json`, or referencing an `<img src>` / `<video src>` whose path is not a catalog entry
+- **Adding a GSAP image animation on top of a `<video>` clip** — clips already carry motion; pick one or the other
+- **Embedding the full source video** instead of an ffmpeg-cut `selected_clips[i]` range
 - **Using absolute paths** for images in index.html (breaks HyperFrames render)
 - Reaching for `npx hyperframes transcribe` for Chinese audio
 - Reaching for `npx hyperframes tts` because you forgot CosyVoice
