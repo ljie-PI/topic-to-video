@@ -409,14 +409,19 @@ async (durationMs) => {
 # -----------------------------------------------------------------------------
 
 def normalize_youtube(url: str) -> str:
-    """Normalize youtube iframe/short URLs to canonical watch URLs (best-effort)."""
-    m = re.match(r'^https?://(?:www\.)?youtube(?:-nocookie)?\.com/embed/([A-Za-z0-9_-]{6,})', url)
+    """Normalize youtube iframe/short URLs to canonical watch URLs (best-effort).
+
+    Host matching is case-insensitive because RFC 3986 allows uppercase hostnames
+    (e.g. copied from URL-encoded params or legacy bookmarks); video IDs keep
+    their case (preserved by the capture group).
+    """
+    m = re.match(r'^https?://(?:www\.)?youtube(?:-nocookie)?\.com/embed/([A-Za-z0-9_-]{6,})', url, re.IGNORECASE)
     if m:
         return f'https://www.youtube.com/watch?v={m.group(1)}'
-    m = re.match(r'^https?://youtu\.be/([A-Za-z0-9_-]{6,})', url)
+    m = re.match(r'^https?://youtu\.be/([A-Za-z0-9_-]{6,})', url, re.IGNORECASE)
     if m:
         return f'https://www.youtube.com/watch?v={m.group(1)}'
-    m = re.match(r'^https?://(?:www\.|m\.)?youtube\.com/shorts/([A-Za-z0-9_-]{6,})', url)
+    m = re.match(r'^https?://(?:www\.|m\.)?youtube\.com/shorts/([A-Za-z0-9_-]{6,})', url, re.IGNORECASE)
     if m:
         return f'https://www.youtube.com/watch?v={m.group(1)}'
     return url
@@ -426,7 +431,7 @@ def detect_watchable_platform(url: str) -> Optional[str]:
     """Return 'youtube' or 'bilibili' when the URL is a watchable video page that
     video-download.py (yt-dlp) can fetch directly, else None.
 
-    Matches:
+    Matches (host comparison is case-insensitive):
       - YouTube:  youtube.com/watch?v=..., youtu.be/<id>, /shorts/<id>,
                   /embed/<id>, youtube-nocookie.com/embed/<id>, m.youtube.com/...
       - Bilibili: bilibili.com/video/BV..., bilibili.com/video/av..., b23.tv/...
@@ -434,17 +439,17 @@ def detect_watchable_platform(url: str) -> Optional[str]:
     if not url:
         return None
     u = url.strip()
-    if re.match(r'^https?://(?:(?:www|m)\.)?youtube\.com/watch\?', u):
+    if re.match(r'^https?://(?:(?:www|m)\.)?youtube\.com/watch\?', u, re.IGNORECASE):
         return 'youtube'
-    if re.match(r'^https?://youtu\.be/[A-Za-z0-9_-]{6,}', u):
+    if re.match(r'^https?://youtu\.be/[A-Za-z0-9_-]{6,}', u, re.IGNORECASE):
         return 'youtube'
-    if re.match(r'^https?://(?:(?:www|m)\.)?youtube\.com/shorts/[A-Za-z0-9_-]{6,}', u):
+    if re.match(r'^https?://(?:(?:www|m)\.)?youtube\.com/shorts/[A-Za-z0-9_-]{6,}', u, re.IGNORECASE):
         return 'youtube'
-    if re.match(r'^https?://(?:www\.)?youtube(?:-nocookie)?\.com/embed/[A-Za-z0-9_-]{6,}', u):
+    if re.match(r'^https?://(?:www\.)?youtube(?:-nocookie)?\.com/embed/[A-Za-z0-9_-]{6,}', u, re.IGNORECASE):
         return 'youtube'
-    if re.match(r'^https?://(?:www\.|m\.)?bilibili\.com/video/(?:BV[A-Za-z0-9]+|av\d+)', u):
+    if re.match(r'^https?://(?:www\.|m\.)?bilibili\.com/video/(?:BV[A-Za-z0-9]+|av\d+)', u, re.IGNORECASE):
         return 'bilibili'
-    if re.match(r'^https?://b23\.tv/[A-Za-z0-9]+', u):
+    if re.match(r'^https?://b23\.tv/[A-Za-z0-9]+', u, re.IGNORECASE):
         return 'bilibili'
     return None
 
@@ -971,19 +976,36 @@ def main() -> None:
                 pass
 
     # Aggregate pending external downloads across the batch so the agent can
-    # iterate one list instead of nested-looping entries[].videos[].
+    # iterate one list instead of nested-looping entries[].videos[]. Deduplicate
+    # by canonical URL — the same YouTube clip is frequently embedded on the
+    # homepage AND the GitHub README, and downloading it twice (to two
+    # different per-slug directories) wastes bandwidth. We keep the first
+    # occurrence's suggested_output_dir and record the additional source slugs
+    # under `also_referenced_by` for debuggability.
     pending_downloads: List[Dict[str, Any]] = []
+    pending_index: Dict[str, int] = {}
     for e in entries:
         if not e.get('success'):
             continue
         for v in e.get('videos', []) or []:
-            if v.get('download_required'):
-                pending_downloads.append({
-                    'url': v.get('url', ''),
-                    'platform': v.get('platform', ''),
-                    'suggested_output_dir': v.get('suggested_output_dir', ''),
-                    'source_slug': e.get('slug', ''),
-                })
+            if not v.get('download_required'):
+                continue
+            url_key = v.get('url', '')
+            if not url_key:
+                continue
+            if url_key in pending_index:
+                idx = pending_index[url_key]
+                pending_downloads[idx].setdefault('also_referenced_by', []).append(
+                    e.get('slug', '')
+                )
+                continue
+            pending_index[url_key] = len(pending_downloads)
+            pending_downloads.append({
+                'url': url_key,
+                'platform': v.get('platform', ''),
+                'suggested_output_dir': v.get('suggested_output_dir', ''),
+                'source_slug': e.get('slug', ''),
+            })
 
     batch_success = succeeded > 0
     manifest = {

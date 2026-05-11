@@ -205,7 +205,7 @@ scripts/video-download.py \
 Rules:
 - **Sequential**, not parallel — yt-dlp gets rate-limited and IP-throttled when fanning out.
 - Use `item.suggested_output_dir` as-is; it is `harvest_page/<source_slug>/videos/` so downloaded files land alongside the native videos.
-- After each successful download, **update the corresponding `videos[]` entry** in `harvest_page/<source_slug>/metadata.json` (and `manifest.json`): set `download_required: false`, add `local_path` (and `subtitle_path` if the JSON output lists one), and set `id` to the file stem (e.g. `2MJDdzSXL74`). Phase 4 reads these fields.
+- After each successful download, **update the corresponding `videos[]` entry** in `harvest_page/<source_slug>/metadata.json` (and `manifest.json`): set `download_required: false`, add `local_path` (and `subtitle_path` if the JSON output lists one), and set `id` to the file stem (e.g. `2MJDdzSXL74`). Phase 4 reads these fields. If the entry has an `also_referenced_by: [slug, ...]` list, also update the same `videos[]` entry under each of those slugs' `metadata.json` (the harvester deduplicated identical URLs across pages to avoid redundant downloads — but every referring entry still needs the `local_path` populated for Phase 4 lookup).
 - If `video-download.py` returns `{"success": false}` (geoblock, age-gate, 410, etc.), leave the entry with `download_required: true` and skip it — Phase 4 will ignore it. If the topic depends on that exact clip, run `web_search` for a re-uploaded mirror and rerun `harvest-pages.py` with the new URL.
 
 This decoupling means `harvest-pages.py` runtime is dominated by Playwright (fast, deterministic) and yt-dlp failures are isolated to specific URLs, not the entire batch.
