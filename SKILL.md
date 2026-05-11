@@ -28,7 +28,7 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 5. **Use Google Fonts woff2, never `fc-match` system fonts.** System Chinese fonts (e.g. `AR PL UKai CN`) trigger `[Compiler] No deterministic font mapping` at render. Download the selected style's fonts with `scripts/fonts-download.sh`: Dawn = handdrawn fonts; Moon = `NotoSerifSC`/`NotoSansSC`/`IBMPlexMono`.
 6. **`Caveat` and `PatrickHand` have NO Chinese glyphs.** They are Dawn-only English/numeric handwriting fonts. For Dawn mixed Chinese + Latin text, split by script: Chinese spans use `MaShanZheng`/`LongCang`; English/numeric spans use `Caveat`/`PatrickHand`. For Moon, use `NotoSerifSC`/`NotoSansSC` for Chinese and `IBMPlexMono` for English/data/code. Do not rely on fallback chains for mixed badges.
 7. **Material search is optional but recommended.** Phase 3-4 can be skipped if user says "skip materials" or provides all visual content. But for most topics, harvested images and clips make scenes 10× more engaging than text-only.
-8. **Every on-screen asset must trace to `material-catalog.json`.** Keep tool outputs under `~/.hermes/workspace/{topic_name}/` using the standard subdirectories (`harvest_page/`, `extract_frames/`, `vision_analyze/`, `fonts/`, `renders/`). The coding sub-agent in Phase 8 resolves `material_ref` → catalog entry → `local_path`; no catalog citation → no asset on screen. Never invent or borrow generic stock assets.
+8. **Every on-screen asset must trace to `material-catalog.json`.** Keep tool outputs under `~/.hermes/workspace/{topic_name}/` using the standard subdirectories (`harvest_page/`, `extract_frames/`, `vision_analyze/`, `fonts/`, `composition/`). The coding sub-agent in Phase 8 resolves `material_ref` → catalog entry → `local_path`; no catalog citation → no asset on screen. Never invent or borrow generic stock assets.
 9. **Material selection happens in Phase 4, not Phase 5.** The agent picks 3-6 URLs in Phase 3 and passes them as one array to `harvest-pages.py`. In Phase 4, run vision-analyze on every image and every video's extracted frames, then write `material-catalog.json` with `selected_clips`. The narration script (Phase 5) only references catalog entries — never a raw harvest result. Prevents writing a scene around a video span that turns out to be a transition or an ad.
 10. **Composition + render is delegated.** Phases 8 onward run in a coding sub-agent (Copilot CLI / Claude Code) with the `hyperframes` skill loaded — not in the main agent. The main agent's job ends at producing the inputs the brief points at; the sub-agent owns scaffold / DESIGN.md / composition / lint / render. Do not try to hand-write `index.html` from the main conversation.
 
@@ -309,7 +309,7 @@ Then design 8-10 scenes, each with:
 
 **Every scene must cite at least one catalog entry.** If no harvested material fits a scene, go back to Phase 3 and harvest more URLs — never invent assets or fall back to a generic stock image. This is the structural guarantee that the materials gathered by `harvest-pages.py` actually reach the final video.
 
-Write the scene list to `~/.hermes/workspace/{topic_name}/transcribe/scenes-config.json` (intermediate file, consumed in the next step), then run `scripts/scene-anchor.py ~/.hermes/workspace/{topic_name}/transcribe/transcript.json ~/.hermes/workspace/{topic_name}/transcribe/scenes-config.json ~/.hermes/workspace/{topic_name}/transcribe/scene-timing.json` to get exact `begin_ms`/`duration_ms` per scene. `scene-timing.json` is the authoritative input the Phase 8 brief points at.
+Write the scene list to `~/.hermes/workspace/{topic_name}/transcribe/scenes-config.json` (intermediate file, consumed in the next step), then run `scripts/scene-anchor.py ~/.hermes/workspace/{topic_name}/transcribe/transcript.json ~/.hermes/workspace/{topic_name}/transcribe/scenes-config.json ~/.hermes/workspace/{topic_name}/transcribe/scene-timing.json`. The script anchors each scene to the ASR word stream, computes `begin_ms` / `duration_s`, and **passes every per-scene field (including `material_ref` and `display_text`) straight through** to the output. `scene-timing.json` is the single authoritative input the Phase 8 brief points the sub-agent at — it contains both the timing and the `material_ref` per scene, so the sub-agent never needs to read `scenes-config.json`.
 
 ### Phase 7.5 — Pre-stage fonts (so the sub-agent doesn't re-download)
 
@@ -349,12 +349,12 @@ Write `~/.hermes/workspace/{topic_name}/composition-brief.md` using this exact t
 - Orientation: <1920×1080 | 1080×1920 | 1080×1440>
 - Output: ./composition/renders/final.mp4 (--quality high --fps 30 --workers 1)
 
-## Inputs (paths are relative to this brief)
-- Audio (final, do not regenerate): ../voice_clone/narration.mp3   # 22050 Hz MP3, CosyVoice clone
-- Scene timing (authoritative): ../transcribe/scene-timing.json     # begin_ms / duration_ms per scene
-- Material catalog: ../material-catalog.json                        # every visual must trace here
-- Narration script (for context only): ../narration.txt
-- Pre-downloaded fonts (use these, do NOT fc-match): ../fonts/
+## Inputs (paths are relative to this brief, which lives in the workspace root)
+- Audio (final, do not regenerate): voice_clone/narration.mp3   # 22050 Hz MP3, CosyVoice clone
+- Scene timing (authoritative): transcribe/scene-timing.json     # begin_ms / duration_s / material_ref per scene
+- Material catalog: material-catalog.json                        # every visual must trace here
+- Narration script (for context only): narration.txt
+- Pre-downloaded fonts (use these, do NOT fc-match): fonts/
 
 ## Style hints
 <free-form description — tone, mood, palette, pacing.
@@ -392,7 +392,7 @@ You are free to:
    `<video class="clip" muted>`. Never invent stock images. If a scene needs a
    visual the catalog cannot supply, stop and report back — do not improvise.
 4. **CJK font handling.** Narration is Chinese with Latin proper nouns. Fonts
-   in `../fonts/` are already downloaded — use them via relative `@font-face`,
+   in `fonts/` are already downloaded — use them via relative `@font-face`,
    never `fc-match` system fonts. For mixed runs split spans by script:
      - Dawn style: Chinese in `MaShanZheng`/`LongCang`; English/numbers in
        `Caveat`/`PatrickHand`. NEVER put Chinese characters inside a Caveat
@@ -473,7 +473,7 @@ don't try to hand-patch the composition from the main agent.
 | `Failed to download model small.en` | Whisper download blocked | Use Paraformer instead |
 | `status_code=44 sample rate 16000 not equals with real 22050` | Paraformer sample_rate mismatch | `sample_rate=22050` for CosyVoice MP3 |
 | `Conversion failed! Try --docker` from hyperframes render | multi-worker chromium fallback bug | Pin `--workers 1` in the brief |
-| `[Compiler] No deterministic font mapping for: AR PL UKai CN` | Sub-agent reached for `fc-match` system fonts | Re-run with the brief explicitly pointing at `../fonts/` and forbidding `fc-match` |
+| `[Compiler] No deterministic font mapping for: AR PL UKai CN` | Sub-agent reached for `fc-match` system fonts | Re-run with the brief explicitly pointing at `fonts/` and forbidding `fc-match` |
 | Chinese badge shows ★▢□ garbage in final render | Caveat/PatrickHand applied to Chinese characters | Tighten CJK rule in the brief (Iron Rule #6); re-render |
 | Paraformer transcript missing capitals (`hugging face` not `Hugging Face`) | Paraformer normalizes English to lowercase | Use case-insensitive anchor matching (shipped script handles this) |
 | `WARN: anchor not found for X` from scene-anchor.py | Case mismatch OR audio doesn't say that exact phrase | Run `cat transcript.json` first, pick anchors from the actual ASR text |
