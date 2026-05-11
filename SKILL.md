@@ -34,6 +34,7 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 11. **Material search is optional but recommended.** Phase 3-4 can be skipped if user says "skip materials" or provides all visual content. But for most topics, searched images make scenes 10x more engaging than text-only.
 12. **Image animations = GSAP in HTML, not FFmpeg.** Never pre-render Ken Burns clips with FFmpeg for HyperFrames compositions. Use GSAP zoompan/pan/fade animations on `<img>` elements directly. See `references/image-animations.md`.
 13. **Downloaded assets go in the unified workspace tree.** Keep tool outputs under `~/.hermes/workspace/{topic_name}/` using the standard subdirectories (`extract_frames/`, `vision_analyze/`, `fonts/`, `verify/`, `renders/`). Copy needed files into the HyperFrames project dir before composing.
+14. **Material selection happens in Phase 4, not Phase 5.** The agent picks 3-6 URLs in Phase 3 and passes them as one array to `harvest-pages.py`. In Phase 4, run vision-analyze on every image and every video's extracted frames, then write `material-catalog.json` with `selected_clips`. The narration script (Phase 5) only references catalog entries — never a raw harvest result. Prevents writing a scene around a video span that turns out to be a transition or an ad.
 
 ## Output Conventions
 
@@ -45,10 +46,19 @@ Each video project lives under `~/.hermes/workspace/{topic_name}/`, where `topic
 
 ```
 ~/.hermes/workspace/{topic_name}/
-├── extract_frames/             # Phase 4: Extracted video frames
-│   └── frame_0001.jpg ...
-├── vision_analyze/             # Phase 4: Vision analysis results
-│   └── analysis.json
+├── harvest_page/               # Phase 3: per-URL harvest results (one call to harvest-pages.py)
+│   ├── manifest.json
+│   └── <url-slug>/
+│       ├── metadata.json
+│       ├── images/
+│       ├── videos/
+│       ├── recording/          # only for scroll-record mode
+│       └── page-source.html
+├── extract_frames/             # Phase 4: per-video frame extracts (one subdir per video)
+│   └── <url-slug>/<video-name>/frame_*.jpg
+├── vision_analyze/             # Phase 4: per-URL vision results
+│   └── <url-slug>/analysis.json
+├── material-catalog.json       # Phase 4: filtered, scored material catalog
 ├── voice_clone/                # Phase 6: TTS audio
 │   └── narration.mp3
 ├── transcribe/                 # Phase 7: ASR transcript and scene timing
@@ -67,6 +77,10 @@ Each video project lives under `~/.hermes/workspace/{topic_name}/`, where `topic
     ├── draft.mp4
     └── {topic_name}-final.mp4
 ```
+
+Plus one shared (cross-topic) browser profile reused across the `harvest-pages.py` tool and TuberUp's `gemini-deep-research`:
+
+`~/.hermes/workspace/chrome_profile/` — do NOT delete; cookies, logins, and site preferences accumulate here.
 
 ### Script I/O Protocol
 
@@ -129,25 +143,109 @@ Parse script results with: `result=$(python3 script.py ... 2>/dev/null)` or capt
 
 **Anti-pattern:** Searching once, then writing as if the brief is complete. Real research is iterative — you find one fact, it raises a new question, you search again. Plan for 2-3 rounds.
 
-### Phase 3 — Material Search
+### Phase 3 — Material Harvest
 
-Search for visual materials based on the research brief using `web_search` and `web_fetch` (the agent's built-in tools). Save useful image URLs and reference links for use in later phases.
+The agent (LLM) produces a short list of URLs likely to yield rich visual material, then runs `harvest-pages.py` ONCE with the whole list. The tool decides per-URL whether to extract images/videos or screen-record a top-to-bottom scroll.
 
-### Phase 4 — Material Processing
+#### URL selection rules (use these to build the array)
 
-Process visual materials for use in the composition.
+Aim for **3-6 URLs**. INCLUDE pages of these types:
 
-1. **Extract frames** — `scripts/extract-frames.py <video_path> ~/.hermes/workspace/{topic_name}/extract_frames/ --max-frames 20`
-2. **Parse subtitles** — `scripts/subtitle-parse.py <subtitle_file>` (if subtitles available)
-3. **Vision analysis** — `scripts/vision-analyze.py --prompt "Describe content and assess quality" --images ~/.hermes/workspace/{topic_name}/extract_frames/frame_0001.jpg frame_0002.jpg ...`
-   - **Mode 1 (explicit VLM):** if `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` are set, the script POSTs to `{VLM_BASE_URL}/chat/completions` (OpenAI-compatible) and returns `{success: true, mode: "vlm", analysis: "..."}`.
-   - **Mode 2 (delegate):** if `VLM_API_KEY` is unset, the script returns `{success: true, mode: "delegate_to_agent", prompt, images: {local: [...], remote: [...]}}`. The agent must then call its own `view` tool on each path in `images.local` (and `web_fetch` for `images.remote` if needed) and reason over them with its own vision-capable model.
-   - Save the resulting analysis to `vision_analyze/analysis.json` for downstream steps.
-4. **Outputs** — `extract_frames/` + `vision_analyze/analysis.json`
+| Page type                                | Why it's a good source                              | Typical mode  |
+|------------------------------------------|-----------------------------------------------------|---------------|
+| Official product/project homepage         | Hero shots, screenshots, product video             | media         |
+| GitHub repository main page               | README screenshots, demo gifs, social preview      | media         |
+| Official documentation landing page       | Diagrams, architecture; OR long text               | media or scroll-record |
+| Official blog post / launch announcement  | Inline images, embedded YouTube                    | media         |
+| Wikipedia article (for established topics)| Infobox images, well-edited prose                  | scroll-record |
+| Conference talk / keynote YouTube page    | Downloaded via yt-dlp                              | media         |
+| Author's personal site / about page       | Headshots, banners                                 | media         |
+
+EXCLUDE (low yield, often bot-blocked):
+
+- Search result pages (Google, Bing) — not destinations
+- Social media feeds (Twitter/X timelines, LinkedIn feeds) — login walls
+- Aggregator listicles ("Top 10 AI tools…") — stock images
+- Paywalled news article body pages — blocked content
+- App store listings — small thumbnails only
+- PDFs — not supported; download with `curl` and treat as a flat material
+
+Sources for picking URLs (in order of preference):
+
+1. The URL the user provided (always include if they gave one).
+2. URLs surfaced during Phase 2 research (web_search results) matching the page types above. Prefer official-domain URLs over secondary coverage.
+3. If still <3 URLs, run one more web_search like `"{topic} official site"`, `"{topic} github"`, `"{topic} documentation"`.
+
+#### Running harvest-pages.py
+
+```bash
+scripts/harvest-pages.py \
+  --urls https://anthropic.com/news/claude-code \
+         https://github.com/anthropics/claude-code \
+         https://docs.anthropic.com/claude-code \
+         https://www.youtube.com/watch?v=... \
+  --output-dir ~/.hermes/workspace/{topic_name}/harvest_page/
+```
+
+The first invocation launches Chrome at `~/.hermes/workspace/chrome_profile`; subsequent invocations reuse it over CDP (`http://localhost:9222`). Chrome stays running between calls. Per-URL failures don't sink the batch.
+
+Outputs: `harvest_page/manifest.json` + `harvest_page/<url-slug>/` directories (one per URL). See the `manifest.entries[]` shape — each entry has `page_type`, `mode`, `text_excerpt`, `images[]`, `videos[]`, and optional `scroll_recording`.
+
+### Phase 4 — Material Understanding & Selection
+
+Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entry, build a "material entry" in `~/.hermes/workspace/{topic_name}/material-catalog.json`.
+
+**Per harvested entry (one per URL):**
+
+1. **Extract frames** from every video in `entry.videos` AND from `entry.scroll_recording` (if present):
+   ```bash
+   scripts/extract-frames.py <video> \
+     ~/.hermes/workspace/{topic_name}/extract_frames/<slug>/<video-name>/ \
+     --max-frames 16
+   ```
+   Frames are timestamp-named (`frame_t00.5s.jpg` etc.) so we can map back to clip ranges.
+
+2. **Parse subtitles** for every downloaded video that has a sidecar subtitle file:
+   ```bash
+   scripts/subtitle-parse.py <subtitle> --keywords '<terms from research brief>'
+   ```
+
+3. **Vision analysis** with `scripts/vision-analyze.py`:
+   - For images: one batch per URL (max 10 per call). Prompt asks for subject, visual style, suitability score 1-10.
+   - For each video: one batch on the extracted frames. Prompt additionally asks for start/end timestamp of the most relevant span.
+   - **Mode 1 (explicit VLM):** if `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` are set → direct OpenAI-compatible call.
+   - **Mode 2 (delegate):** otherwise → script returns `delegate_to_agent` with image paths; the agent uses its own `view` tool.
+
+4. **Combine** `entry.text_excerpt` + image descriptions + per-frame descriptions into the catalog entry. **CRITICAL:** for each video, write a `selected_clips` list of `{start, end, reason, frame_paths[]}` — these are the spans Phase 5 (narration) and Phase 10 (compose) draw from.
+
+5. **Filter:** drop assets the VLM rated <5/10 or that are off-topic. Don't carry junk into the narration phase.
+
+**`material-catalog.json` shape:**
+
+```json
+{
+  "topic_name": "...",
+  "entries": [
+    {
+      "url": "...", "slug": "...", "title": "...", "page_type": "...",
+      "text_excerpt": "...",
+      "images": [{"local_path": "...", "description": "...", "score": 8}, ...],
+      "videos": [{
+        "local_path": "...",
+        "selected_clips": [
+          {"start": 12.0, "end": 18.5, "reason": "...", "frame_paths": [...]}
+        ]
+      }, ...]
+    }
+  ]
+}
+```
+
+**Outputs:** `extract_frames/<slug>/<video-name>/`, `vision_analyze/<slug>/`, `material-catalog.json`.
 
 ### Phase 5 — Write Narration Script
 
-**Inputs:** the research brief from Phase 2 + selected materials from Phase 3-4 + the user's preferred angle/length.
+**Inputs:** the research brief from Phase 2 + `material-catalog.json` from Phase 4 + the user's preferred angle/length. Reference specific catalog entries when annotating each scene's recommended visual — by `local_path` for images, by `local_path` + `selected_clips[i]` for video chunks.
 
 Goals:
 - Use **only facts from the research brief** — every number, name, date, and quote must be traceable.
@@ -315,6 +413,15 @@ done
 | `vision-analyze.py` errors with "VLM_API_KEY is set but missing required config" | Partial VLM_* setup | Set both `VLM_BASE_URL` and `VLM_MODEL` (or pass `--model`) |
 | Images don't render in HyperFrames | Image path not relative to project dir | Copy images into project dir; use relative paths in `<img src>` |
 | Ken Burns animation jitters | Image too small, upscaled poorly | Use source images ≥1920px wide; `object-fit: cover` |
+| `harvest-pages.py` blocked by cookie banner | EU/cookie wall absorbs scroll/clicks | Re-run after accepting the banner once in the shared profile (`~/.hermes/workspace/chrome_profile`) — cookie state persists across CDP sessions |
+| `harvest-pages.py` returns 0 images on a real gallery | Lazy-loaded images need scroll | Already handled (auto-scroll-to-bottom); if still 0, raise `--page-load-timeout` |
+| YouTube download fails with 410 / geoblock | yt-dlp upstream issue | Skip that video; pick a re-uploaded mirror via web_search |
+| Playwright import error | venv missing playwright | `pip install playwright` — NO `playwright install chromium` (we use system Chrome over CDP) |
+| `Chrome exited immediately` from `harvest-pages.py` | Profile dir already locked by another Chrome | Close other Chrome instances using `~/.hermes/workspace/chrome_profile`, or pass a different `--profile-dir` |
+| Chrome exits with `Missing X server or $DISPLAY` | No display in container/SSH session | `harvest-pages.py` auto-detects this (`--headless auto` checks `DISPLAY`). Force with `--headless on` if auto-detect misfires |
+| Chrome exits with sandbox errors as root | Running inside a container | `--no-sandbox` is auto-enabled when running as root or inside Docker; pass explicitly with `--no-sandbox` if needed |
+| CDP port 9222 busy with the wrong Chrome | Another tool launched Chrome on that port | If it's a Chrome we WANT, that's fine (reuse). If not, pass `--cdp-url http://localhost:9223` |
+| `harvest-pages.py` picks search-result pages | Agent included google.com/bing.com in `--urls` | Re-read Phase 3 URL selection rules; exclude search/feed/aggregator pages |
 
 ## Resources Bundled With This Skill
 
@@ -328,6 +435,8 @@ done
 - `scripts/extract-frames.py` — FFmpeg frame extraction (uniform sampling or time window)
 - `scripts/subtitle-parse.py` — SRT/VTT parser with keyword filtering
 - `scripts/vision-analyze.py` — model-agnostic vision analysis: calls any OpenAI-compatible VLM via `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL`, or delegates to the agent's `view` tool when no VLM is configured
+- `scripts/harvest-pages.py` — Playwright/CDP batch URL harvester: takes an array of URLs (official sites, GitHub, docs, etc.), extracts ≥512px images and embedded videos per URL, OR records a scroll-through video for text-heavy pages. Reuses one Chrome process across the whole batch.
+- `scripts/video-download.py` — yt-dlp wrapper used by `harvest-pages.py` to download YouTube/Bilibili videos with subtitles
 - `templates/design.md` — Rosé Pine Dawn boilerplate
 - `templates/design-moon.md` — Rosé Pine Moon Serious boilerplate for dark technical/editorial videos
 - `templates/composition-skeleton.html` — annotated index.html starting point
@@ -341,6 +450,9 @@ done
 The material processing scripts require additional dependencies beyond the base skill:
 
 - **ffmpeg/ffprobe** (for frame extraction): usually pre-installed on Linux
+- **playwright** (Python bindings only, ~3 MB) for `harvest-pages.py`: `pip install playwright`. NO `playwright install chromium` — we attach to system Chrome over CDP.
+- **system Chrome** (already at `/usr/bin/google-chrome` on this machine): auto-launched on demand with `--remote-debugging-port=9222 --user-data-dir=~/.hermes/workspace/chrome_profile`. Shared with the `gemini-deep-research` agent so cookies/logins persist.
+- **yt-dlp** (for `video-download.py`): on PATH (`/home/jieliu1/.local/bin/yt-dlp`).
 - **vision model** (optional): set `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` to enable `vision-analyze.py` Mode 1 (e.g. point at DashScope's OpenAI-compatible endpoint with `qwen-vl-max`). When unset, the script delegates to the calling agent's own `view` tool — no extra dependency required.
 
 ## Red Flags — STOP if you see any of these
@@ -350,6 +462,7 @@ You are about to make a known mistake if you find yourself:
 - **Writing the script without doing Phase 2 research first** (or skipping web_search/web_fetch)
 - **Pre-rendering Ken Burns clips with FFmpeg** instead of using GSAP in HyperFrames HTML
 - **Skipping vision-analyze** when you have 20+ frames and need to pick the best 3-4
+- Writing narration before running vision-analyze on harvested videos and building `material-catalog.json`
 - **Using absolute paths** for images in index.html (breaks HyperFrames render)
 - Reaching for `npx hyperframes transcribe` for Chinese audio
 - Reaching for `npx hyperframes tts` because you forgot CosyVoice
