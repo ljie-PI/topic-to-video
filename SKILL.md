@@ -404,6 +404,11 @@ You are free to:
      fallback bug ("FFmpeg exited 187 — height not divisible by 2").
    - `hyperframes lint` and `hyperframes inspect` must both pass (0 errors)
      before the final render.
+6. **GSAP text animation pitfall.** Do not animate `textContent` from a number
+   (e.g. `tl.from(el, { textContent: 0 })`) on an element that has nested
+   `<span>` children — GSAP overwrites the children and the count renders as
+   `NaN%`. For emphasis on numbers with units, animate `scale` / `opacity`
+   instead, or split the number and unit into separate sibling spans.
 
 ## Deliverable
 - `composition/index.html` (GSAP timeline + scenes)
