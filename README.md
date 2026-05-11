@@ -12,7 +12,7 @@ A Copilot CLI skill that turns a topic, article URL, or text into a short narrat
 | `ffmpeg` / `ffprobe` | Audio probing and frame extraction |
 | `playwright` (Python only) | `pip install playwright` — NO `playwright install chromium` step; we use system Chrome over CDP |
 | System Google Chrome       | At `/usr/bin/google-chrome` (Linux). Auto-launched with shared profile at `~/.hermes/workspace/chrome_profile` |
-| `yt-dlp` | On PATH — required by `scripts/video-download.py` (called from `harvest-pages.py`) |
+| `yt-dlp` | On PATH — required by `scripts/video-download.py` (the agent calls it in Phase 3.b on every `pending_downloads[]` entry produced by `harvest-pages.py`) |
 | `DASHSCOPE_API_KEY` | Set in env (e.g. `~/.zshrc`) — required for TTS/ASR |
 | `VLM_*` (optional) | `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` to enable explicit vision; otherwise `vision-analyze.py` delegates back to the agent's own `view` tool |
 
@@ -47,8 +47,8 @@ bash scripts/fonts-download.sh my-video/fonts dawn
 | `scripts/scene-anchor.py` | Anchor scenes to ASR word stream |
 | `scripts/extract-frames.py` | Extract JPEG frames with ffmpeg / ffprobe |
 | `scripts/subtitle-parse.py` | Parse SRT/VTT subtitles with keyword filtering |
-| `scripts/harvest-pages.py` | Batch URL → material: takes an array of URLs, extracts ≥512px images + embedded videos per URL, OR records a scroll-through video for text-heavy pages (Playwright over CDP, shared profile with gemini-deep-research) |
-| `scripts/video-download.py` | yt-dlp wrapper for YouTube/Bilibili download with subtitles; called by `harvest-pages.py` |
+| `scripts/harvest-pages.py` | Batch URL → material: extracts ≥512px images + native `<video>` clips per URL OR records a scroll-through video for text-heavy pages (Playwright over CDP, shared profile with gemini-deep-research). YouTube/Bilibili URLs are listed in `manifest.pending_downloads[]` — the agent invokes `video-download.py` on each in Phase 3.b. |
+| `scripts/video-download.py` | yt-dlp wrapper for YouTube/Bilibili download with subtitles; called by the agent (Phase 3.b) on every `pending_downloads[]` URL produced by `harvest-pages.py` |
 | `scripts/fonts-download.sh` | Download WOFF2 fonts (`dawn` / `moon` / `all`) |
 | `scripts/check-cjk-fonts.py` | Flag Chinese text inside Latin-only font contexts |
 

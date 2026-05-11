@@ -416,7 +416,37 @@ def normalize_youtube(url: str) -> str:
     m = re.match(r'^https?://youtu\.be/([A-Za-z0-9_-]{6,})', url)
     if m:
         return f'https://www.youtube.com/watch?v={m.group(1)}'
+    m = re.match(r'^https?://(?:www\.|m\.)?youtube\.com/shorts/([A-Za-z0-9_-]{6,})', url)
+    if m:
+        return f'https://www.youtube.com/watch?v={m.group(1)}'
     return url
+
+
+def detect_watchable_platform(url: str) -> Optional[str]:
+    """Return 'youtube' or 'bilibili' when the URL is a watchable video page that
+    video-download.py (yt-dlp) can fetch directly, else None.
+
+    Matches:
+      - YouTube:  youtube.com/watch?v=..., youtu.be/<id>, /shorts/<id>,
+                  /embed/<id>, youtube-nocookie.com/embed/<id>, m.youtube.com/...
+      - Bilibili: bilibili.com/video/BV..., bilibili.com/video/av..., b23.tv/...
+    """
+    if not url:
+        return None
+    u = url.strip()
+    if re.match(r'^https?://(?:(?:www|m)\.)?youtube\.com/watch\?', u):
+        return 'youtube'
+    if re.match(r'^https?://youtu\.be/[A-Za-z0-9_-]{6,}', u):
+        return 'youtube'
+    if re.match(r'^https?://(?:(?:www|m)\.)?youtube\.com/shorts/[A-Za-z0-9_-]{6,}', u):
+        return 'youtube'
+    if re.match(r'^https?://(?:www\.)?youtube(?:-nocookie)?\.com/embed/[A-Za-z0-9_-]{6,}', u):
+        return 'youtube'
+    if re.match(r'^https?://(?:www\.|m\.)?bilibili\.com/video/(?:BV[A-Za-z0-9]+|av\d+)', u):
+        return 'bilibili'
+    if re.match(r'^https?://b23\.tv/[A-Za-z0-9]+', u):
+        return 'bilibili'
+    return None
 
 
 def decide_mode(metrics: Dict[str, Any], text_threshold: int, forced: str) -> str:
@@ -483,35 +513,6 @@ def download_native_video(request_ctx, url: str, dest_dir: Path, index: int, max
     except Exception as exc:
         log(f'  video {index}: failed: {exc}')
         return None
-
-
-def run_video_download(url: str, output_dir: Path) -> Dict[str, Any]:
-    script = Path(__file__).resolve().parent / 'video-download.py'
-    cmd = [sys.executable, str(script), '--url', url, '--output-dir', str(output_dir)]
-    try:
-        completed = subprocess.run(cmd, capture_output=True, text=True, timeout=900, check=False)
-    except subprocess.TimeoutExpired:
-        return {'success': False, 'error': 'video-download.py timed out (900s)'}
-    try:
-        return json.loads(completed.stdout.strip().splitlines()[-1])
-    except Exception:
-        return {
-            'success': False,
-            'error': f'video-download.py returned non-JSON (rc={completed.returncode}): '
-                     f'{(completed.stdout + completed.stderr)[-400:]}',
-        }
-
-
-def find_subtitle_for(video_path: Path, files: List[str]) -> Optional[str]:
-    """Pick a sidecar subtitle for a downloaded video, if yt-dlp produced one."""
-    stem = video_path.stem
-    for f in files:
-        p = Path(f)
-        if p.parent != video_path.parent:
-            continue
-        if p.stem.startswith(stem) and p.suffix.lower() in ('.vtt', '.srt'):
-            return str(p.resolve())
-    return None
 
 
 # -----------------------------------------------------------------------------
@@ -744,32 +745,21 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
             for v in normalized:
                 meta: Dict[str, Any] = {'url': v['url'], 'platform': v['platform']}
                 if v['platform'] in ('youtube', 'bilibili'):
-                    log(f'  ytdlp: {v["url"]}')
-                    res = run_video_download(v['url'], videos_dir)
-                    if res.get('success'):
-                        files = res.get('files', [])
-                        video_files = [f for f in files if Path(f).suffix.lower() in ('.mp4', '.webm', '.mkv', '.m4a')]
-                        meta['downloaded'] = bool(video_files)
-                        if video_files:
-                            video_path = Path(video_files[0])
-                            meta['local_path'] = str(video_path.resolve())
-                            meta['id'] = video_path.stem
-                            sub = find_subtitle_for(video_path, files)
-                            if sub:
-                                meta['subtitle_path'] = sub
-                        else:
-                            meta['error'] = 'no video file produced'
-                    else:
-                        meta['downloaded'] = False
-                        meta['error'] = res.get('error', 'unknown video-download error')
-                else:  # native
+                    # External platform: list the URL; agent calls video-download.py
+                    # in a follow-up step (see SKILL.md Phase 3.b).
+                    meta['download_required'] = True
+                    meta['suggested_output_dir'] = str(videos_dir.resolve())
+                    log(f'  external video listed (download_required): {v["url"]}')
+                else:  # native HTML5 <video>
                     native_idx += 1
                     local = download_native_video(ctx.request, v['url'], videos_dir, native_idx)
                     if local:
+                        meta['download_required'] = False
                         meta['downloaded'] = True
                         meta['local_path'] = str(local.resolve())
                         meta['id'] = local.stem
                     else:
+                        meta['download_required'] = False
                         meta['downloaded'] = False
                         meta['error'] = 'native download failed'
                 videos_meta.append(meta)
@@ -865,44 +855,89 @@ def main() -> None:
     log(f'Batch size: {len(urls)} URL(s); output={output_dir}'
         + (f' (rejected {len(bad_urls)} non-http(s) URL(s))' if bad_urls else ''))
 
-    # ensure Playwright is available
+    # ensure Playwright is available (only required when at least one URL needs rendering)
     try:
         from playwright.sync_api import sync_playwright  # noqa: F401
     except Exception:
-        fail(
-            'playwright not installed; run: pip install playwright '
-            '(no `playwright install chromium` needed — uses system Chrome over CDP)'
-        )
+        # Defer the hard failure until we know we actually need a browser.
+        sync_playwright = None  # type: ignore
 
-    # ensure Chrome is up on CDP
-    ensure_cdp(args)
+    # Pre-allocate per-URL slugs in order, and classify each URL.
+    used_slugs: set = set()
+    items: List[Tuple[str, str, Optional[str]]] = []  # (url, slug, platform_or_None)
+    for u in urls:
+        s = slugify_url(u)
+        base, n = s, 2
+        while s in used_slugs:
+            s = f'{base}-{n}'
+            n += 1
+        used_slugs.add(s)
+        items.append((u, s, detect_watchable_platform(u)))
 
-    from playwright.sync_api import sync_playwright
+    needs_chrome = any(plat is None for _, _, plat in items)
+    direct_count = sum(1 for _, _, plat in items if plat is not None)
+    if direct_count:
+        log(f'{direct_count}/{len(items)} URL(s) recognized as direct video pages — '
+            f'these will be listed without browser rendering.')
 
     entries: List[Dict[str, Any]] = []
     succeeded = 0
-    with sync_playwright() as pw:
+
+    pw = None
+    browser = None
+    if needs_chrome:
+        if sync_playwright is None:
+            fail(
+                'playwright not installed; run: pip install playwright '
+                '(no `playwright install chromium` needed — uses system Chrome over CDP)'
+            )
+        # ensure Chrome is up on CDP
+        ensure_cdp(args)
+        from playwright.sync_api import sync_playwright as _sp
+        pw = _sp().start()
         try:
             browser = pw.chromium.connect_over_cdp(args.cdp_url)
         except Exception as exc:
+            try:
+                pw.stop()
+            except Exception:
+                pass
             fail(f'connect_over_cdp({args.cdp_url}) failed: {exc}')
-
         log(f'Connected to Chrome over CDP ({args.cdp_url})')
+    else:
+        log('No URL requires browser rendering — skipping Chrome/CDP setup.')
 
-        used_slugs = set()
-        for url in urls:
-            slug = slugify_url(url)
-            # collision-proof against accidental duplicate slugs
-            base, n = slug, 2
-            while slug in used_slugs:
-                slug = f'{base}-{n}'
-                n += 1
-            used_slugs.add(slug)
-
+    try:
+        for url, slug, platform in items:
             slug_dir = output_dir / slug
             slug_dir.mkdir(parents=True, exist_ok=True)
             try:
-                entry = harvest_one(browser, url, slug, slug_dir, args, viewport)
+                if platform is not None:
+                    # Short-circuit: no Playwright navigation. The agent will call
+                    # video-download.py for the URL listed in `videos[]` (see SKILL.md Phase 3.b).
+                    videos_dir = slug_dir / 'videos'
+                    videos_dir.mkdir(parents=True, exist_ok=True)
+                    canonical = normalize_youtube(url) if platform == 'youtube' else url
+                    log(f'-- {slug} -- {url}  (video URL only; platform={platform})')
+                    entry: Dict[str, Any] = {
+                        'url': url,
+                        'slug': slug,
+                        'success': True,
+                        'page_type': 'video_platform',
+                        'mode': 'video_url_only',
+                        'title': '',
+                        'text_excerpt': '',
+                        'metrics': {},
+                        'images': [],
+                        'videos': [{
+                            'url': canonical,
+                            'platform': platform,
+                            'download_required': True,
+                            'suggested_output_dir': str(videos_dir.resolve()),
+                        }],
+                    }
+                else:
+                    entry = harvest_one(browser, url, slug, slug_dir, args, viewport)
             except Exception as exc:
                 log(f'  fatal per-URL error: {exc}')
                 entry = {'url': url, 'slug': slug, 'success': False, 'error': str(exc)}
@@ -923,11 +958,32 @@ def main() -> None:
             if not entry.get('success') and args.no_continue_on_error:
                 log('--no-continue-on-error set; stopping batch')
                 break
+    finally:
+        if browser is not None:
+            try:
+                browser.close()  # detach the Playwright client (does NOT kill Chrome — we connected over CDP)
+            except Exception:
+                pass
+        if pw is not None:
+            try:
+                pw.stop()
+            except Exception:
+                pass
 
-        try:
-            browser.close()  # detach the Playwright client (does NOT kill Chrome — we connected over CDP)
-        except Exception:
-            pass
+    # Aggregate pending external downloads across the batch so the agent can
+    # iterate one list instead of nested-looping entries[].videos[].
+    pending_downloads: List[Dict[str, Any]] = []
+    for e in entries:
+        if not e.get('success'):
+            continue
+        for v in e.get('videos', []) or []:
+            if v.get('download_required'):
+                pending_downloads.append({
+                    'url': v.get('url', ''),
+                    'platform': v.get('platform', ''),
+                    'suggested_output_dir': v.get('suggested_output_dir', ''),
+                    'source_slug': e.get('slug', ''),
+                })
 
     batch_success = succeeded > 0
     manifest = {
@@ -939,6 +995,8 @@ def main() -> None:
     }
     if bad_urls:
         manifest['rejected'] = bad_urls
+    if pending_downloads:
+        manifest['pending_downloads'] = pending_downloads
     if not batch_success:
         manifest['error'] = 'All URLs failed; see entries[].error for details.'
 

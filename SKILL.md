@@ -47,7 +47,7 @@ Each video project lives under `~/.hermes/workspace/{topic_name}/`, where `topic
 ```
 ~/.hermes/workspace/{topic_name}/
 ├── harvest_page/               # Phase 3: per-URL harvest results (one call to harvest-pages.py)
-│   ├── manifest.json
+│   ├── manifest.json            #   ↳ contains entries[] and pending_downloads[] (Phase 3.b feeds these to video-download.py)
 │   └── <url-slug>/
 │       ├── metadata.json
 │       ├── images/
@@ -189,7 +189,26 @@ scripts/harvest-pages.py \
 
 The first invocation launches Chrome at `~/.hermes/workspace/chrome_profile`; subsequent invocations reuse it over CDP (`http://localhost:9222`). Chrome stays running between calls. Per-URL failures don't sink the batch.
 
-Outputs: `harvest_page/manifest.json` + `harvest_page/<url-slug>/` directories (one per URL). See the `manifest.entries[]` shape — each entry has `page_type`, `mode`, `text_excerpt`, `images[]`, `videos[]`, and optional `scroll_recording`.
+Outputs: `harvest_page/manifest.json` + `harvest_page/<url-slug>/` directories (one per URL). See the `manifest.entries[]` shape — each entry has `page_type`, `mode`, `text_excerpt`, `images[]`, `videos[]`, and optional `scroll_recording`. The manifest also contains a top-level **`pending_downloads[]`** — every YouTube/Bilibili URL the harvester detected (either passed in `--urls` directly or found embedded on a page). The harvester deliberately does **not** invoke yt-dlp itself; see Phase 3.b.
+
+### Phase 3.b — Resolve pending video downloads
+
+`harvest-pages.py` is a pure discovery tool: it downloads native HTML5 `<video>` clips inline (because those need the page's cookies/referer), but for YouTube and Bilibili it only **lists** the URLs. The agent must then call `video-download.py` per `pending_downloads[]` entry to actually fetch them:
+
+```bash
+# For each item in manifest.pending_downloads:
+scripts/video-download.py \
+  --url "<item.url>" \
+  --output-dir "<item.suggested_output_dir>"
+```
+
+Rules:
+- **Sequential**, not parallel — yt-dlp gets rate-limited and IP-throttled when fanning out.
+- Use `item.suggested_output_dir` as-is; it is `harvest_page/<source_slug>/videos/` so downloaded files land alongside the native videos.
+- After each successful download, **update the corresponding `videos[]` entry** in `harvest_page/<source_slug>/metadata.json` (and `manifest.json`): set `download_required: false`, add `local_path` (and `subtitle_path` if the JSON output lists one), and set `id` to the file stem (e.g. `2MJDdzSXL74`). Phase 4 reads these fields.
+- If `video-download.py` returns `{"success": false}` (geoblock, age-gate, 410, etc.), leave the entry with `download_required: true` and skip it — Phase 4 will ignore it. If the topic depends on that exact clip, run `web_search` for a re-uploaded mirror and rerun `harvest-pages.py` with the new URL.
+
+This decoupling means `harvest-pages.py` runtime is dominated by Playwright (fast, deterministic) and yt-dlp failures are isolated to specific URLs, not the entire batch.
 
 ### Phase 4 — Material Understanding & Selection
 
@@ -433,7 +452,7 @@ done
 | Ken Burns animation jitters | Image too small, upscaled poorly | Use source images ≥1920px wide; `object-fit: cover` |
 | `harvest-pages.py` blocked by cookie banner | EU/cookie wall absorbs scroll/clicks | Re-run after accepting the banner once in the shared profile (`~/.hermes/workspace/chrome_profile`) — cookie state persists across CDP sessions |
 | `harvest-pages.py` returns 0 images on a real gallery | Lazy-loaded images need scroll | Already handled (auto-scroll-to-bottom); if still 0, raise `--page-load-timeout` |
-| YouTube download fails with 410 / geoblock | yt-dlp upstream issue | Skip that video; pick a re-uploaded mirror via web_search |
+| YouTube download fails with 410 / geoblock | yt-dlp upstream issue (manifests in Phase 3.b) | Leave that `videos[]` entry with `download_required: true`; Phase 4 ignores it. If the clip is essential, `web_search` for a re-uploaded mirror and rerun `harvest-pages.py` with the new URL |
 | Playwright import error | venv missing playwright | `pip install playwright` — NO `playwright install chromium` (we use system Chrome over CDP) |
 | `Chrome exited immediately` from `harvest-pages.py` | Profile dir already locked by another Chrome | Close other Chrome instances using `~/.hermes/workspace/chrome_profile`, or pass a different `--profile-dir` |
 | Chrome exits with `Missing X server or $DISPLAY` | No display in container/SSH session | `harvest-pages.py` auto-detects this (`--headless auto` checks `DISPLAY`). Force with `--headless on` if auto-detect misfires |
@@ -455,8 +474,8 @@ done
 - `scripts/extract-frames.py` — FFmpeg frame extraction (uniform sampling or time window)
 - `scripts/subtitle-parse.py` — SRT/VTT parser with keyword filtering
 - `scripts/vision-analyze.py` — model-agnostic vision analysis: calls any OpenAI-compatible VLM via `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL`, or delegates to the agent's `view` tool when no VLM is configured
-- `scripts/harvest-pages.py` — Playwright/CDP batch URL harvester: takes an array of URLs (official sites, GitHub, docs, etc.), extracts ≥512px images and embedded videos per URL, OR records a scroll-through video for text-heavy pages. Reuses one Chrome process across the whole batch.
-- `scripts/video-download.py` — yt-dlp wrapper used by `harvest-pages.py` to download YouTube/Bilibili videos with subtitles
+- `scripts/harvest-pages.py` — Playwright/CDP batch URL harvester: takes an array of URLs (official sites, GitHub, docs, etc.), extracts ≥512px images and embedded videos per URL, OR records a scroll-through video for text-heavy pages. Downloads native HTML5 `<video>` clips inline; **lists** YouTube/Bilibili URLs in `manifest.pending_downloads[]` for Phase 3.b to fetch. Reuses one Chrome process across the whole batch.
+- `scripts/video-download.py` — yt-dlp wrapper for YouTube/Bilibili. Called by the agent in Phase 3.b, once per `pending_downloads[]` entry.
 - `templates/design.md` — Rosé Pine Dawn boilerplate
 - `templates/design-moon.md` — Rosé Pine Moon Serious boilerplate for dark technical/editorial videos
 - `templates/composition-skeleton.html` — annotated index.html starting point
