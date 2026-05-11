@@ -558,7 +558,7 @@ Layering text over animated images is common and works well if readability is de
 
 ---
 
-## 6. Parallax (视差分层)
+## 6. Parallax (Depth Layers)
 
 **Effect:** Foreground and background layers move at different speeds, creating a sense of depth. Works beautifully for product shots, concept illustrations, or any scene where you can separate a subject from its background.
 
@@ -636,7 +636,7 @@ Layering text over animated images is common and works well if readability is de
 
 ---
 
-## 7. Reveal / Wipe (揭示)
+## 7. Reveal / Wipe
 
 **Effect:** An image is progressively revealed from one direction using CSS `clip-path` animation. Great for before/after comparisons or dramatic unveils.
 
@@ -729,7 +729,7 @@ Layering text over animated images is common and works well if readability is de
 
 ---
 
-## 8. Zoom to Detail (聚焦局部)
+## 8. Zoom to Detail
 
 **Effect:** Start with a full view of an image, then zoom into a specific region to highlight a detail. Ideal for UI screenshots, code snippets, charts, or any image where a specific area needs emphasis.
 
@@ -796,7 +796,7 @@ Layering text over animated images is common and works well if readability is de
 
 ---
 
-## 9. Vertical Pan (纵向滚动)
+## 9. Vertical Pan
 
 **Effect:** Slowly scroll down a tall image (long screenshot, webpage capture, chat log, code listing). The image is taller than the viewport and pans vertically.
 
@@ -860,7 +860,7 @@ Layering text over animated images is common and works well if readability is de
 
 ---
 
-## 10. Split Screen (分屏对比)
+## 10. Split Screen
 
 **Effect:** Two images shown side-by-side with an animated divider. Perfect for A vs B comparisons, before/after, or contrasting two concepts.
 
@@ -981,7 +981,7 @@ Layering text over animated images is common and works well if readability is de
 
 ---
 
-## 11. Picture-in-Picture (画中画)
+## 11. Picture-in-Picture
 
 **Effect:** A small inset window floats over the main image. Common for showing a person's avatar alongside a product shot, or quoting a source while showing its context.
 
@@ -1075,7 +1075,7 @@ Layering text over animated images is common and works well if readability is de
 
 ---
 
-## 12. Blur-to-Sharp (模糊到清晰)
+## 12. Blur-to-Sharp
 
 **Effect:** Image starts blurred (out of focus) and gradually sharpens into clarity. Creates suspense or a "loading into focus" feeling.
 
@@ -1151,7 +1151,7 @@ Layering text over animated images is common and works well if readability is de
 
 ---
 
-## 13. Scale Bounce (弹性入场)
+## 13. Scale Bounce
 
 **Effect:** Image enters the frame with an elastic spring animation — overshoots then settles. Ideal for playful, energetic, or product-announcement style scenes.
 
@@ -1239,30 +1239,30 @@ Layering text over animated images is common and works well if readability is de
 
 ## Choosing the right pattern
 
-| 效果 | 适用场景 | 情绪/风格 | 图片类型 |
-|------|----------|-----------|----------|
-| **Ken Burns** | 一张强图撑一个场景 | 纪录片、情感化、沉稳 | 人物照片、产品图、风景 |
-| **Pan** | 展示宽幅画面 | 开阔、从容 | 全景图、建筑、Dashboard、时间线 |
-| **Slideshow Fade** | 2-4 张相关图的渐进展示 | 平稳、叙事感 | 系列截图、产品迭代、团队照 |
-| **Grid** | 同时对比多个来源 | 信息密集、理性 | 多个产品、多帧截图、数据卡片 |
-| **Montage** | 快速穿过多个例子 | 快节奏、丰富 | 混合素材、新闻集锦 |
-| **Parallax** | 需要深度感和高级感 | 精致、产品化 | 前景主体+背景分层（或PNG抠图） |
-| **Reveal/Wipe** | 揭晓悬念、before/after 对比 | 戏剧性、转折 | 对比图、产品发布、数据变化 |
-| **Zoom to Detail** | 强调图中某个局部 | 聚焦、教学 | UI 截图、代码、图表、数据面板 |
-| **Vertical Pan** | 展示长内容 | 信息展示、流畅 | 网页长截图、聊天记录、代码清单 |
-| **Split Screen** | A vs B 对比 | 对比、决策 | 两个产品、新旧版本、竞品对比 |
-| **Picture-in-Picture** | 主画面+辅助信息 | 丰富、多层 | 产品+人物、引用+出处 |
-| **Blur-to-Sharp** | 悬念开场、焦点转移 | 电影感、神秘 | 任何图，特别适合场景开头 |
-| **Scale Bounce** | 活泼入场、强调 | 轻快、年轻 | 产品、Logo、图标、App 截图 |
+| Effect | Best for | Mood / Style | Image type |
+|--------|----------|-------------|------------|
+| **Ken Burns** | One strong image carrying a scene | Documentary, emotional, calm | Portrait photos, product shots, landscapes |
+| **Pan** | Wide-frame panoramic shots | Open, unhurried | Panoramas, architecture, dashboards, timelines |
+| **Slideshow Fade** | 2-4 related stills shown in progression | Smooth, narrative | Series screenshots, product iterations, team photos |
+| **Grid** | Comparing multiple sources at once | Information-dense, analytical | Multiple products, multi-frame screenshots, data cards |
+| **Montage** | Rapid walk-through of many examples | Fast-paced, rich | Mixed media, news roundups |
+| **Parallax** | Depth and premium feel | Polished, product-grade | Subject + background layers (or PNG cutouts) |
+| **Reveal/Wipe** | Suspense reveals, before/after comparisons | Dramatic, pivotal | Comparison images, product launches, data changes |
+| **Zoom to Detail** | Highlighting a specific region in an image | Focused, instructional | UI screenshots, code, charts, data dashboards |
+| **Vertical Pan** | Long-form content | Informational, fluid | Webpage captures, chat logs, code listings |
+| **Split Screen** | A vs B comparisons | Comparative, decision-oriented | Two products, old vs new versions, competitor analysis |
+| **Picture-in-Picture** | Main image + auxiliary context | Layered, rich | Product + person, quote + source |
+| **Blur-to-Sharp** | Suspenseful openings, focus shifts | Cinematic, mysterious | Any image, especially scene openers |
+| **Scale Bounce** | Energetic entrances, emphasis | Playful, youthful | Products, logos, icons, app screenshots |
 
-### 组合建议
+### Combination Ideas
 
-效果之间可以组合使用：
+Effects can be combined for richer compositions:
 
-- **Ken Burns + Blur-to-Sharp**: 场景以模糊开场，聚焦后缓慢缩放 → 电影感开场
-- **Zoom to Detail + Reveal**: 先揭示全图，再聚焦细节 → 教学类内容
-- **Parallax + PiP**: 分层背景上浮动画中画窗口 → 高级产品展示
-- **Slideshow + Scale Bounce**: 图片以弹入方式依次出现而非淡入 → 活泼的产品展示
-- **Split Screen + Vertical Pan**: 左右分屏各滚动不同的长截图 → 代码/文档对比
+- **Ken Burns + Blur-to-Sharp**: Scene opens blurred, focuses, then slowly zooms — cinematic intro
+- **Zoom to Detail + Reveal**: Reveal full image first, then zoom to a detail — instructional content
+- **Parallax + PiP**: Depth-layered background with a floating inset window — premium product showcase
+- **Slideshow + Scale Bounce**: Images bounce in one-by-one instead of fading — lively product showcase
+- **Split Screen + Vertical Pan**: Each half scrolls a different long screenshot — code/doc comparison
 
 All thirteen patterns are implemented natively in the browser with GSAP, keeping them editable inside the HyperFrames composition without any FFmpeg pre-processing.

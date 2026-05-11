@@ -186,21 +186,21 @@ Read `templates/composition-skeleton.html` for the skeleton. Key conventions:
 - Images from search results or extracted frames can be embedded as `<img>` inside scene divs.
 - **13 GSAP image animation effects available** — see `references/image-animations.md` for complete code templates. Quick selection guide:
 
-  | 场景类型 | 推荐效果 |
-  |----------|----------|
-  | 一张强图 + 纪录片/情感 | Ken Burns |
-  | 全景图/Dashboard | Pan |
-  | 2-4 张相关图渐进展示 | Slideshow Fade |
-  | 同时对比多来源 | Grid Layout |
-  | 快速穿过多个例子 | Montage |
-  | 需要深度感 (主体+背景) | Parallax |
-  | 揭晓/before-after | Reveal/Wipe |
-  | 强调图中某个局部 | Zoom to Detail |
-  | 长截图/代码/网页 | Vertical Pan |
-  | A vs B 对比 | Split Screen |
-  | 主画面+辅助信息 | Picture-in-Picture |
-  | 悬念开场/焦点转移 | Blur-to-Sharp |
-  | 活泼入场/产品展示 | Scale Bounce |
+  | Scene type | Recommended effect |
+  |------------|-------------------|
+  | One strong image + documentary / emotional | Ken Burns |
+  | Panorama / dashboard | Pan |
+  | 2-4 related stills in progression | Slideshow Fade |
+  | Compare multiple sources at once | Grid Layout |
+  | Rapid walk-through of many examples | Montage |
+  | Depth feel (subject + background) | Parallax |
+  | Suspense reveal / before-after | Reveal/Wipe |
+  | Highlight a specific region | Zoom to Detail |
+  | Long screenshot / code / webpage | Vertical Pan |
+  | A vs B comparison | Split Screen |
+  | Main image + auxiliary context | Picture-in-Picture |
+  | Suspenseful opening / focus shift | Blur-to-Sharp |
+  | Energetic entrance / product showcase | Scale Bounce |
 
 - Use `object-fit: cover` + `overflow: hidden` on image containers.
 - Layer text over images with `z-index` + a semi-transparent overlay for readability.
