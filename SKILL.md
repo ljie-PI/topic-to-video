@@ -189,7 +189,7 @@ scripts/harvest-pages.py \
 
 The first invocation launches Chrome at `~/.hermes/workspace/chrome_profile`; subsequent invocations reuse it over CDP (`http://localhost:9222`). Chrome stays running between calls. Per-URL failures don't sink the batch.
 
-Outputs: `harvest_page/manifest.json` + `harvest_page/<url-slug>/` directories (one per URL). See the `manifest.entries[]` shape — each entry has `page_type`, `mode`, `text_excerpt`, `images[]`, `videos[]`, and optional `scroll_recording`. The manifest also contains a top-level **`pending_downloads[]`** — every YouTube/Bilibili URL the harvester detected (either passed in `--urls` directly or found embedded on a page). The harvester deliberately does **not** invoke yt-dlp itself; see Phase 3.b.
+Outputs: `harvest_page/manifest.json` + `harvest_page/<url-slug>/` directories (one per URL). See the `manifest.entries[]` shape — each entry has `page_type`, `mode`, `text_excerpt`, `images[]`, `videos[]`, and optional `scroll_recording`. The manifest also contains a top-level **`pending_downloads[]`** — every YouTube/Bilibili URL the harvester detected (either passed in `--urls` directly or found embedded on a page).
 
 ### Phase 3.b — Resolve pending video downloads
 
@@ -267,14 +267,14 @@ Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entr
 ```
 
 - `entries[*].slug` is unique per URL and matches the harvest output directory name.
-- Each image/video gets an `id` (the file stem the harvester already wrote, e.g. `img_001` or the YouTube video id). Scenes in Phase 7 reference materials by `{entry_slug, asset_id}` — never by raw `local_path`, which is brittle.
+- Every image/video carries an `id` (file stem the harvester wrote, e.g. `img_001` or the YouTube video id). Phases 5/7/10 cite materials via a **`material_ref`** — the schema is defined where it's first used in Phase 7. Never reference a raw `local_path` outside the resolution step in Phase 10.
 - `semantic_description` is the VLM-generated caption; Phase 10 uses it to pick the best GSAP effect.
 
 **Outputs:** `extract_frames/<slug>/<video-name>/`, `vision_analyze/<slug>/`, `material-catalog.json`.
 
 ### Phase 5 — Write Narration Script
 
-**Inputs:** the research brief from Phase 2 + `material-catalog.json` from Phase 4 + the user's preferred angle/length. Reference specific catalog entries when annotating each scene's recommended visual — cite them as `{entry_slug, asset_id}` (and `clip_index` for video chunks); the actual `local_path` resolution happens in Phase 10.
+**Inputs:** the research brief from Phase 2 + `material-catalog.json` from Phase 4 + the user's preferred angle/length. Annotate each scene with a recommended `material_ref` (the full schema is defined in Phase 7); the actual `local_path` resolution happens in Phase 10.
 
 Goals:
 - Use **only facts from the research brief** — every number, name, date, and quote must be traceable.
@@ -452,13 +452,12 @@ done
 | Ken Burns animation jitters | Image too small, upscaled poorly | Use source images ≥1920px wide; `object-fit: cover` |
 | `harvest-pages.py` blocked by cookie banner | EU/cookie wall absorbs scroll/clicks | Re-run after accepting the banner once in the shared profile (`~/.hermes/workspace/chrome_profile`) — cookie state persists across CDP sessions |
 | `harvest-pages.py` returns 0 images on a real gallery | Lazy-loaded images need scroll | Already handled (auto-scroll-to-bottom); if still 0, raise `--page-load-timeout` |
-| YouTube download fails with 410 / geoblock | yt-dlp upstream issue (manifests in Phase 3.b) | Leave that `videos[]` entry with `download_required: true`; Phase 4 ignores it. If the clip is essential, `web_search` for a re-uploaded mirror and rerun `harvest-pages.py` with the new URL |
+| External video download fails | yt-dlp upstream issue (geoblock, age-gate, 410, etc.) — manifests in Phase 3.b | Leave that `videos[]` entry with `download_required: true`; Phase 4 ignores it. If the clip is essential, `web_search` for a re-uploaded mirror and rerun `harvest-pages.py` with the new URL |
 | Playwright import error | venv missing playwright | `pip install playwright` — NO `playwright install chromium` (we use system Chrome over CDP) |
 | `Chrome exited immediately` from `harvest-pages.py` | Profile dir already locked by another Chrome | Close other Chrome instances using `~/.hermes/workspace/chrome_profile`, or pass a different `--profile-dir` |
 | Chrome exits with `Missing X server or $DISPLAY` | No display in container/SSH session | `harvest-pages.py` auto-detects this (`--headless auto` checks `DISPLAY`). Force with `--headless on` if auto-detect misfires |
 | Chrome exits with sandbox errors as root | Running inside a container | `--no-sandbox` is auto-enabled when running as root or inside Docker; pass explicitly with `--no-sandbox` if needed |
 | CDP port 9222 busy with the wrong Chrome | Another tool launched Chrome on that port | If it's a Chrome we WANT, that's fine (reuse). If not, pass `--cdp-url http://localhost:9223` |
-| `harvest-pages.py` picks search-result pages | Agent included google.com/bing.com in `--urls` | Re-read Phase 3 URL selection rules; exclude search/feed/aggregator pages |
 | Scene references an asset not in `material-catalog.json` | Phase 7 wrote a `material_ref` whose `entry_slug`/`asset_id` pair doesn't resolve in the catalog, or skipped `material_ref` entirely | Re-run Phase 4 vision-analyze and re-build the catalog; every scene must have a `material_ref` that resolves via `entry_slug → asset_id` (and `clip_index` for videos). If no entry fits, harvest more URLs (Phase 3) — do not invent or borrow generic stock assets |
 | HyperFrames scene shows nothing where a video clip was planned | Embedded the full source video instead of cutting `selected_clips[clip_index]`, OR added a GSAP image animation on top of a `<video>` element | Use `ffmpeg -ss <start> -to <end>` to cut the clip into the project's `videos/` dir; embed as `<video class="clip">` with no GSAP animation — the clip carries its own motion |
 

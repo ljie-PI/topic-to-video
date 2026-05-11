@@ -40,7 +40,6 @@ import shutil
 import subprocess
 import sys
 import time
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -408,22 +407,38 @@ async (durationMs) => {
 # Per-URL processing
 # -----------------------------------------------------------------------------
 
+# YouTube/Bilibili URL pattern catalogue. Shared between `normalize_youtube`
+# (turns embed/short/youtu.be forms into the canonical watch URL) and
+# `detect_watchable_platform` (decides whether a URL is yt-dlp-fetchable
+# without going through the browser). Compiled once; case-insensitive on host.
+_VIDEO_ID = r'[A-Za-z0-9_-]{6,}'
+_YT_NORMALIZE_PATTERNS = [
+    re.compile(rf'^https?://(?:www\.)?youtube(?:-nocookie)?\.com/embed/({_VIDEO_ID})', re.IGNORECASE),
+    re.compile(rf'^https?://youtu\.be/({_VIDEO_ID})', re.IGNORECASE),
+    re.compile(rf'^https?://(?:www\.|m\.)?youtube\.com/shorts/({_VIDEO_ID})', re.IGNORECASE),
+]
+_YT_DETECT_PATTERNS = [
+    re.compile(r'^https?://(?:(?:www|m)\.)?youtube\.com/watch\?', re.IGNORECASE),
+    re.compile(rf'^https?://youtu\.be/{_VIDEO_ID}', re.IGNORECASE),
+    re.compile(rf'^https?://(?:(?:www|m)\.)?youtube\.com/shorts/{_VIDEO_ID}', re.IGNORECASE),
+    re.compile(rf'^https?://(?:www\.)?youtube(?:-nocookie)?\.com/embed/{_VIDEO_ID}', re.IGNORECASE),
+]
+_BILI_DETECT_PATTERNS = [
+    re.compile(r'^https?://(?:www\.|m\.)?bilibili\.com/video/(?:BV[A-Za-z0-9]+|av\d+)', re.IGNORECASE),
+    re.compile(r'^https?://b23\.tv/[A-Za-z0-9]+', re.IGNORECASE),
+]
+
+
 def normalize_youtube(url: str) -> str:
     """Normalize youtube iframe/short URLs to canonical watch URLs (best-effort).
 
-    Host matching is case-insensitive because RFC 3986 allows uppercase hostnames
-    (e.g. copied from URL-encoded params or legacy bookmarks); video IDs keep
-    their case (preserved by the capture group).
+    Host matching is case-insensitive (RFC 3986 allows uppercase hostnames);
+    the video-ID capture group preserves case.
     """
-    m = re.match(r'^https?://(?:www\.)?youtube(?:-nocookie)?\.com/embed/([A-Za-z0-9_-]{6,})', url, re.IGNORECASE)
-    if m:
-        return f'https://www.youtube.com/watch?v={m.group(1)}'
-    m = re.match(r'^https?://youtu\.be/([A-Za-z0-9_-]{6,})', url, re.IGNORECASE)
-    if m:
-        return f'https://www.youtube.com/watch?v={m.group(1)}'
-    m = re.match(r'^https?://(?:www\.|m\.)?youtube\.com/shorts/([A-Za-z0-9_-]{6,})', url, re.IGNORECASE)
-    if m:
-        return f'https://www.youtube.com/watch?v={m.group(1)}'
+    for pat in _YT_NORMALIZE_PATTERNS:
+        m = pat.match(url)
+        if m:
+            return f'https://www.youtube.com/watch?v={m.group(1)}'
     return url
 
 
@@ -439,17 +454,9 @@ def detect_watchable_platform(url: str) -> Optional[str]:
     if not url:
         return None
     u = url.strip()
-    if re.match(r'^https?://(?:(?:www|m)\.)?youtube\.com/watch\?', u, re.IGNORECASE):
+    if any(pat.match(u) for pat in _YT_DETECT_PATTERNS):
         return 'youtube'
-    if re.match(r'^https?://youtu\.be/[A-Za-z0-9_-]{6,}', u, re.IGNORECASE):
-        return 'youtube'
-    if re.match(r'^https?://(?:(?:www|m)\.)?youtube\.com/shorts/[A-Za-z0-9_-]{6,}', u, re.IGNORECASE):
-        return 'youtube'
-    if re.match(r'^https?://(?:www\.)?youtube(?:-nocookie)?\.com/embed/[A-Za-z0-9_-]{6,}', u, re.IGNORECASE):
-        return 'youtube'
-    if re.match(r'^https?://(?:www\.|m\.)?bilibili\.com/video/(?:BV[A-Za-z0-9]+|av\d+)', u, re.IGNORECASE):
-        return 'bilibili'
-    if re.match(r'^https?://b23\.tv/[A-Za-z0-9]+', u, re.IGNORECASE):
+    if any(pat.match(u) for pat in _BILI_DETECT_PATTERNS):
         return 'bilibili'
     return None
 
@@ -821,24 +828,28 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
 # Driver
 # -----------------------------------------------------------------------------
 
-def main() -> None:
-    args = parse_args()
-    try:
-        viewport = parse_viewport(args.viewport)
-    except ValueError as exc:
-        fail(str(exc), exit_code=2)
+def partition_urls(
+    raw_urls: List[str],
+) -> Tuple[List[Tuple[str, str, Optional[str]]], List[Dict[str, str]]]:
+    """Dedupe `raw_urls`, drop non-http(s), assign a unique slug to each, and
+    classify whether each URL is a yt-dlp-fetchable watch page.
 
-    output_dir = Path(args.output_dir).expanduser().resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
+    Returns (items, bad_urls) where:
+      - items[i] = (url, slug, platform_or_None). `platform_or_None` is the
+        return value of `detect_watchable_platform` and signals the short-circuit
+        path (no Playwright render).
+      - bad_urls is the list of `{url, error}` rejected entries the manifest
+        surfaces under `rejected`.
 
-    # dedupe URL list preserving order, and reject any URL whose scheme isn't http(s).
-    # Without this guard `harvest-pages.py file:///etc/passwd` or `chrome://settings`
-    # would be passed straight to Playwright and could read local files or trigger
-    # privileged Chrome UIs.
-    seen = set()
-    urls = []
+    The scheme guard rejects `file://`, `chrome://`, `javascript:`, etc. so a
+    caller can't trick Playwright into reading local files or triggering
+    privileged Chrome UIs.
+    """
+    seen: set = set()
+    used_slugs: set = set()
+    items: List[Tuple[str, str, Optional[str]]] = []
     bad_urls: List[Dict[str, str]] = []
-    for u in args.urls:
+    for u in raw_urls:
         if u in seen:
             continue
         seen.add(u)
@@ -850,14 +861,73 @@ def main() -> None:
             bad_urls.append({'url': u, 'error': f'unsupported URL scheme {scheme!r}; only http(s) is allowed'})
             log(f'  reject: {u} (scheme={scheme!r} — only http/https allowed)')
             continue
-        urls.append(u)
-    if not urls:
+        s = slugify_url(u)
+        base, n = s, 2
+        while s in used_slugs:
+            s = f'{base}-{n}'
+            n += 1
+        used_slugs.add(s)
+        items.append((u, s, detect_watchable_platform(u)))
+    return items, bad_urls
+
+
+def aggregate_pending_downloads(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Collect every external video URL that still needs yt-dlp into a flat list
+    so the agent can iterate one array instead of nested-looping
+    `entries[].videos[]`.
+
+    Deduplicate by canonical URL. The same clip is frequently embedded on
+    multiple pages of the same batch (homepage + GitHub README is a common
+    pattern); downloading it twice into two per-slug directories wastes
+    bandwidth and risks yt-dlp rate-limiting. The first occurrence's
+    `suggested_output_dir` wins; additional referrers go into
+    `also_referenced_by` so Phase 3.b can fan out the `local_path` update to
+    every metadata.json that points at the same clip.
+    """
+    pending: List[Dict[str, Any]] = []
+    index: Dict[str, int] = {}
+    for e in entries:
+        if not e.get('success'):
+            continue
+        for v in e.get('videos', []) or []:
+            if not v.get('download_required'):
+                continue
+            url_key = v.get('url', '')
+            if not url_key:
+                continue
+            if url_key in index:
+                pending[index[url_key]].setdefault('also_referenced_by', []).append(
+                    e.get('slug', '')
+                )
+                continue
+            index[url_key] = len(pending)
+            pending.append({
+                'url': url_key,
+                'platform': v.get('platform', ''),
+                'suggested_output_dir': v.get('suggested_output_dir', ''),
+                'source_slug': e.get('slug', ''),
+            })
+    return pending
+
+
+def main() -> None:
+    args = parse_args()
+    try:
+        viewport = parse_viewport(args.viewport)
+    except ValueError as exc:
+        fail(str(exc), exit_code=2)
+
+    output_dir = Path(args.output_dir).expanduser().resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    items, bad_urls = partition_urls(args.urls)
+    if not items:
         fail(
             'no http(s) URLs to harvest after scheme filtering. '
             f'Rejected: {[b["url"] for b in bad_urls]}',
             exit_code=2,
         )
-    log(f'Batch size: {len(urls)} URL(s); output={output_dir}'
+    log(f'Batch size: {len(items)} URL(s); output={output_dir}'
         + (f' (rejected {len(bad_urls)} non-http(s) URL(s))' if bad_urls else ''))
 
     # ensure Playwright is available (only required when at least one URL needs rendering)
@@ -866,18 +936,6 @@ def main() -> None:
     except Exception:
         # Defer the hard failure until we know we actually need a browser.
         sync_playwright = None  # type: ignore
-
-    # Pre-allocate per-URL slugs in order, and classify each URL.
-    used_slugs: set = set()
-    items: List[Tuple[str, str, Optional[str]]] = []  # (url, slug, platform_or_None)
-    for u in urls:
-        s = slugify_url(u)
-        base, n = s, 2
-        while s in used_slugs:
-            s = f'{base}-{n}'
-            n += 1
-        used_slugs.add(s)
-        items.append((u, s, detect_watchable_platform(u)))
 
     needs_chrome = any(plat is None for _, _, plat in items)
     direct_count = sum(1 for _, _, plat in items if plat is not None)
@@ -975,43 +1033,15 @@ def main() -> None:
             except Exception:
                 pass
 
-    # Aggregate pending external downloads across the batch so the agent can
-    # iterate one list instead of nested-looping entries[].videos[]. Deduplicate
-    # by canonical URL — the same YouTube clip is frequently embedded on the
-    # homepage AND the GitHub README, and downloading it twice (to two
-    # different per-slug directories) wastes bandwidth. We keep the first
-    # occurrence's suggested_output_dir and record the additional source slugs
-    # under `also_referenced_by` for debuggability.
-    pending_downloads: List[Dict[str, Any]] = []
-    pending_index: Dict[str, int] = {}
-    for e in entries:
-        if not e.get('success'):
-            continue
-        for v in e.get('videos', []) or []:
-            if not v.get('download_required'):
-                continue
-            url_key = v.get('url', '')
-            if not url_key:
-                continue
-            if url_key in pending_index:
-                idx = pending_index[url_key]
-                pending_downloads[idx].setdefault('also_referenced_by', []).append(
-                    e.get('slug', '')
-                )
-                continue
-            pending_index[url_key] = len(pending_downloads)
-            pending_downloads.append({
-                'url': url_key,
-                'platform': v.get('platform', ''),
-                'suggested_output_dir': v.get('suggested_output_dir', ''),
-                'source_slug': e.get('slug', ''),
-            })
+    # Aggregate pending external downloads across the batch (deduplicated by
+    # canonical URL). See aggregate_pending_downloads docstring.
+    pending_downloads = aggregate_pending_downloads(entries)
 
     batch_success = succeeded > 0
     manifest = {
         'success': batch_success,
         'output_dir': str(output_dir),
-        'batch_size': len(urls),
+        'batch_size': len(items),
         'succeeded': succeeded,
         'entries': entries,
     }
@@ -1031,7 +1061,7 @@ def main() -> None:
         log(f'manifest.json save failed: {exc}')
 
     print(json.dumps(manifest, ensure_ascii=False))
-    log(f'Done. {succeeded}/{len(urls)} entries succeeded.')
+    log(f'Done. {succeeded}/{len(items)} entries succeeded.')
     if not batch_success:
         raise SystemExit(1)
 
