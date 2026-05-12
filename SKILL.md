@@ -109,12 +109,22 @@ Parse script results with: `result=$(python3 script.py ... 2>/dev/null)` or capt
 **Process:**
 
 1. **If the user gave a URL** → `web_fetch` it FIRST. Read the full content. This is the spine of the video.
-2. **Identify what you don't know.** What numbers, names, dates, or technical specifics would make the script concrete? List them.
-3. **Run targeted searches.** Use `web_search` for each unknown — typical: 3-6 searches per video. Examples:
+2. **Run Gemini Deep Research** (when available). This is the primary research backbone — it produces a comprehensive, sourced report far richer than manual web searches.
+   ```bash
+   scripts/gemini-deep-research.py \
+     --prompt "Comprehensive overview of [topic]: history, key developments, notable figures, technical details, latest news" \
+     --output-dir ~/.hermes/workspace/{topic_name}/
+   ```
+   - Outputs: `gemini_deep_research.md` (full report) + `gemini_deep_research_sources.json` (cited URLs)
+   - Read the report; it becomes the primary source. The `sources.json` feeds into Phase 3 material harvest.
+   - **Skip Gemini Deep Research when:** Chrome is not running / Gemini login unavailable, user says "skip deep research", or topic is a simple re-narration of user-provided text.
+   - **If it fails:** Fall back to manual web_search workflow (steps 3-4 below become the primary research path). Check `failed_step` in the error JSON — you can retry with `--start-from-step N`.
+3. **Identify gaps.** Whether Gemini ran or not, check: what numbers, names, dates, or technical specifics are missing or unverified? List them.
+4. **Run targeted searches.** Use `web_search` for each gap — typical: 2-4 searches if Gemini ran (filling gaps), 3-6 if it didn't (full research). Examples:
    - "Boris Cherny Anthropic interview Sequoia 2026" → confirm names, dates, quotes
    - "Claude Code MCP launch date" → date specifics
    - "GPU vs CPU AI training memory bandwidth" → technical numbers
-4. **Synthesize a research brief** in your scratchpad. Format:
+5. **Synthesize a research brief** in your scratchpad. Format:
    ```
    ## Key facts (verified)
    - [fact, source]
@@ -128,8 +138,18 @@ Parse script results with: `result=$(python3 script.py ... 2>/dev/null)` or capt
 
    ## Open questions / contradictions
    - [thing you couldn't verify cleanly — flag in script as "据报道" or remove]
+
+   ## Source URLs (for Phase 3 harvest)
+   - [url] — [page type: official site / blog / GitHub / docs / YouTube]
+   - [url] — [page type]
+   ...
    ```
-5. **Show the research brief to the user before writing the script.** They may add context, correct a misreading, or narrow the angle. ~1 round of feedback typically.
+   The **Source URLs** section is critical — it's the explicit handoff to Phase 3. Populate from:
+   1. The user-provided URL (always first).
+   2. URLs from `gemini_deep_research_sources.json`, filtered to match Phase 3's INCLUDE page types (official sites, GitHub, docs, blogs, YouTube — not aggregators or social feeds).
+   3. URLs discovered via `web_search` that match INCLUDE page types.
+   Aim for **4-8 source URLs** covering diverse visual material types.
+6. **Show the research brief to the user before writing the script.** They may add context, correct a misreading, or narrow the angle. ~1 round of feedback typically.
 
 **Skip research only when:**
 - The user explicitly says "skip research, use this exact text" + provides full content
@@ -167,8 +187,9 @@ EXCLUDE (low yield, often bot-blocked):
 Sources for picking URLs (in order of preference):
 
 1. The URL the user provided (always include if they gave one).
-2. URLs surfaced during Phase 2 research (web_search results) matching the page types above. Prefer official-domain URLs over secondary coverage.
-3. If still <3 URLs, run one more web_search like `"{topic} official site"`, `"{topic} github"`, `"{topic} documentation"`.
+2. URLs listed in the research brief's **Source URLs** section — these were pre-filtered during Phase 2 to match harvest-worthy page types.
+3. URLs from `gemini_deep_research_sources.json` (if Gemini Deep Research ran) not already covered above — filter against the INCLUDE/EXCLUDE rules.
+4. If still <3 URLs, run one more web_search like `"{topic} official site"`, `"{topic} github"`, `"{topic} documentation"`.
 
 #### Running harvest-pages.py
 
@@ -501,6 +522,7 @@ don't try to hand-patch the composition from the main agent.
 - `scripts/extract-frames.py` — FFmpeg frame extraction (uniform sampling or time window)
 - `scripts/subtitle-parse.py` — SRT/VTT parser with keyword filtering
 - `scripts/vision-analyze.py` — model-agnostic vision analysis: calls any OpenAI-compatible VLM via `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL`, or delegates to the agent's `view` tool when no VLM is configured
+- `scripts/gemini-deep-research.py` — Playwright/CDP automation for Google Gemini's Deep Research. Takes a research prompt, submits it to gemini.google.com, waits for the full report, and extracts the result as Markdown + cited sources JSON. Used in Phase 2 as the primary research backbone. Outputs: `gemini_deep_research.md` + `gemini_deep_research_sources.json`. Supports `--start-from-step N` for retry on failure.
 - `scripts/harvest-pages.py` — Playwright/CDP batch URL harvester: takes an array of URLs (official sites, GitHub, docs, etc.), extracts ≥512px images and embedded videos per URL, OR records a scroll-through video for text-heavy pages. Downloads native HTML5 `<video>` clips inline; **lists** YouTube/Bilibili URLs in `manifest.pending_downloads[]` for Phase 3.b to fetch. Reuses one Chrome process across the whole batch.
 - `scripts/video-download.py` — yt-dlp wrapper for YouTube/Bilibili. Called by the agent in Phase 3.b, once per `pending_downloads[]` entry.
 - `references/design-dawn.md` — Rosé Pine Dawn handdrawn warm style reference (optional input to the Phase 8 brief)
@@ -516,7 +538,7 @@ The material processing scripts require additional dependencies beyond the base 
 
 - **ffmpeg/ffprobe** (for frame extraction): usually pre-installed on Linux
 - **playwright** (Python bindings only, ~3 MB) for `harvest-pages.py`: `pip install playwright`. NO `playwright install chromium` — we attach to system Chrome over CDP.
-- **system Chrome** (already at `/usr/bin/google-chrome` on this machine): auto-launched on demand with `--remote-debugging-port=9222 --user-data-dir=~/.hermes/workspace/chrome_profile`. Shared with the `gemini-deep-research` agent so cookies/logins persist.
+- **system Chrome** (already at `/usr/bin/google-chrome` on this machine): auto-launched on demand with `--remote-debugging-port=9222 --user-data-dir=~/.hermes/workspace/chrome_profile`. Shared across `gemini-deep-research.py` and `harvest-pages.py` so cookies/logins persist. **Gemini Deep Research requires a logged-in Google account** — log in once manually via the shared Chrome profile.
 - **yt-dlp** (for `video-download.py`): on PATH (`/home/jieliu1/.local/bin/yt-dlp`).
 - **vision model** (optional): set `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` to enable `vision-analyze.py` Mode 1 (e.g. point at DashScope's OpenAI-compatible endpoint with `qwen-vl-max`). When unset, the script delegates to the calling agent's own `view` tool — no extra dependency required.
 - **coding sub-agent** (Phase 8): GitHub `copilot` CLI or `claude` CLI on PATH, with the `hyperframes` skill installed under `~/.hermes/hermes-agent/optional-skills/creative/hyperframes/`.
