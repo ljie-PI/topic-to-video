@@ -10,8 +10,8 @@ Given an array of URLs, this tool decides per URL whether to:
 Browser model: attaches over CDP (default http://localhost:9222) to a Chrome
 process. If no CDP responder is reachable, auto-launches system Chrome with
 --user-data-dir=<profile-dir>. Profile defaults to
-~/.hermes/workspace/chrome_profile and is SHARED with TuberUp's
-gemini-deep-research. Chrome is left running on exit so subsequent invocations
+./chrome_profile and is SHARED with
+gemini-deep-research.py. Chrome is left running on exit so subsequent invocations
 reconnect instantly.
 
 Usage:
@@ -46,12 +46,22 @@ from urllib.parse import urlparse
 
 TOOL_NAME = 'harvest-pages'
 DEFAULT_CDP_URL = 'http://localhost:9222'
-DEFAULT_PROFILE_DIR = '~/.hermes/workspace/chrome_profile'
-CHROME_CANDIDATES = [
+DEFAULT_PROFILE_DIR = './chrome_profile'
+CHROME_CANDIDATES_LINUX = [
     '/usr/bin/google-chrome',
     '/usr/bin/google-chrome-stable',
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
+]
+CHROME_CANDIDATES_MAC = [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+]
+CHROME_CANDIDATES_WIN = [
+    os.path.expandvars(r'%ProgramFiles%\Google\Chrome\Application\chrome.exe'),
+    os.path.expandvars(r'%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe'),
+    os.path.expandvars(r'%LocalAppData%\Google\Chrome\Application\chrome.exe'),
 ]
 CDP_READY_TIMEOUT_S = 15.0
 CDP_POLL_INTERVAL_S = 0.5
@@ -137,13 +147,24 @@ def slugify_url(url: str) -> str:
 # CDP / browser setup
 # -----------------------------------------------------------------------------
 
+def _chrome_candidates() -> list:
+    """Return Chrome candidate paths for the current platform."""
+    import platform
+    s = platform.system()
+    if s == 'Darwin':
+        return CHROME_CANDIDATES_MAC
+    elif s == 'Windows':
+        return CHROME_CANDIDATES_WIN
+    return CHROME_CANDIDATES_LINUX
+
+
 def find_chrome(explicit: Optional[str]) -> Optional[str]:
     if explicit:
         return explicit if Path(explicit).is_file() else None
     env_path = os.environ.get('CHROME_PATH')
     if env_path and Path(env_path).is_file():
         return env_path
-    for cand in CHROME_CANDIDATES:
+    for cand in _chrome_candidates():
         if Path(cand).is_file():
             return cand
     return None
@@ -236,7 +257,7 @@ def ensure_cdp(args: argparse.Namespace) -> None:
     if not chrome_path:
         fail(
             'System Chrome not found. Tried: '
-            f'{", ".join(CHROME_CANDIDATES)}. '
+            f'{", ".join(_chrome_candidates())}. '
             'Install Chrome or pass --chrome-path.'
         )
     profile_dir = Path(args.profile_dir).expanduser()
