@@ -10,8 +10,8 @@ Given an array of URLs, this tool decides per URL whether to:
 Browser model: attaches over CDP (default http://localhost:9222) to a Chrome
 process. If no CDP responder is reachable, auto-launches system Chrome with
 --user-data-dir=<profile-dir>. Profile defaults to
-~/.hermes/workspace/chrome_profile and is SHARED with
-gemini-deep-research. Chrome is left running on exit so subsequent invocations
+./chrome_profile and is SHARED with
+gemini-deep-research.py. Chrome is left running on exit so subsequent invocations
 reconnect instantly.
 
 Usage:

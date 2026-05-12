@@ -12,7 +12,7 @@ invocations reconnect instantly.
 Usage:
   python3 gemini-deep-research.py \\
     --prompt "Comprehensive overview of quantum computing" \\
-    --output-dir ~/.hermes/workspace/quantum_computing/
+    --output-dir ./quantum_computing/
 
 Output convention:
   stdout : single JSON object
@@ -26,12 +26,11 @@ Output convention:
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 TOOL_NAME = 'gemini-deep-research'
@@ -204,14 +203,16 @@ def launch_chrome(chrome_path: str, cdp_url: str, profile_dir: Path,
     )
 
 
-def wait_for_cdp(cdp_url: str, proc: Optional[subprocess.Popen]) -> None:
+def wait_for_cdp(cdp_url: str, proc: Optional[subprocess.Popen],
+                 profile_dir: Optional[Path] = None) -> None:
     deadline = time.time() + CDP_READY_TIMEOUT_S
     while time.time() < deadline:
         if proc is not None and proc.poll() is not None:
+            profile_msg = str(profile_dir) if profile_dir else DEFAULT_PROFILE_DIR
             fail(
                 f'Chrome exited immediately (code {proc.returncode}). '
                 'Profile may be locked by another Chrome window. '
-                f'Profile path: {DEFAULT_PROFILE_DIR}. '
+                f'Profile path: {profile_msg}. '
                 'Close other Chrome instances using this profile, or pass a different --profile-dir.'
             )
         if cdp_ready(cdp_url):
@@ -239,7 +240,7 @@ def ensure_cdp(args: argparse.Namespace) -> None:
     proc = launch_chrome(chrome_path, args.cdp_url, profile_dir,
                          headless_mode=args.headless,
                          no_sandbox_flag=args.no_sandbox)
-    wait_for_cdp(args.cdp_url, proc)
+    wait_for_cdp(args.cdp_url, proc, profile_dir)
     log(f'CDP ready at {args.cdp_url} (chrome pid={proc.pid}; left running on exit)')
 
 
@@ -354,15 +355,14 @@ def run(args: argparse.Namespace) -> None:
     start = args.start_from_step
 
     with sync_playwright() as pw:
-        # Step 1: Connect to Chrome via CDP
-        if start <= 1:
-            log('Step 1: Connecting to Chrome via CDP...')
-            try:
-                ensure_cdp(args)
-            except SystemExit:
-                raise
-            except Exception as e:
-                fail(f'Step 1 failed: could not connect to Chrome: {e}', failed_step=1)
+        # Step 1: Connect to Chrome via CDP (always ensure CDP is ready)
+        log('Step 1: Connecting to Chrome via CDP...')
+        try:
+            ensure_cdp(args)
+        except SystemExit:
+            raise
+        except Exception as e:
+            fail(f'Step 1 failed: could not connect to Chrome: {e}', failed_step=1)
 
         try:
             browser = pw.chromium.connect_over_cdp(args.cdp_url)
@@ -379,9 +379,9 @@ def run(args: argparse.Namespace) -> None:
 
         # Step 2: Navigate
         if start <= 2:
-            log('Step 2: Navigating to Gemini...')
+            nav_url = args.page_url if args.page_url else GEMINI_URL
+            log(f'Step 2: Navigating to {nav_url}...')
             try:
-                nav_url = args.page_url if (args.page_url and start > 2) else GEMINI_URL
                 page.goto(nav_url, wait_until='domcontentloaded', timeout=30000)
                 page.wait_for_timeout(2000)
             except Exception as e:
@@ -466,18 +466,28 @@ def run(args: argparse.Namespace) -> None:
             log(f'Step 9: Waiting for research completion (timeout {args.timeout}s)...')
             try:
                 deadline = time.time() + args.timeout
+                prev_text_len = 0
+                stable_count = 0
                 while time.time() < deadline:
-                    # Check sources carousel
+                    # Primary signal: sources carousel appears
                     if page.locator(f'xpath={SEL["last_sources"]}').count() > 0:
                         log('Step 9: Sources carousel detected — research complete.')
                         break
-                    # Check message length
+                    # Secondary signal: message length stabilized (not growing)
+                    # This catches completion even if sources carousel doesn't render.
+                    # Require >=5000 chars AND stable for 3 consecutive checks (15s)
+                    # to avoid treating mid-stream output as complete.
                     last_msg = page.locator(f'xpath={SEL["last_message"]}')
                     if last_msg.count() > 0:
                         text_len = len(last_msg.first.inner_text() or '')
-                        if text_len >= 5000:
-                            log(f'Step 9: Last message has {text_len} chars — research complete.')
-                            break
+                        if text_len >= 5000 and text_len == prev_text_len:
+                            stable_count += 1
+                            if stable_count >= 3:
+                                log(f'Step 9: Message stable at {text_len} chars for 15s — research complete.')
+                                break
+                        else:
+                            stable_count = 0
+                        prev_text_len = text_len
                     page.wait_for_timeout(5000)
                 else:
                     fail(f'Step 9 failed: research did not complete within {args.timeout}s.', failed_step=9)

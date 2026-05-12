@@ -74,7 +74,7 @@ Each video project lives under `{work_dir}/{topic_name}/`, where `topic_name` is
     └── renders/final.mp4       #   ↳ rendered with --workers 1
 ```
 
-Plus one shared (cross-topic) browser profile reused across the `harvest-pages.py` tool and TuberUp's `gemini-deep-research`:
+Plus one shared (cross-topic) browser profile reused across `harvest-pages.py` and `gemini-deep-research.py`:
 
 `{work_dir}/chrome_profile/` — do NOT delete; cookies, logins, and site preferences accumulate here.
 
@@ -119,7 +119,7 @@ Parse script results with: `result=$(python3 script.py ... 2>/dev/null)` or capt
    ```
    - Outputs: `gemini_deep_research.md` (full report) + `gemini_deep_research_sources.json` (cited URLs)
    - Read the report; it becomes the primary source. The `sources.json` feeds into Phase 3 material harvest.
-   - **Skip Gemini Deep Research when:** Chrome is not running / Gemini login unavailable, user says "skip deep research", or topic is a simple re-narration of user-provided text.
+   - **Skip Gemini Deep Research when:** Gemini login unavailable (not logged in via the shared Chrome profile), user says "skip deep research", or topic is a simple re-narration of user-provided text.
    - **If it fails:** Fall back to manual web_search workflow (steps 3-4 below become the primary research path). Check `failed_step` in the error JSON — you can retry with `--start-from-step N`.
 3. **Identify gaps.** Whether Gemini ran or not, check: what numbers, names, dates, or technical specifics are missing or unverified? List them.
 4. **Run targeted searches.** Use `web_search` for each gap — typical: 2-4 searches if Gemini ran (filling gaps), 3-6 if it didn't (full research). Examples:
