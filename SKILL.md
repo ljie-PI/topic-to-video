@@ -32,6 +32,36 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 9. **Material selection happens in Phase 4, not Phase 5.** The agent picks 3-6 URLs in Phase 3 and passes them as one array to `harvest-pages.py`. In Phase 4, run vision-analyze on every image and every video's extracted frames, then write `material-catalog.json` with `selected_clips`. The narration script (Phase 5) only references catalog entries — never a raw harvest result. Prevents writing a scene around a video span that turns out to be a transition or an ad.
 10. **Composition + render is delegated.** Phases 8 onward run in a coding sub-agent (Copilot CLI / Claude Code) with the `hyperframes` skill loaded — not in the main agent. The main agent's job ends at producing the inputs the brief points at; the sub-agent owns scaffold / DESIGN.md / composition / lint / render. Do not try to hand-write `index.html` from the main conversation.
 
+## Checkpoint & Resume
+
+**Before running any tool, check if its output already exists in the workspace.** If a previous run (or a previous session) already produced the expected output files, skip the tool and reuse the existing results. This enables resuming from any breakpoint without re-running expensive operations (TTS, ASR, Gemini Deep Research, harvest, etc.).
+
+### Per-Phase Skip Conditions
+
+| Phase | Tool / Action | Skip if these files exist | What to do on skip |
+|-------|--------------|--------------------------|-------------------|
+| 2 | `gemini-deep-research.py` | `gemini_deep_research.md` (non-empty) | Read the existing report; proceed to gap-filling web_search |
+| 3 | `harvest-pages.py` | `harvest_page/manifest.json` with non-empty `entries[]` | Read manifest; proceed to Phase 3.b |
+| 3.b | `video-download.py` (per URL) | Target video file exists in `harvest_page/<slug>/videos/` AND `metadata.json` has `download_required: false` | Skip that URL's download |
+| 4 | `extract-frames.py` (per video) | `extract_frames/<slug>/<video>/` dir with ≥1 JPEG | Skip extraction for that video |
+| 4 | `vision-analyze.py` (per asset) | Asset already has `semantic_description` in `material-catalog.json` | Skip vision analysis for that asset |
+| 4 | `material-catalog.json` | File exists with `entries[].selected_clips` populated | Skip entire Phase 4; read catalog directly |
+| 5 | narration script | `narration.txt` exists (non-empty) | Read it; still show to user for approval before Phase 6 |
+| 6 | `voice-clone-template.py` | `voice_clone/narration.mp3` exists | Skip TTS; verify duration with ffprobe |
+| 7 | `transcribe-paraformer.py` | `transcribe/transcript.json` exists (non-empty) | Skip ASR |
+| 7 | `scene-anchor.py` | `transcribe/scene-timing.json` exists (non-empty) | Skip anchoring |
+| 7.5 | `fonts-download.sh` | `fonts/` dir contains ≥1 `.woff2` file | Skip font download |
+| 8 | composition sub-agent | `composition/renders/final.mp4` exists | Skip composition; verify video playability |
+
+### Resume Behavior
+
+1. **Workspace discovery happens in Phase 1** — after the `topic_name` slug is determined. The agent checks if `{work_dir}/{topic_name}/` exists, scans for outputs, and asks the user whether to resume or start fresh. This is the entry point for all checkpoint logic.
+2. **At the start of each phase**, check the skip condition. Log what was found: `"Phase 3 checkpoint: harvest_page/manifest.json exists with 5 entries — skipping harvest-pages.py"`
+3. **Read existing outputs** as if the tool just produced them. The downstream phases need the data, not the execution.
+4. **If an output file exists but is corrupt or incomplete** (e.g., 0-byte file, truncated JSON), delete it and re-run the tool.
+5. **User can force re-run** by saying "re-run phase N" or "redo harvest" — in that case, ignore the checkpoint and execute normally.
+6. **Phase 1 and Phase 2 (web_search) have no file checkpoints** — they produce in-memory research briefs. For these, check if the user previously approved a brief in the conversation context; if resuming after a context reset, ask the user if they want to skip research.
+
 ## Output Conventions
 
 All scripts in this skill follow a unified output protocol:
@@ -103,6 +133,15 @@ Parse script results with: `result=$(python3 script.py ... 2>/dev/null)` or capt
 6. Ask whether to search for visual materials (images/video clips) to enrich scenes. Default: yes.
 
 **If a sister project already exists** (e.g. user says "same style as `claude-code-video/`"), copy `composition/DESIGN.md` + `fonts/` from it and note "reuse this DESIGN.md" inside the brief; the sub-agent will skip fresh design and font work.
+
+**Workspace discovery (checkpoint entry point):** After determining the `topic_name` slug, check if `{work_dir}/{topic_name}/` already exists:
+```
+ls {work_dir}/{topic_name}/ 2>/dev/null
+```
+If the directory exists and contains output files, scan against the checkpoint table (see "Checkpoint & Resume" section) and report to the user:
+> "Found existing workspace for `{topic_name}`. Detected outputs: [harvest (5 URLs), TTS, ASR, scene-timing]. Resume from Phase 5 (narration)? Or start fresh?"
+
+Wait for user confirmation before proceeding. This is the **only** mechanism by which the agent discovers a prior run — without a workspace directory, there is nothing to resume from.
 
 ### Phase 2 — Topic Research (CRITICAL — do this BEFORE writing)
 
