@@ -14,7 +14,7 @@ A short narrated video (60-120s) using:
 - **Paraformer** (via DashScope) for word-level ASR timestamps
 - A configurable visual style: default Rosé Pine Dawn handdrawn × Notion minimalism, or optional Rosé Pine Moon Serious for darker technical/editorial videos
 
-**Output:** `~/.hermes/workspace/{topic_name}/composition/renders/final.mp4` ready to publish (produced by the Phase 8 coding sub-agent).
+**Output:** `{work_dir}/{topic_name}/composition/renders/final.mp4` ready to publish (produced by the Phase 8 coding sub-agent).
 
 ## Iron Rules (Non-Negotiable)
 
@@ -28,7 +28,7 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 5. **Use Google Fonts woff2, never `fc-match` system fonts.** System Chinese fonts (e.g. `AR PL UKai CN`) trigger `[Compiler] No deterministic font mapping` at render. Download the selected style's fonts with `scripts/fonts-download.sh`: Dawn = handdrawn fonts; Moon = `NotoSerifSC`/`NotoSansSC`/`IBMPlexMono`.
 6. **`Caveat` and `PatrickHand` have NO Chinese glyphs.** They are Dawn-only English/numeric handwriting fonts. For Dawn mixed Chinese + Latin text, split by script: Chinese spans use `MaShanZheng`/`LongCang`; English/numeric spans use `Caveat`/`PatrickHand`. For Moon, use `NotoSerifSC`/`NotoSansSC` for Chinese and `IBMPlexMono` for English/data/code. Do not rely on fallback chains for mixed badges.
 7. **Material search is optional but recommended.** Phase 3-4 can be skipped if user says "skip materials" or provides all visual content. But for most topics, harvested images and clips make scenes 10× more engaging than text-only.
-8. **Every on-screen asset must trace to `material-catalog.json`.** Keep tool outputs under `~/.hermes/workspace/{topic_name}/` using the standard subdirectories (`harvest_page/`, `extract_frames/`, `vision_analyze/`, `fonts/`, `composition/`). The coding sub-agent in Phase 8 resolves `material_ref` → catalog entry → `local_path`; no catalog citation → no asset on screen. Never invent or borrow generic stock assets.
+8. **Every on-screen asset must trace to `material-catalog.json`.** Keep tool outputs under `{work_dir}/{topic_name}/` using the standard subdirectories (`harvest_page/`, `extract_frames/`, `vision_analyze/`, `fonts/`, `composition/`). The coding sub-agent in Phase 8 resolves `material_ref` → catalog entry → `local_path`; no catalog citation → no asset on screen. Never invent or borrow generic stock assets.
 9. **Material selection happens in Phase 4, not Phase 5.** The agent picks 3-6 URLs in Phase 3 and passes them as one array to `harvest-pages.py`. In Phase 4, run vision-analyze on every image and every video's extracted frames, then write `material-catalog.json` with `selected_clips`. The narration script (Phase 5) only references catalog entries — never a raw harvest result. Prevents writing a scene around a video span that turns out to be a transition or an ad.
 10. **Composition + render is delegated.** Phases 8 onward run in a coding sub-agent (Copilot CLI / Claude Code) with the `hyperframes` skill loaded — not in the main agent. The main agent's job ends at producing the inputs the brief points at; the sub-agent owns scaffold / DESIGN.md / composition / lint / render. Do not try to hand-write `index.html` from the main conversation.
 
@@ -38,10 +38,12 @@ All scripts in this skill follow a unified output protocol:
 
 ### Workspace Layout
 
-Each video project lives under `~/.hermes/workspace/{topic_name}/`, where `topic_name` is a 2-5 word slug derived from the topic (e.g., `claude-code-review`, `gpu-ai-training`). Tool outputs go into per-tool subdirectories:
+`{work_dir}` is the root directory for all project outputs. It defaults to the current working directory (`.`) but can be overridden by the caller via `work_dir` or `workDir` parameter when invoking the skill. All tool `--output-dir` arguments and file paths in this document are relative to `{work_dir}`.
+
+Each video project lives under `{work_dir}/{topic_name}/`, where `topic_name` is a 2-5 word slug derived from the topic (e.g., `claude-code-review`, `gpu-ai-training`). Tool outputs go into per-tool subdirectories:
 
 ```
-~/.hermes/workspace/{topic_name}/
+{work_dir}/{topic_name}/
 ├── harvest_page/               # Phase 3: per-URL harvest results (one call to harvest-pages.py)
 │   ├── manifest.json            #   ↳ contains entries[] and pending_downloads[] (Phase 3.b feeds these to video-download.py)
 │   └── <url-slug>/
@@ -74,7 +76,7 @@ Each video project lives under `~/.hermes/workspace/{topic_name}/`, where `topic
 
 Plus one shared (cross-topic) browser profile reused across the `harvest-pages.py` tool and TuberUp's `gemini-deep-research`:
 
-`~/.hermes/workspace/chrome_profile/` — do NOT delete; cookies, logins, and site preferences accumulate here.
+`{work_dir}/chrome_profile/` — do NOT delete; cookies, logins, and site preferences accumulate here.
 
 ### Script I/O Protocol
 
@@ -113,7 +115,7 @@ Parse script results with: `result=$(python3 script.py ... 2>/dev/null)` or capt
    ```bash
    scripts/gemini-deep-research.py \
      --prompt "Comprehensive overview of [topic]: history, key developments, notable figures, technical details, latest news" \
-     --output-dir ~/.hermes/workspace/{topic_name}/
+     --output-dir {work_dir}/{topic_name}/
    ```
    - Outputs: `gemini_deep_research.md` (full report) + `gemini_deep_research_sources.json` (cited URLs)
    - Read the report; it becomes the primary source. The `sources.json` feeds into Phase 3 material harvest.
@@ -199,10 +201,10 @@ scripts/harvest-pages.py \
          https://github.com/anthropics/claude-code \
          https://docs.anthropic.com/claude-code \
          https://www.youtube.com/watch?v=... \
-  --output-dir ~/.hermes/workspace/{topic_name}/harvest_page/
+  --output-dir {work_dir}/{topic_name}/harvest_page/
 ```
 
-The first invocation launches Chrome at `~/.hermes/workspace/chrome_profile`; subsequent invocations reuse it over CDP (`http://localhost:9222`). Chrome stays running between calls. Per-URL failures don't sink the batch.
+The first invocation launches Chrome at `{work_dir}/chrome_profile`; subsequent invocations reuse it over CDP (`http://localhost:9222`). Chrome stays running between calls. Per-URL failures don't sink the batch.
 
 Outputs: `harvest_page/manifest.json` + `harvest_page/<url-slug>/` directories (one per URL). See the `manifest.entries[]` shape — each entry has `page_type`, `mode`, `text_excerpt`, `images[]`, `videos[]`, and optional `scroll_recording`. The manifest also contains a top-level **`pending_downloads[]`** — every YouTube/Bilibili URL the harvester detected (either passed in `--urls` directly or found embedded on a page).
 
@@ -227,14 +229,14 @@ This decoupling means `harvest-pages.py` runtime is dominated by Playwright (fas
 
 ### Phase 4 — Material Understanding & Selection
 
-Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entry, build a "material entry" in `~/.hermes/workspace/{topic_name}/material-catalog.json`.
+Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entry, build a "material entry" in `{work_dir}/{topic_name}/material-catalog.json`.
 
 **Per harvested entry (one per URL):**
 
 1. **Extract frames** from every video in `entry.videos` AND from `entry.scroll_recording` (if present):
    ```bash
    scripts/extract-frames.py <video> \
-     ~/.hermes/workspace/{topic_name}/extract_frames/<slug>/<video-name>/ \
+     {work_dir}/{topic_name}/extract_frames/<slug>/<video-name>/ \
      --max-frames 16
    ```
    Frames are timestamp-named (`frame_t00.5s.jpg` etc.) so we can map back to clip ranges.
@@ -312,25 +314,25 @@ Copy `scripts/voice-clone-template.py` to project root, paste `narration.txt` co
 ```bash
 source .venv/bin/activate  # from parent dir, or wherever the venv is
 export DASHSCOPE_API_KEY="sk-..."
-python3 voice-clone.py --output-dir ~/.hermes/workspace/{topic_name}/voice_clone
-ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ~/.hermes/workspace/{topic_name}/voice_clone/narration.mp3
+python3 voice-clone.py --output-dir {work_dir}/{topic_name}/voice_clone
+ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 {work_dir}/{topic_name}/voice_clone/narration.mp3
 ```
 
 If duration is much longer than user wanted, retry with higher `speech_rate` (1.5 default; try 1.7 for shorter, 1.2 for slower).
 
 ### Phase 7 — ASR + Scene Anchoring
 
-Run `scripts/transcribe-paraformer.py ~/.hermes/workspace/{topic_name}/voice_clone/narration.mp3 ~/.hermes/workspace/{topic_name}/transcribe/transcript.json`.
+Run `scripts/transcribe-paraformer.py {work_dir}/{topic_name}/voice_clone/narration.mp3 {work_dir}/{topic_name}/transcribe/transcript.json`.
 
 Then design 8-10 scenes, each with:
 - `id` (e.g. `s1-hook`, `s2-stat`)
 - `anchor` (a 4-8 char substring that appears uniquely in the ASR text, signalling this scene starts when this phrase is spoken)
 - `display_text` (what shows on screen — usually different from spoken text, much shorter)
-- `material_ref` (required) — `{ entry_slug, kind: "image" | "video_clip", asset_id, clip_index?: int }`. Picks one asset from `~/.hermes/workspace/{topic_name}/material-catalog.json`: locate the entry where `entries[*].slug == entry_slug`, then locate the image (`kind=image`) or video (`kind=video_clip`) where `id == asset_id`. When `kind = video_clip`, `clip_index` (0-based) points at the chosen item inside that video's `selected_clips`.
+- `material_ref` (required) — `{ entry_slug, kind: "image" | "video_clip", asset_id, clip_index?: int }`. Picks one asset from `{work_dir}/{topic_name}/material-catalog.json`: locate the entry where `entries[*].slug == entry_slug`, then locate the image (`kind=image`) or video (`kind=video_clip`) where `id == asset_id`. When `kind = video_clip`, `clip_index` (0-based) points at the chosen item inside that video's `selected_clips`.
 
 **Every scene must cite at least one catalog entry.** If no harvested material fits a scene, go back to Phase 3 and harvest more URLs — never invent assets or fall back to a generic stock image. This is the structural guarantee that the materials gathered by `harvest-pages.py` actually reach the final video.
 
-Write the scene list to `~/.hermes/workspace/{topic_name}/transcribe/scenes-config.json` (intermediate file, consumed in the next step), then run `scripts/scene-anchor.py ~/.hermes/workspace/{topic_name}/transcribe/transcript.json ~/.hermes/workspace/{topic_name}/transcribe/scenes-config.json ~/.hermes/workspace/{topic_name}/transcribe/scene-timing.json`. The script anchors each scene to the ASR word stream, computes `begin_ms` / `duration_s`, and **passes every per-scene field (including `material_ref` and `display_text`) straight through** to the output. `scene-timing.json` is the single authoritative input the Phase 8 brief points the sub-agent at — it contains both the timing and the `material_ref` per scene, so the sub-agent never needs to read `scenes-config.json`.
+Write the scene list to `{work_dir}/{topic_name}/transcribe/scenes-config.json` (intermediate file, consumed in the next step), then run `scripts/scene-anchor.py {work_dir}/{topic_name}/transcribe/transcript.json {work_dir}/{topic_name}/transcribe/scenes-config.json {work_dir}/{topic_name}/transcribe/scene-timing.json`. The script anchors each scene to the ASR word stream, computes `begin_ms` / `duration_s`, and **passes every per-scene field (including `material_ref` and `display_text`) straight through** to the output. `scene-timing.json` is the single authoritative input the Phase 8 brief points the sub-agent at — it contains both the timing and the `material_ref` per scene, so the sub-agent never needs to read `scenes-config.json`.
 
 ### Phase 7.5 — Pre-stage fonts (so the sub-agent doesn't re-download)
 
@@ -338,16 +340,16 @@ Download the fonts for the selected style as local deterministic WOFF2 assets in
 
 ```bash
 # Dawn default handdrawn style
-bash scripts/fonts-download.sh ~/.hermes/workspace/{topic_name}/fonts dawn
+bash scripts/fonts-download.sh {work_dir}/{topic_name}/fonts dawn
 
 # Moon serious technical/editorial style
-bash scripts/fonts-download.sh ~/.hermes/workspace/{topic_name}/fonts moon
+bash scripts/fonts-download.sh {work_dir}/{topic_name}/fonts moon
 
 # If creating a reusable project template that may switch styles later
-bash scripts/fonts-download.sh ~/.hermes/workspace/{topic_name}/fonts all
+bash scripts/fonts-download.sh {work_dir}/{topic_name}/fonts all
 ```
 
-Why pre-stage instead of letting the sub-agent do it: this skill owns the CJK-font setup story (Iron Rules #5 and #6). Fonts in `~/.hermes/workspace/{topic_name}/fonts/` come from a known-good Google Fonts mirror; without them the sub-agent may regress to `fc-match` system fonts and trip the `[Compiler] No deterministic font mapping` failure at render time.
+Why pre-stage instead of letting the sub-agent do it: this skill owns the CJK-font setup story (Iron Rules #5 and #6). Fonts in `{work_dir}/{topic_name}/fonts/` come from a known-good Google Fonts mirror; without them the sub-agent may regress to `fc-match` system fonts and trip the `[Compiler] No deterministic font mapping` failure at render time.
 
 ### Phase 8 — Hand off composition + render to a coding sub-agent
 
@@ -359,7 +361,7 @@ The sub-agent's job is to turn those into a rendered video using the `hyperframe
 
 #### 8.1 — Write `composition-brief.md`
 
-Write `~/.hermes/workspace/{topic_name}/composition-brief.md` using this exact template, filling in the bracketed fields from the project's Phase 1-7 outputs:
+Write `{work_dir}/{topic_name}/composition-brief.md` using this exact template, filling in the bracketed fields from the project's Phase 1-7 outputs:
 
 ```markdown
 # Composition Brief — <TOPIC>
@@ -444,7 +446,7 @@ From the workspace, hand the brief to a coding agent that has access to the
 `hyperframes` skill:
 
 ```bash
-cd ~/.hermes/workspace/{topic_name}
+cd {work_dir}/{topic_name}
 
 # Default: GitHub Copilot CLI
 copilot --allow-all-tools --add-dir . \
@@ -478,8 +480,8 @@ After the sub-agent returns, verify from the main agent:
 
 ```bash
 ffprobe -v error -show_entries format=duration -of csv=p=0 \
-  ~/.hermes/workspace/{topic_name}/composition/renders/final.mp4
-ls -la ~/.hermes/workspace/{topic_name}/composition/renders/final.mp4
+  {work_dir}/{topic_name}/composition/renders/final.mp4
+ls -la {work_dir}/{topic_name}/composition/renders/final.mp4
 ```
 
 Expect: duration within ±0.1 s of `narration.mp3`; file size > 1 MB; an audio
@@ -500,11 +502,11 @@ don't try to hand-patch the composition from the main agent.
 | `WARN: anchor not found for X` from scene-anchor.py | Case mismatch OR audio doesn't say that exact phrase | Run `cat transcript.json` first, pick anchors from the actual ASR text |
 | `vision-analyze.py` returns `mode: "delegate_to_agent"` | `VLM_API_KEY` not set — this is **not** an error | Either set `VLM_API_KEY`/`VLM_BASE_URL`/`VLM_MODEL` for explicit VLM, OR honor the directive: use your `view` tool on each path in `images.local` |
 | `vision-analyze.py` errors with "VLM_API_KEY is set but missing required config" | Partial VLM_* setup | Set both `VLM_BASE_URL` and `VLM_MODEL` (or pass `--model`) |
-| `harvest-pages.py` blocked by cookie banner | EU/cookie wall absorbs scroll/clicks | Re-run after accepting the banner once in the shared profile (`~/.hermes/workspace/chrome_profile`) — cookie state persists across CDP sessions |
+| `harvest-pages.py` blocked by cookie banner | EU/cookie wall absorbs scroll/clicks | Re-run after accepting the banner once in the shared profile (`{work_dir}/chrome_profile`) — cookie state persists across CDP sessions |
 | `harvest-pages.py` returns 0 images on a real gallery | Lazy-loaded images need scroll | Already handled (auto-scroll-to-bottom); if still 0, raise `--page-load-timeout` |
 | External video download fails | yt-dlp upstream issue (geoblock, age-gate, 410, etc.) — manifests in Phase 3.b | Leave that `videos[]` entry with `download_required: true`; Phase 4 ignores it. If the clip is essential, `web_search` for a re-uploaded mirror and rerun `harvest-pages.py` with the new URL |
 | Playwright import error | venv missing playwright | `pip install playwright` — NO `playwright install chromium` (we use system Chrome over CDP) |
-| `Chrome exited immediately` from `harvest-pages.py` | Profile dir already locked by another Chrome | Close other Chrome instances using `~/.hermes/workspace/chrome_profile`, or pass a different `--profile-dir` |
+| `Chrome exited immediately` from `harvest-pages.py` | Profile dir already locked by another Chrome | Close other Chrome instances using `{work_dir}/chrome_profile`, or pass a different `--profile-dir` |
 | Chrome exits with `Missing X server or $DISPLAY` | No display in container/SSH session | `harvest-pages.py` auto-detects this (`--headless auto` checks `DISPLAY`). Force with `--headless on` if auto-detect misfires |
 | Chrome exits with sandbox errors as root | Running inside a container | `--no-sandbox` is auto-enabled when running as root or inside Docker; pass explicitly with `--no-sandbox` if needed |
 | CDP port 9222 busy with the wrong Chrome | Another tool launched Chrome on that port | If it's a Chrome we WANT, that's fine (reuse). If not, pass `--cdp-url http://localhost:9223` |
@@ -538,7 +540,7 @@ The material processing scripts require additional dependencies beyond the base 
 
 - **ffmpeg/ffprobe** (for frame extraction): usually pre-installed on Linux
 - **playwright** (Python bindings only, ~3 MB) for `harvest-pages.py`: `pip install playwright`. NO `playwright install chromium` — we attach to system Chrome over CDP.
-- **system Chrome** (already at `/usr/bin/google-chrome` on this machine): auto-launched on demand with `--remote-debugging-port=9222 --user-data-dir=~/.hermes/workspace/chrome_profile`. Shared across `gemini-deep-research.py` and `harvest-pages.py` so cookies/logins persist. **Gemini Deep Research requires a logged-in Google account** — log in once manually via the shared Chrome profile.
+- **system Chrome** (auto-detected per platform: Linux `/usr/bin/google-chrome`, macOS `/Applications/Google Chrome.app`, Windows `%ProgramFiles%\Google\Chrome\Application\chrome.exe`; or set `CHROME_PATH` env var, or pass `--chrome-path`): auto-launched on demand with `--remote-debugging-port=9222 --user-data-dir={work_dir}/chrome_profile`. Shared across `gemini-deep-research.py` and `harvest-pages.py` so cookies/logins persist. **Gemini Deep Research requires a logged-in Google account** — log in once manually via the shared Chrome profile.
 - **yt-dlp** (for `video-download.py`): on PATH (`/home/jieliu1/.local/bin/yt-dlp`).
 - **vision model** (optional): set `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` to enable `vision-analyze.py` Mode 1 (e.g. point at DashScope's OpenAI-compatible endpoint with `qwen-vl-max`). When unset, the script delegates to the calling agent's own `view` tool — no extra dependency required.
 - **coding sub-agent** (Phase 8): GitHub `copilot` CLI or `claude` CLI on PATH, with the `hyperframes` skill installed under `~/.hermes/hermes-agent/optional-skills/creative/hyperframes/`.
