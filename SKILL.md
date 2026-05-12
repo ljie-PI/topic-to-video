@@ -268,6 +268,8 @@ This decoupling means `harvest-pages.py` runtime is dominated by Playwright (fas
 
 ### Phase 4 — Material Understanding & Selection
 
+**Delegate to a subagent.** This phase is context-heavy (vision analysis on many images/frames, 30-50+ tool calls). Spawn a subagent with the manifest path and research brief; it produces `material-catalog.json`. The main agent reads only the final catalog.
+
 Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entry, build a "material entry" in `{work_dir}/{topic_name}/material-catalog.json`.
 
 **Per harvested entry (one per URL):**
