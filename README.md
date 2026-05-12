@@ -1,6 +1,6 @@
 # topic-to-video
 
-A Copilot CLI skill that turns a topic, article URL, or text into a short narrated video (60-120 s) using **HyperFrames** + **CosyVoice** cloned-voice TTS.
+A Copilot CLI skill that turns a topic, article URL, or text into a narrated video (3-10 minutes) using **HyperFrames** + **CosyVoice** cloned-voice TTS.
 
 The main agent owns research, narration scripting, TTS, ASR, and material harvesting. The final composition + render step is delegated to a **coding sub-agent** (GitHub Copilot CLI by default; Claude Code as an alternative) that has the `hyperframes` skill loaded.
 

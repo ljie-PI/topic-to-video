@@ -1,13 +1,13 @@
 ---
 name: topic-to-video
-description: Use when the user provides a topic, article URL, or text and asks to make a short narrated video (typically 60-120s). Covers the full pipeline — topic research with web search, optional visual material search and processing, video understanding, script writing, CosyVoice cloned-voice TTS via DashScope, Paraformer ASR for word-level timestamps, scene timing, HyperFrames composition with GSAP image animation, lint/inspect, and rendering. Avoids 17+ pitfalls discovered in baseline testing.
+description: Use when the user provides a topic, article URL, or text and asks to make a narrated video (typically 3-10 minutes). Covers the full pipeline — topic research with web search, optional visual material search and processing, video understanding, script writing, CosyVoice cloned-voice TTS via DashScope, Paraformer ASR for word-level timestamps, scene timing, HyperFrames composition with GSAP image animation, lint/inspect, and rendering. Avoids 17+ pitfalls discovered in baseline testing.
 ---
 
 # Topic → Video (HyperFrames + CosyVoice Workflow)
 
 ## What This Skill Builds
 
-A short narrated video (60-120s) using:
+A narrated video (3-10 minutes) using:
 - **Web research** to ground the script in facts before writing
 - **HyperFrames** for HTML composition + render
 - **CosyVoice** (via Aliyun DashScope) for cloned-voice TTS — Chinese default
@@ -128,7 +128,7 @@ Parse script results with: `result=$(python3 script.py ... 2>/dev/null)` or capt
    - Default: Rosé Pine Dawn handdrawn (`references/design-dawn.md`)
    - Use Rosé Pine Moon Serious (`references/design-moon.md`) when the user says "moon", "严肃", "深色", "技术感", "技术评论", "AI", "SaaS", or "编程" and wants a serious tone
    - If topic is AI/SaaS/programming but style is not explicit, ask whether they want Dawn warm explainer or Moon serious technical editorial
-4. Length: usually 60-120s — derive from user's request or default to 75-90s.
+4. Length: usually 3-10 minutes — derive from user's request or default to 5 minutes.
 5. Language: default Chinese. Ask if user wants a different language.
 6. Ask whether to search for visual materials (images/video clips) to enrich scenes. Default: yes.
 
@@ -335,8 +335,8 @@ Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entr
 Goals:
 - Use **only facts from the research brief** — every number, name, date, and quote must be traceable.
 - Reference the collected materials where helpful, and annotate each scene with recommended visual material.
-- 60-120 seconds at `speech_rate=1.5` ≈ **3.7 chars/sec** → `60s×3.7 ≈ 220 chars`, `90s×3.7 ≈ 330 chars`, `120s×3.7 ≈ 440 chars`.
-- 8-10 paragraphs, separated by blank lines (each ≈ one scene = 6-12s of audio).
+- 3-10 minutes at `speech_rate=1.5` ≈ **3.7 chars/sec** → `3min×3.7×60 ≈ 666 chars`, `5min ≈ 1110 chars`, `10min ≈ 2220 chars`.
+- 15-40 paragraphs (scaled to target duration), separated by blank lines (each ≈ one scene = 6-15s of audio).
 - Numbers in Chinese characters (`二零二六` not `2026`) — TTS reads them more naturally.
 - English proper nouns in original Latin (`Anthropic`, `Claude Code`, `Boris`).
 - **Avoid the full-width Chinese colon `：`.** CosyVoice can occasionally insert a 0.5-1 s silence after a full-width colon followed immediately by a long compound sentence, which makes the video feel stuck mid-scene. Use an em dash `——`, split the sentence with commas, or rewrite it. Example: `某品牌：日均消耗一百万` → `某品牌 —— 日均消耗一百万`.
