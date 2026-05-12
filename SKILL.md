@@ -363,7 +363,7 @@ If duration is much longer than user wanted, retry with higher `speech_rate` (1.
 
 Run `scripts/transcribe-paraformer.py {work_dir}/{topic_name}/voice_clone/narration.mp3 {work_dir}/{topic_name}/transcribe/transcript.json`.
 
-Then design 8-10 scenes, each with:
+Then design scenes (one per narration paragraph — typically 15-40 for a 3-10 minute video), each with:
 - `id` (e.g. `s1-hook`, `s2-stat`)
 - `anchor` (a 4-8 char substring that appears uniquely in the ASR text, signalling this scene starts when this phrase is spoken)
 - `display_text` (what shows on screen — usually different from spoken text, much shorter)
