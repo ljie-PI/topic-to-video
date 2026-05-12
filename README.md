@@ -12,7 +12,7 @@ The main agent owns research, narration scripting, TTS, ASR, and material harves
 | `dashscope` | In the venv — powers CosyVoice TTS and Paraformer ASR |
 | `ffmpeg` / `ffprobe` | Audio probing and frame extraction |
 | `playwright` (Python only) | `pip install playwright` — NO `playwright install chromium` step; we use system Chrome over CDP |
-| System Google Chrome       | At `/usr/bin/google-chrome` (Linux). Auto-launched with shared profile at `~/.hermes/workspace/chrome_profile` |
+| System Google Chrome       | Auto-detected per platform (Linux, macOS, Windows); or set `CHROME_PATH` env var / pass `--chrome-path`. Auto-launched with shared profile at `{work_dir}/chrome_profile` |
 | `yt-dlp` | On PATH — required by `scripts/video-download.py` (the agent calls it in Phase 3.b on every `pending_downloads[]` entry produced by `harvest-pages.py`) |
 | `DASHSCOPE_API_KEY` | Set in env (e.g. `~/.zshrc`) — required for TTS/ASR |
 | `VLM_*` (optional) | `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` to enable explicit vision; otherwise `vision-analyze.py` delegates back to the agent's own `view` tool |
@@ -29,7 +29,7 @@ The main agent owns research, narration scripting, TTS, ASR, and material harves
 #   Phase 1 inputs → Phase 2 research → Phase 3-4 material harvest + vision-analyze
 #   → Phase 5 narration → Phase 6 CosyVoice TTS → Phase 7 Paraformer ASR + scene anchor
 #   → Phase 7.5 pre-stage fonts
-#   → Phase 8 writes ~/.hermes/workspace/{topic_name}/composition-brief.md
+#   → Phase 8 writes {work_dir}/{topic_name}/composition-brief.md
 #            and invokes `copilot -p` from that workspace
 # The sub-agent then runs `hyperframes init`, designs DESIGN.md, composes
 # index.html, lints, and renders to composition/renders/final.mp4.
