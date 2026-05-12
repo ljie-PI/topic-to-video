@@ -60,7 +60,7 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 3. **Read existing outputs** as if the tool just produced them. The downstream phases need the data, not the execution.
 4. **If an output file exists but is corrupt or incomplete** (e.g., 0-byte file, truncated JSON), delete it and re-run the tool.
 5. **User can force re-run** by saying "re-run phase N" or "redo harvest" — in that case, ignore the checkpoint and execute normally.
-6. **Phase 1 and Phase 2 (web_search) have no file checkpoints** — they produce in-memory research briefs. For these, check if the user previously approved a brief in the conversation context; if resuming after a context reset, ask the user if they want to skip research.
+6. **Phase 1 has no file checkpoint** — it produces in-memory inputs. Phase 2's Gemini Deep Research has a file checkpoint (`gemini_deep_research.md` — see table above), but the web_search gap-filling steps produce in-memory results only. If resuming after a context reset, ask the user if they want to skip research.
 
 ## Output Conventions
 
