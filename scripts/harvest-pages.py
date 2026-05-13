@@ -356,10 +356,18 @@ EXTRACT_IMAGES_JS = r"""
     if (seen.has(url)) continue;
     seen.add(url);
     const isSvg = /\.svg(\?|#|$)/i.test(url) || (img.naturalWidth === 0 && /svg/i.test(url));
+    let w = img.naturalWidth || 0;
+    let h = img.naturalHeight || 0;
+    // SVG <img> often has naturalWidth=0; fall back to rendered size
+    if (isSvg && (w === 0 || h === 0)) {
+      const rect = img.getBoundingClientRect();
+      w = Math.round(rect.width) || 0;
+      h = Math.round(rect.height) || 0;
+    }
     out.push({
       url,
-      width: img.naturalWidth || 0,
-      height: img.naturalHeight || 0,
+      width: w,
+      height: h,
       alt: (img.alt || '').slice(0, 200),
       type: isSvg ? 'svg' : 'raster',
     });
