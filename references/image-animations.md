@@ -505,7 +505,15 @@ Basic setup pattern:
 
 ## Combining with Text
 
-Layering text over animated images is common and works well if readability is designed in.
+Layering text over animated images requires **both** a localized overlay and text-level contrast protection. A uniform semi-transparent overlay degrades the background without guaranteeing text readability — especially when text color is close to the background. Use the gradient + text-shadow combination below instead.
+
+### Recommended layers (bottom → top)
+
+| Layer | CSS | Purpose |
+|-------|-----|---------|
+| Background image/video | `z-index: 1`, full opacity | 100% clear visual |
+| Gradient overlay | `z-index: 2`, `linear-gradient(transparent 60%, rgba(0,0,0,0.6) 100%)` | Darken only the text region; top 60% stays fully transparent |
+| Text | `z-index: 3`, `text-shadow` for contrast halo | Readable over any background color |
 
 ### Basic pattern
 
@@ -537,29 +545,38 @@ Layering text over animated images is common and works well if readability is de
   z-index: 1;
 }
 
+/* Gradient overlay — only darkens the bottom text region */
 .hero-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.28);
+  background: linear-gradient(transparent 60%, rgba(0, 0, 0, 0.6) 100%);
   z-index: 2;
 }
 
+/* Text with contrast-protecting shadow halo */
 .hero-copy {
   position: absolute;
   left: 80px;
   right: 80px;
   bottom: 80px;
   color: white;
+  text-shadow:
+    0 0 8px rgba(0, 0, 0, 0.8),
+    0 0 2px rgba(0, 0, 0, 0.9);
   z-index: 3;
 }
 ```
 
-### Text-on-image tips
+### Text-on-image rules
 
-- Put the image at a lower `z-index`, then a semi-transparent overlay, then the text.
-- Use a dark overlay (`rgba(0,0,0,0.2)` to `0.45`) or light overlay depending on the palette.
-- Keep the text itself static or only lightly animated; the image is already providing motion.
-- If the image is busy, reserve a quieter area for the copy or add a gradient overlay behind the text block.
+1. **Never use a uniform semi-transparent overlay** (`rgba(0,0,0,0.28)` full-screen). It makes both the background and text unclear. Use a **gradient overlay** that only covers the text region.
+2. **Always add `text-shadow`** on text over images — it guarantees readability regardless of text color vs. background color:
+   - Light text on dark/busy background: `text-shadow: 0 0 8px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,0.9)`
+   - Dark text on light background: `text-shadow: 0 0 8px rgba(255,255,255,0.8), 0 0 2px rgba(255,255,255,0.9)`
+3. **Keep text static or lightly animated** — the image already provides motion.
+4. **For text at the top** of the frame, flip the gradient: `linear-gradient(rgba(0,0,0,0.6) 0%, transparent 40%)`.
+5. **Avoid** `backdrop-filter: blur()` — unstable in headless Chrome rendering, high GPU overhead, GSAP animation frame drops.
+6. **Avoid** `mix-blend-mode`, SVG filters, `-webkit-text-stroke` on CJK — rendering inconsistencies in HyperFrames.
 
 ---
 
