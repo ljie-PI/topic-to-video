@@ -355,7 +355,7 @@ EXTRACT_IMAGES_JS = r"""
     if (!url) continue;
     if (seen.has(url)) continue;
     seen.add(url);
-    const isSvg = /\.svg(\?|#|$)/i.test(url) || (img.naturalWidth === 0 && /svg/i.test(url));
+    const isSvg = /\.svg(\?|#|$)/i.test(url);
     let w = img.naturalWidth || 0;
     let h = img.naturalHeight || 0;
     // SVG <img> often has naturalWidth=0; fall back to rendered size
