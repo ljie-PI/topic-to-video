@@ -349,16 +349,37 @@ EXTRACT_IMAGES_JS = r"""
 () => {
   const out = [];
   const seen = new Set();
+  // Standard <img> elements (including <img src="*.svg">)
   for (const img of document.images || []) {
     const url = img.currentSrc || img.src;
     if (!url) continue;
     if (seen.has(url)) continue;
     seen.add(url);
+    const isSvg = url.endsWith('.svg') || (img.naturalWidth === 0 && url.includes('svg'));
     out.push({
       url,
       width: img.naturalWidth || 0,
       height: img.naturalHeight || 0,
       alt: (img.alt || '').slice(0, 200),
+      type: isSvg ? 'svg' : 'raster',
+    });
+  }
+  // Inline <svg> elements — serialize to markup
+  for (const svg of document.querySelectorAll('svg')) {
+    const rect = svg.getBoundingClientRect();
+    if (rect.width < 40 || rect.height < 40) continue;  // skip tiny icons
+    const markup = new XMLSerializer().serializeToString(svg);
+    if (markup.length < 100) continue;  // skip trivial/empty SVGs
+    const key = 'inline-svg-' + markup.length + '-' + Math.round(rect.width) + 'x' + Math.round(rect.height);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      url: null,
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      alt: (svg.getAttribute('aria-label') || svg.querySelector('title')?.textContent || '').slice(0, 200),
+      type: 'inline-svg',
+      markup,
     });
   }
   return out;
@@ -737,25 +758,42 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
             raw_imgs = page.evaluate(EXTRACT_IMAGES_JS) or []
             kept = [
                 im for im in raw_imgs
-                if im.get('width', 0) >= args.min_image_size
-                and im.get('height', 0) >= args.min_image_size
+                if im.get('type') in ('svg', 'inline-svg')  # SVGs bypass size filter
+                or (im.get('width', 0) >= args.min_image_size
+                    and im.get('height', 0) >= args.min_image_size)
             ][: args.max_images_per_url]
             log(f'  images: {len(raw_imgs)} found, {len(kept)} pass size filter')
 
             for i, im in enumerate(kept, start=1):
-                local = download_image(ctx.request, im['url'], images_dir, i)
-                meta = {
-                    'url': im['url'],
-                    'width': im.get('width', 0),
-                    'height': im.get('height', 0),
-                    'alt': im.get('alt', ''),
-                }
-                if local:
-                    meta['local_path'] = str(local.resolve())
-                    meta['id'] = local.stem
+                img_type = im.get('type', 'raster')
+                if img_type == 'inline-svg':
+                    # Save inline SVG markup directly
+                    path = images_dir / f'svg_{i:03d}.svg'
+                    path.write_text(im['markup'], encoding='utf-8')
+                    meta = {
+                        'url': None,
+                        'width': im.get('width', 0),
+                        'height': im.get('height', 0),
+                        'alt': im.get('alt', ''),
+                        'local_path': str(path.resolve()),
+                        'id': path.stem,
+                        'type': 'inline-svg',
+                    }
                 else:
-                    meta['downloaded'] = False
-                    meta['error'] = 'download failed'
+                    local = download_image(ctx.request, im['url'], images_dir, i)
+                    meta = {
+                        'url': im['url'],
+                        'width': im.get('width', 0),
+                        'height': im.get('height', 0),
+                        'alt': im.get('alt', ''),
+                        'type': img_type,
+                    }
+                    if local:
+                        meta['local_path'] = str(local.resolve())
+                        meta['id'] = local.stem
+                    else:
+                        meta['downloaded'] = False
+                        meta['error'] = 'download failed'
                 images_meta.append(meta)
 
             # extract video candidates
