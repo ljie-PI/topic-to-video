@@ -288,7 +288,7 @@ Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entr
    ```
 
 3. **Vision analysis** with `scripts/vision-analyze.py`:
-   - For images: one batch per URL (max 10 per call). Prompt asks for subject, visual style, suitability score 1-10.
+   - For images (raster and SVG): one batch per URL (max 10 per call). Prompt asks for subject, visual style, suitability score 1-10.
    - For each video: one batch on the extracted frames. Prompt additionally asks for start/end timestamp of the most relevant span.
    - **Mode 1 (explicit VLM):** if `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` are set → direct OpenAI-compatible call.
    - **Mode 2 (delegate):** otherwise → script returns `delegate_to_agent` with image paths; the agent uses its own `view` tool.
@@ -566,7 +566,7 @@ don't try to hand-patch the composition from the main agent.
 - `scripts/subtitle-parse.py` — SRT/VTT parser with keyword filtering
 - `scripts/vision-analyze.py` — model-agnostic vision analysis: calls any OpenAI-compatible VLM via `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL`, or delegates to the agent's `view` tool when no VLM is configured
 - `scripts/gemini-deep-research.py` — Playwright/CDP automation for Google Gemini's Deep Research. Takes a research prompt, submits it to gemini.google.com, waits for the full report, and extracts the result as Markdown + cited sources JSON. Used in Phase 2 as the primary research backbone. Outputs: `gemini_deep_research.md` + `gemini_deep_research_sources.json`. Supports `--start-from-step N` for retry on failure.
-- `scripts/harvest-pages.py` — Playwright/CDP batch URL harvester: takes an array of URLs (official sites, GitHub, docs, etc.), extracts ≥512px images and embedded videos per URL, OR records a scroll-through video for text-heavy pages. Downloads native HTML5 `<video>` clips inline; **lists** YouTube/Bilibili URLs in `manifest.pending_downloads[]` for Phase 3.b to fetch. Reuses one Chrome process across the whole batch.
+- `scripts/harvest-pages.py` — Playwright/CDP batch URL harvester: takes an array of URLs (official sites, GitHub, docs, etc.), extracts ≥512px raster images, SVG images (no size filter), and inline `<svg>` elements, plus embedded videos per URL, OR records a scroll-through video for text-heavy pages. Downloads native HTML5 `<video>` clips inline; **lists** YouTube/Bilibili URLs in `manifest.pending_downloads[]` for Phase 3.b to fetch. Reuses one Chrome process across the whole batch.
 - `scripts/video-download.py` — yt-dlp wrapper for YouTube/Bilibili. Called by the agent in Phase 3.b, once per `pending_downloads[]` entry.
 - `references/design-dawn.md` — Rosé Pine Dawn handdrawn warm style reference (optional input to the Phase 8 brief)
 - `references/design-moon.md` — Rosé Pine Moon dark technical/editorial style reference (optional input to the Phase 8 brief)
