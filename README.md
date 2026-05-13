@@ -51,6 +51,7 @@ The Phase 8 brief MAY point at one of these references; the sub-agent is also fr
 | `scripts/voice-clone-template.py` | CosyVoice TTS template (`speech_rate=1.5`) |
 | `scripts/transcribe-paraformer.py` | Paraformer ASR — word-level timestamps |
 | `scripts/vision-analyze.py` | Model-agnostic vision analysis — calls any OpenAI-compatible VLM via `VLM_*` env vars, or delegates to the agent's `view` tool when unset |
+| `scripts/gemini-deep-research.py` | Gemini Deep Research automation — submits a research prompt via Playwright over CDP and returns the full report + cited sources; primary research backbone for Phase 2 |
 | `scripts/scene-anchor.py` | Anchor scenes to ASR word stream |
 | `scripts/extract-frames.py` | Extract JPEG frames with ffmpeg / ffprobe |
 | `scripts/subtitle-parse.py` | Parse SRT/VTT subtitles with keyword filtering |
