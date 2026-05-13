@@ -355,7 +355,7 @@ EXTRACT_IMAGES_JS = r"""
     if (!url) continue;
     if (seen.has(url)) continue;
     seen.add(url);
-    const isSvg = url.endsWith('.svg') || (img.naturalWidth === 0 && url.includes('svg'));
+    const isSvg = /\.svg(\?|#|$)/i.test(url) || (img.naturalWidth === 0 && /svg/i.test(url));
     out.push({
       url,
       width: img.naturalWidth || 0,
@@ -769,7 +769,20 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
                 if img_type == 'inline-svg':
                     # Save inline SVG markup directly
                     path = images_dir / f'svg_{i:03d}.svg'
-                    path.write_text(im['markup'], encoding='utf-8')
+                    try:
+                        path.write_text(im['markup'], encoding='utf-8')
+                    except Exception as exc:
+                        log(f'  inline-svg {i}: write failed: {exc}')
+                        images_meta.append({
+                            'url': None,
+                            'width': im.get('width', 0),
+                            'height': im.get('height', 0),
+                            'alt': im.get('alt', ''),
+                            'type': 'inline-svg',
+                            'downloaded': False,
+                            'error': f'write failed: {exc}',
+                        })
+                        continue
                     meta = {
                         'url': None,
                         'width': im.get('width', 0),
