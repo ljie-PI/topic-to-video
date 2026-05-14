@@ -342,7 +342,6 @@ def extract_sources(page: Any) -> List[Dict[str, str]]:
     result: List[Dict[str, str]] = []
 
     for i in range(total):
-        # Scroll the button into view and click it
         page.evaluate(f'''() => {{
             const lastMsg = document.evaluate(
                 "(//message-content)[last()]",
@@ -357,7 +356,6 @@ def extract_sources(page: Any) -> List[Dict[str, str]]:
         }}''')
         page.wait_for_timeout(1200)
 
-        # Scrape visible source cards
         sources = page.evaluate('''() => {
             const lastMsg = document.evaluate(
                 "(//message-content)[last()]",
