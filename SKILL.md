@@ -31,6 +31,7 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 8. **Every on-screen asset must trace to `material-catalog.json`.** Keep tool outputs under `{work_dir}/{topic_name}/` using the standard subdirectories (`harvest_page/`, `extract_frames/`, `vision_analyze/`, `fonts/`, `composition/`). The coding sub-agent in Phase 8 resolves `material_ref` → catalog entry → `local_path`; no catalog citation → no asset on screen. Never invent or borrow generic stock assets.
 9. **Material selection happens in Phase 4, not Phase 5.** The agent picks 3-6 URLs in Phase 3 and passes them as one array to `harvest-pages.py`. In Phase 4, run vision-analyze on every image and every video's extracted frames, then write `material-catalog.json` with `selected_clips`. The narration script (Phase 5) only references catalog entries — never a raw harvest result. Prevents writing a scene around a video span that turns out to be a transition or an ad.
 10. **Composition + render is delegated.** Phases 8 onward run in a coding sub-agent (Copilot CLI / Claude Code) with the `hyperframes` skill loaded — not in the main agent. The main agent's job ends at producing the inputs the brief points at; the sub-agent owns scaffold / DESIGN.md / composition / lint / render. Do not try to hand-write `index.html` from the main conversation.
+11. **Don't `cover`-crop information-dense images.** Screenshots, charts, data tables, and portraits with important edges must use `object-fit: contain` (or equivalent framing) so no content is lost. How to treat the resulting letterbox margins (background color, blur, etc.) is a design choice — see `references/image-animations.md` §Image Sizing Best Practices for suggestions.
 
 ## Checkpoint & Resume
 
@@ -473,6 +474,11 @@ You are free to:
    `<span>` children — GSAP overwrites the children and the count renders as
    `NaN%`. For emphasis on numbers with units, animate `scale` / `opacity`
    instead, or split the number and unit into separate sibling spans.
+7. **Don't crop information-dense images.** If a scene's image is a screenshot,
+   chart, data table, or portrait with important edges, use `object-fit: contain`
+   (or equivalent framing) so no content is lost. Treat the letterbox margins
+   however you like (solid color, blur, pattern — your call). For atmospheric /
+   decorative photos where cropping is harmless, `cover` is fine.
 
 ## Deliverable
 - `composition/index.html` (GSAP timeline + scenes)
@@ -601,6 +607,7 @@ You are about to make a known mistake if you find yourself:
 - Reaching for `npx hyperframes tts` because you forgot CosyVoice
 - Picking system Chinese fonts via `fc-match`
 - Setting Paraformer `sample_rate=16000`
+- **Using `object-fit: cover` on an information-dense image** (screenshot, chart, data table, portrait with important edges) — content WILL be cropped
 
 Stop and re-read the relevant Iron Rule above.
 
