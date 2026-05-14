@@ -158,7 +158,7 @@ Wait for user confirmation before proceeding. This is the **only** mechanism by 
    ```
    - Outputs: `gemini_deep_research.md` (full report) + `gemini_deep_research_sources.json` (cited URLs)
    - Read the report; it becomes the primary source. The `sources.json` feeds into Phase 3 material harvest.
-   - **Skip ONLY when:** (a) user explicitly says "skip deep research", OR (b) topic is a simple re-narration of user-provided text with no factual claims to verify. If the script fails at step 3 (login check), that's an environment setup issue — retry or fix login, don't silently fall back to web_search-only.
+   - **Skip ONLY when:** (a) user explicitly says "skip deep research", OR (b) topic is a simple re-narration of user-provided text with no factual claims to verify.
    - **If it fails (other steps):** Fall back to manual web_search workflow (steps 3-4 below become the primary research path). Check `failed_step` in the error JSON — you can retry with `--start-from-step N`.
 3. **Identify gaps.** Whether Gemini ran or not, check: what numbers, names, dates, or technical specifics are missing or unverified? List them.
 4. **Run targeted searches.** Use `web_search` for each gap — typical: 2-4 searches if Gemini ran (filling gaps), 3-6 if it didn't (full research). Examples:
