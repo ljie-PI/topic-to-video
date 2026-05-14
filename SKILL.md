@@ -20,7 +20,7 @@ A narrated video (3-10 minutes) using:
 
 These rules each prevent a specific bug a baseline agent hit. **Do not "improve" past them without re-running the gauntlet** in `references/gotchas.md`.
 
-0. **Research before script.** Phase 2 is mandatory. Do not draft a single line of narration before fetching the source URL (if any) and running web_search to verify names, dates, numbers, and quotes. Untruthful video = useless video.
+0. **Research before script.** Phase 2 is mandatory. Do not draft a single line of narration before running Gemini Deep Research (primary) and web_search (gap-filling) to verify names, dates, numbers, and quotes. Untruthful video = useless video.
 1. **TTS = CosyVoice via DashScope, not Kokoro.** User has a cloned voice. Use `scripts/voice-clone-template.py`. NEVER use `npx hyperframes tts` (Kokoro) for Chinese — it's not their voice.
 2. **ASR = DashScope Paraformer-realtime-v2, not Whisper.** `npx hyperframes transcribe` for Chinese fails with empty errors, UTF-8 fragmentation, and slow downloads. Use `scripts/transcribe-paraformer.py`.
 3. **Paraformer `sample_rate` MUST match the actual audio sample rate.** CosyVoice MP3 = `22050`. Default 16000 silently fails with `status_code=44 "sample rate 16000 not equals with real 22050"`.
@@ -151,7 +151,7 @@ Wait for user confirmation before proceeding. This is the **only** mechanism by 
 **Process:**
 
 1. **If the user gave a URL** → `web_fetch` it FIRST. Read the full content. This is the spine of the video.
-2. **Run Gemini Deep Research** (when available). This is the primary research backbone — it produces a comprehensive, sourced report far richer than manual web searches.
+2. **Run Gemini Deep Research.** This is the primary research backbone — it produces a comprehensive, sourced report far richer than manual web searches.
    ```bash
    scripts/gemini-deep-research.py \
      --prompt "Comprehensive overview of [topic]: history, key developments, notable figures, technical details, latest news" \
@@ -159,8 +159,8 @@ Wait for user confirmation before proceeding. This is the **only** mechanism by 
    ```
    - Outputs: `gemini_deep_research.md` (full report) + `gemini_deep_research_sources.json` (cited URLs)
    - Read the report; it becomes the primary source. The `sources.json` feeds into Phase 3 material harvest.
-   - **Skip Gemini Deep Research when:** Gemini login unavailable (not logged in via the shared Chrome profile), user says "skip deep research", or topic is a simple re-narration of user-provided text.
-   - **If it fails:** Fall back to manual web_search workflow (steps 3-4 below become the primary research path). Check `failed_step` in the error JSON — you can retry with `--start-from-step N`.
+   - **Skip ONLY when:** (a) user explicitly says "skip deep research", OR (b) topic is a simple re-narration of user-provided text with no factual claims to verify.
+   - **If it fails (other steps):** Fall back to manual web_search workflow (steps 3-4 below become the primary research path). Check `failed_step` in the error JSON — you can retry with `--start-from-step N`.
 3. **Identify gaps.** Whether Gemini ran or not, check: what numbers, names, dates, or technical specifics are missing or unverified? List them.
 4. **Run targeted searches.** Use `web_search` for each gap — typical: 2-4 searches if Gemini ran (filling gaps), 3-6 if it didn't (full research). Examples:
    - "Boris Cherny Anthropic interview Sequoia 2026" → confirm names, dates, quotes
@@ -597,6 +597,7 @@ The material processing scripts require additional dependencies beyond the base 
 You are about to make a known mistake if you find yourself:
 
 - **Writing the script without doing Phase 2 research first** (or skipping web_search/web_fetch)
+- **Skipping Gemini Deep Research without an explicit skip condition** — falling back to web_search-only when Gemini is available and the topic has factual claims to verify
 - **Skipping vision-analyze** when you have 20+ frames and need to pick the best 3-4
 - Writing narration before running vision-analyze on harvested videos and building `material-catalog.json`
 - **Designing a scene without a `material_ref`** into `material-catalog.json`, or referencing an `<img src>` / `<video src>` whose path is not a catalog entry
