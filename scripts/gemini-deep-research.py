@@ -318,13 +318,6 @@ def html_to_markdown(page: Any, container_handle: Any) -> str:
 # ---------------------------------------------------------------------------
 
 def extract_sources(page: Any) -> List[Dict[str, str]]:
-    """Extract sources by clicking each carousel expand button one-by-one.
-
-    Gemini renders each inline citation as a collapsed ``sources-carousel-inline``
-    with a "了解详情" expand button.  Only one carousel is visible at a time, so
-    we must click each button, wait for the carousel to render, scrape the
-    ``default-source-card`` links, then move on to the next.
-    """
     total = page.evaluate('''() => {
         const lastMsg = document.evaluate(
             "(//message-content)[last()]",
