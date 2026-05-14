@@ -318,29 +318,62 @@ def html_to_markdown(page: Any, container_handle: Any) -> str:
 # ---------------------------------------------------------------------------
 
 def extract_sources(page: Any) -> List[Dict[str, str]]:
-    """Extract sources from the sources carousel in the last message."""
-    sources = page.evaluate('''() => {
-        const carousel = document.evaluate(
-            "(//message-content)[last()]//sources-carousel-inline",
+    total = page.evaluate('''() => {
+        const lastMsg = document.evaluate(
+            "(//message-content)[last()]",
             document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
         ).singleNodeValue;
-        if (!carousel) return [];
-        const cards = carousel.querySelectorAll('default-source-card');
-        const seen = new Set();
-        const result = [];
-        for (const card of cards) {
-            const a = card.querySelector('a');
-            if (!a) continue;
-            const url = a.href || '';
-            const title = (a.textContent || '').trim();
-            if (url && !seen.has(url)) {
-                seen.add(url);
-                result.push({title, url});
-            }
-        }
-        return result;
+        return lastMsg
+            ? lastMsg.querySelectorAll("sources-carousel-inline").length
+            : 0;
     }''')
-    return sources or []
+    if total == 0:
+        return []
+
+    log(f'Found {total} citation carousels — clicking each to extract sources...')
+    seen: set = set()
+    result: List[Dict[str, str]] = []
+
+    for i in range(total):
+        page.evaluate(f'''() => {{
+            const lastMsg = document.evaluate(
+                "(//message-content)[last()]",
+                document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
+            ).singleNodeValue;
+            const inlines = lastMsg.querySelectorAll("sources-carousel-inline");
+            const btn = inlines[{i}].querySelector("button");
+            if (btn) {{
+                btn.scrollIntoView({{behavior: "instant", block: "center"}});
+                btn.click();
+            }}
+        }}''')
+        page.wait_for_timeout(1200)
+
+        sources = page.evaluate('''() => {
+            const lastMsg = document.evaluate(
+                "(//message-content)[last()]",
+                document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
+            ).singleNodeValue;
+            if (!lastMsg) return [];
+            const out = [];
+            for (const a of lastMsg.querySelectorAll("default-source-card a[href]")) {
+                const carousel = a.closest("sources-carousel");
+                if (!carousel) continue;
+                const style = getComputedStyle(carousel);
+                if (style.visibility === "hidden" || style.display === "none") continue;
+                out.push({title: (a.textContent || "").trim(), url: a.href});
+            }
+            return out;
+        }''')
+
+        for s in (sources or []):
+            url = s.get('url', '')
+            if url and url not in seen:
+                seen.add(url)
+                result.append(s)
+
+    log(f'Extracted {len(result)} unique sources from {total} carousels')
+    return result
 
 
 # ---------------------------------------------------------------------------
