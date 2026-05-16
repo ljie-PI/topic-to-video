@@ -97,9 +97,12 @@ def mux_bgm(ffmpeg: str, video: Path, bgm: Path, volume: float, output: Path) ->
     # -stream_loop -1 on the bgm input causes ffmpeg to loop it; -shortest
     # then cuts the mix at the original video duration so the bgm stretches
     # to cover the whole timeline regardless of bgm length vs video length.
+    # amix normalize=0 disables the default 1/N input scaling — without it the
+    # narration would be silently halved alongside the (already quiet) bgm,
+    # making --bgm-volume affect both tracks instead of just the music.
     filter_complex = (
         f'[1:a]volume={volume}[bgm];'
-        f'[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[aout]'
+        f'[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]'
     )
     cmd = [
         ffmpeg, '-y', '-v', 'error',
