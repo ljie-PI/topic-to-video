@@ -2,8 +2,11 @@
 """Batch URL material harvester for the topic-to-video skill.
 
 For every URL the browser opens, unconditionally extracts:
-  - Images with naturalWidth >= --min-image-width (default 500) and
+  - Raster images with naturalWidth >= --min-image-width (default 500) and
     naturalHeight >= --min-image-height (default 300)
+  - SVG images (both <img src="*.svg"> and inline <svg> elements) — these
+    bypass the width/height thresholds because vector graphics often
+    advertise tiny intrinsic dimensions
   - All embedded <video> elements and YouTube/Bilibili iframe/anchor links
 
 Records a scroll video of each rendered page by default (disable with
@@ -108,9 +111,11 @@ def parse_args() -> argparse.Namespace:
                         'Note: scroll-record only applies to URLs opened in the browser; '
                         'direct YouTube/Bilibili watch URLs are short-circuited and never recorded.')
     p.add_argument('--min-image-width', type=int, default=500,
-                   help='Minimum naturalWidth (px) to keep an image. Default 500.')
+                   help='Minimum naturalWidth (px) to keep a raster image. Default 500. '
+                        'SVG / inline-SVG candidates bypass this filter.')
     p.add_argument('--min-image-height', type=int, default=300,
-                   help='Minimum naturalHeight (px) to keep an image. Default 300.')
+                   help='Minimum naturalHeight (px) to keep a raster image. Default 300. '
+                        'SVG / inline-SVG candidates bypass this filter.')
     p.add_argument('--max-images-per-url', type=int, default=20, help='Cap on images per URL.')
     p.add_argument('--max-videos-per-url', type=int, default=5, help='Cap on videos per URL.')
     p.add_argument('--scroll-duration', type=int, default=30,
@@ -843,24 +848,28 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
 
     if args.scroll_record:
         capped = min(60, max(5, args.scroll_duration))
-        record_path, method = primary_scroll_record(
-            browser, url, viewport, capped, args.page_load_timeout, slug_dir
-        )
-        if record_path is None:
-            log(f'  primary scroll-record failed ({method}); trying CDP screencast fallback')
-            record_path, method = cdp_screencast_record(
+        try:
+            record_path, method = primary_scroll_record(
                 browser, url, viewport, capped, args.page_load_timeout, slug_dir
             )
-        if record_path is None:
-            log(f'  scroll-record failed ({method}); continuing without recording')
-        else:
-            dur = probe_duration(record_path) or float(capped)
-            scroll_recording = {
-                'local_path': str(record_path.resolve()),
-                'duration_sec': round(dur, 3),
-                'method': method,
-            }
-            log(f'  scroll-record OK via {method}: {record_path}')
+            if record_path is None:
+                log(f'  primary scroll-record failed ({method}); trying CDP screencast fallback')
+                record_path, method = cdp_screencast_record(
+                    browser, url, viewport, capped, args.page_load_timeout, slug_dir
+                )
+            if record_path is None:
+                log(f'  scroll-record failed ({method}); continuing without recording')
+            else:
+                dur = probe_duration(record_path) or float(capped)
+                scroll_recording = {
+                    'local_path': str(record_path.resolve()),
+                    'duration_sec': round(dur, 3),
+                    'method': method,
+                }
+                log(f'  scroll-record OK via {method}: {record_path}')
+        except Exception as exc:
+            # Scroll-record failure must not discard already-collected images/videos.
+            log(f'  scroll-record raised ({type(exc).__name__}: {exc}); continuing without recording')
 
     entry = {
         'url': url,
