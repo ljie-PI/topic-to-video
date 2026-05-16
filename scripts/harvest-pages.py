@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """Batch URL material harvester for the topic-to-video skill.
 
-For every URL unconditionally extracts:
-  - Images with naturalWidth >= 500 and naturalHeight >= 300
-  - All embedded <video> elements and YouTube iframe/anchor links
+For every URL the browser opens, unconditionally extracts:
+  - Images with naturalWidth >= --min-image-width (default 500) and
+    naturalHeight >= --min-image-height (default 300)
+  - All embedded <video> elements and YouTube/Bilibili iframe/anchor links
 
-Records a scroll video of each page by default (disable with --no-scroll-record).
+Records a scroll video of each rendered page by default (disable with
+--no-scroll-record).
+
+Direct YouTube/Bilibili watch-page URLs are short-circuited: they are listed
+in the manifest with `download_required: true` and the agent calls
+video-download.py for them; no browser is opened for those URLs, so image
+extraction and scroll recording do not apply.
 
 Browser model: attaches over CDP (default http://localhost:9222) to a Chrome
 process. If no CDP responder is reachable, auto-launches system Chrome with
@@ -97,7 +104,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--urls', required=True, nargs='+', help='One or more URLs to harvest.')
     p.add_argument('--output-dir', required=True, help='Batch output root (per-URL subdirs are created underneath).')
     p.add_argument('--no-scroll-record', dest='scroll_record', action='store_false', default=True,
-                   help='Disable scroll-record (on by default).')
+                   help='Disable scroll-record (on by default). '
+                        'Note: scroll-record only applies to URLs opened in the browser; '
+                        'direct YouTube/Bilibili watch URLs are short-circuited and never recorded.')
     p.add_argument('--min-image-width', type=int, default=500,
                    help='Minimum naturalWidth (px) to keep an image. Default 500.')
     p.add_argument('--min-image-height', type=int, default=300,
@@ -315,9 +324,6 @@ METRICS_JS = r"""
   const text = acc.join(' ');
   const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0;
 
-  const imgs = Array.from(document.images || []);
-  const largeImageCount = imgs.filter(im => (im.naturalWidth||0) >= 512 && (im.naturalHeight||0) >= 512).length;
-
   const videos = document.querySelectorAll('video').length;
   const iframes = Array.from(document.querySelectorAll('iframe')).filter(f =>
     /youtube\.com|youtu\.be|youtube-nocookie\.com|player\.bilibili\.com/.test(f.src || '')
@@ -326,19 +332,9 @@ METRICS_JS = r"""
     /youtube\.com|youtu\.be|bilibili\.com\/video/.test(a.href || '')
   ).length;
 
-  let articleTextLen = 0;
-  for (const sel of ['article', 'main', '[role="main"]']) {
-    for (const el of document.querySelectorAll(sel)) {
-      const t = (el.innerText || '').trim();
-      if (t.length > articleTextLen) articleTextLen = t.length;
-    }
-  }
-
   return {
     word_count: wordCount,
-    large_image_count: largeImageCount,
     video_count: videos + iframes + anchors,
-    article_text_len: articleTextLen,
     title: document.title || '',
     text_excerpt: text.slice(0, 2000),
   };
@@ -712,7 +708,6 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
         locale='zh-CN',
         extra_http_headers={'Accept-Language': 'zh-CN,en;q=0.9'},
     )
-    page_type = None  # kept for backward compat in callers
     metrics = {}
     title = ''
     text_excerpt = ''
