@@ -32,6 +32,7 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 9. **Material selection happens in Phase 4, not Phase 5.** The agent picks 3-6 URLs in Phase 3 and passes them as one array to `harvest-pages.py`. In Phase 4, run vision-analyze on every image and every video's extracted frames, then write `material-catalog.json` with `selected_clips`. The narration script (Phase 5) only references catalog entries — never a raw harvest result. Prevents writing a scene around a video span that turns out to be a transition or an ad.
 10. **Composition + render is delegated.** Phases 8 onward run in a coding sub-agent (Copilot CLI / Claude Code) with the `hyperframes` skill loaded — not in the main agent. The main agent's job ends at producing the inputs the brief points at; the sub-agent owns scaffold / DESIGN.md / composition / lint / render. Do not try to hand-write `index.html` from the main conversation.
 11. **Don't `cover`-crop information-dense images.** Screenshots, charts, data tables, and portraits with important edges must use `object-fit: contain` (or equivalent framing) so no content is lost. How to treat the resulting letterbox margins (background color, blur, etc.) is a design choice — see `references/image-animations.md` §Image Sizing Best Practices for suggestions.
+12. **No plain-text scenes.** When a scene has enough room for text (or no foreground image/video), the text must become designed information graphics — never a bare paragraph or unstyled caption block. Use structured forms such as title cards, metric cards, quote pullouts, lower-thirds, timelines, comparison grids, process steps, flowcharts, architecture diagrams, callouts, badges, or chapter markers, and synchronize each visual element to the exact narration phrase it explains.
 
 ## Checkpoint & Resume
 
@@ -370,12 +371,13 @@ Run `scripts/transcribe-paraformer.py {work_dir}/{topic_name}/voice_clone/narrat
 Then design scenes (one per narration paragraph — typically 15-40 for a 3-10 minute video), each with:
 - `id` (e.g. `s1-hook`, `s2-stat`)
 - `anchor` (a 4-8 char substring that appears uniquely in the ASR text, signalling this scene starts when this phrase is spoken)
-- `display_text` (what shows on screen — usually different from spoken text, much shorter)
+- `display_text` (optional short on-screen copy — usually different from spoken text and much shorter). Do not treat this as a paragraph to paste onto the screen. For text-dominant scenes, prefer `info_units`: small, separate facts/claims/labels that Phase 8 can render as cards, badges, timeline entries, callouts, or diagram nodes.
+- `info_units` (optional for text-dominant scenes) — a list of `{ text, role, narration_cue }` items. `role` can be `headline`, `metric`, `quote`, `label`, `source`, `step`, `comparison`, `warning`, `definition`, or `takeaway`. `narration_cue` is the exact spoken phrase that should trigger the visual element. Phase 8 uses these cues to reveal each element in sync with the narration, not merely with the scene start.
 - `material_ref` (required) — `{ entry_slug, kind: "image" | "video_clip", asset_id, clip_index?: int }`. Picks one asset from `{work_dir}/{topic_name}/material-catalog.json`: locate the entry where `entries[*].slug == entry_slug`, then locate the image (`kind=image`) or video (`kind=video_clip`) where `id == asset_id`. When `kind = video_clip`, `clip_index` (0-based) points at the chosen item inside that video's `selected_clips`.
 
 **Every scene must cite at least one catalog entry.** If no harvested material fits a scene, go back to Phase 3 and harvest more URLs — never invent assets or fall back to a generic stock image. This is the structural guarantee that the materials gathered by `harvest-pages.py` actually reach the final video.
 
-Write the scene list to `{work_dir}/{topic_name}/transcribe/scenes-config.json` (intermediate file, consumed in the next step), then run `scripts/scene-anchor.py {work_dir}/{topic_name}/transcribe/transcript.json {work_dir}/{topic_name}/transcribe/scenes-config.json {work_dir}/{topic_name}/transcribe/scene-timing.json`. The script anchors each scene to the ASR word stream, computes `begin_ms` / `duration_s`, and **passes every per-scene field (including `material_ref` and `display_text`) straight through** to the output. `scene-timing.json` is the single authoritative input the Phase 8 brief points the sub-agent at — it contains both the timing and the `material_ref` per scene, so the sub-agent never needs to read `scenes-config.json`.
+Write the scene list to `{work_dir}/{topic_name}/transcribe/scenes-config.json` (intermediate file, consumed in the next step), then run `scripts/scene-anchor.py {work_dir}/{topic_name}/transcribe/transcript.json {work_dir}/{topic_name}/transcribe/scenes-config.json {work_dir}/{topic_name}/transcribe/scene-timing.json`. The script anchors each scene to the ASR word stream, computes `begin_ms` / `duration_s`, and **passes every per-scene field (including `material_ref`, `display_text`, and `info_units`) straight through** to the output. `scene-timing.json` is the single authoritative input the Phase 8 brief points the sub-agent at — it contains timing, material refs, and text-structure hints per scene, so the sub-agent never needs to read `scenes-config.json`.
 
 ### Phase 7.5 — Pre-stage fonts (so the sub-agent doesn't re-download)
 
@@ -443,6 +445,59 @@ You are free to:
 - Choose any GSAP image animations. The parent skill's `references/image-animations.md`
   is a curated catalog you MAY consult; it is suggestive, not prescriptive.
 
+## Text display + motion contract
+
+Text is visual information design, not subtitles. When a scene is text-heavy or
+has open space (because the referenced image/video is absent, backgrounded, or
+not information-dense), do not paste `display_text` as plain text. Build a
+designed composition using the current style's typography and motion language.
+
+Use one or more of these forms, choosing the form that explains the narration
+best:
+- title / chapter cards for scene turns, hooks, or conclusions
+- metric / data cards for numbers, percentages, dates, rankings, prices, or deltas
+- quote pullouts for quoted claims, user comments, or memorable lines
+- lower-thirds for names, organizations, products, locations, or source context
+- side annotations / callouts attached to an image, video frame, diagram, or screenshot
+- keyword badges / chips for named concepts, technologies, risks, or benefits
+- timeline labels for chronology, releases, incidents, or cause-and-effect chains
+- multi-card grids for lists of examples, symptoms, objections, or takeaways
+- comparison columns for before/after, pros/cons, old/new, competitor A/B, or tradeoffs
+- process flows / step cards for procedures, pipelines, decisions, or failure chains
+- flowcharts / decision trees for branching logic, diagnosis, or "if X then Y" explanations
+- architecture diagrams / stack diagrams for systems, data flow, ownership, or dependencies
+- map / matrix / quadrant layouts for positioning, segmentation, or prioritization
+- checklist / scorecard layouts for criteria, readiness, or review outcomes
+
+Text hierarchy must be explicit:
+- Primary layer: one main claim or question, large and readable.
+- Secondary layer: supporting context in short phrases, not full paragraphs.
+- Evidence layer: numbers, dates, quotes, source labels, or concrete examples.
+- Navigation layer: scene number, chapter marker, or source badge when helpful.
+
+Motion must clarify the spoken sequence:
+- Default to subtle `opacity` + `y` / `scale` reveals with staggered timing.
+- Use highlight sweeps, underline draws, connector-line draws, number pops, or card
+  flips only when they match the content structure.
+- Avoid long typewriter effects for Chinese paragraphs; they are slow and compete
+  with the voice. If using a typewriter, limit it to very short labels.
+- Do not reveal all cards at scene start when the narration introduces them one
+  by one.
+
+Synchronization is element-level, not just scene-level:
+- The scene's `data-start` / `data-duration` still comes from `scene-timing.json`.
+- Inside the scene, each card, label, badge, line, diagram node, or callout should
+  enter when its matching narration phrase is spoken. Use `info_units[].narration_cue`
+  when provided; otherwise derive cues from `display_text`, `narration.txt`, and the
+  ASR transcript.
+- If a sentence introduces three points, reveal the three visual elements in that
+  spoken order, each within roughly 0.3s of the phrase it represents.
+- Keep each element visible long enough to be read, but do not let stale elements
+  dominate after the narration has moved on; fade, de-emphasize, or shift them into
+  a summary layout.
+- If exact phrase timing is unavailable, distribute reveals across the spoken
+  sentence in semantic order rather than dumping everything at scene start.
+
 ## Hard constraints (do NOT override — these are upstream contracts)
 
 1. **Audio is final.** Do not regenerate TTS. Do not call `hyperframes tts` or
@@ -480,6 +535,15 @@ You are free to:
    (or equivalent framing) so no content is lost. Treat the letterbox margins
    however you like (solid color, blur, pattern — your call). For atmospheric /
    decorative photos where cropping is harmless, `cover` is fine.
+8. **No plain-text information dumps.** A text-only or text-dominant scene must
+   use designed information structures (cards, callouts, timelines, diagrams,
+   comparisons, flows, badges, etc.) with clear hierarchy. Never paste a paragraph
+   of `display_text` into the scene as the main visual.
+9. **Text motion must follow narration cues.** Do not reveal all text elements at
+   scene start unless the narration also states them as one unit. For multiple
+   cards, labels, diagram nodes, or callouts, reveal each element when the matching
+   narration phrase is spoken, then keep or de-emphasize it according to the scene's
+   information flow.
 
 ## Deliverable
 - `composition/index.html` (GSAP timeline + scenes)
@@ -639,6 +703,8 @@ You are about to make a known mistake if you find yourself:
 - Picking system Chinese fonts via `fc-match`
 - Setting Paraformer `sample_rate=16000`
 - **Using `object-fit: cover` on an information-dense image** (screenshot, chart, data table, portrait with important edges) — content WILL be cropped
+- **Pasting `display_text` as a plain paragraph** instead of turning it into designed information objects (cards, callouts, timelines, diagrams, comparison grids, etc.)
+- **Revealing every text card at scene start** when the narration introduces those cards one by one — visual elements must enter with their matching spoken cues
 
 Stop and re-read the relevant Iron Rule above.
 
