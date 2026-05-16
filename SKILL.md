@@ -509,8 +509,11 @@ Synchronization is element-level, not just scene-level:
    Resolution: look up `entries[*]` where `slug == material_ref.entry_slug`, then
    look up the image (`kind="image"`) or video (`kind="video_clip"`) where
    `id == material_ref.asset_id`. For videos, cut `selected_clips[clip_index]`
-   with `ffmpeg -ss <start> -to <end> -c copy` before embedding as
-   `<video class="clip" muted>`. Never invent stock images. If a scene needs a
+   with `ffmpeg -ss <start> -to <end> -i <source.mp4> -c:v copy -an <out.mp4>` — **`-an` strips
+   the source audio**; the narration in `narration.mp3` is the only voice in
+   the final mix. Embed as `<video class="clip" muted playsinline>` (the
+   `muted` attribute is belt-and-suspenders against any clip that slipped
+   through without `-an`). Never invent stock images. If a scene needs a
    visual the catalog cannot supply, stop and report back — do not improvise.
 4. **CJK font handling.** Narration is Chinese with Latin proper nouns. Fonts
    in `fonts/` are already downloaded — use them via relative `@font-face`,
@@ -606,29 +609,31 @@ After the sub-agent's render is sanity-checked, layer a low-volume background
 music track on top of the narration. The narration stays at full volume; the
 BGM sits underneath at `0.03` linear gain by default.
 
+The skill ships a default music bed at `assets/bgm.mp3` (a 24-second loopable
+clip), so the common case needs no music-related flags:
+
 ```bash
 python3 scripts/mix-bgm.py \
   --video {work_dir}/{topic_name}/composition/renders/final.mp4 \
-  --bgm-source ~/Downloads/The_Daily_Ledger.mp3 \
-  --bgm-trim-start 0 --bgm-trim-end 24 \
-  --bgm-volume 0.03 \
   --output {work_dir}/{topic_name}/composition/renders/final_with_bgm.mp4
 ```
 
-The script does two ffmpeg passes:
-1. Trim `--bgm-source` to `[--bgm-trim-start, --bgm-trim-end]` seconds and
-   write it as `bgm.mp3` next to the output video. A `bgm.mp3.meta.json`
-   sidecar records the source path, source mtime, and trim window; on
-   re-runs the trimmed file is reused only when every field matches
-   exactly (so swapping sources or changing the trim window forces a
-   fresh trim, even if the resulting duration would be the same).
-2. Loop `bgm.mp3` to cover the full video duration, mix it with the existing
-   narration audio at `--bgm-volume`, and write `final_with_bgm.mp4` with
-   `-c:v copy` (no re-encode of the video stream).
+To use a different track or volume:
 
-Defaults are sized for the current `The_Daily_Ledger.mp3` source — a 24-second
-loopable intro at 3% volume. Tweak `--bgm-volume` up if the music is inaudible,
-down if it competes with the narration.
+```bash
+python3 scripts/mix-bgm.py \
+  --video {work_dir}/{topic_name}/composition/renders/final.mp4 \
+  --bgm /path/to/your_music.mp3 \
+  --bgm-volume 0.05 \
+  --output {work_dir}/{topic_name}/composition/renders/final_with_bgm.mp4
+```
+
+The script does a single ffmpeg pass: it loops `--bgm` (default
+`assets/bgm.mp3`) to cover the full video duration, mixes it with the existing
+narration at `--bgm-volume`, and writes `final_with_bgm.mp4` with `-c:v copy`
+(no re-encode of the video stream). 3% volume keeps the music audible without
+muddying the narration — tweak `--bgm-volume` up if the music is inaudible,
+down if it competes with the voice.
 
 ## Gotchas Quick Table (read `references/gotchas.md` for details)
 
@@ -652,6 +657,7 @@ down if it competes with the narration.
 | Chrome exits with sandbox errors as root | Running inside a container | `--no-sandbox` is auto-enabled when running as root or inside Docker; pass explicitly with `--no-sandbox` if needed |
 | CDP port 9222 busy with the wrong Chrome | Another tool launched Chrome on that port | If it's a Chrome we WANT, that's fine (reuse). If not, pass `--cdp-url http://localhost:9223` |
 | Scene references an asset not in `material-catalog.json` | Phase 7 wrote a `material_ref` whose `entry_slug`/`asset_id` pair doesn't resolve in the catalog, or skipped `material_ref` entirely | Re-run Phase 4 vision-analyze and re-build the catalog; every scene must have a `material_ref` that resolves via `entry_slug → asset_id` (and `clip_index` for videos). If no entry fits, harvest more URLs (Phase 3) — do not invent or borrow generic stock assets |
+| Final mp4 plays the narration on top of a clip's original voice/music | The sub-agent cut `selected_clips[i]` with `ffmpeg ... -c copy` (audio track preserved) and embedded the result; Chromium's `muted` attribute does not strip the audio track during `hyperframes render` | Re-cut every embedded clip with `-c:v copy -an` (and re-render). The narration in `narration.mp3` is the only audio source for the final mix; clip audio must be discarded at cut time, not just hidden via the HTML attribute |
 
 ## Resources Bundled With This Skill
 
@@ -696,6 +702,7 @@ You are about to make a known mistake if you find yourself:
 - Writing narration before running vision-analyze on harvested videos and building `material-catalog.json`
 - **Designing a scene without a `material_ref`** into `material-catalog.json`, or referencing an `<img src>` / `<video src>` whose path is not a catalog entry
 - **Embedding the full source video** instead of an ffmpeg-cut `selected_clips[i]` range
+- **Cutting a `video_clip` without `-an`** — leaving the source audio in the embedded `<video>` lets it fight the narration even if `muted` is set on the tag (some renderers still mix the audio track). Always cut with `ffmpeg -ss ... -to ... -i <source.mp4> -c:v copy -an <out.mp4>`.
 - **Hand-writing `composition/index.html` from the main agent** instead of handing the brief to a coding sub-agent
 - **Skipping `composition-brief.md`** and dropping the sub-agent into a workspace with no instructions
 - Reaching for `npx hyperframes transcribe` for Chinese audio
