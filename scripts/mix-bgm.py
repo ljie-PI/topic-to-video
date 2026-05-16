@@ -112,6 +112,19 @@ def bgm_can_reuse(bgm_path: Path, want_meta: dict) -> bool:
     return have_meta == want_meta
 
 
+def run_ffmpeg(cmd: list, label: str) -> None:
+    """Run an ffmpeg/ffprobe command and surface stderr on failure."""
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        stderr_tail = (result.stderr or '').strip().splitlines()
+        # keep the last ~20 lines so the error stays useful but the
+        # JSON payload doesn't explode
+        tail = '\n'.join(stderr_tail[-20:]) if stderr_tail else '(no stderr)'
+        raise RuntimeError(
+            f'ffmpeg failed during {label} (exit={result.returncode}): {tail}'
+        )
+
+
 def trim_bgm(ffmpeg: str, source: Path, start: float, end: float, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -122,7 +135,7 @@ def trim_bgm(ffmpeg: str, source: Path, start: float, end: float, dest: Path) ->
         str(dest),
     ]
     log(f'trim bgm: {source} [{start}-{end}s] -> {dest}')
-    subprocess.run(cmd, check=True)
+    run_ffmpeg(cmd, 'trim')
     sidecar = dest.with_suffix(dest.suffix + '.meta.json')
     sidecar.write_text(
         json.dumps(bgm_meta_for(source, start, end), ensure_ascii=False, indent=2),
@@ -132,15 +145,19 @@ def trim_bgm(ffmpeg: str, source: Path, start: float, end: float, dest: Path) ->
 
 def mux_bgm(ffmpeg: str, video: Path, bgm: Path, volume: float, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    # -stream_loop -1 on the bgm input causes ffmpeg to loop it; -shortest
-    # then cuts the mix at the original video duration so the bgm stretches
-    # to cover the whole timeline regardless of bgm length vs video length.
-    # amix normalize=0 disables the default 1/N input scaling - without it the
+    # `-stream_loop -1` on the bgm input causes ffmpeg to loop it forever.
+    # `amix duration=longest` lets the mixed audio extend with the looping bgm;
+    # `-shortest` then cuts the final container at whichever stream ends first.
+    # Pairing `longest` with `-shortest` (instead of `duration=first` with
+    # `-shortest`) avoids truncating the video stream when the narration audio
+    # happens to be slightly shorter than the video — the mixed audio stretches
+    # to cover the video, so `-shortest` clips on the video duration.
+    # `normalize=0` disables amix's default 1/N input scaling — without it the
     # narration would be silently halved alongside the (already quiet) bgm,
     # making --bgm-volume affect both tracks instead of just the music.
     filter_complex = (
         f'[1:a]volume={volume}[bgm];'
-        f'[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]'
+        f'[0:a][bgm]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[aout]'
     )
     cmd = [
         ffmpeg, '-y', '-v', 'error',
@@ -153,7 +170,7 @@ def mux_bgm(ffmpeg: str, video: Path, bgm: Path, volume: float, output: Path) ->
         str(output),
     ]
     log(f'mux bgm (volume={volume}): {video} + {bgm} -> {output}')
-    subprocess.run(cmd, check=True)
+    run_ffmpeg(cmd, 'mux')
 
 
 def main() -> int:
@@ -197,10 +214,6 @@ def main() -> int:
         return 0
     except SystemExit:
         raise
-    except subprocess.CalledProcessError as exc:
-        log(f'ffmpeg failed: {exc}')
-        print_json({'success': False, 'error': f'ffmpeg failed: {exc}'})
-        return 1
     except Exception as exc:
         log(f'error: {exc}')
         print_json({'success': False, 'error': str(exc)})

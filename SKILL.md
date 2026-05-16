@@ -554,8 +554,11 @@ python3 scripts/mix-bgm.py \
 
 The script does two ffmpeg passes:
 1. Trim `--bgm-source` to `[--bgm-trim-start, --bgm-trim-end]` seconds and
-   write it as `bgm.mp3` next to the output video (reused on re-runs if the
-   duration matches).
+   write it as `bgm.mp3` next to the output video. A `bgm.mp3.meta.json`
+   sidecar records the source path, source mtime, and trim window; on
+   re-runs the trimmed file is reused only when every field matches
+   exactly (so swapping sources or changing the trim window forces a
+   fresh trim, even if the resulting duration would be the same).
 2. Loop `bgm.mp3` to cover the full video duration, mix it with the existing
    narration audio at `--bgm-volume`, and write `final_with_bgm.mp4` with
    `-c:v copy` (no re-encode of the video stream).
