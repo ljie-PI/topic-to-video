@@ -29,7 +29,7 @@ Usage:
     --urls https://github.com/anthropic/claude-code \\
            https://docs.anthropic.com/claude-code \\
            https://en.wikipedia.org/wiki/Claude_(language_model) \\
-    --output-dir ~/.hermes/workspace/{topic}/harvest_page/
+    --output-dir {work_dir}/{topic}/harvest_page/
 
 Output convention:
   stdout : top-level JSON manifest with one entry per URL (also written to

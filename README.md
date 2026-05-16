@@ -17,7 +17,7 @@ The main agent owns research, narration scripting, TTS, ASR, and material harves
 | `DASHSCOPE_API_KEY` | Set in env (e.g. `~/.zshrc`) — required for TTS/ASR |
 | `VLM_*` (optional) | `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` to enable explicit vision; otherwise `vision-analyze.py` delegates back to the agent's own `view` tool |
 | `copilot` CLI (Phase 8) | GitHub Copilot CLI on PATH. The composition sub-agent. Fallback: `claude` CLI. |
-| `hyperframes` skill (Phase 8) | Installed at `~/.hermes/hermes-agent/optional-skills/creative/hyperframes/` so the sub-agent can scaffold + render. Node.js is required transitively for the sub-agent's `hyperframes` CLI; the main agent never invokes it directly. |
+| `hyperframes` skill (Phase 8) | Discoverable by the sub-agent's CLI (Copilot CLI / Claude Code) through its own skill/plugin loader — the main agent does not need to know the install path. Node.js is required transitively for the sub-agent's `hyperframes` CLI; the main agent never invokes it directly. |
 
 ## Quick Start
 
