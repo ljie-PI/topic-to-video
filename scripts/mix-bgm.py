@@ -6,6 +6,8 @@ Two-step pipeline backed by ffmpeg:
   1. Prepare a loopable BGM clip from a source mp3 (trim the first N seconds
      and write a clean mp3 at the requested target). Stored alongside the
      final video as `bgm.mp3` by default so it can be reused/inspected.
+     A `bgm.mp3.meta.json` sidecar records the source file, mtime, and trim
+     window; the trimmed mp3 is reused only when every field matches.
   2. Mux the BGM into the video with the original narration:
        - narration kept at full volume (vocals)
        - bgm scaled down (default 0.03) and looped to match video duration
@@ -53,15 +55,26 @@ def parse_args() -> argparse.Namespace:
     p = JsonArgumentParser(description='Mix a BGM track onto a video with ffmpeg.')
     p.add_argument('--video', required=True, help='Input video (must already contain narration audio).')
     p.add_argument('--bgm-source', required=True, help='Source mp3 for BGM (will be trimmed).')
-    p.add_argument('--bgm-trim-start', type=float, default=0.0, help='Start second to cut from bgm-source. Default 0.')
-    p.add_argument('--bgm-trim-end', type=float, default=24.0, help='End second to cut from bgm-source. Default 24.')
-    p.add_argument('--bgm-volume', type=float, default=0.03, help='Linear gain for BGM (0-1). Default 0.03.')
+    p.add_argument('--bgm-trim-start', type=float, default=0.0,
+                   help='Start second to cut from bgm-source (must be >= 0). Default 0.')
+    p.add_argument('--bgm-trim-end', type=float, default=24.0,
+                   help='End second to cut from bgm-source (must be > --bgm-trim-start). Default 24.')
+    p.add_argument('--bgm-volume', type=float, default=0.03,
+                   help='Linear gain for BGM, 0.0-1.0. Default 0.03.')
     p.add_argument('--bgm-path', default=None,
                    help='Where to write the trimmed bgm.mp3. Default: next to --output as bgm.mp3.')
     p.add_argument('--output', required=True, help='Output video path.')
     p.add_argument('--ffmpeg', default='ffmpeg', help='ffmpeg binary path. Default `ffmpeg`.')
     p.add_argument('--ffprobe', default='ffprobe', help='ffprobe binary path. Default `ffprobe`.')
-    return p.parse_args()
+    args = p.parse_args()
+    if args.bgm_trim_start < 0:
+        p.error(f'--bgm-trim-start must be >= 0 (got {args.bgm_trim_start})')
+    if args.bgm_trim_end <= args.bgm_trim_start:
+        p.error(f'--bgm-trim-end ({args.bgm_trim_end}) must be greater than '
+                f'--bgm-trim-start ({args.bgm_trim_start})')
+    if not 0.0 <= args.bgm_volume <= 1.0:
+        p.error(f'--bgm-volume must be within [0.0, 1.0] (got {args.bgm_volume})')
+    return args
 
 
 def probe_duration(ffprobe: str, path: Path) -> Optional[float]:
@@ -77,9 +90,29 @@ def probe_duration(ffprobe: str, path: Path) -> Optional[float]:
         return None
 
 
+def bgm_meta_for(source: Path, start: float, end: float) -> dict:
+    return {
+        'source': str(source),
+        'source_mtime_ns': source.stat().st_mtime_ns,
+        'trim_start': start,
+        'trim_end': end,
+    }
+
+
+def bgm_can_reuse(bgm_path: Path, want_meta: dict) -> bool:
+    if not bgm_path.is_file():
+        return False
+    sidecar = bgm_path.with_suffix(bgm_path.suffix + '.meta.json')
+    if not sidecar.is_file():
+        return False
+    try:
+        have_meta = json.loads(sidecar.read_text(encoding='utf-8'))
+    except Exception:
+        return False
+    return have_meta == want_meta
+
+
 def trim_bgm(ffmpeg: str, source: Path, start: float, end: float, dest: Path) -> None:
-    if end <= start:
-        raise ValueError(f'--bgm-trim-end ({end}) must be greater than --bgm-trim-start ({start})')
     dest.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         ffmpeg, '-y', '-v', 'error',
@@ -90,6 +123,11 @@ def trim_bgm(ffmpeg: str, source: Path, start: float, end: float, dest: Path) ->
     ]
     log(f'trim bgm: {source} [{start}-{end}s] -> {dest}')
     subprocess.run(cmd, check=True)
+    sidecar = dest.with_suffix(dest.suffix + '.meta.json')
+    sidecar.write_text(
+        json.dumps(bgm_meta_for(source, start, end), ensure_ascii=False, indent=2),
+        encoding='utf-8',
+    )
 
 
 def mux_bgm(ffmpeg: str, video: Path, bgm: Path, volume: float, output: Path) -> None:
@@ -97,7 +135,7 @@ def mux_bgm(ffmpeg: str, video: Path, bgm: Path, volume: float, output: Path) ->
     # -stream_loop -1 on the bgm input causes ffmpeg to loop it; -shortest
     # then cuts the mix at the original video duration so the bgm stretches
     # to cover the whole timeline regardless of bgm length vs video length.
-    # amix normalize=0 disables the default 1/N input scaling — without it the
+    # amix normalize=0 disables the default 1/N input scaling - without it the
     # narration would be silently halved alongside the (already quiet) bgm,
     # making --bgm-volume affect both tracks instead of just the music.
     filter_complex = (
@@ -133,20 +171,21 @@ def main() -> int:
         if not source.is_file():
             raise FileNotFoundError(f'--bgm-source not found: {source}')
 
-        # 1. trim bgm (skip if already exists and matches requested duration)
-        wanted_dur = args.bgm_trim_end - args.bgm_trim_start
-        if bgm_path.is_file():
-            existing_dur = probe_duration(args.ffprobe, bgm_path) or 0
-            if abs(existing_dur - wanted_dur) < 0.5:
-                log(f'reusing existing bgm: {bgm_path} ({existing_dur:.2f}s)')
-            else:
-                trim_bgm(args.ffmpeg, source, args.bgm_trim_start, args.bgm_trim_end, bgm_path)
+        # 1. trim bgm (skip only when sidecar metadata exactly matches)
+        want_meta = bgm_meta_for(source, args.bgm_trim_start, args.bgm_trim_end)
+        if bgm_can_reuse(bgm_path, want_meta):
+            log(f'reusing existing bgm: {bgm_path}')
         else:
             trim_bgm(args.ffmpeg, source, args.bgm_trim_start, args.bgm_trim_end, bgm_path)
 
         # 2. mux
         mux_bgm(args.ffmpeg, video, bgm_path, args.bgm_volume, output)
         out_dur = probe_duration(args.ffprobe, output)
+        if out_dur is None:
+            raise RuntimeError(
+                f'could not probe duration of {output}; ffprobe may be missing '
+                f'or the output is unreadable'
+            )
 
         log(f'wrote {output} ({(output.stat().st_size / 1024 / 1024):.2f} MB, {out_dur}s)')
         print_json({
