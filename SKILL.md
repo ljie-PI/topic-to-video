@@ -53,6 +53,7 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 | 7 | `scene-anchor.py` | `transcribe/scene-timing.json` exists (non-empty) | Skip anchoring |
 | 7.5 | `fonts-download.sh` | `fonts/` dir contains ≥1 `.woff2` file | Skip font download |
 | 8 | composition sub-agent | `composition/renders/final.mp4` exists | Skip composition; verify video playability |
+| 9 | `mix-bgm.py` | `composition/renders/final_with_bgm.mp4` exists | Skip BGM mix; verify with ffprobe |
 
 ### Resume Behavior
 
@@ -119,7 +120,7 @@ Every script emits **JSON to stdout** and **human-readable logs to stderr**:
 
 Parse script results with: `result=$(python3 script.py ... 2>/dev/null)` or capture both channels separately.
 
-## Workflow (8 Phases)
+## Workflow (9 Phases)
 
 ### Phase 1 — Gather Inputs (ask user, ONE question at a time)
 
@@ -397,7 +398,7 @@ Why pre-stage instead of letting the sub-agent do it: this skill owns the CJK-fo
 
 Everything from this point — scaffolding a HyperFrames project, deciding the look (`DESIGN.md`), composing `index.html` with GSAP, running `lint`/`inspect`, and rendering — is a deep iterative HTML+CSS+GSAP task with its own dedicated skill (`hyperframes`). It is owned by a **coding sub-agent**, not the main agent.
 
-The main agent's job ends here: produce the upstream artifacts (`narration.mp3`, `scene-timing.json`, `material-catalog.json`, `narration.txt`, `fonts/`), write a brief, invoke the sub-agent, then sanity-check the resulting mp4.
+The main agent's remaining work: produce the upstream artifacts (`narration.mp3`, `scene-timing.json`, `material-catalog.json`, `narration.txt`, `fonts/`), write a brief, invoke the sub-agent, sanity-check the resulting mp4, then layer BGM (Phase 9).
 
 The sub-agent's job is to turn those into a rendered video using the `hyperframes` skill — freely picking templates, design, palette, motion, and pacing within the constraints the brief lists.
 
@@ -535,6 +536,36 @@ Expect: duration within ±0.1 s of `narration.mp3`; file size > 1 MB; an audio
 stream present. If anything looks off, send the failure back to the sub-agent
 (`copilot resume` or a fresh `claude -p ...`) with a pointer to the symptom —
 don't try to hand-patch the composition from the main agent.
+
+### Phase 9 — Mix BGM (background music)
+
+After the sub-agent's render is sanity-checked, layer a low-volume background
+music track on top of the narration. The narration stays at full volume; the
+BGM sits underneath at `0.03` linear gain by default.
+
+```bash
+python3 scripts/mix-bgm.py \
+  --video {work_dir}/{topic_name}/composition/renders/final.mp4 \
+  --bgm-source ~/Downloads/The_Daily_Ledger.mp3 \
+  --bgm-trim-start 0 --bgm-trim-end 24 \
+  --bgm-volume 0.03 \
+  --output {work_dir}/{topic_name}/composition/renders/final_with_bgm.mp4
+```
+
+The script does two ffmpeg passes:
+1. Trim `--bgm-source` to `[--bgm-trim-start, --bgm-trim-end]` seconds and
+   write it as `bgm.mp3` next to the output video. A `bgm.mp3.meta.json`
+   sidecar records the source path, source mtime, and trim window; on
+   re-runs the trimmed file is reused only when every field matches
+   exactly (so swapping sources or changing the trim window forces a
+   fresh trim, even if the resulting duration would be the same).
+2. Loop `bgm.mp3` to cover the full video duration, mix it with the existing
+   narration audio at `--bgm-volume`, and write `final_with_bgm.mp4` with
+   `-c:v copy` (no re-encode of the video stream).
+
+Defaults are sized for the current `The_Daily_Ledger.mp3` source — a 24-second
+loopable intro at 3% volume. Tweak `--bgm-volume` up if the music is inaudible,
+down if it competes with the narration.
 
 ## Gotchas Quick Table (read `references/gotchas.md` for details)
 
