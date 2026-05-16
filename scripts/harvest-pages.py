@@ -96,10 +96,8 @@ def parse_args() -> argparse.Namespace:
     p = ArgumentParser(description='Batch URL material harvester (Playwright over CDP).')
     p.add_argument('--urls', required=True, nargs='+', help='One or more URLs to harvest.')
     p.add_argument('--output-dir', required=True, help='Batch output root (per-URL subdirs are created underneath).')
-    p.add_argument('--scroll-record', dest='scroll_record', action='store_true', default=True,
-                   help='Record a scroll video of each page (default on).')
-    p.add_argument('--no-scroll-record', dest='scroll_record', action='store_false',
-                   help='Disable scroll-record (overrides --scroll-record).')
+    p.add_argument('--no-scroll-record', dest='scroll_record', action='store_false', default=True,
+                   help='Disable scroll-record (on by default).')
     p.add_argument('--min-image-width', type=int, default=500,
                    help='Minimum naturalWidth (px) to keep an image. Default 500.')
     p.add_argument('--min-image-height', type=int, default=300,
