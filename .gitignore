@@ -3,3 +3,7 @@ __pycache__
 
 .superpowers
 
+# Browser profile shared with gemini-deep-research.py / harvest-pages.py
+# (auto-populated at runtime; contains login cookies, extensions, cache —
+# must never be committed)
+chrome_profile/
