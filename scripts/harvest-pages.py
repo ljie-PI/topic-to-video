@@ -5,8 +5,7 @@ For every URL unconditionally extracts:
   - Images with naturalWidth >= 500 and naturalHeight >= 300
   - All embedded <video> elements and YouTube iframe/anchor links
 
-Optionally (--scroll-record) also records a scroll video of the page for
-downstream extract-frames + vision-analyze.
+Records a scroll video of each page by default (disable with --no-scroll-record).
 
 Browser model: attaches over CDP (default http://localhost:9222) to a Chrome
 process. If no CDP responder is reachable, auto-launches system Chrome with
@@ -97,8 +96,10 @@ def parse_args() -> argparse.Namespace:
     p = ArgumentParser(description='Batch URL material harvester (Playwright over CDP).')
     p.add_argument('--urls', required=True, nargs='+', help='One or more URLs to harvest.')
     p.add_argument('--output-dir', required=True, help='Batch output root (per-URL subdirs are created underneath).')
-    p.add_argument('--scroll-record', action='store_true',
-                   help='Also record a scroll video of each page (for extract-frames / vision-analyze).')
+    p.add_argument('--scroll-record', dest='scroll_record', action='store_true', default=True,
+                   help='Record a scroll video of each page (default on).')
+    p.add_argument('--no-scroll-record', dest='scroll_record', action='store_false',
+                   help='Disable scroll-record (overrides --scroll-record).')
     p.add_argument('--min-image-width', type=int, default=500,
                    help='Minimum naturalWidth (px) to keep an image. Default 500.')
     p.add_argument('--min-image-height', type=int, default=300,
