@@ -338,7 +338,7 @@ Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entr
 Goals:
 - Use **only facts from the research brief** — every number, name, date, and quote must be traceable.
 - Reference the collected materials where helpful, and annotate each scene with recommended visual material.
-- 3-10 minutes at `speech_rate=1.5` ≈ **8 chars/sec** → `3min ≈ 1440 chars`, `5min ≈ 2400 chars`, `10min ≈ 4800 chars`.
+- 3-10 minutes at `speech_rate=1.3` ≈ **7 chars/sec** → `3min ≈ 1260 chars`, `5min ≈ 2100 chars`, `10min ≈ 4200 chars`.
 - 15-40 paragraphs (scaled to target duration), separated by blank lines (each ≈ one scene = 6-15s of audio).
 - Numbers in Chinese characters (`二零二六` not `2026`) — TTS reads them more naturally.
 - English proper nouns in original Latin (`Anthropic`, `Claude Code`, `Boris`).
@@ -360,7 +360,7 @@ python3 voice-clone.py --output-dir {work_dir}/{topic_name}/voice_clone
 ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 {work_dir}/{topic_name}/voice_clone/narration.mp3
 ```
 
-If duration is much longer than user wanted, retry with higher `speech_rate` (1.5 default; try 1.7 for shorter, 1.2 for slower).
+If duration is much longer than user wanted, retry with higher `speech_rate` (1.3 default; try 1.5 for shorter, 1.0 for slower).
 
 ### Phase 7 — ASR + Scene Anchoring
 

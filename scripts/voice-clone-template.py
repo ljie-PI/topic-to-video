@@ -19,7 +19,8 @@ from pathlib import Path
 # Use the model + voice from voice_clone.py. Both must be the SAME pair that
 # was registered when the voice was cloned.
 MODEL = "cosyvoice-v3.5-plus"
-VOICE = "cosyvoice-v3.5-plus-myvoice-1b98aef0e50242ad9d23ae69bb3511f7"
+# VOICE = "cosyvoice-v3.5-plus-myvoice-1b98aef0e50242ad9d23ae69bb3511f7"
+VOICE = "cosyvoice-v3.5-plus-vd-techboy-5389fd1d046e444c8b61485edd7c68e0"
 
 # === REPLACE THIS ===
 input_text = """
@@ -103,7 +104,7 @@ def main() -> int:
         output_path = (output_dir / 'narration.mp3').resolve()
 
         log(f'synthesizing narration to {output_path}')
-        synthesizer = SpeechSynthesizer(model=MODEL, voice=VOICE, speech_rate=1.5)
+        synthesizer = SpeechSynthesizer(model=MODEL, voice=VOICE, speech_rate=1.3)
         audio = synthesizer.call(input_text)
 
         log(
