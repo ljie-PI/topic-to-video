@@ -454,7 +454,7 @@ You are free to:
    Resolution: look up `entries[*]` where `slug == material_ref.entry_slug`, then
    look up the image (`kind="image"`) or video (`kind="video_clip"`) where
    `id == material_ref.asset_id`. For videos, cut `selected_clips[clip_index]`
-   with `ffmpeg -ss <start> -to <end> -c:v copy -an <out.mp4>` — **`-an` strips
+   with `ffmpeg -ss <start> -to <end> -i <source.mp4> -c:v copy -an <out.mp4>` — **`-an` strips
    the source audio**; the narration in `narration.mp3` is the only voice in
    the final mix. Embed as `<video class="clip" muted playsinline>` (the
    `muted` attribute is belt-and-suspenders against any clip that slipped
@@ -638,7 +638,7 @@ You are about to make a known mistake if you find yourself:
 - Writing narration before running vision-analyze on harvested videos and building `material-catalog.json`
 - **Designing a scene without a `material_ref`** into `material-catalog.json`, or referencing an `<img src>` / `<video src>` whose path is not a catalog entry
 - **Embedding the full source video** instead of an ffmpeg-cut `selected_clips[i]` range
-- **Cutting a `video_clip` without `-an`** — leaving the source audio in the embedded `<video>` lets it fight the narration even if `muted` is set on the tag (some renderers still mix the audio track). Always cut with `ffmpeg -ss ... -to ... -c:v copy -an`.
+- **Cutting a `video_clip` without `-an`** — leaving the source audio in the embedded `<video>` lets it fight the narration even if `muted` is set on the tag (some renderers still mix the audio track). Always cut with `ffmpeg -ss ... -to ... -i <source.mp4> -c:v copy -an <out.mp4>`.
 - **Hand-writing `composition/index.html` from the main agent** instead of handing the brief to a coding sub-agent
 - **Skipping `composition-brief.md`** and dropping the sub-agent into a workspace with no instructions
 - Reaching for `npx hyperframes transcribe` for Chinese audio
