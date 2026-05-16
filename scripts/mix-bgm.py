@@ -7,12 +7,12 @@ the existing narration. The narration stays at full volume; the BGM is
 attenuated by `--bgm-volume` (default 0.03).
 
 Usage:
-  python3 mix-bgm.py \\
+  python3 scripts/mix-bgm.py \\
       --video composition/renders/final.mp4 \\
       --output composition/renders/final_with_bgm.mp4
 
   # Override the music file or its volume if needed:
-  python3 mix-bgm.py \\
+  python3 scripts/mix-bgm.py \\
       --video composition/renders/final.mp4 \\
       --bgm /path/to/other.mp3 \\
       --bgm-volume 0.05 \\
@@ -32,8 +32,8 @@ from typing import Optional
 
 TOOL_NAME = 'mix-bgm'
 
-# Bundled BGM lives at <skill_root>/assets/bgm.mp3, next to this script's
-# parent. Resolved at parse time so the script works from any CWD.
+# Bundled BGM lives at <skill_root>/assets/bgm.mp3. The path is derived
+# from __file__ so the script works from any CWD.
 DEFAULT_BGM_PATH = Path(__file__).resolve().parent.parent / 'assets' / 'bgm.mp3'
 
 
