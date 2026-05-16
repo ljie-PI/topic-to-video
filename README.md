@@ -55,7 +55,7 @@ The Phase 8 brief MAY point at one of these references; the sub-agent is also fr
 | `scripts/scene-anchor.py` | Anchor scenes to ASR word stream |
 | `scripts/extract-frames.py` | Extract JPEG frames with ffmpeg / ffprobe |
 | `scripts/subtitle-parse.py` | Parse SRT/VTT subtitles with keyword filtering |
-| `scripts/harvest-pages.py` | Batch URL → material: extracts ≥512px images + native `<video>` clips per URL OR records a scroll-through video for text-heavy pages (Playwright over CDP, shared profile with gemini-deep-research). YouTube/Bilibili URLs are listed in `manifest.pending_downloads[]` — the agent invokes `video-download.py` on each in Phase 3.b. |
+| `scripts/harvest-pages.py` | Batch URL → material: extracts raster images meeting the configurable size filter (default ≥500px wide and ≥300px tall), SVGs, inline SVGs, and native `<video>` clips per rendered page; records a scroll-through video by default (Playwright over CDP, shared profile with gemini-deep-research). YouTube/Bilibili URLs are listed in `manifest.pending_downloads[]` — the agent invokes `video-download.py` on each in Phase 3.b. |
 | `scripts/video-download.py` | yt-dlp wrapper for YouTube/Bilibili download with subtitles; called by the agent (Phase 3.b) on every `pending_downloads[]` URL produced by `harvest-pages.py` |
 | `scripts/mix-bgm.py` | Phase 9 — loop the bundled `assets/bgm.mp3` (or `--bgm /path/to/your.mp3`) under the narration at low volume (default 0.03) and write `final_with_bgm.mp4` |
 | `scripts/fonts-download.sh` | Download WOFF2 fonts (`dawn` / `moon` / `all`) — run by the main agent in Phase 7.5 |
