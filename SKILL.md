@@ -500,8 +500,7 @@ cd {work_dir}/{topic_name}
 copilot --allow-all-tools --add-dir . \
   -p "$(cat composition-brief.md)
 
-Read the brief above and produce the deliverables. Use the hyperframes skill
-(installed under ~/.hermes/hermes-agent/optional-skills/creative/hyperframes/).
+Read the brief above and produce the deliverables. Use the hyperframes skill.
 Workflow: scaffold ./composition with hyperframes init, write DESIGN.md, compose
 index.html, run hyperframes lint && hyperframes inspect, fix issues, then render
 with --workers 1. Iterate until lint and inspect pass and renders/final.mp4 exists."
@@ -619,9 +618,9 @@ The material processing scripts require additional dependencies beyond the base 
 - **ffmpeg/ffprobe** (for frame extraction): usually pre-installed on Linux
 - **playwright** (Python bindings only, ~3 MB) for `harvest-pages.py`: `pip install playwright`. NO `playwright install chromium` — we attach to system Chrome over CDP.
 - **system Chrome** (auto-detected per platform: Linux `/usr/bin/google-chrome`, macOS `/Applications/Google Chrome.app`, Windows `%ProgramFiles%\Google\Chrome\Application\chrome.exe`; or set `CHROME_PATH` env var, or pass `--chrome-path`): auto-launched on demand with `--remote-debugging-port=9222 --user-data-dir={work_dir}/chrome_profile`. Shared across `gemini-deep-research.py` and `harvest-pages.py` so cookies/logins persist. **Gemini Deep Research requires a logged-in Google account** — log in once manually via the shared Chrome profile.
-- **yt-dlp** (for `video-download.py`): on PATH (`/home/jieliu1/.local/bin/yt-dlp`).
+- **yt-dlp** (for `video-download.py`): on PATH (`yt-dlp --version` should work).
 - **vision model** (optional): set `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` to enable `vision-analyze.py` Mode 1 (e.g. point at DashScope's OpenAI-compatible endpoint with `qwen-vl-max`). When unset, the script delegates to the calling agent's own `view` tool — no extra dependency required.
-- **coding sub-agent** (Phase 8): GitHub `copilot` CLI or `claude` CLI on PATH, with the `hyperframes` skill installed under `~/.hermes/hermes-agent/optional-skills/creative/hyperframes/`.
+- **coding sub-agent** (Phase 8): GitHub `copilot` CLI or `claude` CLI on PATH, with the `hyperframes` skill installed wherever that agent discovers skills from (e.g. its plugin/extension/marketplace dir). The main agent does not need to know the path — the sub-agent finds it via its own skill loader when it sees the brief say "use the hyperframes skill".
 
 ## Red Flags — STOP if you see any of these
 
