@@ -364,3 +364,24 @@ joined.lower().find('Hugging'.lower())  # → matches
 ```
 
 **Tooling caveat:** `check-cjk-fonts.py` can produce many false positives from ancestor selectors such as `.scene`, `.eyebrow`, `.brand`, and `.corner-mark`, so the real punchline-frame problem can be hidden by noise. **Manually inspect final rendered scene frames that contain punchlines.**
+
+---
+
+## 19. Embedded video clips bleed their source audio into the final mp4
+
+**Symptom:** The final `final_with_bgm.mp4` plays the narration but you can also hear the original speaker / music / sound effects from one of the embedded `<video class="clip">` elements — usually only during the scene where that clip is on screen.
+
+**Root cause:** A scene's `selected_clips[clip_index]` was cut with `ffmpeg -ss <start> -to <end> -c copy` (or `-c copy -c:a copy`) and the resulting mp4 still carries the source audio track. The HTML embeds it as `<video class="clip" muted>`. The `muted` attribute only suppresses *playback through the WebAudio output*; it does not strip the audio track from the file. During `hyperframes render` Chromium hands the page off to ffmpeg, which under some pipelines (especially when narration is mixed in via a separate `<audio>` element) picks up the clip's audio track anyway. Result: clip voice or music underneath the narration, lower and offset by the GSAP scene start.
+
+**Fix:** Strip the audio track at cut time — `muted` on the tag is belt-and-suspenders, not the primary defense:
+```bash
+# WRONG — keeps source audio
+ffmpeg -y -ss 12.0 -to 18.5 -i source.mp4 -c copy clip.mp4
+
+# RIGHT — audio track removed entirely
+ffmpeg -y -ss 12.0 -to 18.5 -i source.mp4 -c:v copy -an clip.mp4
+```
+
+Then embed with `<video class="clip" muted playsinline>` so that even if a clip slipped through without `-an`, the browser still silences it for the renderer.
+
+**Verification:** `ffprobe -v error -show_streams <clip.mp4>` should list only `codec_type=video` — no `codec_type=audio` line. If you see an audio stream on any embedded clip, re-cut it.

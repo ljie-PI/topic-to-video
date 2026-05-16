@@ -454,8 +454,11 @@ You are free to:
    Resolution: look up `entries[*]` where `slug == material_ref.entry_slug`, then
    look up the image (`kind="image"`) or video (`kind="video_clip"`) where
    `id == material_ref.asset_id`. For videos, cut `selected_clips[clip_index]`
-   with `ffmpeg -ss <start> -to <end> -c copy` before embedding as
-   `<video class="clip" muted>`. Never invent stock images. If a scene needs a
+   with `ffmpeg -ss <start> -to <end> -c:v copy -an <out.mp4>` — **`-an` strips
+   the source audio**; the narration in `narration.mp3` is the only voice in
+   the final mix. Embed as `<video class="clip" muted playsinline>` (the
+   `muted` attribute is belt-and-suspenders against any clip that slipped
+   through without `-an`). Never invent stock images. If a scene needs a
    visual the catalog cannot supply, stop and report back — do not improvise.
 4. **CJK font handling.** Narration is Chinese with Latin proper nouns. Fonts
    in `fonts/` are already downloaded — use them via relative `@font-face`,
@@ -590,6 +593,7 @@ down if it competes with the voice.
 | Chrome exits with sandbox errors as root | Running inside a container | `--no-sandbox` is auto-enabled when running as root or inside Docker; pass explicitly with `--no-sandbox` if needed |
 | CDP port 9222 busy with the wrong Chrome | Another tool launched Chrome on that port | If it's a Chrome we WANT, that's fine (reuse). If not, pass `--cdp-url http://localhost:9223` |
 | Scene references an asset not in `material-catalog.json` | Phase 7 wrote a `material_ref` whose `entry_slug`/`asset_id` pair doesn't resolve in the catalog, or skipped `material_ref` entirely | Re-run Phase 4 vision-analyze and re-build the catalog; every scene must have a `material_ref` that resolves via `entry_slug → asset_id` (and `clip_index` for videos). If no entry fits, harvest more URLs (Phase 3) — do not invent or borrow generic stock assets |
+| Final mp4 plays the narration on top of a clip's original voice/music | The sub-agent cut `selected_clips[i]` with `ffmpeg ... -c copy` (audio track preserved) and embedded the result; Chromium's `muted` attribute does not strip the audio track during `hyperframes render` | Re-cut every embedded clip with `-c:v copy -an` (and re-render). The narration in `narration.mp3` is the only audio source for the final mix; clip audio must be discarded at cut time, not just hidden via the HTML attribute |
 
 ## Resources Bundled With This Skill
 
@@ -634,6 +638,7 @@ You are about to make a known mistake if you find yourself:
 - Writing narration before running vision-analyze on harvested videos and building `material-catalog.json`
 - **Designing a scene without a `material_ref`** into `material-catalog.json`, or referencing an `<img src>` / `<video src>` whose path is not a catalog entry
 - **Embedding the full source video** instead of an ffmpeg-cut `selected_clips[i]` range
+- **Cutting a `video_clip` without `-an`** — leaving the source audio in the embedded `<video>` lets it fight the narration even if `muted` is set on the tag (some renderers still mix the audio track). Always cut with `ffmpeg -ss ... -to ... -c:v copy -an`.
 - **Hand-writing `composition/index.html` from the main agent** instead of handing the brief to a coding sub-agent
 - **Skipping `composition-brief.md`** and dropping the sub-agent into a workspace with no instructions
 - Reaching for `npx hyperframes transcribe` for Chinese audio
