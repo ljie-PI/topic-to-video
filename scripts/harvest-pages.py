@@ -848,28 +848,37 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
 
     if args.scroll_record:
         capped = min(60, max(5, args.scroll_duration))
+        # Each recorder gets its own try/except so a primary-recorder
+        # exception still allows the CDP fallback to run, and the
+        # already-collected images/videos survive in either case.
+        record_path: Optional[Path] = None
+        method = 'not-attempted'
         try:
             record_path, method = primary_scroll_record(
                 browser, url, viewport, capped, args.page_load_timeout, slug_dir
             )
-            if record_path is None:
-                log(f'  primary scroll-record failed ({method}); trying CDP screencast fallback')
+        except Exception as exc:
+            log(f'  primary scroll-record raised ({type(exc).__name__}: {exc})')
+            record_path, method = None, f'{type(exc).__name__}'
+        if record_path is None:
+            log(f'  primary scroll-record failed ({method}); trying CDP screencast fallback')
+            try:
                 record_path, method = cdp_screencast_record(
                     browser, url, viewport, capped, args.page_load_timeout, slug_dir
                 )
-            if record_path is None:
-                log(f'  scroll-record failed ({method}); continuing without recording')
-            else:
-                dur = probe_duration(record_path) or float(capped)
-                scroll_recording = {
-                    'local_path': str(record_path.resolve()),
-                    'duration_sec': round(dur, 3),
-                    'method': method,
-                }
-                log(f'  scroll-record OK via {method}: {record_path}')
-        except Exception as exc:
-            # Scroll-record failure must not discard already-collected images/videos.
-            log(f'  scroll-record raised ({type(exc).__name__}: {exc}); continuing without recording')
+            except Exception as exc:
+                log(f'  CDP fallback raised ({type(exc).__name__}: {exc})')
+                record_path, method = None, f'{type(exc).__name__}'
+        if record_path is None:
+            log(f'  scroll-record failed ({method}); continuing without recording')
+        else:
+            dur = probe_duration(record_path) or float(capped)
+            scroll_recording = {
+                'local_path': str(record_path.resolve()),
+                'duration_sec': round(dur, 3),
+                'method': method,
+            }
+            log(f'  scroll-record OK via {method}: {record_path}')
 
     entry = {
         'url': url,
