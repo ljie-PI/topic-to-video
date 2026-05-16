@@ -57,6 +57,7 @@ The Phase 8 brief MAY point at one of these references; the sub-agent is also fr
 | `scripts/subtitle-parse.py` | Parse SRT/VTT subtitles with keyword filtering |
 | `scripts/harvest-pages.py` | Batch URL → material: extracts ≥512px images + native `<video>` clips per URL OR records a scroll-through video for text-heavy pages (Playwright over CDP, shared profile with gemini-deep-research). YouTube/Bilibili URLs are listed in `manifest.pending_downloads[]` — the agent invokes `video-download.py` on each in Phase 3.b. |
 | `scripts/video-download.py` | yt-dlp wrapper for YouTube/Bilibili download with subtitles; called by the agent (Phase 3.b) on every `pending_downloads[]` URL produced by `harvest-pages.py` |
+| `scripts/mix-bgm.py` | Phase 9 — trim a source mp3 into a loopable `bgm.mp3` and mux it (low volume, default 0.03) onto the rendered video |
 | `scripts/fonts-download.sh` | Download WOFF2 fonts (`dawn` / `moon` / `all`) — run by the main agent in Phase 7.5 |
 | `scripts/check-cjk-fonts.py` | Flag Chinese text inside Latin-only font contexts (Phase 8 sanity check on the sub-agent's output) |
 
@@ -73,7 +74,7 @@ See `references/gotchas.md` for the full pitfall catalog.
 ## Project Layout
 
 ```
-SKILL.md                          # Full workflow (8 phases) + iron rules
+SKILL.md                          # Full workflow (9 phases) + iron rules
 scripts/                          # TTS, ASR, fonts, CJK checker, material harvest (Playwright+CDP), video-download, vision-analyze, frame extract, subtitle parse, scene anchor
 references/
   design-dawn.md                  # Optional style reference — Dawn handdrawn warm
