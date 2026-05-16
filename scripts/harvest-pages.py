@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Batch URL material harvester for the topic-to-video skill.
 
-Given an array of URLs, this tool decides per URL whether to:
-  - Mode `media`        : extract >=512px images and embedded videos
-                          (native <video>, YouTube/Bilibili via video-download.py).
-  - Mode `scroll-record`: scroll the page top->bottom and record the scroll as
-                          a video file for downstream extract-frames + vision-analyze.
+For every URL unconditionally extracts:
+  - Images with naturalWidth >= 500 and naturalHeight >= 300
+  - All embedded <video> elements and YouTube iframe/anchor links
+
+Optionally (--scroll-record) also records a scroll video of the page for
+downstream extract-frames + vision-analyze.
 
 Browser model: attaches over CDP (default http://localhost:9222) to a Chrome
 process. If no CDP responder is reachable, auto-launches system Chrome with
@@ -96,17 +97,17 @@ def parse_args() -> argparse.Namespace:
     p = ArgumentParser(description='Batch URL material harvester (Playwright over CDP).')
     p.add_argument('--urls', required=True, nargs='+', help='One or more URLs to harvest.')
     p.add_argument('--output-dir', required=True, help='Batch output root (per-URL subdirs are created underneath).')
-    p.add_argument('--mode', default='auto', choices=('auto', 'media', 'scroll-record'),
-                   help='Per-URL mode. Default auto (decided per page).')
-    p.add_argument('--min-image-size', type=int, default=512,
-                   help='Minimum naturalWidth AND naturalHeight (px) to keep an image. Default 512.')
+    p.add_argument('--scroll-record', action='store_true',
+                   help='Also record a scroll video of each page (for extract-frames / vision-analyze).')
+    p.add_argument('--min-image-width', type=int, default=500,
+                   help='Minimum naturalWidth (px) to keep an image. Default 500.')
+    p.add_argument('--min-image-height', type=int, default=300,
+                   help='Minimum naturalHeight (px) to keep an image. Default 300.')
     p.add_argument('--max-images-per-url', type=int, default=20, help='Cap on images per URL.')
     p.add_argument('--max-videos-per-url', type=int, default=5, help='Cap on videos per URL.')
     p.add_argument('--scroll-duration', type=int, default=30,
                    help='Scroll-record duration in seconds (capped at 60). Default 30.')
     p.add_argument('--viewport', default='1280x720', help='Viewport WxH for new contexts. Default 1280x720.')
-    p.add_argument('--text-threshold', type=int, default=800,
-                   help='Word count above which a page can be considered text-heavy. Default 800.')
     p.add_argument('--page-load-timeout', type=int, default=30,
                    help='Per-URL page load timeout in seconds. Default 30.')
     p.add_argument('--cdp-url', default=DEFAULT_CDP_URL, help=f'CDP endpoint (default {DEFAULT_CDP_URL}).')
@@ -511,18 +512,6 @@ def detect_watchable_platform(url: str) -> Optional[str]:
     return None
 
 
-def decide_mode(metrics: Dict[str, Any], text_threshold: int, forced: str) -> str:
-    if forced in ('media', 'scroll-record'):
-        return forced
-    word_count = metrics.get('word_count', 0)
-    large_imgs = metrics.get('large_image_count', 0)
-    videos = metrics.get('video_count', 0)
-    article_len = metrics.get('article_text_len', 0)
-    is_text_heavy = (
-        (word_count >= text_threshold and large_imgs + videos < 3)
-        or article_len >= 1500
-    )
-    return 'scroll-record' if is_text_heavy else 'media'
 
 
 def guess_image_ext(url: str, content_type: Optional[str]) -> str:
@@ -724,8 +713,7 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
         locale='zh-CN',
         extra_http_headers={'Accept-Language': 'zh-CN,en;q=0.9'},
     )
-    page_type = None
-    mode_used = None
+    page_type = None  # kept for backward compat in callers
     metrics = {}
     title = ''
     text_excerpt = ''
@@ -756,105 +744,101 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
         metrics = page.evaluate(METRICS_JS) or {}
         title = metrics.pop('title', '')
         text_excerpt = metrics.pop('text_excerpt', '')
+        log(f'  metrics={metrics}')
 
-        mode_used = decide_mode(metrics, args.text_threshold, args.mode)
-        page_type = 'text-heavy' if mode_used == 'scroll-record' else 'media-rich'
-        log(f'  mode={mode_used}; metrics={metrics}')
+        # extract image candidates
+        raw_imgs = page.evaluate(EXTRACT_IMAGES_JS) or []
+        kept = [
+            im for im in raw_imgs
+            if im.get('type') in ('svg', 'inline-svg')  # SVGs bypass size filter
+            or (im.get('width', 0) >= args.min_image_width
+                and im.get('height', 0) >= args.min_image_height)
+        ][: args.max_images_per_url]
+        log(f'  images: {len(raw_imgs)} found, {len(kept)} pass size filter')
 
-        if mode_used == 'media':
-            # extract image candidates
-            raw_imgs = page.evaluate(EXTRACT_IMAGES_JS) or []
-            kept = [
-                im for im in raw_imgs
-                if im.get('type') in ('svg', 'inline-svg')  # SVGs bypass size filter
-                or (im.get('width', 0) >= args.min_image_size
-                    and im.get('height', 0) >= args.min_image_size)
-            ][: args.max_images_per_url]
-            log(f'  images: {len(raw_imgs)} found, {len(kept)} pass size filter')
-
-            for i, im in enumerate(kept, start=1):
-                img_type = im.get('type', 'raster')
-                if img_type == 'inline-svg':
-                    # Save inline SVG markup directly
-                    path = images_dir / f'svg_{i:03d}.svg'
-                    try:
-                        path.write_text(im['markup'], encoding='utf-8')
-                    except Exception as exc:
-                        log(f'  inline-svg {i}: write failed: {exc}')
-                        images_meta.append({
-                            'url': None,
-                            'width': im.get('width', 0),
-                            'height': im.get('height', 0),
-                            'alt': im.get('alt', ''),
-                            'type': 'inline-svg',
-                            'downloaded': False,
-                            'error': f'write failed: {exc}',
-                        })
-                        continue
-                    meta = {
+        for i, im in enumerate(kept, start=1):
+            img_type = im.get('type', 'raster')
+            if img_type == 'inline-svg':
+                # Save inline SVG markup directly
+                path = images_dir / f'svg_{i:03d}.svg'
+                try:
+                    path.write_text(im['markup'], encoding='utf-8')
+                except Exception as exc:
+                    log(f'  inline-svg {i}: write failed: {exc}')
+                    images_meta.append({
                         'url': None,
                         'width': im.get('width', 0),
                         'height': im.get('height', 0),
                         'alt': im.get('alt', ''),
-                        'local_path': str(path.resolve()),
-                        'id': path.stem,
                         'type': 'inline-svg',
-                    }
-                else:
-                    local = download_image(ctx.request, im['url'], images_dir, i)
-                    meta = {
-                        'url': im['url'],
-                        'width': im.get('width', 0),
-                        'height': im.get('height', 0),
-                        'alt': im.get('alt', ''),
-                        'type': img_type,
-                    }
-                    if local:
-                        meta['local_path'] = str(local.resolve())
-                        meta['id'] = local.stem
-                    else:
-                        meta['downloaded'] = False
-                        meta['error'] = 'download failed'
-                images_meta.append(meta)
-
-            # extract video candidates
-            raw_vids = page.evaluate(EXTRACT_VIDEOS_JS) or []
-            # dedupe by normalized url
-            seen = set()
-            normalized = []
-            for v in raw_vids:
-                u = v['url']
-                if v['platform'] in ('youtube',):
-                    u = normalize_youtube(u)
-                if u in seen:
+                        'downloaded': False,
+                        'error': f'write failed: {exc}',
+                    })
                     continue
-                seen.add(u)
-                normalized.append({'url': u, 'platform': v['platform']})
-            normalized = normalized[: args.max_videos_per_url]
-            log(f'  videos: {len(raw_vids)} found, {len(normalized)} kept')
+                meta = {
+                    'url': None,
+                    'width': im.get('width', 0),
+                    'height': im.get('height', 0),
+                    'alt': im.get('alt', ''),
+                    'local_path': str(path.resolve()),
+                    'id': path.stem,
+                    'type': 'inline-svg',
+                }
+            else:
+                local = download_image(ctx.request, im['url'], images_dir, i)
+                meta = {
+                    'url': im['url'],
+                    'width': im.get('width', 0),
+                    'height': im.get('height', 0),
+                    'alt': im.get('alt', ''),
+                    'type': img_type,
+                }
+                if local:
+                    meta['local_path'] = str(local.resolve())
+                    meta['id'] = local.stem
+                else:
+                    meta['downloaded'] = False
+                    meta['error'] = 'download failed'
+            images_meta.append(meta)
 
-            native_idx = 0
-            for v in normalized:
-                meta: Dict[str, Any] = {'url': v['url'], 'platform': v['platform']}
-                if v['platform'] in ('youtube', 'bilibili'):
-                    # External platform: list the URL; agent calls video-download.py
-                    # in a follow-up step (see SKILL.md Phase 3.b).
-                    meta['download_required'] = True
-                    meta['suggested_output_dir'] = str(videos_dir.resolve())
-                    log(f'  external video listed (download_required): {v["url"]}')
-                else:  # native HTML5 <video>
-                    native_idx += 1
-                    local = download_native_video(ctx.request, v['url'], videos_dir, native_idx)
-                    if local:
-                        meta['download_required'] = False
-                        meta['downloaded'] = True
-                        meta['local_path'] = str(local.resolve())
-                        meta['id'] = local.stem
-                    else:
-                        meta['download_required'] = False
-                        meta['downloaded'] = False
-                        meta['error'] = 'native download failed'
-                videos_meta.append(meta)
+        # extract video candidates
+        raw_vids = page.evaluate(EXTRACT_VIDEOS_JS) or []
+        # dedupe by normalized url
+        seen = set()
+        normalized = []
+        for v in raw_vids:
+            u = v['url']
+            if v['platform'] in ('youtube',):
+                u = normalize_youtube(u)
+            if u in seen:
+                continue
+            seen.add(u)
+            normalized.append({'url': u, 'platform': v['platform']})
+        normalized = normalized[: args.max_videos_per_url]
+        log(f'  videos: {len(raw_vids)} found, {len(normalized)} kept')
+
+        native_idx = 0
+        for v in normalized:
+            meta: Dict[str, Any] = {'url': v['url'], 'platform': v['platform']}
+            if v['platform'] in ('youtube', 'bilibili'):
+                # External platform: list the URL; agent calls video-download.py
+                # in a follow-up step (see SKILL.md Phase 3.b).
+                meta['download_required'] = True
+                meta['suggested_output_dir'] = str(videos_dir.resolve())
+                log(f'  external video listed (download_required): {v["url"]}')
+            else:  # native HTML5 <video>
+                native_idx += 1
+                local = download_native_video(ctx.request, v['url'], videos_dir, native_idx)
+                if local:
+                    meta['download_required'] = False
+                    meta['downloaded'] = True
+                    meta['local_path'] = str(local.resolve())
+                    meta['id'] = local.stem
+                else:
+                    meta['download_required'] = False
+                    meta['downloaded'] = False
+                    meta['error'] = 'native download failed'
+            videos_meta.append(meta)
 
         # close context BEFORE scroll-record (record needs its own context)
     finally:
@@ -863,7 +847,7 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
         except Exception:
             pass
 
-    if mode_used == 'scroll-record':
+    if args.scroll_record:
         capped = min(60, max(5, args.scroll_duration))
         record_path, method = primary_scroll_record(
             browser, url, viewport, capped, args.page_load_timeout, slug_dir
@@ -874,26 +858,20 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
                 browser, url, viewport, capped, args.page_load_timeout, slug_dir
             )
         if record_path is None:
-            return {
-                'url': url,
-                'slug': slug,
-                'success': False,
-                'error': f'scroll recording failed ({method})',
+            log(f'  scroll-record failed ({method}); continuing without recording')
+        else:
+            dur = probe_duration(record_path) or float(capped)
+            scroll_recording = {
+                'local_path': str(record_path.resolve()),
+                'duration_sec': round(dur, 3),
+                'method': method,
             }
-        dur = probe_duration(record_path) or float(capped)
-        scroll_recording = {
-            'local_path': str(record_path.resolve()),
-            'duration_sec': round(dur, 3),
-            'method': method,
-        }
-        log(f'  scroll-record OK via {method}: {record_path}')
+            log(f'  scroll-record OK via {method}: {record_path}')
 
     entry = {
         'url': url,
         'slug': slug,
         'success': True,
-        'page_type': page_type,
-        'mode': mode_used,
         'title': title,
         'text_excerpt': text_excerpt,
         'metrics': metrics,
