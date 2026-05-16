@@ -1038,8 +1038,6 @@ def main() -> None:
                         'url': url,
                         'slug': slug,
                         'success': True,
-                        'page_type': 'video_platform',
-                        'mode': 'video_url_only',
                         'title': '',
                         'text_excerpt': '',
                         'metrics': {},
@@ -1050,6 +1048,7 @@ def main() -> None:
                             'download_required': True,
                             'suggested_output_dir': str(videos_dir.resolve()),
                         }],
+                        'scroll_recording': None,
                     }
                 else:
                     entry = harvest_one(browser, url, slug, slug_dir, args, viewport)
