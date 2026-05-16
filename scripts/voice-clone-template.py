@@ -16,8 +16,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Use the model + voice from voice_clone.py. Both must be the SAME pair that
-# was registered when the voice was cloned.
+# MODEL + VOICE must match a (target_model, voice_id) pair registered via
+# dashscope.audio.tts_v2.VoiceEnrollmentService.create_voice() — list existing
+# clones with VoiceEnrollmentService().list_voices() or check the DashScope
+# console. See SKILL.md Phase 6 for the cloning workflow.
 MODEL = "cosyvoice-v3.5-plus"
 # VOICE = "cosyvoice-v3.5-plus-myvoice-1b98aef0e50242ad9d23ae69bb3511f7"
 VOICE = "cosyvoice-v3.5-plus-vd-techboy-5389fd1d046e444c8b61485edd7c68e0"

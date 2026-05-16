@@ -351,7 +351,7 @@ Save to `narration.txt`.
 
 ### Phase 6 — Generate TTS
 
-Copy `scripts/voice-clone-template.py` to project root, paste `narration.txt` content into `input_text`, then:
+Copy `scripts/voice-clone-template.py` to project root as `voice-clone.py`, paste `narration.txt` content into `input_text`, then:
 
 ```bash
 source .venv/bin/activate  # from parent dir, or wherever the venv is
