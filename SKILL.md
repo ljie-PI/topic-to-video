@@ -203,21 +203,21 @@ Wait for user confirmation before proceeding. This is the **only** mechanism by 
 
 ### Phase 3 — Material Harvest
 
-The agent (LLM) produces a short list of URLs likely to yield rich visual material, then runs `harvest-pages.py` ONCE with the whole list. The tool decides per-URL whether to extract images/videos or screen-record a top-to-bottom scroll.
+The agent (LLM) produces a short list of URLs likely to yield rich visual material, then runs `harvest-pages.py` ONCE with the whole list. For each normal rendered page, the tool extracts images/videos and records a top-to-bottom scroll video by default; direct YouTube/Bilibili watch URLs are listed for Phase 3.b instead of opened in Chrome.
 
 #### URL selection rules (use these to build the array)
 
 Aim for **3-6 URLs**. INCLUDE pages of these types:
 
-| Page type                                | Why it's a good source                              | Typical mode  |
-|------------------------------------------|-----------------------------------------------------|---------------|
-| Official product/project homepage         | Hero shots, screenshots, product video             | media         |
-| GitHub repository main page               | README screenshots, demo gifs, social preview      | media         |
-| Official documentation landing page       | Diagrams, architecture; OR long text               | media or scroll-record |
-| Official blog post / launch announcement  | Inline images, embedded YouTube                    | media         |
-| Wikipedia article (for established topics)| Infobox images, well-edited prose                  | scroll-record |
-| Conference talk / keynote YouTube page    | Downloaded via yt-dlp                              | media         |
-| Author's personal site / about page       | Headshots, banners                                 | media         |
+| Page type                                | Why it's a good source                              | Expected useful outputs |
+|------------------------------------------|-----------------------------------------------------|-------------------------|
+| Official product/project homepage         | Hero shots, screenshots, product video             | images/videos + scroll recording |
+| GitHub repository main page               | README screenshots, demo gifs, social preview      | images/videos + scroll recording |
+| Official documentation landing page       | Diagrams, architecture, long explanatory text      | images/SVGs + scroll recording |
+| Official blog post / launch announcement  | Inline images, embedded YouTube                    | images/videos + scroll recording |
+| Wikipedia article (for established topics)| Infobox images, well-edited prose                  | images + scroll recording |
+| Conference talk / keynote YouTube page    | Downloaded via yt-dlp                              | pending video download |
+| Author's personal site / about page       | Headshots, banners                                 | images + scroll recording |
 
 EXCLUDE (low yield, often bot-blocked):
 
@@ -248,7 +248,7 @@ scripts/harvest-pages.py \
 
 The first invocation launches Chrome at `{work_dir}/chrome_profile`; subsequent invocations reuse it over CDP (`http://localhost:9222`). Chrome stays running between calls. Per-URL failures don't sink the batch.
 
-Outputs: `harvest_page/manifest.json` + `harvest_page/<url-slug>/` directories (one per URL). See the `manifest.entries[]` shape — each entry has `page_type`, `mode`, `text_excerpt`, `images[]`, `videos[]`, and optional `scroll_recording`. The manifest also contains a top-level **`pending_downloads[]`** — every YouTube/Bilibili URL the harvester detected (either passed in `--urls` directly or found embedded on a page).
+Outputs: `harvest_page/manifest.json` + `harvest_page/<url-slug>/` directories (one per URL). See the `manifest.entries[]` shape — each rendered-page entry has `text_excerpt`, `metrics`, `images[]`, `videos[]`, and optional `scroll_recording`; direct YouTube/Bilibili entries have `videos[]` with `download_required: true` and no scroll recording. The manifest also contains a top-level **`pending_downloads[]`** — every YouTube/Bilibili URL the harvester detected (either passed in `--urls` directly or found embedded on a page).
 
 ### Phase 3.b — Resolve pending video downloads
 
@@ -677,7 +677,7 @@ down if it competes with the voice.
 - `scripts/subtitle-parse.py` — SRT/VTT parser with keyword filtering
 - `scripts/vision-analyze.py` — model-agnostic vision analysis: calls any OpenAI-compatible VLM via `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL`, or delegates to the agent's `view` tool when no VLM is configured
 - `scripts/gemini-deep-research.py` — Playwright/CDP automation for Google Gemini's Deep Research. Takes a research prompt, submits it to gemini.google.com, waits for the full report, and extracts the result as Markdown + cited sources JSON. Used in Phase 2 as the primary research backbone. Outputs: `gemini_deep_research.md` + `gemini_deep_research_sources.json`. Supports `--start-from-step N` for retry on failure.
-- `scripts/harvest-pages.py` — Playwright/CDP batch URL harvester: takes an array of URLs (official sites, GitHub, docs, etc.), extracts ≥512px raster images, SVG images (no size filter), and inline `<svg>` elements, plus embedded videos per URL, OR records a scroll-through video for text-heavy pages. Downloads native HTML5 `<video>` clips inline; **lists** YouTube/Bilibili URLs in `manifest.pending_downloads[]` for Phase 3.b to fetch. Reuses one Chrome process across the whole batch.
+- `scripts/harvest-pages.py` — Playwright/CDP batch URL harvester: takes an array of URLs (official sites, GitHub, docs, etc.), extracts raster images meeting the configurable size filter (default ≥500px wide and ≥300px tall), SVG images (no size filter), inline `<svg>` elements, and embedded videos per rendered page, and records a scroll-through video by default. Downloads native HTML5 `<video>` clips inline; **lists** YouTube/Bilibili URLs in `manifest.pending_downloads[]` for Phase 3.b to fetch. Reuses one Chrome process across the whole batch.
 - `scripts/video-download.py` — yt-dlp wrapper for YouTube/Bilibili. Called by the agent in Phase 3.b, once per `pending_downloads[]` entry.
 - `references/design-dawn.md` — Rosé Pine Dawn handdrawn warm style reference (optional input to the Phase 8 brief)
 - `references/design-moon.md` — Rosé Pine Moon dark technical/editorial style reference (optional input to the Phase 8 brief)
