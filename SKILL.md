@@ -340,7 +340,7 @@ Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entr
 Goals:
 - Use **only facts from the research brief** — every number, name, date, and quote must be traceable.
 - Reference the collected materials where helpful, and annotate each scene with recommended visual material.
-- 3-10 minutes at `speech_rate=1.2` ≈ **6.5 chars/sec** → `3min ≈ 1170 chars`, `5min ≈ 1950 chars`, `10min ≈ 3900 chars`.
+- 3-10 minutes at `speech_rate=1.2` ≈ **8 chars/sec** (measured on a real run: 425 chars / 53.5s) → `3min ≈ 1440 chars`, `5min ≈ 2400 chars`, `10min ≈ 4800 chars`.
 - 15-40 paragraphs (scaled to target duration), separated by blank lines (each ≈ one scene = 6-15s of audio).
 - Numbers in Chinese characters (`二零二六` not `2026`) — TTS reads them more naturally.
 - English proper nouns in original Latin (`Anthropic`, `Claude Code`, `Boris`).
