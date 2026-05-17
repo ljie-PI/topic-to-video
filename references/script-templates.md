@@ -1,6 +1,6 @@
 # Narration Script Templates
 
-Templates for the 4 most common video genres. Each is sized for ~85s at `speech_rate=1.3`.
+Templates for the 4 most common video genres. Each is sized for ~85s at `speech_rate=1.2`.
 
 ## Template 1: Interview / Talk Recap
 
