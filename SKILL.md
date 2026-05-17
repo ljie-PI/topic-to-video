@@ -192,7 +192,7 @@ Wait for user confirmation before proceeding. This is the **only** mechanism by 
    1. The user-provided URL (always first).
    2. URLs from `gemini_deep_research_sources.json`, filtered to match Phase 3's INCLUDE page types (official sites, GitHub, docs, blogs, YouTube — not aggregators or social feeds).
    3. URLs discovered via `web_search` that match INCLUDE page types.
-   Aim for **4-8 source URLs** covering diverse visual material types.
+   Aim for **10-15 source URLs** covering diverse visual material types.
 6. **Show the research brief to the user before writing the script.** They may add context, correct a misreading, or narrow the angle. ~1 round of feedback typically.
 
 **Skip research only when:**
@@ -203,11 +203,11 @@ Wait for user confirmation before proceeding. This is the **only** mechanism by 
 
 ### Phase 3 — Material Harvest
 
-The agent (LLM) produces a short list of URLs likely to yield rich visual material, then runs `harvest-pages.py` ONCE with the whole list. For each normal rendered page, the tool extracts images/videos and records a top-to-bottom scroll video by default; direct YouTube/Bilibili watch URLs are listed for Phase 3.b instead of opened in Chrome.
+The agent (LLM) produces a list of URLs likely to yield rich visual material, then runs `harvest-pages.py` ONCE with the whole list. For each normal rendered page, the tool extracts images/videos and records a top-to-bottom scroll video by default; direct YouTube/Bilibili watch URLs are listed for Phase 3.b instead of opened in Chrome.
 
 #### URL selection rules (use these to build the array)
 
-Aim for **3-6 URLs**. INCLUDE pages of these types:
+Aim for **10-15 URLs**. INCLUDE pages of these types:
 
 | Page type                                | Why it's a good source                              | Expected useful outputs |
 |------------------------------------------|-----------------------------------------------------|-------------------------|
@@ -232,8 +232,8 @@ Sources for picking URLs (in order of preference):
 
 1. The URL the user provided (always include if they gave one).
 2. URLs listed in the research brief's **Source URLs** section — these were pre-filtered during Phase 2 to match harvest-worthy page types.
-3. URLs from `gemini_deep_research_sources.json` (if Gemini Deep Research ran) not already covered above — filter against the INCLUDE/EXCLUDE rules.
-4. If still <3 URLs, run one more web_search like `"{topic} official site"`, `"{topic} github"`, `"{topic} documentation"`.
+3. All remaining URLs from `gemini_deep_research_sources.json` that match INCLUDE page types above. Read the entire file and include every qualifying URL not already covered.
+4. If still <10 URLs, run `web_search` for `"{topic} official site"`, `"{topic} github"`, `"{topic} documentation"`, `"{topic} demo"` until the list reaches 10-15.
 
 #### Running harvest-pages.py
 
