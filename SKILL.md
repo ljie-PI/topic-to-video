@@ -340,13 +340,9 @@ Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entr
 Goals:
 - Use **only facts from the research brief** — every number, name, date, and quote must be traceable.
 - Reference the collected materials where helpful, and annotate each scene with recommended visual material.
-- 3-10 minutes at `speech_rate=1.2`: budget depends on script language mix.
-  - **Mostly-Chinese script (≤10% Latin letters):** ≈ **6.7 chars/sec** (measured: 747 chars / 111.5s, 87% CJK)
-    → `3min ≈ 1200 chars`, `5min ≈ 2000 chars`, `10min ≈ 4000 chars`.
-  - **English-heavy script (~30% Latin letters, lots of repo/brand names):** ≈ **8 chars/sec** (measured: 425 chars / 53.5s, 34% Latin)
-    → `3min ≈ 1440 chars`, `5min ≈ 2400 chars`, `10min ≈ 4800 chars`.
-  - Why the gap: 1 Chinese char ≈ 1 syllable, but 1 English letter ≈ ⅓ syllable, so Latin letters compress into much less audio time.
-  - When unsure, start short and check duration with `ffprobe` after the first TTS run.
+- 3-10 minutes at `speech_rate=1.2` ≈ **7.5 chars/sec** (averaged across two real runs: 6.7 cps on a Chinese-only script, 7.9 cps on an English-heavy one).
+  → `3min ≈ 1350 chars`, `5min ≈ 2250 chars`, `10min ≈ 4500 chars`.
+  - English-heavy scripts (lots of repo/brand names) read a bit faster per character; Chinese-only scripts read a bit slower. When in doubt, start short and check duration with `ffprobe` after the first TTS run.
 - 15-40 paragraphs (scaled to target duration), separated by blank lines (each ≈ one scene = 6-15s of audio).
 - Numbers in Chinese characters (`二零二六` not `2026`) — TTS reads them more naturally.
 - English proper nouns in original Latin (`Anthropic`, `Claude Code`, `Boris`).
