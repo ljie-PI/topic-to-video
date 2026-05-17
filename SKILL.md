@@ -82,8 +82,7 @@ Each video project lives under `{work_dir}/{topic_name}/`, where `topic_name` is
 ├── mineru_output/              # Phase 2a: MinerU raw output (retained for debug)
 │   └── {slug}/
 │       ├── full.md
-│       ├── content_list.json
-│       └── images/*.jpg
+│       └── content_list.json
 ├── harvest_page/               # Phase 3: per-URL harvest results (one call to harvest-pages.py)
 │   ├── manifest.json            #   ↳ contains entries[] and pending_downloads[] (Phase 3.b feeds these to video-download.py)
 │   ├── manifest_papers.json     #   ↳ paper-origin entries (merged into manifest.json in Phase 3)
@@ -327,13 +326,16 @@ When `input_mode = "paper"`, `parse-pdf.py` writes paper entries to `harvest_pag
 
 ```python
 import json
-papers = json.load(open('harvest_page/manifest_papers.json'))
+with open('harvest_page/manifest_papers.json', 'r', encoding='utf-8') as f:
+    papers = json.load(f)
 try:
-    harvest = json.load(open('harvest_page/manifest.json'))
+    with open('harvest_page/manifest.json', 'r', encoding='utf-8') as f:
+        harvest = json.load(f)
     harvest['entries'] = papers['entries'] + harvest['entries']
 except FileNotFoundError:
     harvest = {"success": True, "entries": papers['entries'], "pending_downloads": []}
-json.dump(harvest, open('harvest_page/manifest.json', 'w'), ensure_ascii=False, indent=2)
+with open('harvest_page/manifest.json', 'w', encoding='utf-8') as f:
+    json.dump(harvest, f, ensure_ascii=False, indent=2)
 ```
 
 From this point forward, `manifest.json` contains both paper-origin entries (`source_type: "paper_pdf"`) and web-origin entries. All downstream phases read the same unified manifest.
@@ -767,7 +769,7 @@ down if it competes with the voice.
 | CDP port 9222 busy with the wrong Chrome | Another tool launched Chrome on that port | If it's a Chrome we WANT, that's fine (reuse). If not, pass `--cdp-url http://localhost:9223` |
 | Scene references an asset not in `material-catalog.json` | Phase 7 wrote a `material_ref` whose `entry_slug`/`asset_id` pair doesn't resolve in the catalog, or skipped `material_ref` entirely | Re-run Phase 4 vision-analyze and re-build the catalog; every scene must have a `material_ref` that resolves via `entry_slug → asset_id` (and `clip_index` for videos). If no entry fits, harvest more URLs (Phase 3) — do not invent or borrow generic stock assets |
 | Final mp4 plays the narration on top of a clip's original voice/music | The sub-agent cut `selected_clips[i]` with `ffmpeg ... -c copy` (audio track preserved) and embedded the result; Chromium's `muted` attribute does not strip the audio track during `hyperframes render` | Re-cut every embedded clip with `-c:v copy -an` (and re-render). The narration in `narration.mp3` is the only audio source for the final mix; clip audio must be discarded at cut time, not just hidden via the HTML attribute |
-| `parse-pdf.py` cloud returns `-60007` | MinerU model service temporarily unavailable | Retry once; if still fails, script auto-falls back to local `mineru` CLI with `pipeline` backend |
+| `parse-pdf.py` cloud returns `-60007` | MinerU model service temporarily unavailable | Script auto-falls back to local `mineru` CLI with `pipeline` backend |
 | `parse-pdf.py` cloud timeout on URL | GitHub/AWS URLs blocked from China-hosted MinerU servers | Use `--pdf` with a locally downloaded file instead of `--url` |
 | `mineru` CLI not found (local fallback) | `mineru[pipeline]` not installed in venv | `pip install "mineru[pipeline]"` in the shared venv |
 

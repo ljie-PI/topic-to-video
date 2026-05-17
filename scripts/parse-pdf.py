@@ -21,6 +21,8 @@ Output convention:
   exit   : 0 success, 1 runtime error, 2 invalid arguments
 """
 
+from __future__ import annotations
+
 import argparse
 import glob
 import json
@@ -33,7 +35,7 @@ import tempfile
 import time
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 import requests
@@ -76,7 +78,7 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def derive_slug(url: Optional[str], pdf_path: Optional[str]) -> str:
+def derive_slug(url: str | None, pdf_path: str | None) -> str:
     """Derive a slug from URL or filename: lowercase alphanumeric + hyphens."""
     if url:
         parsed = urlparse(url)
@@ -91,7 +93,7 @@ def derive_slug(url: Optional[str], pdf_path: Optional[str]) -> str:
 # Cloud API helpers
 # ---------------------------------------------------------------------------
 
-def cloud_headers(token: str) -> Dict[str, str]:
+def cloud_headers(token: str) -> dict[str, str]:
     return {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
 
 
@@ -165,7 +167,7 @@ def cloud_extract_file(pdf_path: str, token: str, model_version: str) -> str:
     return task_id
 
 
-def cloud_poll(task_id: str, token: str) -> Dict[str, Any]:
+def cloud_poll(task_id: str, token: str) -> dict[str, Any]:
     """Poll until task is done or timeout. Returns task result data."""
     deadline = time.time() + POLL_TIMEOUT_S
     while time.time() < deadline:
@@ -189,7 +191,7 @@ def cloud_poll(task_id: str, token: str) -> Dict[str, Any]:
     raise TimeoutError(f'cloud task {task_id} did not complete within {POLL_TIMEOUT_S}s')
 
 
-def cloud_download_zip(task_data: Dict[str, Any], dest_dir: str) -> str:
+def cloud_download_zip(task_data: dict[str, Any], dest_dir: str) -> str:
     """Download and unzip cloud result. Returns path to extracted output dir."""
     zip_url = task_data.get('full_zip_url')
     if not zip_url:
@@ -202,6 +204,10 @@ def cloud_download_zip(task_data: Dict[str, Any], dest_dir: str) -> str:
         f.write(resp.content)
     log(f'downloaded {len(resp.content)} bytes, extracting...')
     with zipfile.ZipFile(zip_path, 'r') as zf:
+        for member in zf.namelist():
+            resolved = os.path.realpath(os.path.join(dest_dir, member))
+            if not resolved.startswith(os.path.realpath(dest_dir) + os.sep) and resolved != os.path.realpath(dest_dir):
+                raise RuntimeError(f'zip entry escapes dest_dir: {member}')
         zf.extractall(dest_dir)
     os.remove(zip_path)
     return dest_dir
@@ -232,55 +238,58 @@ def run_cloud(args: argparse.Namespace, token: str) -> str:
 # Local fallback
 # ---------------------------------------------------------------------------
 
-def run_local(args: argparse.Namespace) -> str:
-    """Run local mineru CLI. Returns path to MinerU output directory."""
+def run_local(args: argparse.Namespace) -> tuple:
+    """Run local mineru CLI. Returns (output_dir, tmp_root) for cleanup."""
     if not shutil.which('mineru'):
         raise RuntimeError('mineru CLI not found on PATH')
 
     tmp_dir = tempfile.mkdtemp(prefix='mineru-local-')
-    pdf_path = args.pdf
+    try:
+        pdf_path = args.pdf
 
-    # If URL, download the PDF first
-    if args.url:
-        log(f'downloading PDF from {args.url}...')
-        resp = requests.get(args.url, timeout=120)
-        resp.raise_for_status()
-        pdf_path = os.path.join(tmp_dir, 'input.pdf')
-        with open(pdf_path, 'wb') as f:
-            f.write(resp.content)
-        log(f'downloaded {len(resp.content)} bytes')
+        # If URL, download the PDF first
+        if args.url:
+            log(f'downloading PDF from {args.url}...')
+            resp = requests.get(args.url, timeout=120)
+            resp.raise_for_status()
+            pdf_path = os.path.join(tmp_dir, 'input.pdf')
+            with open(pdf_path, 'wb') as f:
+                f.write(resp.content)
+            log(f'downloaded {len(resp.content)} bytes')
 
-    log(f'running mineru CLI on {pdf_path}...')
-    result = subprocess.run(
-        ['mineru', '-p', pdf_path, '-o', tmp_dir, '-b', 'pipeline'],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        stderr_tail = (result.stderr or '')[-500:]
-        raise RuntimeError(f'mineru CLI failed (rc={result.returncode}): {stderr_tail}')
-    log('mineru CLI completed')
+        log(f'running mineru CLI on {pdf_path}...')
+        result = subprocess.run(
+            ['mineru', '-p', pdf_path, '-o', tmp_dir, '-b', 'pipeline'],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        if result.returncode != 0:
+            stderr_tail = (result.stderr or '')[-500:]
+            raise RuntimeError(f'mineru CLI failed (rc={result.returncode}): {stderr_tail}')
+        log('mineru CLI completed')
 
-    # MinerU local output is in {tmp_dir}/{pdf_stem}/auto/
-    pdf_stem = Path(pdf_path).stem
-    auto_dir = os.path.join(tmp_dir, pdf_stem, 'auto')
-    if os.path.isdir(auto_dir):
-        return auto_dir
-    # Fallback: return tmp_dir and let caller search
-    return tmp_dir
+        # MinerU local output is in {tmp_dir}/{pdf_stem}/auto/
+        pdf_stem = Path(pdf_path).stem
+        auto_dir = os.path.join(tmp_dir, pdf_stem, 'auto')
+        output_dir = auto_dir if os.path.isdir(auto_dir) else tmp_dir
+        return output_dir, tmp_dir
+    except Exception:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
 
 
 # ---------------------------------------------------------------------------
 # Processing: MinerU output -> harvest format
 # ---------------------------------------------------------------------------
 
-def find_content_list(mineru_dir: str) -> Optional[str]:
+def find_content_list(mineru_dir: str) -> str | None:
     """Find *_content_list.json in the MinerU output (has UUID prefix)."""
     matches = glob.glob(os.path.join(mineru_dir, '**', '*_content_list.json'), recursive=True)
     return matches[0] if matches else None
 
 
-def find_full_md(mineru_dir: str) -> Optional[str]:
+def find_full_md(mineru_dir: str) -> str | None:
     """Find full.md in the MinerU output."""
     matches = glob.glob(os.path.join(mineru_dir, '**', 'full.md'), recursive=True)
     return matches[0] if matches else None
@@ -306,9 +315,9 @@ def process_mineru_output(
     mineru_dir: str,
     output_dir: str,
     slug: str,
-    source_url: Optional[str],
-    pdf_path: Optional[str],
-) -> Dict[str, Any]:
+    source_url: str | None,
+    pdf_path: str | None,
+) -> dict[str, Any]:
     """Process MinerU output into harvest-compatible format. Returns manifest entry."""
     output_path = Path(output_dir)
     work_dir = output_path.parent  # parent of harvest_page
@@ -330,7 +339,7 @@ def process_mineru_output(
             md_text = f.read()
         shutil.copy2(full_md_path, mineru_archive / 'full.md')
 
-    content_list: List[Dict[str, Any]] = []
+    content_list: list[dict[str, Any]] = []
     if content_list_path:
         with open(content_list_path, 'r', encoding='utf-8', errors='replace') as f:
             content_list = json.load(f)
@@ -341,9 +350,9 @@ def process_mineru_output(
     text_excerpt = abstract[:2000] if abstract else md_text[:2000]
 
     # Process figures, tables, charts
-    images_meta: List[Dict[str, Any]] = []
-    figure_captions: Dict[str, str] = {}
-    table_captions: Dict[str, str] = {}
+    images_meta: list[dict[str, Any]] = []
+    figure_captions: dict[str, str] = {}
+    table_captions: dict[str, str] = {}
     img_idx = 0
     tbl_idx = 0
     chart_idx = 0
@@ -370,6 +379,8 @@ def process_mineru_output(
             img_idx += 1
             file_id = f'img_{img_idx:03d}'
             caption_list = item.get('image_caption', [])
+            if not isinstance(caption_list, list):
+                caption_list = [caption_list] if caption_list else []
             caption = caption_list[0] if caption_list else ''
             img_type = 'raster'
             figure_captions[file_id] = caption
@@ -377,6 +388,8 @@ def process_mineru_output(
             tbl_idx += 1
             file_id = f'tbl_{tbl_idx:03d}'
             caption_list = item.get('table_caption', [])
+            if not isinstance(caption_list, list):
+                caption_list = [caption_list] if caption_list else []
             caption = caption_list[0] if caption_list else ''
             img_type = 'table_screenshot'
             table_captions[file_id] = caption
@@ -384,6 +397,8 @@ def process_mineru_output(
             chart_idx += 1
             file_id = f'chart_{chart_idx:03d}'
             caption_list = item.get('chart_caption', [])
+            if not isinstance(caption_list, list):
+                caption_list = [caption_list] if caption_list else []
             caption = caption_list[0] if caption_list else ''
             img_type = 'raster'
             figure_captions[file_id] = caption
@@ -394,8 +409,8 @@ def process_mineru_output(
         dest_path = images_dir / dest_name
         shutil.copy2(src_path, dest_path)
 
-        local_path = f'harvest_page/{slug}/images/{dest_name}'
-        meta: Dict[str, Any] = {
+        local_path = str(dest_path.resolve())
+        meta: dict[str, Any] = {
             'id': file_id,
             'local_path': local_path,
             'type': img_type,
@@ -408,14 +423,19 @@ def process_mineru_output(
         images_meta.append(meta)
 
     # Build manifest entry
-    full_md_rel = f'mineru_output/{slug}/full.md'
-    entry: Dict[str, Any] = {
-        'url': source_url or '',
+    entry_url = source_url or ''
+    if not entry_url and pdf_path:
+        entry_url = Path(pdf_path).resolve().as_uri()
+    full_md_archive = mineru_archive / 'full.md'
+    full_md_rel = str(full_md_archive.resolve()) if full_md_archive.exists() else None
+    entry: dict[str, Any] = {
+        'url': entry_url,
         'slug': slug,
         'success': True,
         'title': title,
         'text_excerpt': text_excerpt,
         'source_type': 'paper_pdf',
+        'metrics': {'image_count': len(images_meta), 'table_count': tbl_idx},
         'paper_metadata': {
             'abstract': abstract,
             'full_markdown_path': full_md_rel,
@@ -436,10 +456,10 @@ def process_mineru_output(
     return entry
 
 
-def update_manifest(output_dir: str, entry: Dict[str, Any]) -> Dict[str, Any]:
-    """Read/create manifest_papers.json and append entry. Returns full manifest."""
+def update_manifest(output_dir: str, entry: dict[str, Any]) -> dict[str, Any]:
+    """Read/create manifest_papers.json and upsert entry by slug. Returns full manifest."""
     manifest_path = os.path.join(output_dir, 'manifest_papers.json')
-    manifest: Dict[str, Any] = {
+    manifest: dict[str, Any] = {
         'success': True,
         'entries': [],
         'pending_downloads': [],
@@ -451,6 +471,8 @@ def update_manifest(output_dir: str, entry: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as exc:
             log(f'warning: failed to read existing manifest: {exc}')
 
+    # Dedup by slug (replace existing entry on re-run)
+    manifest['entries'] = [e for e in manifest['entries'] if e.get('slug') != entry['slug']]
     manifest['entries'].append(entry)
     manifest['success'] = any(e.get('success') for e in manifest['entries'])
 
@@ -475,10 +497,13 @@ def main() -> None:
     os.makedirs(output_dir, exist_ok=True)
 
     slug = args.slug or derive_slug(args.url, args.pdf)
+    if '/' in slug or '\\' in slug or '..' in slug:
+        fail(f'invalid slug (contains path separators or ..): {slug}', exit_code=2)
     log(f'slug={slug} output_dir={output_dir}')
 
     token = os.environ.get('MINERU_API_TOKEN', '')
     mineru_dir = None
+    tmp_root = None
     backend = 'unknown'
 
     # Try cloud path first
@@ -486,6 +511,7 @@ def main() -> None:
         log('attempting cloud extraction...')
         try:
             mineru_dir = run_cloud(args, token)
+            tmp_root = mineru_dir
             backend = f'cloud_{args.model_version}'
             log(f'cloud extraction succeeded: {mineru_dir}')
         except Exception as exc:
@@ -498,7 +524,7 @@ def main() -> None:
         if not token:
             log('MINERU_API_TOKEN not set, using local CLI')
         try:
-            mineru_dir = run_local(args)
+            mineru_dir, tmp_root = run_local(args)
             backend = f'local_{args.model_version}'
             log(f'local extraction succeeded: {mineru_dir}')
         except Exception as exc:
@@ -536,8 +562,8 @@ def main() -> None:
     log(f'done: {figure_count} figures, {table_count} tables')
 
     # Cleanup temp dirs
-    if mineru_dir and mineru_dir.startswith(tempfile.gettempdir()):
-        shutil.rmtree(mineru_dir, ignore_errors=True)
+    if tmp_root and os.path.realpath(tmp_root).startswith(os.path.realpath(tempfile.gettempdir())):
+        shutil.rmtree(tmp_root, ignore_errors=True)
 
 
 if __name__ == '__main__':
