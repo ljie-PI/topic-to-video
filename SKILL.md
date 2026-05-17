@@ -331,6 +331,8 @@ with open('harvest_page/manifest_papers.json', 'r', encoding='utf-8') as f:
 try:
     with open('harvest_page/manifest.json', 'r', encoding='utf-8') as f:
         harvest = json.load(f)
+    # Remove any existing paper entries to make this idempotent
+    harvest['entries'] = [e for e in harvest['entries'] if e.get('source_type') != 'paper_pdf']
     harvest['entries'] = papers['entries'] + harvest['entries']
 except FileNotFoundError:
     harvest = {"success": True, "entries": papers['entries'], "pending_downloads": []}
@@ -805,7 +807,7 @@ The material processing scripts require additional dependencies beyond the base 
 - **system Chrome** (auto-detected per platform: Linux `/usr/bin/google-chrome`, macOS `/Applications/Google Chrome.app`, Windows `%ProgramFiles%\Google\Chrome\Application\chrome.exe`; or set `CHROME_PATH` env var, or pass `--chrome-path`): auto-launched on demand with `--remote-debugging-port=9222 --user-data-dir={work_dir}/chrome_profile`. Shared across `gemini-deep-research.py` and `harvest-pages.py` so cookies/logins persist. **Gemini Deep Research requires a logged-in Google account** — log in once manually via the shared Chrome profile.
 - **yt-dlp** (for `video-download.py`): on PATH (`yt-dlp --version` should work).
 - **vision model** (optional): set `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` to enable `vision-analyze.py` Mode 1 (e.g. point at DashScope's OpenAI-compatible endpoint with `qwen-vl-max`). When unset, the script delegates to the calling agent's own `view` tool — no extra dependency required.
-- **MinerU cloud API** (for `parse-pdf.py`): set `MINERU_API_TOKEN` in `.env` (register free at https://mineru.net). 1,000 pages/day at full priority. Falls back to local `mineru` CLI (`pip install "mineru[pipeline]"`) when token is unset or cloud is unreachable.
+- **MinerU cloud API** (for `parse-pdf.py`): requires `requests` (`pip install requests`) and `MINERU_API_TOKEN` in `.env` (register free at https://mineru.net). 1,000 pages/day at full priority. Falls back to local `mineru` CLI (`pip install "mineru[pipeline]"`) when token is unset or cloud is unreachable.
 - **coding sub-agent** (Phase 8): GitHub `copilot` CLI or `claude` CLI on PATH, with the `hyperframes` skill installed wherever that agent discovers skills from (e.g. its plugin/extension/marketplace dir). The main agent does not need to know the path — the sub-agent finds it via its own skill loader when it sees the brief say "use the hyperframes skill".
 
 ## Red Flags — STOP if you see any of these

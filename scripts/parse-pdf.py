@@ -5,10 +5,10 @@ Wraps MinerU cloud API (primary) with local CLI fallback to extract
 figures, tables, charts, and full markdown from academic PDFs.
 
 Usage:
-  python3 parse-pdf.py --url https://arxiv.org/pdf/2605.03675 \\
+  python3 scripts/parse-pdf.py --url https://arxiv.org/pdf/2605.03675 \\
     --output-dir ./harvest_page/ --slug main-paper
 
-  python3 parse-pdf.py --pdf /path/to/paper.pdf \\
+  python3 scripts/parse-pdf.py --pdf /path/to/paper.pdf \\
     --output-dir ./harvest_page/ --slug main-paper
 
 Requires:
@@ -196,13 +196,16 @@ def cloud_download_zip(task_data: dict[str, Any], dest_dir: str) -> str:
     zip_url = task_data.get('full_zip_url')
     if not zip_url:
         raise RuntimeError(f'no full_zip_url in task data: {task_data}')
-    log(f'downloading result zip...')
-    resp = requests.get(zip_url, timeout=120)
+    log('downloading result zip...')
+    resp = requests.get(zip_url, timeout=120, stream=True)
     resp.raise_for_status()
     zip_path = os.path.join(dest_dir, 'result.zip')
+    size = 0
     with open(zip_path, 'wb') as f:
-        f.write(resp.content)
-    log(f'downloaded {len(resp.content)} bytes, extracting...')
+        for chunk in resp.iter_content(chunk_size=8192):
+            f.write(chunk)
+            size += len(chunk)
+    log(f'downloaded {size} bytes, extracting...')
     with zipfile.ZipFile(zip_path, 'r') as zf:
         for member in zf.namelist():
             resolved = os.path.realpath(os.path.join(dest_dir, member))
@@ -250,12 +253,15 @@ def run_local(args: argparse.Namespace) -> tuple:
         # If URL, download the PDF first
         if args.url:
             log(f'downloading PDF from {args.url}...')
-            resp = requests.get(args.url, timeout=120)
+            resp = requests.get(args.url, timeout=120, stream=True)
             resp.raise_for_status()
             pdf_path = os.path.join(tmp_dir, 'input.pdf')
+            size = 0
             with open(pdf_path, 'wb') as f:
-                f.write(resp.content)
-            log(f'downloaded {len(resp.content)} bytes')
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+                    size += len(chunk)
+            log(f'downloaded {size} bytes')
 
         log(f'running mineru CLI on {pdf_path}...')
         result = subprocess.run(
@@ -332,6 +338,9 @@ def process_mineru_output(
     # Find key files
     content_list_path = find_content_list(mineru_dir)
     full_md_path = find_full_md(mineru_dir)
+
+    if not content_list_path and not full_md_path:
+        raise RuntimeError(f'MinerU output missing both full.md and content_list.json in {mineru_dir}')
 
     md_text = ''
     if full_md_path:
@@ -525,7 +534,7 @@ def main() -> None:
             log('MINERU_API_TOKEN not set, using local CLI')
         try:
             mineru_dir, tmp_root = run_local(args)
-            backend = f'local_{args.model_version}'
+            backend = 'local_pipeline'
             log(f'local extraction succeeded: {mineru_dir}')
         except Exception as exc:
             fail(f'both cloud and local extraction failed: {exc}')
