@@ -1,13 +1,10 @@
-### Phase 7 — ASR + Font Staging
+### Phase 7 — ASR + 字体预置
 
-This phase prepares timing and font inputs for the downstream HyperFrames
-sub-agent. The main `topic-to-video` agent does **not** design scenes, write
-`info_units`, map materials to layouts, or produce HyperFrames HTML.
+本阶段为下游的 HyperFrames sub-agent 准备时间轴与字体输入。`topic-to-video` 主 agent **不**负责设计 scene、写 `info_units`、把素材映射到布局，或者生成 HyperFrames 的 HTML。
 
-#### 7.1 — Generate ASR transcript
+#### 7.1 — 生成 ASR transcript
 
-Skip if `{work_dir}/{topic_name}/transcribe/transcript.json` already exists and
-is valid JSON with at least one sentence and word timing.
+如果 `{work_dir}/{topic_name}/transcribe/transcript.json` 已存在、且是包含至少一句话和词级时间戳的合法 JSON，则跳过。
 
 ```bash
 scripts/transcribe-paraformer.py \
@@ -15,33 +12,25 @@ scripts/transcribe-paraformer.py \
   {work_dir}/{topic_name}/transcribe/transcript.json
 ```
 
-The output is the raw word-level timestamp database consumed by the Phase 8
-HyperFrames sub-agent.
+输出是原始的词级时间戳数据库，供 Phase 8 的 HyperFrames sub-agent 消费。
 
-#### 7.2 — Pre-stage fonts
+#### 7.2 — 预置字体
 
-Skip if `{work_dir}/{topic_name}/fonts/` contains the required `.woff2` files
-and style CSS for the selected style.
+如果 `{work_dir}/{topic_name}/fonts/` 已经包含所选风格对应的 `.woff2` 文件与 style CSS，则跳过。
 
 ```bash
-# Dawn default handdrawn style
+# Dawn 默认手绘风
 bash scripts/fonts-download.sh {work_dir}/{topic_name}/fonts dawn
 
-# Moon serious technical/editorial style
+# Moon 严肃技术 / 编辑风
 bash scripts/fonts-download.sh {work_dir}/{topic_name}/fonts moon
 
-# If creating a reusable project template that may switch styles later
+# 如果想做一个后期可切换风格的可复用项目模板
 bash scripts/fonts-download.sh {work_dir}/{topic_name}/fonts all
 ```
 
-Pre-staging fonts is an upstream responsibility because it gives the
-HyperFrames sub-agent deterministic local font assets and prevents accidental
-system-font fallback.
+预置字体属于上游职责——这样能为 HyperFrames sub-agent 提供确定性的本地字体资源，避免不小心 fallback 到系统字体。
 
-#### Optional — scene-anchor helper
+#### 可选 —— scene-anchor 辅助工具
 
-`scripts/scene-anchor.py` remains available as an optional deterministic helper
-for an agent that already has a scene config and wants to anchor scene starts to
-ASR text. It is no longer a required main-agent phase. Scene segmentation,
-material mapping, visual cue timing, and `composition/index.html` generation are
-owned by the Phase 8 HyperFrames sub-agent.
+`scripts/scene-anchor.py` 仍然作为一个可选的确定性辅助工具保留，给已经有一份 scene 配置、想把 scene 起点对齐到 ASR 文本的 agent 使用。它不再是主 agent 的必经阶段。Scene 切分、素材映射、视觉提示时间，以及 `composition/index.html` 的生成全部归 Phase 8 的 HyperFrames sub-agent。

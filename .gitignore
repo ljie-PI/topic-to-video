@@ -9,3 +9,4 @@ __pycache__
 # (auto-populated at runtime; contains login cookies, extensions, cache —
 # must never be committed)
 chrome_profile/
+fonts/

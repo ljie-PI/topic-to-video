@@ -1,40 +1,39 @@
-### Phase 2 — Topic Research (CRITICAL — do this BEFORE writing)
+### Phase 2 — 主题调研（CRITICAL —— 必须在写脚本之前完成）
 
-#### Phase 2a — Parse PDF (paper mode only)
+#### Phase 2a — 解析 PDF（仅 paper mode）
 
-Skip unless `input_mode = "paper"`.
+只在 `input_mode = "paper"` 时执行。
 
 ```bash
-# URL input (arXiv, etc.) — passed directly to MinerU cloud API
+# URL 输入（arXiv 等）—— 直接传给 MinerU 云端 API
 python3 scripts/parse-pdf.py \
   --url "{pdf_url}" \
   --output-dir {work_dir}/{topic_name}/harvest_page/ \
   --slug "main-paper"
 
-# Local file input
+# 本地文件输入
 python3 scripts/parse-pdf.py \
   --pdf "{pdf_path}" \
   --output-dir {work_dir}/{topic_name}/harvest_page/ \
   --slug "main-paper"
 ```
 
-Requires `MINERU_API_TOKEN` in environment (from `.env`). Falls back to local `mineru` CLI if token is missing or cloud fails.
+需要环境变量 `MINERU_API_TOKEN`（来自 `.env`）。token 缺失或云端失败时会自动 fallback 到本地 `mineru` CLI。
 
-Read the output JSON. It provides `title`, `abstract`, `full_markdown_path` (the parsed markdown for the full paper). These feed the Deep Research prompt in Phase 2b.
+读取输出的 JSON。它提供 `title`、`abstract`、`full_markdown_path`（完整论文的解析 markdown）。这些会喂给 Phase 2b 的 Deep Research prompt。
 
-Important output fields:
+重要的输出字段：
 - `manifest_entry.source_type = "paper_pdf"`
-- `manifest_entry.paper_metadata.full_markdown_path` for full parsed text
-- `manifest_entry.paper_metadata.figure_captions` for figure descriptions
-- `manifest_entry.paper_metadata.table_captions` for table descriptions
-- `manifest_papers.json` is updated under the harvest output directory and is
-  merged into `manifest.json` during Phase 3.
+- `manifest_entry.paper_metadata.full_markdown_path` —— 完整解析文本
+- `manifest_entry.paper_metadata.figure_captions` —— figure 描述
+- `manifest_entry.paper_metadata.table_captions` —— table 描述
+- `manifest_papers.json` 会更新到 harvest 输出目录下，并在 Phase 3 中并入 `manifest.json`。
 
-**Checkpoint:** skip if `harvest_page/main-paper/metadata.json` exists.
+**Checkpoint：** 如果 `harvest_page/main-paper/metadata.json` 已存在则跳过。
 
-#### Phase 2b — Deep Research (paper mode variant)
+#### Phase 2b — Deep Research（paper mode 变体）
 
-When `input_mode = "paper"`, replace the standard research prompt with one informed by the parsed paper:
+当 `input_mode = "paper"`，把标准研究 prompt 替换为基于解析论文的版本：
 
 ```
 "Background research for the paper '{title}':
@@ -50,11 +49,11 @@ Research:
 7. arXiv URLs of the most important related papers (for Phase 2c)"
 ```
 
-The paper's own markdown is the PRIMARY content source. Deep Research provides context — background, impact, related work comparison. The rest of Phase 2 (gap-filling web_search, research brief synthesis) proceeds as normal.
+论文自身的 markdown 是**主要**内容来源。Deep Research 提供上下文——背景、影响、相关工作对比。Phase 2 的其余部分（用 `web_search` 补漏、合成研究 brief）按常规流程进行。
 
-#### Phase 2c — Parse Related Papers (paper mode, optional)
+#### Phase 2c — 解析相关论文（paper mode，可选）
 
-If Phase 2b identifies 1-2 highly related papers with available PDF URLs (e.g. arXiv):
+如果 Phase 2b 指出了 1-2 篇有可用 PDF URL 的高相关论文（例如 arXiv）：
 
 ```bash
 python3 scripts/parse-pdf.py \
@@ -63,31 +62,31 @@ python3 scripts/parse-pdf.py \
   --slug "related-{short-name}"
 ```
 
-Max 2 related papers. Skip if user says "just the main paper" or no significant related work is identified.
+最多 2 篇相关论文。如果用户说"只看主论文"或没识别出明显相关工作，则跳过。
 
-**Checkpoint:** skip if `harvest_page/related-{short-name}/metadata.json` exists.
+**Checkpoint：** 如果 `harvest_page/related-{short-name}/metadata.json` 已存在则跳过。
 
-**Never write a script from your training data alone.** A 60-second video has no room for vague claims, and any factual error becomes a 60-second mistake. Ground every claim in fresh, citeable sources.
+**永远不要单凭自己的训练数据写脚本。** 60 秒的视频容不下含糊其辞，任何事实错误都会变成 60 秒的错误。每一个论断都要扎根在新鲜、可引用的来源上。
 
-**Process:**
+**流程：**
 
-1. **If the user gave a URL** → `web_fetch` it FIRST. Read the full content. This is the spine of the video.
-2. **Run Gemini Deep Research.** This is the primary research backbone — it produces a comprehensive, sourced report far richer than manual web searches.
+1. **如果用户给了 URL** → 先 `web_fetch` 它。读完整内容。这是整个视频的脊椎。
+2. **跑 Gemini Deep Research。** 这是主要的研究主干 —— 它产出的报告远比人工 web 搜索更全面、有出处。
    ```bash
    scripts/gemini-deep-research.py \
      --prompt "Comprehensive overview of [topic]: history, key developments, notable figures, technical details, latest news" \
      --output-dir {work_dir}/{topic_name}/
    ```
-   - Outputs: `gemini_deep_research.md` (full report) + `gemini_deep_research_sources.json` (cited URLs)
-   - Read the report; it becomes the primary source. The `sources.json` feeds into Phase 3 material harvest.
-   - **Skip ONLY when:** (a) user explicitly says "skip deep research", OR (b) topic is a simple re-narration of user-provided text with no factual claims to verify.
-   - **If it fails (selector timeout, runtime error, or other step failure):** Fall back to the manual web_search workflow (steps 3-4 below become the primary research path). Check `failed_step` in the error JSON — you can retry with `--start-from-step N`, but do not block the project on the consumer Gemini UI.
-3. **Identify gaps.** Whether Gemini ran or not, check: what numbers, names, dates, or technical specifics are missing or unverified? List them.
-4. **Run targeted searches.** Use `web_search` for each gap — typical: 2-4 searches if Gemini ran (filling gaps), 3-6 if it didn't (full research). Examples:
-   - "Boris Cherny Anthropic interview Sequoia 2026" → confirm names, dates, quotes
-   - "Claude Code MCP launch date" → date specifics
-   - "GPU vs CPU AI training memory bandwidth" → technical numbers
-5. **Synthesize a research brief** in your scratchpad. Format:
+   - 输出：`gemini_deep_research.md`（完整报告）+ `gemini_deep_research_sources.json`（引用的 URL）
+   - 读这份报告；它会成为首要 source。`sources.json` 会喂给 Phase 3 的素材抓取。
+   - **仅在以下情况跳过：** (a) 用户明确说"skip deep research"，或者 (b) 主题只是把用户提供的文本重新讲一遍、没有任何待核实的事实论断。
+   - **如果它失败了（selector timeout、运行时错误或其他步骤失败）：** 回退到人工 `web_search` 流程（下面的 step 3-4 变成主路径）。检查错误 JSON 里的 `failed_step` —— 你可以用 `--start-from-step N` 重试，但不要让整个项目卡在消费级 Gemini UI 上。
+3. **找空缺。** 不论 Gemini 跑没跑成功，检查：哪些数字、人名、日期或技术细节缺失或没核实？列出来。
+4. **做有针对性的搜索。** 用 `web_search` 对每个空缺搜一下 —— 一般：Gemini 跑成功的话 2-4 次（填空），没跑则 3-6 次（完整研究）。示例：
+   - "Boris Cherny Anthropic interview Sequoia 2026" → 确认姓名、日期、引文
+   - "Claude Code MCP launch date" → 日期细节
+   - "GPU vs CPU AI training memory bandwidth" → 技术数字
+5. **在 scratchpad 里合成研究 brief**。格式：
    ```
    ## Key facts (verified)
    - [fact, source]
@@ -107,15 +106,15 @@ Max 2 related papers. Skip if user says "just the main paper" or no significant 
    - [url] — [page type]
    ...
    ```
-   The **Source URLs** section is critical — it's the explicit handoff to Phase 3. Populate from:
-   1. The user-provided URL (always first).
-   2. URLs from `gemini_deep_research_sources.json`, filtered to match Phase 3's INCLUDE page types (official sites, GitHub, docs, blogs, YouTube — not aggregators or social feeds).
-   3. URLs discovered via `web_search` that match INCLUDE page types.
-   Aim for **10-15 source URLs** covering diverse visual material types.
-6. **Show the research brief to the user before writing the script.** They may add context, correct a misreading, or narrow the angle. ~1 round of feedback typically.
+   **Source URLs** 一节是关键 —— 它是显式交给 Phase 3 的接口。来源：
+   1. 用户提供的 URL（永远第一条）。
+   2. 从 `gemini_deep_research_sources.json` 中筛选出符合 Phase 3 INCLUDE 类型的 URL（官方站、GitHub、docs、blog、YouTube —— 不要聚合页或社交 feed）。
+   3. 通过 `web_search` 发现的、符合 INCLUDE 类型的 URL。
+   目标 **10-15 个 source URL**，覆盖多样的视觉素材类型。
+6. **写脚本之前，把研究 brief 给用户看。** 对方可能补充背景、纠正误读或者收窄角度。通常 ~1 轮反馈。
 
-**Skip research only when:**
-- The user explicitly says "skip research, use this exact text" + provides full content
-- The topic is a re-narration of a piece they already wrote and provided in full
+**仅在以下情况跳过研究：**
+- 用户明确说"skip research, use this exact text" 且提供了完整内容
+- 主题只是把对方已经写好且整段提供的稿子重新念一遍
 
-**Anti-pattern:** Searching once, then writing as if the brief is complete. Real research is iterative — you find one fact, it raises a new question, you search again. Plan for 2-3 rounds.
+**反模式：** 搜一次，然后假装 brief 已完整地开始写。真研究是迭代的 —— 找到一个事实，会引出新的疑问，再去搜。计划 2-3 轮。

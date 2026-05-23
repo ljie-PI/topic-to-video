@@ -1,13 +1,11 @@
-### Phase 6 — Generate TTS
+### Phase 6 — 生成 TTS
 
-Skip if `{work_dir}/{topic_name}/voice_clone/narration.mp3` exists and has a
-valid non-zero ffprobe duration.
+如果 `{work_dir}/{topic_name}/voice_clone/narration.mp3` 已存在、且 ffprobe 显示其 duration 非零且合法，则跳过。
 
-Use `scripts/voice-clone.py` directly. Do not copy the script or paste
-the narration into Python source.
+直接使用 `scripts/voice-clone.py`。**不要**把脚本复制一份，也**不要**把解说文本粘进 Python 源码。
 
 ```bash
-source .venv/bin/activate  # from parent dir, or wherever the venv is
+source .venv/bin/activate  # 从父目录或 venv 所在目录执行
 export DASHSCOPE_API_KEY="sk-..."
 export COSYVOICE_VOICE_ID="cosyvoice-v3.5-plus-..."
 
@@ -21,17 +19,11 @@ ffprobe -v error -show_entries format=duration \
   {work_dir}/{topic_name}/voice_clone/narration.mp3
 ```
 
-Voice selection:
-- Prefer `--voice` for one-off runs.
-- Prefer `COSYVOICE_VOICE_ID` for repeatable project runs.
-- The script fails clearly if no voice id is configured.
+音色选择：
+- 一次性 run 优先用 `--voice`。
+- 可重复 run 的项目优先用 `COSYVOICE_VOICE_ID`。
+- 如果没配 voice id，脚本会清晰报错。
 
-Duration retry:
-- If duration is much longer than requested, retry with `--speech-rate 1.35` or
-  `--speech-rate 1.4`.
-- If it feels rushed, retry with `--speech-rate 1.0` or `--speech-rate 1.1`.
-
-Script hygiene:
-- Keep the narration in `narration.txt`.
-- Avoid the full-width Chinese colon `：` before long compound sentences; use
-  `——`, commas, or split the sentence. This prevents occasional CosyVoice pauses.
+脚本编写规范：
+- 解说内容只放在 `narration.txt` 里。
+- 避免在长复合句之前出现全角中文冒号 `：`；改用 `——`、逗号或重新断句。这能避免 CosyVoice 偶发的停顿。

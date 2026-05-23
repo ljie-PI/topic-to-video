@@ -1,137 +1,137 @@
 ---
 name: topic-to-video
-description: Use when the user provides a topic, article URL, or text and asks to make a narrated video (typically 3-10 minutes). Owns the upstream pipeline — topic research, optional visual material harvest, material understanding, narration writing, CosyVoice cloned-voice TTS via DashScope, Paraformer ASR word timings, deterministic font staging, and a compact HyperFrames handoff brief. HyperFrames composition, scene design, HTML/CSS/GSAP, lint/inspect, and rendering are delegated to the hyperframes and hyperframes-cli skills.
+description: 当用户提供一个主题、文章 URL 或文本，并请求做一段有解说的视频（通常 3-10 分钟）时使用。本 skill 拥有上游 pipeline —— 主题调研、可选的视觉素材抓取、素材理解、解说撰写、通过 DashScope 调用 CosyVoice 完成克隆音色 TTS、用 Paraformer 拿词级 ASR 时间戳、确定性字体预置，以及一份精简的 HyperFrames handoff brief。HyperFrames composition、scene 设计、HTML/CSS/GSAP、lint/inspect 与渲染都委派给 hyperframes 和 hyperframes-cli 两个 skill。
 ---
 
-# Topic → Video (HyperFrames + CosyVoice Workflow)
+# Topic → Video（HyperFrames + CosyVoice 工作流）
 
-## What This Skill Builds
+## 本 skill 产出什么
 
-A narrated video (3-10 minutes) using:
-- **Web research** to ground the script in facts before writing
-- **HyperFrames** for downstream HTML composition + render (delegated)
-- **CosyVoice** (via Aliyun DashScope) for cloned-voice TTS — Chinese default
-- **Paraformer** (via DashScope) for word-level ASR timestamps
-- A configurable style hint for the downstream HyperFrames sub-agent
+一段有解说的视频（3-10 分钟），使用：
+- **Web 调研** 在写脚本之前获取准确的内容
+- **HyperFrames** 用于下游 HTML composition + 渲染（delegated）
+- **CosyVoice**（通过 Aliyun DashScope）实现克隆音色 TTS —— 默认中文
+- **Paraformer**（通过 DashScope）拿词级 ASR 时间戳
+- 一份可配置的 style hint，交给下游 HyperFrames sub-agent
 
-**Output:** `{work_dir}/{topic_name}/composition/renders/final.mp4` ready to publish (produced by the Phase 8 coding sub-agent).
+**输出：** `{work_dir}/{topic_name}/composition/renders/final.mp4`，可直接发布（由 Phase 8 coding sub-agent 产出）。
 
-## Rules & Troubleshooting
+## 规则与排错
 
-These rules each prevent a specific bug a baseline agent hit. **Do not "improve" past them without re-running the gauntlet** in `references/gotchas.md`.
+下面这些规则，每一条都对应基线 agent 踩过的某个具体 bug。**DO NOT "改进"这些规则——除非先重新跑完 `references/gotchas.md` 里的 gauntlet。**
 
-### Research & Script
-0. **Research before writing.** Phase 2 is mandatory. Ground every claim via Gemini Deep Research + web_search.
-   ↳ Don't: write script before research; skip Gemini without explicit condition; skip Phase 2a when user gave PDF; use training data to describe a paper.
-1. **Material selection in Phase 4, not Phase 5.** Run vision-analyze before writing narration.
-   ↳ Don't: write narration before building catalog; skip vision-analyze.
+### 研究与脚本
+0. **写之前先调研。** Phase 2 是强制的。每个论断都通过 Gemini Deep Research + `web_search` 落地。
+   ↳ DO NOT：调研之前写脚本；没有明确条件就跳过 Gemini；用户给了 PDF 还跳过 Phase 2a；用训练数据描述一篇论文。
+1. **素材选择在 Phase 4，不是 Phase 5。** 写解说之前先跑 vision-analyze。
+   ↳ DO NOT：catalog 还没建就写解说；跳过 vision-analyze。
 
 ### TTS / ASR
-2. **TTS = CosyVoice via DashScope.** Use cloned voice. NEVER use `npx hyperframes tts`.
-3. **ASR = Paraformer-realtime-v2.** Probe sample_rate with ffprobe first.
-   ↳ Don't: use Whisper / `npx hyperframes transcribe`; hardcode 16000.
-   ↳ Fix: pass actual `sample_rate` to Recognition(). Symptom: `status_code=44`.
+2. **TTS = 通过 DashScope 调用 CosyVoice。** 用克隆音色。**绝不**使用 `npx hyperframes tts`。
+3. **ASR = Paraformer-realtime-v2。** 先用 ffprobe 探测 sample_rate。
+   ↳ DO NOT：用 Whisper / `npx hyperframes transcribe`；硬编码 16000。
+   ↳ Fix：把真实的 `sample_rate` 传给 `Recognition()`。症状：`status_code=44`。
 
-### Fonts & Text
-4. **Pre-stage deterministic WOFF2 fonts.** Download with `scripts/fonts-download.sh` and point the Phase 8 brief at `fonts/`.
-   ↳ Don't: ask the main agent to solve composition font CSS.
-5. **Font implementation belongs to HyperFrames.** The Phase 8 sub-agent uses the local fonts and the `hyperframes` skill for typography rules.
+### 字体与文本
+4. **预先 stage 确定性的 WOFF2 字体。** 用 `scripts/fonts-download.sh` 下载，然后让 Phase 8 brief 指向 `fonts/`。
+   ↳ DO NOT：让主 agent 处理 composition 的字体 CSS。
+5. **字体实现归 HyperFrames。** Phase 8 sub-agent 使用本地字体，并按 `hyperframes` skill 中的排版规则处理。
 
-### Materials
-6. **Every asset traces to `material-catalog.json`.** No catalog citation → no asset on screen.
-   ↳ Don't: embed full source video; cut clips without `-an`.
-   ↳ Fix: clip audio bleeding → re-cut with `ffmpeg -c:v copy -an`.
-7. **Material search is optional but recommended.** Skip if user says "skip materials" or provides all visuals.
+### 素材
+6. **每个资源都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。
+   ↳ DO NOT：嵌入整段原视频；切片段时不带 `-an`。
+   ↳ Fix：片段里漏音 → 用 `ffmpeg -c:v copy -an` 重剪。
+7. **素材搜索是可选但推荐的。** 用户说"skip materials"或自带全部视觉时跳过。
 
 ### Composition
-8. **Composition is delegated to a HyperFrames sub-agent.** Main agent writes `composition-brief.md` only.
-   ↳ Don't: hand-write `composition/index.html`, choose GSAP patterns, or fix HyperFrames lint from this session.
-9. **Scene design belongs to HyperFrames.** Segmentation, material mapping, layout, visual hierarchy, animation, lint/inspect, and render iteration happen in Phase 8.
+8. **Composition 委派给 HyperFrames sub-agent。** 主 agent 只写 `composition-brief.md`。
+   ↳ DO NOT：手写 `composition/index.html`、挑选 GSAP 模式，或在本 session 里修 HyperFrames lint。
+9. **Scene 设计归 HyperFrames。** 切分、素材映射、布局、视觉层级、动画、lint/inspect 与渲染迭代都发生在 Phase 8。
 
-### Environment & Tools
-10. **Always `source .venv/bin/activate` before Python.** Use `python3`.
-    ↳ Fix: `playwright` import error → `pip install playwright`. `mineru` not found → `pip install "mineru[pipeline]"`.
-11. **Chrome over CDP.** Shared profile at `{work_dir}/chrome_profile/`.
-    ↳ Fix: Chrome exits immediately → close other Chrome using that profile. Missing `$DISPLAY` → `--headless on`. Sandbox error → `--no-sandbox` (auto-enabled as root). Cookie banner → accept once in profile.
-12. **Video downloads sequential.** yt-dlp gets rate-limited when parallel.
-    ↳ Fix: download fails → leave `download_required: true`, Phase 4 ignores it.
+### 环境与工具
+10. **跑 Python 前一律 `source .venv/bin/activate`。** 用 `python3`。
+    ↳ 修复：`playwright` import 出错 → `pip install playwright`。`mineru` 找不到 → `pip install "mineru[pipeline]"`。
+11. **Chrome over CDP。** 共享 profile 位于 `{work_dir}/chrome_profile/`。
+    ↳ 修复：Chrome 立刻退出 → 关掉另一个使用该 profile 的 Chrome。缺 `$DISPLAY` → `--headless on`。Sandbox 报错 → `--no-sandbox`（以 root 运行时自动启用）。Cookie banner → 在 profile 里 accept 一次。
+12. **视频下载顺序执行。** yt-dlp 并行时会被限速。
+    ↳ 修复：下载失败 → 保留 `download_required: true`，Phase 4 会忽略它。
 
-### Troubleshooting
-| Symptom | Fix |
-|---|---|
-| `WARN: anchor not found for X` | Check case mismatch; pick anchor from actual ASR text |
-| `vision-analyze.py` returns `delegate_to_agent` | Set `VLM_API_KEY`/`VLM_BASE_URL`/`VLM_MODEL`, or use `view` tool |
-| `harvest-pages.py` returns 0 images | Raise `--page-load-timeout` |
-| `parse-pdf.py` cloud returns `-60007` | Auto-fallback to local `mineru` CLI |
-| `parse-pdf.py` cloud timeout on URL | Use `--pdf` with local file instead of `--url` |
-| CDP port 9222 busy | Pass `--cdp-url http://localhost:9223` |
+### 排错
+| 症状 | 修复 |
+|------|------|
+| `WARN: anchor not found for X` | 检查大小写不一致；从实际 ASR 文本里挑 anchor |
+| `vision-analyze.py` 返回 `delegate_to_agent` | 设置 `VLM_API_KEY` / `VLM_BASE_URL` / `VLM_MODEL`，或用 `view` 工具 |
+| `harvest-pages.py` 返回 0 张图 | 调大 `--page-load-timeout` |
+| `parse-pdf.py` 云端返回 `-60007` | 自动 fallback 到本地 `mineru` CLI |
+| `parse-pdf.py` 云端 URL 超时 | 改用 `--pdf` 配本地文件，而不是 `--url` |
+| CDP 端口 9222 被占 | 传 `--cdp-url http://localhost:9223` |
 
-## Checkpoint & Resume
+## Checkpoint 与恢复
 
-Before running any tool, check if its output already exists. If it does, skip and reuse.
+跑任何工具之前，检查其输出是否已存在。已存在则跳过并复用。
 
-| Phase | Skip if exists |
-|-------|---------------|
+| Phase | 已存在则跳过 |
+|-------|-------------|
 | 2 | `gemini_deep_research.md` |
 | 2a | `harvest_page/main-paper/metadata.json` |
 | 2c | `harvest_page/related-*/metadata.json` |
-| 3 | `harvest_page/manifest.json` with non-empty `entries[]` |
-| 3.b | Video exists in `harvest_page/<slug>/videos/` AND `download_required: false` |
-| 4 | `extract_frames/<slug>/<video>/` has ≥1 JPEG; or `material-catalog.json` has `selected_clips` |
-| 5 | `narration.txt` (non-empty) |
+| 3 | `harvest_page/manifest.json` 且 `entries[]` 非空 |
+| 3.b | `harvest_page/<slug>/videos/` 下视频存在 且 `download_required: false` |
+| 4 | `extract_frames/<slug>/<video>/` 有 ≥1 张 JPEG；或 `material-catalog.json` 含 `selected_clips` |
+| 5 | `narration.txt`（非空） |
 | 6 | `voice_clone/narration.mp3` |
 | 7a | `transcribe/transcript.json` |
-| 7b | `fonts/` has ≥1 `.woff2` and style CSS |
+| 7b | `fonts/` 至少含 1 个 `.woff2` 和对应的 style CSS |
 | 8 | `composition/renders/final.mp4` |
 | 9 | `composition/renders/final_with_bgm.mp4` |
 
-Workspace discovery happens in Phase 1: check if `{work_dir}/{topic_name}/` exists, scan outputs, ask user to resume or start fresh. If a file exists but is corrupt (0-byte, truncated JSON), delete and re-run. User can force re-run with "redo phase N".
+工作区发现发生在 Phase 1：检查 `{work_dir}/{topic_name}/` 是否存在，扫描其中的输出，问用户是 resume 还是从头开始。如果文件存在但损坏（0 字节、JSON 截断），删掉重跑。用户可以用"redo phase N"强制重跑。
 
-## Output Conventions
+## 输出约定
 
-All scripts emit JSON to stdout, human-readable logs to stderr, and use exit codes: `0`=success, `1`=runtime error, `2`=invalid arguments.
+所有脚本都把 JSON 输出到 stdout，人类可读 log 输出到 stderr，并使用以下退出码：`0`=成功，`1`=运行时错误，`2`=参数非法。
 
-**Workspace layout:** outputs live under `{work_dir}/{topic_name}/` with standard subdirectories:
-`harvest_page/`, `extract_frames/`, `vision_analyze/`, `material-catalog.json`, `voice_clone/`, `transcribe/`, `fonts/`, `composition/`, `narration.txt`, `composition-brief.md`.
+**工作区布局：** 输出位于 `{work_dir}/{topic_name}/`，包含标准子目录：
+`harvest_page/`、`extract_frames/`、`vision_analyze/`、`material-catalog.json`、`voice_clone/`、`transcribe/`、`fonts/`、`composition/`、`narration.txt`、`composition-brief.md`。
 
-Shared Chrome profile: `{work_dir}/chrome_profile/` — do NOT delete.
+共享 Chrome profile：`{work_dir}/chrome_profile/` —— **不要**删除。
 
-## Workflow (9 Phases)
+## 工作流（9 个 Phase）
 
-Execute each phase by reading its dedicated file before acting.
+执行每个 phase 之前，先读它对应的文档。
 
-| Phase | File | What |
+| Phase | 文档 | 内容 |
 |-------|------|------|
-| 1 | `references/phases/gather-inputs.md` | Gather inputs (topic, orientation, style, length) |
-| 2 | `references/phases/research.md` | Topic research (Gemini Deep Research + web search) |
-| 3 | `references/phases/material-harvest.md` | Harvest images/videos from URLs |
-| 4 | `references/phases/material-selection.md` | Vision analysis + material catalog |
-| 5 | `references/phases/narration-script.md` | Write narration script |
-| 6 | `references/phases/tts-generation.md` | Generate TTS audio with CosyVoice |
-| 7 | `references/phases/asr-transcript-generation.md` | ASR + font staging |
-| 8 | `references/phases/composition-render.md` | HyperFrames handoff + sub-agent render |
-| 9 | `references/phases/bgm-mix.md` | Mix background music |
+| 1 | `references/phases/gather-inputs.md` | 收集输入（主题、方向、风格、时长） |
+| 2 | `references/phases/research.md` | 主题调研（Gemini Deep Research + web search） |
+| 3 | `references/phases/material-harvest.md` | 从 URL 抓取图片 / 视频 |
+| 4 | `references/phases/material-selection.md` | 视觉分析 + 素材 catalog |
+| 5 | `references/phases/narration-script.md` | 撰写解说脚本 |
+| 6 | `references/phases/tts-generation.md` | 用 CosyVoice 生成 TTS 音频 |
+| 7 | `references/phases/asr-transcript-generation.md` | ASR + 字体预置 |
+| 8 | `references/phases/composition-render.md` | HyperFrames handoff + sub-agent 渲染 |
+| 9 | `references/phases/bgm-mix.md` | 混入背景音乐 |
 
-## Tools & Dependencies
+## 工具与依赖
 
-| Script | Purpose | Requires |
-|--------|---------|----------|
-| `fonts-download.sh` | Deterministic WOFF2 font download + local CSS | — |
+| 脚本 | 用途 | 依赖 |
+|------|------|------|
+| `fonts-download.sh` | 确定性 WOFF2 字体下载 + 本地 CSS | — |
 | `voice-clone.py` | CosyVoice TTS | `DASHSCOPE_API_KEY` |
 | `transcribe-paraformer.py` | Paraformer ASR | `DASHSCOPE_API_KEY` |
-| `scene-anchor.py` | Optional helper to anchor predesigned scenes to ASR word stream | — |
-| `extract-frames.py` | FFmpeg frame extraction | `ffmpeg` |
-| `subtitle-parse.py` | SRT/VTT parser with keyword filter | — |
-| `vision-analyze.py` | VLM analysis (or delegates to agent `view`) | `VLM_*` (optional) |
-| `gemini-deep-research.py` | Gemini Deep Research automation | `playwright`, logged-in Chrome |
-| `parse-pdf.py` | PDF parsing via MinerU cloud/local | `MINERU_API_TOKEN` or `mineru[pipeline]` |
-| `harvest-pages.py` | Batch URL harvest (images/videos/scroll) | `playwright`, system Chrome |
-| `video-download.py` | YouTube/Bilibili download | `yt-dlp` |
-| `mix-bgm.py` | BGM mix onto video | `ffmpeg` |
-| `merge-paper-manifest.py` | Merge parsed-paper manifest entries into harvest manifest | — |
-| `apply-video-download-result.py` | Apply yt-dlp download results into manifest metadata | — |
-| `check-cjk-fonts.py` | Optional post-render CJK font sanity check | — |
+| `scene-anchor.py` | 可选辅助：把预先设计好的 scene 锚定到 ASR 词流 | — |
+| `extract-frames.py` | ffmpeg 抽帧 | `ffmpeg` |
+| `subtitle-parse.py` | SRT/VTT 解析 + 关键词过滤 | — |
+| `vision-analyze.py` | VLM 分析（或委派回 agent 的 `view`） | `VLM_*`（可选） |
+| `gemini-deep-research.py` | Gemini Deep Research 自动化 | `playwright`、已登录的 Chrome |
+| `parse-pdf.py` | 通过 MinerU 云端 / 本地解析 PDF | `MINERU_API_TOKEN` 或 `mineru[pipeline]` |
+| `harvest-pages.py` | 批量 URL 抓取（图片 / 视频 / 滚动） | `playwright`、系统 Chrome |
+| `video-download.py` | YouTube/Bilibili 下载 | `yt-dlp` |
+| `mix-bgm.py` | 把 BGM 混入视频 | `ffmpeg` |
+| `merge-paper-manifest.py` | 把论文解析 manifest 条目并入 harvest manifest | — |
+| `apply-video-download-result.py` | 把 yt-dlp 下载结果应用到 manifest metadata | — |
+| `check-cjk-fonts.py` | 渲染后可选的 CJK 字体 sanity check | — |
 
-**System deps:** `ffmpeg`, `playwright` (`pip install playwright`, NO `playwright install chromium`), system Chrome (auto-detected), `yt-dlp`, `python3` with venv.
+**系统依赖：** `ffmpeg`、`playwright`（`pip install playwright`，**不要**执行 `playwright install chromium`）、系统 Chrome（自动检测）、`yt-dlp`、带 venv 的 `python3`。
 
-**Python packages (install into the venv):** `dashscope` (CosyVoice TTS + Paraformer ASR), plus anything the helper scripts import.
+**Python 包（装到 venv 里）：** `dashscope`（CosyVoice TTS + Paraformer ASR），以及所有辅助脚本 import 的依赖。

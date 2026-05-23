@@ -1,82 +1,78 @@
-# Style Hint — Rosé Pine Moon × Serious Technical Editorial
+# Style Hint — Rosé Pine Moon × 严肃技术编辑风
 
-> Optional dark mood and palette hint for `topic-to-video`. This is not a
-> HyperFrames implementation spec. The Phase 8 sub-agent uses the `hyperframes`
-> skill and project `DESIGN.md` process for actual CSS, layout, animation, and
-> rendering decisions.
-> The companion handdrawn reference is `references/design-dawn.md`.
+> `topic-to-video` 的可选深色 mood 与配色提示。这不是 HyperFrames 的实现规范。Phase 8 的 sub-agent 会通过 `hyperframes` skill 和项目自身的 `DESIGN.md` 流程，决定具体的 CSS、布局、动画与渲染。
+> 配套的手绘参考是 `references/design-dawn.md`。
 
-## Palette (use ONLY these colors)
+## 配色（只用以下颜色）
 
 **Backgrounds**
-- Main canvas: `#232136` (Moon base)
-- Card surface: `#2a273f` (Moon surface)
-- Elevated overlay: `#393552` (Moon overlay)
+- 主画布：`#232136`（Moon base）
+- 卡片表面：`#2a273f`（Moon surface）
+- Elevated overlay：`#393552`（Moon overlay）
 
 **Text**
-- Primary / headlines: `#e0def4` (Moon text)
-- Secondary / body: `#908caa` (Moon subtle; safe on base for medium/large text)
-- Decorative muted only: `#6e6a86` (Moon muted; not for body copy)
+- Primary / 标题：`#e0def4`（Moon text）
+- Secondary / 正文：`#908caa`（Moon subtle；在 base 上对中 / 大号字安全）
+- 仅装饰用 muted：`#6e6a86`（Moon muted；不要用于正文）
 
-**Accents — pick ONE per scene**
-- Iris `#c4a7e7` — primary technical highlight, labels, emphasis
-- Foam `#9ccfd8` — neutral data callouts, comparison markers
-- Gold `#f6c177` — one important number or warning per scene
-- Love `#eb6f92` — risk, failure, tension, urgent callouts
-- Rose `#ea9a97` — human/soft contrast, rare CTA
-- Pine `#3e8fb0` — deep blue support accent; use on large text or shapes only
+**Accents —— 每个 scene 选一个**
+- Iris `#c4a7e7` —— 主要技术高亮、label、强调
+- Foam `#9ccfd8` —— 中性数据 callout、对比标记
+- Gold `#f6c177` —— 每个 scene 一个重要数字或 warning
+- Love `#eb6f92` —— 风险、失败、紧张、紧急 callout
+- Rose `#ea9a97` —— 人情味 / 柔对比、罕用的 CTA
+- Pine `#3e8fb0` —— 深蓝辅助 accent；仅用于大字或形状
 
-**Borders / Dividers**
-- Standard line: `#56526e`
-- Subtle divider: `#44415a`
-- Low highlight / inset: `#2a283e`
+**Borders / 分割线**
+- 标准线：`#56526e`
+- 弱分割线：`#44415a`
+- 低高光 / inset：`#2a283e`
 
-## Typography
+## 排版
 
-| Use | Font | Weight | Notes |
-|---|---|---|---|
-| Chinese headlines | `NotoSerifSC` | 700 | Serious editorial tone; use for main claims |
-| Chinese section titles | `NotoSerifSC` | 600 | Use when 700 feels too heavy |
-| Chinese body | `NotoSansSC` | 400 | Clear, modern, less playful than Dawn |
-| Chinese captions / subtitles | `NotoSansSC` | 500 | Slightly stronger for video readability |
-| English / data / code | `IBMPlexMono` | 400 | Technical labels, filenames, model names |
-| English / numeric emphasis | `IBMPlexMono` | 600 | Numbers, versions, command snippets |
+| 用途 | 字体 | 字重 | 备注 |
+|------|------|------|------|
+| 中文标题 | `NotoSerifSC` | 700 | 严肃编辑感；用于主论断 |
+| 中文 section 标题 | `NotoSerifSC` | 600 | 当 700 显得过重时 |
+| 中文正文 | `NotoSansSC` | 400 | 清晰、现代，比 Dawn 不那么俏皮 |
+| 中文字幕 | `NotoSansSC` | 500 | 略加重以适应视频可读性 |
+| 英文 / 数据 / 代码 | `IBMPlexMono` | 400 | 技术 label、文件名、模型名 |
+| 英文 / 数字强调 | `IBMPlexMono` | 600 | 数字、版本号、命令片段 |
 
-**Do not use Dawn handwriting fonts in Moon** unless the user explicitly asks for a handdrawn contrast. Moon should feel restrained, technical, and editorial.
+**Moon 风格中不要使用 Dawn 的手写字体**，除非用户明确要求"手绘对比"。Moon 应当克制、技术、编辑感强。
 
-The main agent pre-stages Moon fonts with `scripts/fonts-download.sh`. The
-HyperFrames sub-agent decides how to load and apply those local font assets.
+主 agent 通过 `scripts/fonts-download.sh` 预置 Moon 字体。HyperFrames sub-agent 决定如何加载和应用这些本地字体资源。
 
-## Video Sizes
+## 视频尺寸
 
-| Element | 1920×1080 | 1080×1440 | 1080×1920 |
-|---|---|---|---|
-| Hero headline | 88-136px | 72-116px | 76-124px |
-| Section headline | 54-82px | 46-70px | 50-76px |
-| Body text | 30-48px | 28-42px | 28-44px |
-| Data labels | 22-32px | 22-30px | 22-32px |
-| Code / monospace | 22-34px | 22-30px | 22-32px |
-| Padding (.scene) | 90px 140px | 90px 80px | 90px 70px |
+| 元素 | 1920×1080 | 1080×1440 | 1080×1920 |
+|------|-----------|-----------|-----------|
+| Hero 标题 | 88-136px | 72-116px | 76-124px |
+| Section 标题 | 54-82px | 46-70px | 50-76px |
+| 正文 | 30-48px | 28-42px | 28-44px |
+| 数据 label | 22-32px | 22-30px | 22-32px |
+| 代码 / 等宽 | 22-34px | 22-30px | 22-32px |
+| Padding（.scene） | 90px 140px | 90px 80px | 90px 70px |
 
-## Shape Mood
+## 形状风格
 
-- Compact flat panels and serious editorial data blocks.
-- Highlights should read as lines, tags, or small marks rather than large bright fills.
-- Avoid heavy shadow and playful ornament.
+- 紧凑的平面 panel 和严肃的编辑式 data block。
+- 高亮应表现为线、tag 或小标记，而不是大面积的亮色填充。
+- 避免厚重阴影和俏皮装饰。
 
-## Motion
+## 动效
 
-- Entrances should be restrained: `power3.out`, `expo.out`, `sine.out`.
-- Use smaller movement than Dawn: `y: 20-44`, `x: 20-40`, `scale: 0.96-1`.
-- Avoid bouncy `back.out(1.7)` unless the content needs a rare moment of emphasis.
-- No full-screen linear gradients on dark backgrounds. Use solid backgrounds plus localized radial accents at 15-25% opacity.
-- Keep ambient decoration subtle: grids, hairlines, small orbital marks, terminal-like cursors, or diagram nodes.
+- 入场应当克制：`power3.out`、`expo.out`、`sine.out`。
+- 位移幅度比 Dawn 小：`y: 20-44`、`x: 20-40`、`scale: 0.96-1`。
+- 除非内容需要罕见的强调瞬间，否则避免 bouncy 的 `back.out(1.7)`。
+- 深色背景上不要使用满屏 linear gradient。改用纯色背景 + 局部 radial accent，透明度 15-25%。
+- 环境装饰要克制：网格、细线、小轨道标记、终端式 cursor 或图谱节点。
 
-## Don'ts
+## 不要做
 
-- Do not replace Dawn's handdrawn default; Moon is optional.
-- Do not use `MaShanZheng`, `LongCang`, `Caveat`, or `PatrickHand` for Moon unless the user explicitly asks for mixed handdrawn contrast.
-- Do not use `#6e6a86` for normal body text.
-- Do not use full-screen linear gradients on dark backgrounds.
-- Do not combine more than one accent color in a single scene's main content.
-- Do not make large accent-color backgrounds; use accent as line, tag, number, or small symbol.
+- 不要替换 Dawn 的手绘默认风格；Moon 是可选项。
+- 不要在 Moon 中使用 `MaShanZheng`、`LongCang`、`Caveat` 或 `PatrickHand`，除非用户明确要求手绘混搭对比。
+- 不要把 `#6e6a86` 用作正文。
+- 不要在深色背景上使用满屏 linear gradient。
+- 同一个 scene 的主内容里不要叠加超过一种 accent 色。
+- 不要把 accent 色做大面积背景；只用作线、tag、数字或小符号。

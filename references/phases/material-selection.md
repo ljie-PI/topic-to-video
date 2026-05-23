@@ -1,39 +1,39 @@
-### Phase 4 — Material Understanding & Selection
+### Phase 4 — 素材理解与筛选
 
-**Prefer delegating to a sub-agent.** This phase is context-heavy (vision analysis on many images/frames, 30-50+ tool calls). Use the current runtime's native sub-agent/delegation tool when available. Give the sub-agent the manifest path, research brief, and this phase file; it produces `material-catalog.json`. The main agent reads only the final catalog.
+**优先委派给 sub-agent。** 本阶段 context 消耗大（要对很多图片 / 帧做视觉分析，30-50+ 次工具调用）。可用时使用当前 runtime 原生的 sub-agent / 委派工具，把 manifest 路径、研究 brief 和这份阶段文档交给它；它产出 `material-catalog.json`。主 agent 只读最终的 catalog。
 
-If no sub-agent tool exists in the current environment, run this phase inline but keep context bounded: process one manifest entry at a time and write results incrementally to `material-catalog.json`.
+如果当前环境没有 sub-agent 工具，可以 inline 跑这一阶段，但要把 context 控制住：一次处理一条 manifest 条目，把结果增量写进 `material-catalog.json`。
 
-Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entry, build a "material entry" in `{work_dir}/{topic_name}/material-catalog.json`.
+遍历 Phase 3 产出的 `harvest_page/manifest.json["entries"]`。对每一条 entry，在 `{work_dir}/{topic_name}/material-catalog.json` 里建一个 "material entry"。
 
-**Per harvested entry (one per URL):**
+**每一条 harvest entry（每个 URL 一条）：**
 
-1. **Extract frames** from every video in `entry.videos` AND from `entry.scroll_recording` (if present):
+1. **抽帧**：对 `entry.videos` 里的每个视频，以及 `entry.scroll_recording`（如果有）：
    ```bash
    scripts/extract-frames.py <video> \
      {work_dir}/{topic_name}/extract_frames/<slug>/<video-name>/ \
      --max-frames 16
    ```
-   Frames are timestamp-named (`frame_t00.5s.jpg` etc.) so we can map back to clip ranges.
+   帧文件名带时间戳（如 `frame_t00.5s.jpg`），可以反向映射到 clip 区间。
 
-2. **Parse subtitles** for every downloaded video that has a sidecar subtitle file:
+2. **解析字幕**：对每个带 sidecar 字幕文件的已下载视频：
    ```bash
    scripts/subtitle-parse.py <subtitle> --keywords '<terms from research brief>'
    ```
 
-3. **Vision analysis** with `scripts/vision-analyze.py`:
-   - For images (raster and SVG): one batch per URL (max 10 per call). Prompt asks for subject, visual style, suitability score 1-10.
-   - For each video: one batch on the extracted frames. Prompt additionally asks for start/end timestamp of the most relevant span.
-   - **Mode 1 (explicit VLM):** if `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` are set → direct OpenAI-compatible call.
-   - **Mode 2 (delegate):** otherwise → script returns `delegate_to_agent` with image paths; the agent uses its own `view` tool.
+3. **视觉分析**：用 `scripts/vision-analyze.py`：
+   - 对图片（光栅图和 SVG）：每个 URL 一个 batch（每次调用最多 10 张）。prompt 询问 subject、视觉风格、1-10 的适配度评分。
+   - 对每个视频：一个 batch 跑在抽出的帧上。prompt 额外询问最相关片段的起止时间戳。
+   - **Mode 1（显式 VLM）：** 若已设置 `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` → 直接走 OpenAI 兼容的调用。
+   - **Mode 2（委派）：** 否则 → 脚本返回 `delegate_to_agent` 和图片路径列表；agent 用自己的 `view` 工具看图。
 
-   **Paper-origin entries (`source_type: "paper_pdf"`):** figures and tables already have authoritative captions from the PDF (in `paper_metadata.figure_captions` / `table_captions`). Use these directly as `semantic_description` with default `score: 8`. Only run VLM on paper assets that lack captions.
+   **Paper-origin entries（`source_type: "paper_pdf"`）：** 论文里的 figure 和 table 在 PDF 中本就带有权威的 caption（位于 `paper_metadata.figure_captions` / `table_captions`）。直接把这些 caption 作为 `semantic_description`，默认 `score: 8`。只对没有 caption 的论文素材跑 VLM。
 
-4. **Combine** `entry.text_excerpt` + image descriptions + per-frame descriptions into the catalog entry. **CRITICAL:** for each video, write a `selected_clips` list of `{start, end, reason, frame_paths[]}` — these are the spans Phase 5 (narration) and Phase 8 (compose) draw from.
+4. **组合**：把 `entry.text_excerpt` + 图片描述 + 各帧描述合成 catalog entry。**关键：** 对每个视频，写一份 `selected_clips` 列表，元素形如 `{start, end, reason, frame_paths[]}` —— 这些就是 Phase 5（解说）和 Phase 8（composition）会引用的片段。
 
-5. **Filter:** drop assets the VLM rated <5/10 or that are off-topic. Don't carry junk into the narration phase.
+5. **过滤：** 丢掉 VLM 评分 <5/10 或者偏题的素材。不要把垃圾带进解说阶段。
 
-**`material-catalog.json` shape:**
+**`material-catalog.json` 的结构：**
 
 ```json
 {
@@ -60,8 +60,8 @@ Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entr
 }
 ```
 
-- `entries[*].slug` is unique per URL and matches the harvest output directory name.
-- Every image/video carries an `id` (file stem the harvester wrote, e.g. `img_001` or the YouTube video id). Phases 5/7/8 cite materials via a **`material_ref`** — the schema is defined where it's first used in Phase 7. The coding sub-agent in Phase 8 resolves `material_ref` → catalog entry → `local_path`; the main agent never touches `local_path` directly.
-- `semantic_description` is the VLM-generated caption; the Phase 8 HyperFrames sub-agent uses it to make composition decisions.
+- `entries[*].slug` 在每个 URL 上唯一，与 harvest 输出目录名一致。
+- 每张图 / 每个视频都带一个 `id`（harvester 写出的文件 stem，例如 `img_001` 或 YouTube video id）。Phase 5/7/8 通过 **`material_ref`** 引用素材——schema 在 Phase 7 中首次定义时给出。Phase 8 的 coding sub-agent 负责把 `material_ref` 解析成 catalog entry → `local_path`；主 agent 永远不直接碰 `local_path`。
+- `semantic_description` 是 VLM 生成的 caption；Phase 8 的 HyperFrames sub-agent 用它做 composition 决策。
 
-**Outputs:** `extract_frames/<slug>/<video-name>/`, `vision_analyze/<slug>/`, `material-catalog.json`.
+**输出：** `extract_frames/<slug>/<video-name>/`、`vision_analyze/<slug>/`、`material-catalog.json`。
