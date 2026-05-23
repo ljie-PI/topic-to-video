@@ -18,6 +18,7 @@ CLASS_SELECTOR_RE = re.compile(r"\.([A-Za-z_][A-Za-z0-9_-]*)")
 CSS_VAR_DECL_RE = re.compile(r"(?P<name>--[A-Za-z0-9_-]+)\s*:\s*(?P<value>[^;{}]+)")
 CSS_VAR_USE_RE = re.compile(r"var\(\s*(--[A-Za-z0-9_-]+)")
 FONT_FAMILY_DECL_RE = re.compile(r"font-family\s*:\s*(?P<value>[^;{}]+)", re.IGNORECASE)
+IGNORED_TEXT_TAGS = {"script", "style", "head", "template", "iframe"}
 
 
 @dataclass(frozen=True)
@@ -43,9 +44,34 @@ class JsonArgumentParser(argparse.ArgumentParser):
         raise SystemExit(2)
 
 
-def extract_unsafe_css_variables(html: str) -> set[str]:
+class StyleExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.in_style = False
+        self.styles: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "style":
+            self.in_style = True
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() == "style":
+            self.in_style = False
+
+    def handle_data(self, data: str) -> None:
+        if self.in_style:
+            self.styles.append(data)
+
+
+def extract_style_css(html: str) -> str:
+    parser = StyleExtractor()
+    parser.feed(html)
+    return "\n".join(parser.styles)
+
+
+def extract_unsafe_css_variables(css: str) -> set[str]:
     variables: dict[str, str] = {}
-    for rule in CSS_RULE_RE.finditer(html):
+    for rule in CSS_RULE_RE.finditer(css):
         for declaration in CSS_VAR_DECL_RE.finditer(rule.group("body")):
             variables[declaration.group("name")] = declaration.group("value")
 
@@ -72,9 +98,9 @@ def has_unsafe_font_family(style: str, unsafe_vars: set[str]) -> bool:
     return False
 
 
-def extract_unsafe_classes(html: str, unsafe_vars: set[str]) -> set[str]:
+def extract_unsafe_classes(css: str, unsafe_vars: set[str]) -> set[str]:
     classes: set[str] = set()
-    for rule in CSS_RULE_RE.finditer(html):
+    for rule in CSS_RULE_RE.finditer(css):
         if not has_unsafe_font_family(rule.group("body"), unsafe_vars):
             continue
         for class_name in CLASS_SELECTOR_RE.findall(rule.group("selectors")):
@@ -91,6 +117,7 @@ class CjkFontParser(HTMLParser):
         self.findings: list[Finding] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
         attr_map = {name: value or "" for name, value in attrs}
         inherited = self.stack[-1][1].copy() if self.stack else []
         sources = inherited + self._sources_for_element(tag, attr_map)
@@ -104,6 +131,8 @@ class CjkFontParser(HTMLParser):
 
     def handle_data(self, data: str) -> None:
         if not self.stack or not CJK_RE.search(data):
+            return
+        if any(tag in IGNORED_TEXT_TAGS for tag, _ in self.stack):
             return
         sources = self.stack[-1][1]
         if not sources:
@@ -127,8 +156,9 @@ class CjkFontParser(HTMLParser):
 
 def check_file(path: Path) -> list[Finding]:
     html = path.read_text(encoding="utf-8")
-    unsafe_vars = extract_unsafe_css_variables(html)
-    parser = CjkFontParser(extract_unsafe_classes(html, unsafe_vars), unsafe_vars)
+    css = extract_style_css(html)
+    unsafe_vars = extract_unsafe_css_variables(css)
+    parser = CjkFontParser(extract_unsafe_classes(css, unsafe_vars), unsafe_vars)
     parser.feed(html)
     return parser.findings
 

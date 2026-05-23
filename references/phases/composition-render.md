@@ -1,47 +1,46 @@
-### Phase 8 — Hand off composition + render to a coding sub-agent
+### Phase 8 — Delegate HyperFrames Composition + Render
 
-Everything from this point — scaffolding a HyperFrames project, deciding the look (`DESIGN.md`), composing `index.html` with GSAP, running `lint`/`inspect`, and rendering — is a deep iterative HTML+CSS+GSAP task with its own dedicated skill (`hyperframes`). It is owned by a **coding sub-agent**, not the main agent.
+From this point onward, composition is owned by a coding sub-agent that uses the
+`hyperframes` and `hyperframes-cli` skills. The main `topic-to-video` agent only
+prepares upstream assets, writes a compact handoff brief, invokes the sub-agent,
+and sanity-checks the returned MP4.
 
-The main agent's remaining work: produce the upstream artifacts (`narration.mp3`, `scene-timing.json`, `material-catalog.json`, `narration.txt`, `fonts/`), write a brief, invoke the sub-agent, sanity-check the resulting mp4, then layer BGM (Phase 9).
-
-The sub-agent's job is to turn those into a rendered video using the `hyperframes` skill — freely picking templates, design, palette, motion, and pacing within the constraints the brief lists.
+The HyperFrames sub-agent owns:
+- scene segmentation from `narration.txt` and `transcribe/transcript.json`
+- optional scene timing artifact generation
+- material-to-scene mapping from `material-catalog.json`
+- visual information design, layout, typography, animation, and transitions
+- `composition/index.html` and `composition/DESIGN.md`
+- `hyperframes lint`, `hyperframes inspect`, and render iteration
 
 #### 8.1 — Write `composition-brief.md`
 
-Write `{work_dir}/{topic_name}/composition-brief.md` using the template at `references/composition-brief-template.md`, filling in the bracketed fields from the project's Phase 1-7 outputs.
+Write `{work_dir}/{topic_name}/composition-brief.md` from
+`references/composition-brief-template.md`, filling in project metadata, input
+paths, and the style hint from Phase 1. Keep the brief short. Do not paste
+HyperFrames implementation rules, GSAP snippets, or layout instructions into it.
 
-#### 8.2 — Invoke the coding sub-agent
+#### 8.2 — Invoke a coding sub-agent
 
-From the workspace, hand the brief to a coding agent that has access to the
-`hyperframes` skill:
+Use the current client/runtime's native sub-agent or delegation tool when one is
+available. The prompt should be short and should ask the sub-agent to read the
+brief file from disk rather than inlining the full brief into a shell command.
 
-```bash
-cd {work_dir}/{topic_name}
+Prompt shape:
 
-# Default: GitHub Copilot CLI
-copilot --allow-all-tools --add-dir . \
-  -p "$(cat composition-brief.md)
-
-Read the brief above and produce the deliverables. Use the hyperframes skill.
-Workflow: scaffold ./composition with hyperframes init, write DESIGN.md, compose
-index.html, run hyperframes lint && hyperframes inspect, fix issues, then render
-with --workers 1. Iterate until lint and inspect pass and renders/final.mp4 exists."
+```text
+Read composition-brief.md in the current workspace and produce the deliverables.
+Use the hyperframes and hyperframes-cli skills. You own scene segmentation,
+material mapping, composition design, animation, lint/inspect fixes, and final
+rendering. Iterate until composition/renders/final.mp4 exists and HyperFrames
+lint/inspect have no errors.
 ```
 
-Alternative — Claude Code with the same brief:
+If the environment has no native sub-agent tool, a short CLI fallback is
+acceptable only if it passes the prompt above and lets the coding agent read
+`composition-brief.md` itself. Do not use `-p "$(cat composition-brief.md)"`.
 
-```bash
-claude --add-dir . --allowedTools "Bash Edit Write Read Glob Grep" \
-       -p "$(cat composition-brief.md)
-
-Read the brief above and produce the deliverables. Use the hyperframes skill.
-Iterate hyperframes init → DESIGN.md → compose → lint → inspect → render."
-```
-
-Do **not** drive composition from the main agent's session. Composition needs
-many small file edits, lint loops, and render attempts; running it inside a
-coding sub-agent with the hyperframes skill loaded is dramatically faster and
-keeps the main agent's context clean.
+Do not drive composition from the main agent's session.
 
 #### 8.3 — Sanity-check the result
 
@@ -53,7 +52,7 @@ ffprobe -v error -show_entries format=duration -of csv=p=0 \
 ls -la {work_dir}/{topic_name}/composition/renders/final.mp4
 ```
 
-Expect: duration within ±0.1 s of `narration.mp3`; file size > 1 MB; an audio
-stream present. If anything looks off, send the failure back to the sub-agent
-(`copilot resume` or a fresh `claude -p ...`) with a pointer to the symptom —
-don't try to hand-patch the composition from the main agent.
+Expect: duration close to the target narration duration, file size > 1 MB, and
+an audio stream present. If anything looks off, send the symptom back to the
+HyperFrames sub-agent. Do not hand-patch `composition/index.html` from the main
+agent.

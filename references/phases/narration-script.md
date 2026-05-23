@@ -1,6 +1,6 @@
 ### Phase 5 — Write Narration Script
 
-**Inputs:** the research brief from Phase 2 + `material-catalog.json` from Phase 4 + the user's preferred angle/length. Annotate each scene with a recommended `material_ref` (the full schema is defined in Phase 7); the actual `local_path` resolution happens later, inside the sub-agent in Phase 8.
+**Inputs:** the research brief from Phase 2 + `material-catalog.json` from Phase 4 + the user's preferred angle/length. When a paragraph naturally depends on a specific visual, mention the relevant catalog slug or asset in prose. Do not design HyperFrames scenes, cards, timelines, or `info_units` here; scene segmentation and visual structure belong to the Phase 8 HyperFrames sub-agent.
 
 Goals:
 

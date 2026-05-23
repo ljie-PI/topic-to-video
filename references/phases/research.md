@@ -22,6 +22,14 @@ Requires `MINERU_API_TOKEN` in environment (from `.env`). Falls back to local `m
 
 Read the output JSON. It provides `title`, `abstract`, `full_markdown_path` (the parsed markdown for the full paper). These feed the Deep Research prompt in Phase 2b.
 
+Important output fields:
+- `manifest_entry.source_type = "paper_pdf"`
+- `manifest_entry.paper_metadata.full_markdown_path` for full parsed text
+- `manifest_entry.paper_metadata.figure_captions` for figure descriptions
+- `manifest_entry.paper_metadata.table_captions` for table descriptions
+- `manifest_papers.json` is updated under the harvest output directory and is
+  merged into `manifest.json` during Phase 3.
+
 **Checkpoint:** skip if `harvest_page/main-paper/metadata.json` exists.
 
 #### Phase 2b — Deep Research (paper mode variant)
@@ -73,7 +81,7 @@ Max 2 related papers. Skip if user says "just the main paper" or no significant 
    - Outputs: `gemini_deep_research.md` (full report) + `gemini_deep_research_sources.json` (cited URLs)
    - Read the report; it becomes the primary source. The `sources.json` feeds into Phase 3 material harvest.
    - **Skip ONLY when:** (a) user explicitly says "skip deep research", OR (b) topic is a simple re-narration of user-provided text with no factual claims to verify.
-   - **If it fails (other steps):** Fall back to manual web_search workflow (steps 3-4 below become the primary research path). Check `failed_step` in the error JSON — you can retry with `--start-from-step N`.
+   - **If it fails (selector timeout, runtime error, or other step failure):** Fall back to the manual web_search workflow (steps 3-4 below become the primary research path). Check `failed_step` in the error JSON — you can retry with `--start-from-step N`, but do not block the project on the consumer Gemini UI.
 3. **Identify gaps.** Whether Gemini ran or not, check: what numbers, names, dates, or technical specifics are missing or unverified? List them.
 4. **Run targeted searches.** Use `web_search` for each gap — typical: 2-4 searches if Gemini ran (filling gaps), 3-6 if it didn't (full research). Examples:
    - "Boris Cherny Anthropic interview Sequoia 2026" → confirm names, dates, quotes
@@ -111,4 +119,3 @@ Max 2 related papers. Skip if user says "just the main paper" or no significant 
 - The topic is a re-narration of a piece they already wrote and provided in full
 
 **Anti-pattern:** Searching once, then writing as if the brief is complete. Real research is iterative — you find one fact, it raises a new question, you search again. Plan for 2-3 rounds.
-

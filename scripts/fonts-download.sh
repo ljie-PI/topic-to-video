@@ -6,10 +6,7 @@
 #   style defaults to dawn
 #   style values: dawn, moon, all
 #
-# Dawn requires: curl, python3 with fonttools+brotli installed
-#   pip3 install --break-system-packages fonttools brotli
-#
-# Moon downloads Google Fonts WOFF2 subsets and writes rose-pine-moon-fonts.css.
+# Downloads Google Fonts WOFF2 subsets and writes a local CSS file for each style.
 set -Eeuo pipefail
 
 log() {
@@ -78,73 +75,27 @@ fi
 
 mkdir -p "$TARGET"
 
-download_dawn() {
-  pushd "$TARGET" >/dev/null
-
-  declare -A FONTS=(
-    ["ma-shan-zheng"]="https://fonts.gstatic.com/s/mashanzheng/v17/NaPecZTRCLxvwo41b4gvzkXaRMQ.ttf"
-    ["long-cang"]="https://fonts.gstatic.com/s/longcang/v21/LYjAdGP8kkgoTec8zkRgrQ.ttf"
-    ["zhi-mang-xing"]="https://fonts.gstatic.com/s/zhimangxing/v19/f0Xw0ey79sErYFtWQ9a2rq-g0ac.ttf"
-    ["caveat-700"]="https://fonts.gstatic.com/s/caveat/v23/WnznHAc5bAfYB2QRah7pcpNvOx-pjRV6SII.ttf"
-    ["patrick-hand"]="https://fonts.gstatic.com/s/patrickhand/v25/LDI1apSQOAYtSuYWp8ZhfYeMWQ.ttf"
-  )
+download_google_fonts() {
+  local style_name="$1"
+  local css_url="$2"
+  local css_file="$TARGET/rose-pine-${style_name}-fonts.css"
 
   if [[ "$DRY_RUN" == "--dry-run" ]]; then
-    log "dry-run dawn fonts: ${!FONTS[*]}"
-    popd >/dev/null
+    log "dry-run ${style_name} css: $css_url"
+    log "dry-run ${style_name} css output: $css_file"
     return
   fi
 
-  for name in "${!FONTS[@]}"; do
-    url="${FONTS[$name]}"
-    if [[ -f "${name}.woff2" ]]; then
-      log "${name}.woff2 (cached)"
-      continue
-    fi
-    log "downloading ${name}.ttf"
-    curl -sSL -o "${name}.ttf" "$url"
-  done
-
-  python3 - <<'PY'
-import glob
-import os
-import sys
-
-from fontTools.ttLib import TTFont
-
-for ttf in glob.glob('*.ttf'):
-    woff2 = ttf.replace('.ttf', '.woff2')
-    if os.path.exists(woff2):
-        continue
-    font = TTFont(ttf)
-    font.flavor = 'woff2'
-    font.save(woff2)
-    print(f'[fonts] converted {ttf} -> {woff2}', file=sys.stderr)
-PY
-
-  rm -f ./*.ttf
-  popd >/dev/null
-}
-
-download_moon() {
-  local css_url='https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap'
-  local css_file="$TARGET/rose-pine-moon-fonts.css"
-
-  if [[ "$DRY_RUN" == "--dry-run" ]]; then
-    log "dry-run moon css: $css_url"
-    log "dry-run moon css output: $css_file"
-    return
-  fi
-
-  python3 - "$css_url" "$css_file" <<'PY'
+  python3 - "$style_name" "$css_url" "$css_file" <<'PY'
 import hashlib
 import re
 import sys
 import urllib.request
 from pathlib import Path
 
-css_url = sys.argv[1]
-css_file = Path(sys.argv[2])
+style_name = sys.argv[1]
+css_url = sys.argv[2]
+css_file = Path(sys.argv[3])
 target_dir = css_file.parent
 headers = {"User-Agent": "Mozilla/5.0"}
 
@@ -162,7 +113,7 @@ if not urls:
 
 for index, url in enumerate(urls):
     digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
-    filename = f"moon-{index:02d}-{digest}.woff2"
+    filename = f"{style_name}-{index:02d}-{digest}.woff2"
     destination = target_dir / filename
     if destination.exists():
         print(f"[fonts] {filename} (cached)", file=sys.stderr)
@@ -174,9 +125,25 @@ for index, url in enumerate(urls):
 css = css.replace("'Noto Serif SC'", "'NotoSerifSC'")
 css = css.replace("'Noto Sans SC'", "'NotoSansSC'")
 css = css.replace("'IBM Plex Mono'", "'IBMPlexMono'")
+css = css.replace("'Ma Shan Zheng'", "'MaShanZheng'")
+css = css.replace("'Long Cang'", "'LongCang'")
+css = css.replace("'Zhi Mang Xing'", "'ZhiMangXing'")
+css = css.replace("'Patrick Hand'", "'PatrickHand'")
 css_file.write_text(css, encoding="utf-8")
 print(f"[fonts] wrote {css_file}", file=sys.stderr)
 PY
+}
+
+download_dawn() {
+  download_google_fonts \
+    "dawn" \
+    "https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Long+Cang&family=Zhi+Mang+Xing&family=Caveat:wght@700&family=Patrick+Hand&display=swap"
+}
+
+download_moon() {
+  download_google_fonts \
+    "moon" \
+    "https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap"
 }
 
 case "$STYLE" in
@@ -195,5 +162,8 @@ case "$STYLE" in
     ;;
 esac
 
-mapfile -t files < <(find "$TARGET" -type f \( -name '*.woff2' -o -name '*.css' \) | sort)
-emit_json_success "${files[@]}"
+set --
+while IFS= read -r file; do
+  set -- "$@" "$file"
+done < <(find "$TARGET" -type f \( -name '*.woff2' -o -name '*.css' \) | sort)
+emit_json_success "$@"

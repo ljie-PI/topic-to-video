@@ -2,6 +2,7 @@ __pycache__
 .venv
 
 .superpowers
+.antigravitycli/
 
 # Browser profile shared with gemini-deep-research.py / harvest-pages.py
 # (auto-populated at runtime; contains login cookies, extensions, cache —

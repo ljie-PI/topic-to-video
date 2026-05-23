@@ -1,10 +1,9 @@
-# Design — Rosé Pine Dawn × Notion Handdrawn (Optional style reference)
+# Style Hint — Rosé Pine Dawn × Notion Handdrawn
 
-> Optional style reference for `topic-to-video`'s Phase 8 composition brief.
-> The coding sub-agent reads this if (and only if) the brief points at
-> `references/design-dawn.md`. Otherwise the sub-agent picks its own palette
-> via the hyperframes DESIGN.md gate. Adjust colors and accents per project,
-> but **keep the palette bounded** if you adopt it.
+> Optional mood and palette hint for `topic-to-video`. This is not a
+> HyperFrames implementation spec. The Phase 8 sub-agent uses the `hyperframes`
+> skill and project `DESIGN.md` process for actual CSS, layout, animation, and
+> rendering decisions.
 
 ## Palette (use ONLY these colors)
 
@@ -41,31 +40,9 @@
 
 **NEVER use Caveat or PatrickHand for Chinese characters** — they have no CJK glyphs, browser falls back to garbled rendering.
 
-### Mixed Chinese + Latin text
-
-When one visual phrase contains both Chinese and English/numbers, split it into spans and assign fonts by script:
-
-```html
-<div class="mixed-text badge">
-  <span class="zh">降低</span>
-  <span class="latin">30%</span>
-  <span class="zh">成本</span>
-</div>
-```
-
-```css
-.mixed-text .zh {
-  font-family: 'MaShanZheng', serif;
-  font-weight: 400;
-}
-
-.mixed-text .latin {
-  font-family: 'Caveat', cursive;
-  font-weight: 700;
-}
-```
-
-Do not rely on fallback chains like `font-family: 'Caveat', 'MaShanZheng'` for mixed text. The browser may switch fonts mid-word and the rendered result becomes inconsistent in video frames.
+For mixed Chinese + Latin text, the HyperFrames sub-agent should use the
+project fonts deliberately. This file names the desired families only; it does
+not prescribe CSS implementation.
 
 ## Video Sizes (these override web sizes)
 
@@ -77,14 +54,13 @@ Do not rely on fallback chains like `font-family: 'Caveat', 'MaShanZheng'` for m
 | Data labels | 22-32px | 22-30px | 22-32px |
 | Padding (.scene) | 90px 140px | 90px 80px | 90px 70px |
 
-## Shapes
+## Shape Mood
 
-- **Cards**: `border-radius: 12-20px`, flat solid fill (no shadow), 2.5px border in `--line`
-- **Pills/tags**: `border-radius: 999px`, generous padding (10-16px vertical, 22-34px horizontal)
-- **Highlight pills (around words)**: `padding: 4px 16px 12px; border-radius: 10px; line-height: 1.15;`
-- **Accent badges with white-ish text**: use `--surface #fffaf3` as text color (NOT pure white)
+- Flat, tactile cards and tags.
+- Rounded labels are acceptable when they serve the information design.
+- Avoid heavy shadows; keep the handdrawn mood light and quiet.
 
-## Motion (per HyperFrames video composition rules)
+## Motion Mood
 
 - Every decorative element: ambient breathe / drift / rotate (sine.inOut yoyo, finite repeat)
 - Every entrance: 3+ different eases per scene (mix `expo.out`, `back.out(1.7)`, `power3.out`, `sine.out`)
