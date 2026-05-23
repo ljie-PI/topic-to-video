@@ -1,14 +1,14 @@
-# Alternative Palettes
+# 备选配色
 
-Default is **Rosé Pine Dawn** (warm, light, handdrawn). Alternates are available when the user wants something different.
+默认是 **Rosé Pine Dawn**（温暖、明亮、手绘）。用户想换风格时有以下备选。
 
-## Rosé Pine Dawn (Default — see `references/design-dawn.md`)
+## Rosé Pine Dawn（默认 —— 见 `references/design-dawn.md`）
 
-Mood: warm, calm, intimate. Pairs with handdrawn fonts.
+Mood：温暖、平静、亲密。搭配手绘字体。
 
-## Rosé Pine Moon Serious (Optional — see `references/design-moon.md`)
+## Rosé Pine Moon Serious（可选 —— 见 `references/design-moon.md`）
 
-Mood: serious, technical, restrained, editorial. Use for AI, SaaS, programming, business analysis, technical commentary, and any user request for "moon", "严肃", "深色", or "技术感".
+Mood：严肃、技术、克制、编辑感。适合 AI、SaaS、编程、商业分析、技术评论，以及用户要求 "moon"、"严肃"、"深色" 或 "技术感" 的场景。
 
 ```
 --bg:        #232136
@@ -27,15 +27,15 @@ Mood: serious, technical, restrained, editorial. Use for AI, SaaS, programming, 
 --pine:      #3e8fb0
 ```
 
-Fonts: `NotoSerifSC` for Chinese headlines + `NotoSansSC` for Chinese body/captions + `IBMPlexMono` for English, data, and code.
+字体：`NotoSerifSC` 用于中文标题 + `NotoSansSC` 用于中文正文 / 字幕 + `IBMPlexMono` 用于英文、数据与代码。
 
-⚠️ Moon is not handdrawn. Do not use `MaShanZheng`, `LongCang`, `Caveat`, or `PatrickHand` unless the user explicitly asks to blend handdrawn elements into the Moon style.
+⚠️ Moon 不是手绘风。除非用户明确要求把手绘元素融进 Moon 风格，否则不要使用 `MaShanZheng`、`LongCang`、`Caveat` 或 `PatrickHand`。
 
-⚠️ Dark backgrounds increase apparent font weight. Keep body at 400/500, use 700 mainly for headlines, and run HyperFrames contrast validation on rendered frames.
+⚠️ 深色背景会让字体看起来更粗。正文保持 400/500，700 主要用于标题，并对渲染出的帧跑 HyperFrames 的对比度校验。
 
 ## Warm Editorial
 
-Mood: magazine spread, refined, journalistic. Pairs with serif + clean sans.
+Mood：杂志跨页、精致、新闻感。搭配 serif + 干净 sans。
 
 ```
 --bg:        #f6f1e7
@@ -52,13 +52,13 @@ Mood: magazine spread, refined, journalistic. Pairs with serif + clean sans.
 --accent-4:  #d6a634   /* mustard — emphasis */
 ```
 
-Fonts: `EB Garamond` or `Crimson Pro` (serif headlines) + `Inter` or `IBM Plex Sans` (body) + `JetBrains Mono` (data).
+字体：`EB Garamond` 或 `Crimson Pro`（serif 标题） + `Inter` 或 `IBM Plex Sans`（正文） + `JetBrains Mono`（数据）。
 
-⚠️ Even in this palette, **don't pair two sans-serifs**. Serif + sans + mono is the safe trio.
+⚠️ 即便是这个配色，**也不要搭配两种 sans-serif**。serif + sans + mono 是安全的三件套。
 
 ## Dark Premium
 
-Mood: tech, deep, premium. Pairs with geometric sans.
+Mood：科技、深邃、高级。搭配几何感 sans。
 
 ```
 --bg:        #0a0e1a
@@ -75,29 +75,29 @@ Mood: tech, deep, premium. Pairs with geometric sans.
 --accent-4:  #ec4899   /* pink — rare CTA */
 ```
 
-Fonts: `Space Grotesk` or `Manrope` (headlines) + `Inter` (body) + `JetBrains Mono` (code).
+字体：`Space Grotesk` 或 `Manrope`（标题） + `Inter`（正文） + `JetBrains Mono`（代码）。
 
-⚠️ Dark backgrounds increase apparent font weight — drop body weight by 50 (e.g. 350 instead of 400). Add subtle radial glow under accents (~15-25% opacity, never 5%).
+⚠️ 深色背景会让字体看起来更粗 —— 正文字重降 50（例如用 350 而不是 400）。在 accent 之下加一层细微的 radial glow（透明度 ~15-25%，永远不要 5%）。
 
-⚠️ No full-screen linear gradients on dark — H.264 banding. Use radial or solid + localized glow.
+⚠️ 深色背景上不要用满屏 linear gradient —— H.264 会出现 banding。改用 radial 或 纯色 + 局部 glow。
 
-## How to Pick
+## 如何挑
 
-| User says | Pick |
-|---|---|
-| "rose pine dawn", "dawn", "笔记本", "小红书", "温暖", "手绘", "ins 风" | Rosé Pine Dawn |
-| "rose pine moon", "moon", "严肃", "深色", "技术感", "技术评论", "AI", "SaaS", "编程" | Rosé Pine Moon Serious |
+| 用户说 | 选 |
+|--------|----|
+| "rose pine dawn"、"dawn"、"笔记本"、"小红书"、"温暖"、"手绘"、"ins 风" | Rosé Pine Dawn |
+| "rose pine moon"、"moon"、"严肃"、"深色"、"技术感"、"技术评论"、"AI"、"SaaS"、"编程" | Rosé Pine Moon Serious |
 | "杂志"、"编辑"、"复古"、"质感" | Warm Editorial |
-| "科技", "未来", "premium", "币圈", "暗黑" but not "moon" | Ask: Rosé Pine Moon Serious or Dark Premium |
-| No style, and topic is philosophy/humanities/life | Rosé Pine Dawn |
-| No style, and topic is AI/SaaS/programming | Ask: Rosé Pine Dawn for warm explainer, or Rosé Pine Moon Serious for technical editorial |
-| No style at all | Rosé Pine Dawn |
+| "科技"、"未来"、"premium"、"币圈"、"暗黑" 但不是 "moon" | 反问：Rosé Pine Moon Serious 还是 Dark Premium |
+| 没说风格，主题是哲学 / 人文 / 生活 | Rosé Pine Dawn |
+| 没说风格，主题是 AI/SaaS/编程 | 反问：Dawn 温暖讲解 还是 Moon 严肃技术编辑 |
+| 完全没风格指向 | Rosé Pine Dawn |
 
-## Dimension-Aware Padding
+## 按画幅决定 padding
 
-| Orientation | Scene padding | Hero size |
-|---|---|---|
+| Orientation | Scene padding | Hero 字号 |
+|-------------|---------------|----------|
 | 1920×1080 | 90px 140px | 100-160px |
 | 1080×1440 | 90px 80px | 80-130px |
 | 1080×1920 | 90px 70px | 90-140px |
-| 1080×1080 (square) | 90px 100px | 80-120px |
+| 1080×1080（方形） | 90px 100px | 80-120px |

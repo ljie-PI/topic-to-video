@@ -1,19 +1,19 @@
-# Narration Script Templates
+# 解说脚本模板
 
-Templates for the 4 most common video genres. Each is sized for ~85s at `speech_rate=1.2`.
+针对最常见的 4 种视频体裁的模板。每个都按 `speech_rate=1.2` 下约 85 秒来设计。
 
-## Template 1: Interview / Talk Recap
+## Template 1：访谈 / 演讲 recap
 
-> Use for: 一篇深度访谈、一次演讲精华、一段播客摘录
+> 用于：一篇深度访谈、一次演讲精华、一段播客摘录
 
-**Pacing:**
-1. Hook (1 paragraph, 4-6s) — 一句话点出最反常识的论断
-2. Person + context (1 paragraph, 8-12s)
-3-7. 3-5 个核心 takeaway，每段 8-12s
-8. Quote / one-line conclusion (1 paragraph, 4-8s)
-9. CTA (1 paragraph, 3-5s)
+**节奏：**
+1. Hook（1 段，4-6 秒）—— 一句话点出最反常识的论断
+2. 人物 + 背景（1 段，8-12 秒）
+3-7. 3-5 个核心 takeaway，每段 8-12 秒
+8. Quote / 一句话结论（1 段，4-8 秒）
+9. CTA（1 段，3-5 秒）
 
-**Example (用作填空):**
+**示例（用作填空）：**
 ```
 {某领域权威} 的 {人名}，最近抛出一个重磅判断。
 
@@ -36,20 +36,20 @@ Templates for the 4 most common video genres. Each is sized for ~85s at `speech_
 
 ---
 
-## Template 2: News Brief
+## Template 2：新闻速报
 
-> Use for: 突发新闻、重大产品发布、政策更新
+> 用于：突发新闻、重大产品发布、政策更新
 
-**Pacing:**
-1. Lede (4-6s) — 5W1H 浓缩成一句
-2. Background (8-10s)
-3. Key fact 1 (8-10s)
-4. Key fact 2 (8-10s)
-5. Key fact 3 (8-10s)
-6. Implications (10-15s)
-7. CTA (3-5s)
+**节奏：**
+1. Lede（4-6 秒）—— 5W1H 浓缩成一句
+2. Background（8-10 秒）
+3. Key fact 1（8-10 秒）
+4. Key fact 2（8-10 秒）
+5. Key fact 3（8-10 秒）
+6. Implications（10-15 秒）
+7. CTA（3-5 秒）
 
-**Example skeleton:**
+**Example skeleton：**
 ```
 {时间，多用"今天"或"刚刚"} —— {主体} 宣布 {核心动作}。
 
@@ -68,41 +68,41 @@ Templates for the 4 most common video genres. Each is sized for ~85s at `speech_
 
 ---
 
-## Template 3: Tutorial / How-To
+## Template 3：教程 / How-To
 
-> Use for: 教程、操作指南、快速上手
+> 用于：教程、操作指南、快速上手
 
-**Pacing:**
-1. Problem (4-6s) — 你遇到过 X 吗？
-2. Promise (4-6s) — 三步搞定
-3. Step 1 (10-15s) — 含命令 / 截图描述
-4. Step 2 (10-15s)
-5. Step 3 (10-15s)
-6. Recap (4-6s)
-7. CTA (3-5s)
-
----
-
-## Template 4: Story / Origin
-
-> Use for: 创业故事、产品由来、历史回顾
-
-**Pacing:**
-1. Cold open (4-6s) — 一个反转或悬念
-2. Setup (8-12s) — 当时的处境
-3. Conflict (10-15s) — 转折点
-4. Insight (8-12s) — 关键洞察
-5. Resolution (10-15s) — 结果
-6. Lesson (8-10s)
-7. CTA (3-5s)
+**节奏：**
+1. Problem（4-6 秒）—— 你遇到过 X 吗？
+2. Promise（4-6 秒）—— 三步搞定
+3. Step 1（10-15 秒）—— 含命令 / 截图描述
+4. Step 2（10-15 秒）
+5. Step 3（10-15 秒)
+6. Recap（4-6 秒）
+7. CTA（3-5 秒）
 
 ---
 
-## Cross-Template Rules
+## Template 4：故事 / 由来
 
-- **数字写中文**：`二零二六` not `2026`，`一百五十` not `150`，`百分之百` not `100%`
+> 用于：创业故事、产品由来、历史回顾
+
+**节奏：**
+1. Cold open（4-6 秒）—— 一个反转或悬念
+2. Setup（8-12 秒）—— 当时的处境
+3. Conflict（10-15 秒）—— 转折点
+4. Insight（8-12 秒）—— 关键洞察
+5. Resolution（10-15 秒）—— 结果
+6. Lesson（8-10 秒）
+7. CTA（3-5 秒）
+
+---
+
+## 跨模板规则
+
+- **数字写中文**：`二零二六` 而不是 `2026`，`一百五十` 而不是 `150`，`百分之百` 而不是 `100%`
 - **英文专有名词保留原样**：`Anthropic`、`Claude Code`、`Boris`、`Agent`、`PR`、`CI`
 - **段落空一行 = 自然停顿点**（CosyVoice 会在段落间稍停）
-- **Avoid the full-width Chinese colon `：`.** CosyVoice can occasionally insert a 0.5-1 s silence after a full-width colon followed immediately by a long compound sentence, which makes the video feel stuck mid-scene. Use an em dash `——`, split the sentence with commas, or rewrite it.
+- **避免全角中文冒号 `：`。** 当全角冒号紧跟一段长复合句时，CosyVoice 偶尔会插入 0.5-1 秒的静音，让视频感觉卡住。改用破折号 `——`、用逗号断句，或者改写。
 - **避免长定语从句**：中文 TTS 在 30 字以上的长句容易吃字
 - **避免连续多个英文词**：`Claude Code 的创造者 Boris Cherny` 比 `Claude Code Boris Cherny` 流畅

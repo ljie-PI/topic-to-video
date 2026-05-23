@@ -1,26 +1,26 @@
-### Phase 1 — Gather Inputs (ask user, ONE question at a time)
+### Phase 1 — 收集输入（一次问用户一个问题）
 
-1. Source: URL to fetch, pasted text, or just a topic.
-2. Orientation: `1920×1080` (horizontal), `1080×1920` (vertical), or `1080×1440` (3:4 portrait).
-3. Style: infer from user wording, or read `style-prompt.md` if it exists in the project workspace. `style-prompt.md` is an optional free-form note whose contents override the default style inference and are copied into the Phase 8 brief as a style hint.
-   - Default: Rosé Pine Dawn handdrawn (`references/design-dawn.md`)
-   - Use Rosé Pine Moon Serious (`references/design-moon.md`) when the user says "moon", "严肃", "深色", "技术感", "技术评论", "AI", "SaaS", or "编程" and wants a serious tone
-   - If topic is AI/SaaS/programming but style is not explicit, ask whether they want Dawn warm explainer or Moon serious technical editorial
-4. Length: usually 3-10 minutes — derive from user's request or default to 5 minutes.
-5. Language: default Chinese. Ask if user wants a different language.
-6. Ask whether to search for visual materials (images/video clips) to enrich scenes. Default: yes.
-7. **Input type detection:**
-   - Source is a `.pdf` file path → set `input_mode = "paper"`
-   - Source is a URL ending in `.pdf` (e.g. arXiv) → set `input_mode = "paper"`, keep the URL for `parse-pdf.py --url`
-   - Otherwise → `input_mode = "standard"` (default; all subsequent "paper mode" sections are skipped)
+1. 来源：要抓取的 URL、粘贴的文本，或仅一个主题。
+2. 方向：`1920×1080`（横屏）、`1080×1920`（竖屏）或 `1080×1440`（3:4 竖向）。
+3. 风格：从用户措辞推断，或在项目工作目录里有 `style-prompt.md` 时读取它。`style-prompt.md` 是一份可选的自由文本备注，其内容会覆盖默认的风格推断，并作为 style hint 复制到 Phase 8 的 brief 里。
+   - 默认：Rosé Pine Dawn 手绘风（`references/design-dawn.md`）
+   - 当用户提到 "moon"、"严肃"、"深色"、"技术感"、"技术评论"、"AI"、"SaaS"、"编程" 且想要严肃风格时，使用 Rosé Pine Moon Serious（`references/design-moon.md`）
+   - 如果主题是 AI/SaaS/编程，但风格没明说，要询问对方想要 Dawn 温暖讲解风还是 Moon 严肃技术编辑风
+4. 时长：通常 3-10 分钟——从用户需求中提取，默认 5 分钟。
+5. 语言：默认中文。若用户想要其他语言要询问确认。
+6. 询问是否需要搜索视觉素材（图片/视频片段）来丰富场景。默认：是。
+7. **输入类型识别：**
+   - 来源是 `.pdf` 文件路径 → 置 `input_mode = "paper"`
+   - 来源是以 `.pdf` 结尾的 URL（例如 arXiv） → 置 `input_mode = "paper"`，并将该 URL 保留用于 `parse-pdf.py --url`
+   - 否则 → `input_mode = "standard"`（默认；后续所有 "paper mode" 段落都跳过）
 
-**If a sister project already exists** (e.g. user says "same style as `claude-code-video/`"), copy `composition/DESIGN.md` + `fonts/` from it and note "reuse this DESIGN.md" inside the brief; the HyperFrames sub-agent will decide how to reuse that design.
+**如果已经存在一个姊妹项目**（例如用户说 "用和 `claude-code-video/` 一样的风格"），从该项目复制 `composition/DESIGN.md` + `fonts/` 过来，并在 brief 里注明 "reuse this DESIGN.md"；HyperFrames 子 agent 会决定该如何复用这个设计。
 
-**Workspace discovery (checkpoint entry point):** After determining the `topic_name` slug, check if `{work_dir}/{topic_name}/` already exists:
+**工作区发现（checkpoint 入口）：** 确定 `topic_name` slug 之后，检查 `{work_dir}/{topic_name}/` 是否已存在：
 ```
 ls {work_dir}/{topic_name}/ 2>/dev/null
 ```
-If the directory exists and contains output files, scan against the checkpoint table (see "Checkpoint & Resume" section) and report to the user:
+如果该目录存在并包含输出文件，按 "Checkpoint & Resume" 一节的 checkpoint 表去扫描，然后向用户报告：
 > "Found existing workspace for `{topic_name}`. Detected outputs: [harvest (5 URLs), TTS, ASR, scene-timing]. Resume from Phase 5 (narration)? Or start fresh?"
 
-Wait for user confirmation before proceeding. This is the **only** mechanism by which the agent discovers a prior run — without a workspace directory, there is nothing to resume from.
+等用户确认后再继续。这是 agent 发现历史 run 的**唯一**机制——没有工作区目录，就没有可恢复的状态。

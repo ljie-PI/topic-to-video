@@ -1,42 +1,33 @@
-# Gotchas Catalog — Upstream Pipeline Pitfalls
+# Gotchas Catalog —— 上游 pipeline 踩坑清单
 
-This file is for `topic-to-video` upstream issues: research, harvest, TTS, ASR,
-deterministic assets, and handoff contracts. HyperFrames composition, CSS, GSAP,
-lint, inspect, and render implementation pitfalls belong to the `hyperframes`,
-`hyperframes-cli`, and `gsap` skills.
+本文件聚焦 `topic-to-video` 的上游问题：调研、抓取、TTS、ASR、确定性资源以及 handoff contract。HyperFrames composition、CSS、GSAP、lint、inspect 与渲染实现的坑请去看 `hyperframes`、`hyperframes-cli` 和 `gsap` 这三个 skill。
 
-## 1. Whisper / HyperFrames Transcribe for Chinese
+## 1. 中文场景下避免使用 Whisper / HyperFrames Transcribe
 
-Do not use Whisper or `npx hyperframes transcribe` for Chinese narration in
-this workflow. Prior runs hit model-download failures and bad UTF-8 output.
+本工作流中，不要用 Whisper 或 `npx hyperframes transcribe` 处理中文解说。历史 run 多次遇到模型下载失败和 UTF-8 输出乱码。
 
-Fix: use `scripts/transcribe-paraformer.py`, which calls DashScope
-Paraformer-realtime-v2 and returns clean word-level timings.
+修复：用 `scripts/transcribe-paraformer.py`，它调用 DashScope Paraformer-realtime-v2 并返回干净的词级时间。
 
-If Paraformer is unavailable, ask the user for an external transcript rather
-than silently switching to HyperFrames transcription.
+如果 Paraformer 不可用，问用户要一份外部 transcript，而不是悄悄切换到 HyperFrames 的 transcribe。
 
-## 2. Paraformer Sample Rate Mismatch
+## 2. Paraformer Sample Rate 不匹配
 
-Symptom:
+症状：
 
 ```text
 status_code: 44
 error: Failed to decode audio: sample rate 16000 not equals with real 22050
 ```
 
-Root cause: Paraformer rejects audio whose declared sample rate differs from the
-real file sample rate.
+根因：Paraformer 会拒绝声明的 sample rate 与实际文件 sample rate 不一致的音频。
 
-Fix: always probe with ffprobe before Recognition(). The shipped
-`scripts/transcribe-paraformer.py` already does this.
+修复：调用 `Recognition()` 之前一律用 ffprobe 探测真实 sample rate。随包的 `scripts/transcribe-paraformer.py` 已经这么做了。
 
-## 3. CosyVoice Script Source Editing
+## 3. 不要编辑 CosyVoice 脚本源码
 
-Do not copy `voice-clone.py` and paste narration into Python source.
-That makes resume and review fragile.
+不要把 `voice-clone.py` 复制一份，再把解说粘进 Python 源码。这种做法让 resume 和 review 都变得脆弱。
 
-Fix: keep narration in `narration.txt` and call:
+修复：把解说放在 `narration.txt` 里，调用：
 
 ```bash
 python3 scripts/voice-clone.py \
@@ -45,58 +36,46 @@ python3 scripts/voice-clone.py \
   --speech-rate 1.2
 ```
 
-Set the voice with `--voice` or `COSYVOICE_VOICE_ID`.
+通过 `--voice` 或 `COSYVOICE_VOICE_ID` 设置音色。
 
-## 4. Full-Width Chinese Colon Can Add TTS Pauses
+## 4. 全角中文冒号可能引入 TTS 停顿
 
-CosyVoice can occasionally insert a noticeable pause after `：` when it is
-followed by a long compound sentence.
+当全角冒号 `：` 后紧跟一个长复合句时，CosyVoice 偶尔会在其后插入一段明显停顿。
 
-Fix: use `——`, commas, or split the sentence before generating TTS.
+修复：改用 `——`、逗号，或在生成 TTS 之前断句。
 
-## 5. Gemini Deep Research UI Automation Is Fragile
+## 5. Gemini Deep Research 的 UI 自动化很脆
 
-`scripts/gemini-deep-research.py` automates a consumer web UI, so selector or
-flow changes can break it.
+`scripts/gemini-deep-research.py` 自动化的是一个消费级 web UI，selector 或流程变更都会让它崩。
 
-Fix: if the script fails with a selector timeout, failed step, or runtime error,
-fall back to targeted `web_search` research. Do not block the project on Gemini
-UI automation.
+修复：如果脚本因 selector timeout、failed step 或运行时错误失败，回退到有针对性的 `web_search` 调研。不要让项目卡在 Gemini UI 自动化上。
 
-## 6. MinerU Cloud Failures
+## 6. MinerU 云端失败
 
-MinerU cloud can fail for token, timeout, or URL-fetch reasons.
+MinerU 云端可能因为 token、超时或 URL 抓取等原因失败。
 
-Fixes:
-- Missing or failed cloud token: allow `parse-pdf.py` to fall back to local
-  `mineru` when available.
-- Cloud timeout on URL: download the PDF and retry with `--pdf`.
-- Cloud error `-60007`: retry locally.
+修复：
+- token 缺失或失效：允许 `parse-pdf.py` 在本地有 `mineru` 时回退到本地。
+- URL 模式云端超时：把 PDF 下下来，用 `--pdf` 重试。
+- 云端错误 `-60007`：本地重试。
 
-## 7. Chrome CDP Profile Lock
+## 7. Chrome CDP 的 profile 锁
 
-Chrome launches with a shared profile at `{work_dir}/chrome_profile/`. If
-Chrome exits immediately, another Chrome process may already hold that profile.
+Chrome 启动时会复用位于 `{work_dir}/chrome_profile/` 的共享 profile。如果 Chrome 立刻退出，可能是另一个 Chrome 进程正占用该 profile。
 
-Fix: close the conflicting Chrome process or pass a different `--profile-dir`.
-If CDP port 9222 is busy, pass another `--cdp-url`, such as
-`http://localhost:9223`.
+修复：关掉冲突的 Chrome 进程，或传一个不同的 `--profile-dir`。如果 CDP 端口 9222 被占用，传另一个 `--cdp-url`，比如 `http://localhost:9223`。
 
-## 8. Video Downloads Must Stay Sequential
+## 8. 视频下载必须顺序执行
 
-YouTube/Bilibili downloads via yt-dlp are prone to throttling when run in
-parallel.
+YouTube/Bilibili 经 yt-dlp 并行下载时容易被限速。
 
-Fix: iterate `manifest.pending_downloads[]` sequentially. If a download fails
-because of geoblock, age gate, 410, or rate limit, leave `download_required:
-true`; Phase 4 ignores unresolved clips.
+修复：顺序遍历 `manifest.pending_downloads[]`。如果下载因地区封锁、年龄门、410 或限速失败，保留 `download_required: true`；Phase 4 会忽略尚未解决的 clip。
 
-## 9. Apply Video Download Results to Manifests
+## 9. 将视频下载结果应用到 manifest
 
-Downloading a video is not enough. Phase 4 reads `manifest.json` and per-slug
-`metadata.json`.
+下载视频本身还不够。Phase 4 会读 `manifest.json` 和每个 slug 的 `metadata.json`。
 
-Fix: after a successful `video-download.py` run, apply the result:
+修复：每次 `video-download.py` 成功后，应用结果：
 
 ```bash
 scripts/apply-video-download-result.py \
@@ -106,32 +85,28 @@ scripts/apply-video-download-result.py \
   --result-json /path/to/video-download-result.json
 ```
 
-## 10. Merge Parsed Papers Into the Harvest Manifest
+## 10. 将解析出的论文并入 harvest manifest
 
-`parse-pdf.py` writes `manifest_papers.json`, not the unified
-`manifest.json`.
+`parse-pdf.py` 写入的是 `manifest_papers.json`，不是统一的 `manifest.json`。
 
-Fix: after paper parsing and web harvest, run:
+修复：论文解析和 web 抓取都完成后，运行：
 
 ```bash
 scripts/merge-paper-manifest.py \
   --harvest-dir {work_dir}/{topic_name}/harvest_page/
 ```
 
-## 11. Strip Source Audio From Video Clips
+## 11. 剥掉视频片段的原始音轨
 
-Material videos can contain their own narration, music, or UI sounds. The final
-video should use `voice_clone/narration.mp3` as the only narration voice.
+素材视频本身可能包含解说、音乐或 UI 音效。最终视频里，唯一的解说人声只能是 `voice_clone/narration.mp3`。
 
-Fix: when cutting catalog video clips, use `-an` to remove source audio. This is
-an upstream material contract passed to the HyperFrames sub-agent.
+修复：切 catalog 视频片段时，用 `-an` 去掉原始音频。这是传递给 HyperFrames 子 agent 的一项上游素材契约。
 
-## 12. Use Python 3 in the Project Environment
+## 12. 在项目环境里使用 Python 3
 
-Use `python3` after activating the project venv. Do not assume `python` points
-to Python 3 on all machines.
+激活项目 venv 后用 `python3`。不要假设所有机器上的 `python` 都指向 Python 3。
 
-Common fixes:
-- `playwright` import error: `pip install playwright`
-- `dashscope` import error: install the DashScope SDK in the venv
-- `mineru` missing: `pip install "mineru[pipeline]"`
+常见修复：
+- `playwright` import 出错：`pip install playwright`
+- `dashscope` import 出错：在 venv 里安装 DashScope SDK
+- `mineru` 缺失：`pip install "mineru[pipeline]"`

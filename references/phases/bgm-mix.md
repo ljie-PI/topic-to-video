@@ -1,11 +1,8 @@
-### Phase 9 — Mix BGM (background music)
+### Phase 9 — 混入 BGM（背景音乐）
 
-After the sub-agent's render is sanity-checked, layer a low-volume background
-music track on top of the narration. The narration stays at full volume; the
-BGM sits underneath at `0.03` linear gain by default.
+子 agent 渲染出来的成品做完 sanity check 后，在解说之上叠一条低音量的背景音乐。解说音量不变；BGM 的默认线性增益是 `0.03`，垫在底下。
 
-The skill ships a default music bed at `assets/bgm.mp3` (a 24-second loopable
-clip), so the common case needs no music-related flags:
+本 skill 自带一段默认背景乐 `assets/bgm.mp3`（24 秒可循环片段），常见场景下不需要任何与音乐相关的额外 flag：
 
 ```bash
 python3 scripts/mix-bgm.py \
@@ -13,7 +10,7 @@ python3 scripts/mix-bgm.py \
   --output {work_dir}/{topic_name}/composition/renders/final_with_bgm.mp4
 ```
 
-To use a different track or volume:
+如需换曲或调音量：
 
 ```bash
 python3 scripts/mix-bgm.py \
@@ -23,9 +20,4 @@ python3 scripts/mix-bgm.py \
   --output {work_dir}/{topic_name}/composition/renders/final_with_bgm.mp4
 ```
 
-The script does a single ffmpeg pass: it loops `--bgm` (default
-`assets/bgm.mp3`) to cover the full video duration, mixes it with the existing
-narration at `--bgm-volume`, and writes `final_with_bgm.mp4` with `-c:v copy`
-(no re-encode of the video stream). 3% volume keeps the music audible without
-muddying the narration — tweak `--bgm-volume` up if the music is inaudible,
-down if it competes with the voice.
+脚本一次 ffmpeg pass 完成所有事：循环 `--bgm`（默认 `assets/bgm.mp3`）填满整个视频时长、以 `--bgm-volume` 与原解说混音、并用 `-c:v copy` 写出 `final_with_bgm.mp4`（视频流不重编码）。3% 音量足以让音乐听得见又不糊掉解说——如果听不见就把 `--bgm-volume` 调大，如果压住人声了就调小。
