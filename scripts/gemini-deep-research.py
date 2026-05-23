@@ -60,9 +60,15 @@ GEMINI_URL = 'https://gemini.google.com/app'
 SEL = {
     'input_box': "//div[contains(@class,'ql-editor') and @role='textbox']",
     'send_button': "//button[contains(@class,'send-button')]",
-    'tools_button': "//button[contains(@class,'toolbox-drawer-button')]",
-    'tool_menu': "//mat-action-list[@id='toolbox-drawer-menu']",
-    'deep_research_item': "//mat-action-list[@id='toolbox-drawer-menu']//button[.//div[contains(text(),'Deep Research')]]",
+    'tools_button': "//button[contains(@class,'toolbox-drawer-button') or @aria-label='上传和工具' or @aria-label='Upload and tools' or contains(@aria-label,'Tools')]",
+    'tool_menu': "//toolbox-drawer | //mat-action-list[@id='toolbox-drawer-menu'] | //mat-action-list[contains(@class,'menu-list-container')]",
+    'deep_research_item': (
+        "//toolbox-drawer-item[.//*[contains(normalize-space(text()),'Deep Research')"
+        " or contains(normalize-space(text()),'深度研究')]]"
+        " | //mat-action-list//button[.//*[contains(normalize-space(text()),'Deep Research')"
+        " or contains(normalize-space(text()),'深度研究')]]"
+        " | //mat-action-list//button[contains(normalize-space(.),'Deep Research')]"
+    ),
     'confirm_button': "//button[@data-test-id='confirm-button']",
     'last_message': "(//message-content)[last()]",
     'last_sources': "(//message-content)[last()]//sources-carousel-inline",
@@ -440,8 +446,8 @@ def run(args: argparse.Namespace) -> None:
             log('Step 4: Activating Deep Research mode...')
             try:
                 page.locator(f'xpath={SEL["tools_button"]}').click()
-                page.wait_for_selector(f'xpath={SEL["tool_menu"]}', timeout=10000)
-                page.locator(f'xpath={SEL["deep_research_item"]}').click()
+                page.wait_for_selector(f'xpath={SEL["deep_research_item"]}', state='visible', timeout=10000)
+                page.locator(f'xpath={SEL["deep_research_item"]}').first.click()
                 page.wait_for_timeout(1500)
             except Exception as e:
                 fail(f'Step 4 failed: could not activate Deep Research: {e}', failed_step=4)
