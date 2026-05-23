@@ -41,7 +41,8 @@ scripts/harvest-pages.py \
          https://docs.anthropic.com/claude-code \
          https://www.youtube.com/watch?v=... \
   --output-dir {work_dir}/{topic_name}/harvest_page/ \
-  --profile-dir {work_dir}/chrome_profile
+  --profile-dir {work_dir}/chrome_profile \
+  --viewport 1680x1680
 ```
 
 第一次调用会在 `{work_dir}/chrome_profile` 启动 Chrome；后续调用通过 CDP（`http://localhost:9222`）复用同一进程。Chrome 在多次调用之间保持运行。单条 URL 失败不会拖垮整个 batch。

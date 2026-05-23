@@ -24,10 +24,6 @@ ffprobe -v error -show_entries format=duration \
 - 可重复 run 的项目优先用 `COSYVOICE_VOICE_ID`。
 - 如果没配 voice id，脚本会清晰报错。
 
-时长重试：
-- 如果时长明显比预期长，用 `--speech-rate 1.35` 或 `--speech-rate 1.4` 重跑。
-- 如果听起来太赶，用 `--speech-rate 1.0` 或 `--speech-rate 1.1` 重跑。
-
 脚本编写规范：
 - 解说内容只放在 `narration.txt` 里。
 - 避免在长复合句之前出现全角中文冒号 `：`；改用 `——`、逗号或重新断句。这能避免 CosyVoice 偶发的停顿。

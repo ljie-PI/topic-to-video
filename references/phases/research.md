@@ -2,7 +2,7 @@
 
 #### Phase 2a — 解析 PDF（仅 paper mode）
 
-除非 `input_mode = "paper"`，否则跳过。
+只在 `input_mode = "paper"` 时执行。
 
 ```bash
 # URL 输入（arXiv 等）—— 直接传给 MinerU 云端 API
