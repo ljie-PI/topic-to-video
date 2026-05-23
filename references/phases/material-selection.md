@@ -1,6 +1,8 @@
 ### Phase 4 — Material Understanding & Selection
 
-**Delegate to a subagent.** This phase is context-heavy (vision analysis on many images/frames, 30-50+ tool calls). Spawn a subagent with the manifest path and research brief; it produces `material-catalog.json`. The main agent reads only the final catalog.
+**Prefer delegating to a sub-agent.** This phase is context-heavy (vision analysis on many images/frames, 30-50+ tool calls). Use the current runtime's native sub-agent/delegation tool when available. Give the sub-agent the manifest path, research brief, and this phase file; it produces `material-catalog.json`. The main agent reads only the final catalog.
+
+If no sub-agent tool exists in the current environment, run this phase inline but keep context bounded: process one manifest entry at a time and write results incrementally to `material-catalog.json`.
 
 Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entry, build a "material entry" in `{work_dir}/{topic_name}/material-catalog.json`.
 
@@ -60,6 +62,6 @@ Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entr
 
 - `entries[*].slug` is unique per URL and matches the harvest output directory name.
 - Every image/video carries an `id` (file stem the harvester wrote, e.g. `img_001` or the YouTube video id). Phases 5/7/8 cite materials via a **`material_ref`** — the schema is defined where it's first used in Phase 7. The coding sub-agent in Phase 8 resolves `material_ref` → catalog entry → `local_path`; the main agent never touches `local_path` directly.
-- `semantic_description` is the VLM-generated caption; the sub-agent in Phase 8 uses it to pick an appropriate motion/GSAP effect.
+- `semantic_description` is the VLM-generated caption; the Phase 8 HyperFrames sub-agent uses it to make composition decisions.
 
 **Outputs:** `extract_frames/<slug>/<video-name>/`, `vision_analyze/<slug>/`, `material-catalog.json`.

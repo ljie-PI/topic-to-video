@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-CosyVoice TTS via Aliyun DashScope — TEMPLATE.
-Copy this file to your project, replace input_text, run.
+CosyVoice TTS via Aliyun DashScope.
 
 Prerequisites:
   source .venv/bin/activate
   export DASHSCOPE_API_KEY="sk-..."
+  export COSYVOICE_VOICE_ID="cosyvoice-v3.5-plus-..."
 
 Output: {output_dir}/narration.mp3 (sample rate 22050)
 """
@@ -17,22 +17,6 @@ import sys
 from pathlib import Path
 
 MODEL = "cosyvoice-v3.5-plus"
-# VOICE = "cosyvoice-v3.5-plus-myvoice-1b98aef0e50242ad9d23ae69bb3511f7"
-# VOICE = "cosyvoice-v3.5-plus-vd-techboy-5389fd1d046e444c8b61485edd7c68e0"
-# VOICE = "cosyvoice-v3.5-plus-vd-techboy-36f39bc9f98044799d3b26ab18eefb47"
-VOICE = "cosyvoice-v3.5-plus-vd-techboy-ab0557a798e94a508ccd19dc1b620179"
-
-# === REPLACE THIS ===
-input_text = """
-在这里粘贴中文旁白脚本。
-
-每段之间空一行作为自然停顿。
-数字写中文（二零二六、一百五十）。
-英文专有名词保留原样（Anthropic、Claude Code）。
-
-最后一段可以是 CTA：点赞、关注、收藏，下期见。
-"""
-# ====================
 
 
 def print_json(payload: dict[str, object]) -> None:
@@ -53,11 +37,45 @@ class JsonArgumentParser(argparse.ArgumentParser):
 def parse_args() -> argparse.Namespace:
     parser = JsonArgumentParser(description='Synthesize narration audio with CosyVoice.')
     parser.add_argument(
+        '--input-file',
+        '--text-file',
+        dest='input_file',
+        default=None,
+        help='Narration text file. Defaults to ./narration.txt when present; otherwise reads stdin.',
+    )
+    parser.add_argument(
+        '--voice',
+        default=None,
+        help='CosyVoice voice id. Defaults to COSYVOICE_VOICE_ID.',
+    )
+    parser.add_argument(
+        '--speech-rate',
+        type=float,
+        default=1.2,
+        help='CosyVoice speech_rate value (default: 1.2).',
+    )
+    parser.add_argument(
         '--output-dir',
         default='.',
         help='Directory for narration.mp3 output (default: current directory)',
     )
     return parser.parse_args()
+
+
+def read_input_text(input_file: str | None) -> str:
+    path = Path(input_file) if input_file else Path('narration.txt')
+    if path.is_file():
+        text = path.read_text(encoding='utf-8')
+    elif input_file:
+        raise FileNotFoundError(f'input file not found: {path}')
+    elif not sys.stdin.isatty():
+        text = sys.stdin.read()
+    else:
+        raise ValueError('No narration text provided. Pass --input-file or create narration.txt.')
+    text = text.strip()
+    if not text:
+        raise ValueError('Narration text is empty')
+    return text
 
 
 def detect_duration_seconds(audio_path: Path) -> float:
@@ -95,6 +113,10 @@ def main() -> int:
         api_key = os.environ.get('DASHSCOPE_API_KEY')
         if not api_key:
             raise EnvironmentError('DASHSCOPE_API_KEY env var not set')
+        voice = args.voice or os.environ.get('COSYVOICE_VOICE_ID')
+        if not voice:
+            raise EnvironmentError('CosyVoice voice id not set. Pass --voice or set COSYVOICE_VOICE_ID.')
+        input_text = read_input_text(args.input_file)
 
         dashscope.api_key = api_key
         dashscope.base_websocket_api_url = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference'
@@ -104,7 +126,7 @@ def main() -> int:
         output_path = (output_dir / 'narration.mp3').resolve()
 
         log(f'synthesizing narration to {output_path}')
-        synthesizer = SpeechSynthesizer(model=MODEL, voice=VOICE, speech_rate=1.2)
+        synthesizer = SpeechSynthesizer(model=MODEL, voice=voice, speech_rate=args.speech_rate)
         audio = synthesizer.call(input_text)
 
         log(

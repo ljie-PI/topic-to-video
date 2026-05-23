@@ -40,7 +40,8 @@ scripts/harvest-pages.py \
          https://github.com/anthropics/claude-code \
          https://docs.anthropic.com/claude-code \
          https://www.youtube.com/watch?v=... \
-  --output-dir {work_dir}/{topic_name}/harvest_page/
+  --output-dir {work_dir}/{topic_name}/harvest_page/ \
+  --profile-dir {work_dir}/chrome_profile
 ```
 
 The first invocation launches Chrome at `{work_dir}/chrome_profile`; subsequent invocations reuse it over CDP (`http://localhost:9222`). Chrome stays running between calls. Per-URL failures don't sink the batch.
@@ -49,22 +50,13 @@ Outputs: `harvest_page/manifest.json` + `harvest_page/<url-slug>/` directories (
 
 #### Paper mode: merge parsed papers into manifest
 
-When `input_mode = "paper"`, `parse-pdf.py` writes paper entries to `harvest_page/manifest_papers.json` (separate from the web harvest manifest). After `harvest-pages.py` completes (or is skipped), merge them:
+When `input_mode = "paper"`, `parse-pdf.py` writes paper entries to
+`harvest_page/manifest_papers.json` (separate from the web harvest manifest).
+After `harvest-pages.py` completes (or is skipped), merge them:
 
-```python
-import json
-with open('harvest_page/manifest_papers.json', 'r', encoding='utf-8') as f:
-    papers = json.load(f)
-try:
-    with open('harvest_page/manifest.json', 'r', encoding='utf-8') as f:
-        harvest = json.load(f)
-    # Remove any existing paper entries to make this idempotent
-    harvest['entries'] = [e for e in harvest['entries'] if e.get('source_type') != 'paper_pdf']
-    harvest['entries'] = papers['entries'] + harvest['entries']
-except FileNotFoundError:
-    harvest = {"success": True, "entries": papers['entries'], "pending_downloads": []}
-with open('harvest_page/manifest.json', 'w', encoding='utf-8') as f:
-    json.dump(harvest, f, ensure_ascii=False, indent=2)
+```bash
+scripts/merge-paper-manifest.py \
+  --harvest-dir {work_dir}/{topic_name}/harvest_page/
 ```
 
 From this point forward, `manifest.json` contains both paper-origin entries (`source_type: "paper_pdf"`) and web-origin entries. All downstream phases read the same unified manifest.
@@ -83,7 +75,18 @@ scripts/video-download.py \
 Rules:
 - **Sequential**, not parallel — yt-dlp gets rate-limited and IP-throttled when fanning out.
 - Use `item.suggested_output_dir` as-is; it is `harvest_page/<source_slug>/videos/` so downloaded files land alongside the native videos.
-- After each successful download, **update the corresponding `videos[]` entry** in `harvest_page/<source_slug>/metadata.json` (and `manifest.json`): set `download_required: false`, add `local_path` (and `subtitle_path` if the JSON output lists one), and set `id` to the file stem (e.g. `2MJDdzSXL74`). Phase 4 reads these fields. If the entry has an `also_referenced_by: [slug, ...]` list, also update the same `videos[]` entry under each of those slugs' `metadata.json` (the harvester deduplicated identical URLs across pages to avoid redundant downloads — but every referring entry still needs the `local_path` populated for Phase 4 lookup).
+- After each successful download, apply the JSON result to `manifest.json` and
+  the corresponding `metadata.json` files:
+  ```bash
+  scripts/apply-video-download-result.py \
+    --harvest-dir {work_dir}/{topic_name}/harvest_page/ \
+    --source-slug "<item.source_slug>" \
+    --url "<item.url>" \
+    --result-json /path/to/video-download-result.json
+  ```
+  This sets `download_required: false`, adds `local_path` and optional
+  `subtitle_path`, sets `id` to the downloaded file stem, and fans the update
+  out to any `also_referenced_by` slugs.
 - If `video-download.py` returns `{"success": false}` (geoblock, age-gate, 410, etc.), leave the entry with `download_required: true` and skip it — Phase 4 will ignore it. If the topic depends on that exact clip, run `web_search` for a re-uploaded mirror and rerun `harvest-pages.py` with the new URL.
 
 This decoupling means `harvest-pages.py` runtime is dominated by Playwright (fast, deterministic) and yt-dlp failures are isolated to specific URLs, not the entire batch.

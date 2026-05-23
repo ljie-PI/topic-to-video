@@ -2,7 +2,7 @@
 
 1. Source: URL to fetch, pasted text, or just a topic.
 2. Orientation: `1920×1080` (horizontal), `1080×1920` (vertical), or `1080×1440` (3:4 portrait).
-3. Style: read `style-prompt.md` if it exists in cwd, else infer from user wording:
+3. Style: infer from user wording, or read `style-prompt.md` if it exists in the project workspace. `style-prompt.md` is an optional free-form note whose contents override the default style inference and are copied into the Phase 8 brief as a style hint.
    - Default: Rosé Pine Dawn handdrawn (`references/design-dawn.md`)
    - Use Rosé Pine Moon Serious (`references/design-moon.md`) when the user says "moon", "严肃", "深色", "技术感", "技术评论", "AI", "SaaS", or "编程" and wants a serious tone
    - If topic is AI/SaaS/programming but style is not explicit, ask whether they want Dawn warm explainer or Moon serious technical editorial
@@ -14,7 +14,7 @@
    - Source is a URL ending in `.pdf` (e.g. arXiv) → set `input_mode = "paper"`, keep the URL for `parse-pdf.py --url`
    - Otherwise → `input_mode = "standard"` (default; all subsequent "paper mode" sections are skipped)
 
-**If a sister project already exists** (e.g. user says "same style as `claude-code-video/`"), copy `composition/DESIGN.md` + `fonts/` from it and note "reuse this DESIGN.md" inside the brief; the sub-agent will skip fresh design and font work.
+**If a sister project already exists** (e.g. user says "same style as `claude-code-video/`"), copy `composition/DESIGN.md` + `fonts/` from it and note "reuse this DESIGN.md" inside the brief; the HyperFrames sub-agent will decide how to reuse that design.
 
 **Workspace discovery (checkpoint entry point):** After determining the `topic_name` slug, check if `{work_dir}/{topic_name}/` already exists:
 ```

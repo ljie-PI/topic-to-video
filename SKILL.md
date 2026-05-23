@@ -1,6 +1,6 @@
 ---
 name: topic-to-video
-description: Use when the user provides a topic, article URL, or text and asks to make a narrated video (typically 3-10 minutes). Covers the full pipeline — topic research with web search, optional visual material search and processing, video understanding, script writing, CosyVoice cloned-voice TTS via DashScope, Paraformer ASR for word-level timestamps, scene timing, HyperFrames composition with GSAP image animation, lint/inspect, and rendering. Avoids 17+ pitfalls discovered in baseline testing.
+description: Use when the user provides a topic, article URL, or text and asks to make a narrated video (typically 3-10 minutes). Owns the upstream pipeline — topic research, optional visual material harvest, material understanding, narration writing, CosyVoice cloned-voice TTS via DashScope, Paraformer ASR word timings, deterministic font staging, and a compact HyperFrames handoff brief. HyperFrames composition, scene design, HTML/CSS/GSAP, lint/inspect, and rendering are delegated to the hyperframes and hyperframes-cli skills.
 ---
 
 # Topic → Video (HyperFrames + CosyVoice Workflow)
@@ -9,10 +9,10 @@ description: Use when the user provides a topic, article URL, or text and asks t
 
 A narrated video (3-10 minutes) using:
 - **Web research** to ground the script in facts before writing
-- **HyperFrames** for HTML composition + render
+- **HyperFrames** for downstream HTML composition + render (delegated)
 - **CosyVoice** (via Aliyun DashScope) for cloned-voice TTS — Chinese default
 - **Paraformer** (via DashScope) for word-level ASR timestamps
-- A configurable visual style: default Rosé Pine Dawn handdrawn × Notion minimalism, or optional Rosé Pine Moon Serious for darker technical/editorial videos
+- A configurable style hint for the downstream HyperFrames sub-agent
 
 **Output:** `{work_dir}/{topic_name}/composition/renders/final.mp4` ready to publish (produced by the Phase 8 coding sub-agent).
 
@@ -33,31 +33,27 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
    ↳ Fix: pass actual `sample_rate` to Recognition(). Symptom: `status_code=44`.
 
 ### Fonts & Text
-4. **Use Google Fonts woff2, never `fc-match`.** Download with `scripts/fonts-download.sh`.
-   ↳ Don't: pick system Chinese fonts.
-   ↳ Fix: `[Compiler] No deterministic font mapping` → point brief at `fonts/`.
-5. **`Caveat`/`PatrickHand` have NO CJK glyphs.** Split mixed text by script.
-   ↳ Fix: Chinese garbage in render → check font-family on that element.
+4. **Pre-stage deterministic WOFF2 fonts.** Download with `scripts/fonts-download.sh` and point the Phase 8 brief at `fonts/`.
+   ↳ Don't: ask the main agent to solve composition font CSS.
+5. **Font implementation belongs to HyperFrames.** The Phase 8 sub-agent uses the local fonts and the `hyperframes` skill for typography rules.
 
 ### Materials
 6. **Every asset traces to `material-catalog.json`.** No catalog citation → no asset on screen.
-   ↳ Don't: design scene without `material_ref`; embed full source video; cut clips without `-an`.
+   ↳ Don't: embed full source video; cut clips without `-an`.
    ↳ Fix: clip audio bleeding → re-cut with `ffmpeg -c:v copy -an`.
 7. **Material search is optional but recommended.** Skip if user says "skip materials" or provides all visuals.
 
 ### Composition
-8. **Composition is delegated to sub-agent.** Main agent writes brief only.
-   ↳ Don't: hand-write `index.html`; skip `composition-brief.md`.
-9. **Don't `cover`-crop info-dense images.** Use `object-fit: contain` for screenshots/charts.
-10. **No plain-text scenes.** Use designed info structures (cards, timelines, diagrams).
-    ↳ Don't: paste `display_text` as paragraph; reveal all cards at scene start.
+8. **Composition is delegated to a HyperFrames sub-agent.** Main agent writes `composition-brief.md` only.
+   ↳ Don't: hand-write `composition/index.html`, choose GSAP patterns, or fix HyperFrames lint from this session.
+9. **Scene design belongs to HyperFrames.** Segmentation, material mapping, layout, visual hierarchy, animation, lint/inspect, and render iteration happen in Phase 8.
 
 ### Environment & Tools
-11. **Always `source .venv/bin/activate` before Python.** Use `python3`.
+10. **Always `source .venv/bin/activate` before Python.** Use `python3`.
     ↳ Fix: `playwright` import error → `pip install playwright`. `mineru` not found → `pip install "mineru[pipeline]"`.
-12. **Chrome over CDP.** Shared profile at `{work_dir}/chrome_profile/`.
+11. **Chrome over CDP.** Shared profile at `{work_dir}/chrome_profile/`.
     ↳ Fix: Chrome exits immediately → close other Chrome using that profile. Missing `$DISPLAY` → `--headless on`. Sandbox error → `--no-sandbox` (auto-enabled as root). Cookie banner → accept once in profile.
-13. **Video downloads sequential.** yt-dlp gets rate-limited when parallel.
+12. **Video downloads sequential.** yt-dlp gets rate-limited when parallel.
     ↳ Fix: download fails → leave `download_required: true`, Phase 4 ignores it.
 
 ### Troubleshooting
@@ -84,9 +80,8 @@ Before running any tool, check if its output already exists. If it does, skip an
 | 4 | `extract_frames/<slug>/<video>/` has ≥1 JPEG; or `material-catalog.json` has `selected_clips` |
 | 5 | `narration.txt` (non-empty) |
 | 6 | `voice_clone/narration.mp3` |
-| 7 | `transcribe/transcript.json` |
-| 7 | `transcribe/scene-timing.json` |
-| 7.5 | `fonts/` has ≥1 `.woff2` |
+| 7a | `transcribe/transcript.json` |
+| 7b | `fonts/` has ≥1 `.woff2` and style CSS |
 | 8 | `composition/renders/final.mp4` |
 | 9 | `composition/renders/final_with_bgm.mp4` |
 
@@ -113,18 +108,18 @@ Execute each phase by reading its dedicated file before acting.
 | 4 | `references/phases/material-selection.md` | Vision analysis + material catalog |
 | 5 | `references/phases/narration-script.md` | Write narration script |
 | 6 | `references/phases/tts-generation.md` | Generate TTS audio with CosyVoice |
-| 7 | `references/phases/asr-scene-anchoring.md` | ASR + scene anchoring + fonts |
-| 8 | `references/phases/composition-render.md` | Composition brief + sub-agent render |
+| 7 | `references/phases/asr-transcript-generation.md` | ASR + font staging |
+| 8 | `references/phases/composition-render.md` | HyperFrames handoff + sub-agent render |
 | 9 | `references/phases/bgm-mix.md` | Mix background music |
 
 ## Tools & Dependencies
 
 | Script | Purpose | Requires |
 |--------|---------|----------|
-| `fonts-download.sh` | Font download + WOFF2 conversion | — |
-| `voice-clone-template.py` | CosyVoice TTS | `DASHSCOPE_API_KEY` |
+| `fonts-download.sh` | Deterministic WOFF2 font download + local CSS | — |
+| `voice-clone.py` | CosyVoice TTS | `DASHSCOPE_API_KEY` |
 | `transcribe-paraformer.py` | Paraformer ASR | `DASHSCOPE_API_KEY` |
-| `scene-anchor.py` | Anchor scenes to ASR word stream | — |
+| `scene-anchor.py` | Optional helper to anchor predesigned scenes to ASR word stream | — |
 | `extract-frames.py` | FFmpeg frame extraction | `ffmpeg` |
 | `subtitle-parse.py` | SRT/VTT parser with keyword filter | — |
 | `vision-analyze.py` | VLM analysis (or delegates to agent `view`) | `VLM_*` (optional) |
@@ -133,6 +128,10 @@ Execute each phase by reading its dedicated file before acting.
 | `harvest-pages.py` | Batch URL harvest (images/videos/scroll) | `playwright`, system Chrome |
 | `video-download.py` | YouTube/Bilibili download | `yt-dlp` |
 | `mix-bgm.py` | BGM mix onto video | `ffmpeg` |
-| `check-cjk-fonts.py` | Flag CJK text in Latin-only fonts | — |
+| `merge-paper-manifest.py` | Merge parsed-paper manifest entries into harvest manifest | — |
+| `apply-video-download-result.py` | Apply yt-dlp download results into manifest metadata | — |
+| `check-cjk-fonts.py` | Optional post-render CJK font sanity check | — |
 
 **System deps:** `ffmpeg`, `playwright` (`pip install playwright`, NO `playwright install chromium`), system Chrome (auto-detected), `yt-dlp`, `python3` with venv.
+
+**Python packages (install into the venv):** `dashscope` (CosyVoice TTS + Paraformer ASR), plus anything the helper scripts import.

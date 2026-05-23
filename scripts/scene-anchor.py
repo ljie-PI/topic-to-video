@@ -109,25 +109,28 @@ def main() -> int:
                     'matched_at_char': idx,
                     'matched_word_index': word_idx,
                     'begin_ms': begin_ms,
-                    'begin_s': round(begin_ms / 1000, 3),
+                    'begin_s': round(begin_ms / 1000, 6),
                 }
             )
             results.append(result)
             cursor = idx + len(anchor)
 
+        if warnings:
+            raise ValueError('; '.join(warnings))
+        if len(results) != len(scenes):
+            raise ValueError(f'anchored {len(results)} of {len(scenes)} scenes')
+
         total_ms = words[-1]['end']
         for index, result in enumerate(results):
             next_begin = results[index + 1]['begin_ms'] if index + 1 < len(results) else total_ms
             result['end_ms'] = next_begin
-            result['duration_s'] = round((next_begin - result['begin_ms']) / 1000, 3)
-            if index + 1 < len(results):
-                result['duration_s'] = round(result['duration_s'] - 0.001, 3)
+            result['duration_s'] = round((next_begin - result['begin_ms']) / 1000, 6)
             log(
                 f'{result["id"]:14s} begin={result["begin_s"]:6.2f}s '
-                f'dur={result["duration_s"]:5.2f}s'
+                f'dur={result["duration_s"]:8.6f}s'
             )
 
-        out = {'total_s': round(total_ms / 1000, 3), 'scenes': results}
+        out = {'total_s': round(total_ms / 1000, 6), 'scenes': results}
         with open(out_path, 'w', encoding='utf-8') as f:
             json.dump(out, f, ensure_ascii=False, indent=2)
         log(f'wrote {out_path}')

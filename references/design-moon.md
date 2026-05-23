@@ -1,10 +1,9 @@
-# Design — Rosé Pine Moon × Serious Technical Editorial (Optional style reference)
+# Style Hint — Rosé Pine Moon × Serious Technical Editorial
 
-> Optional dark style reference for `topic-to-video`'s Phase 8 composition brief.
-> The coding sub-agent reads this if (and only if) the brief points at
-> `references/design-moon.md` — typically when the user asks for "moon",
-> "严肃", "深色", "技术感", "技术评论", "AI", "SaaS", or "编程" and wants a
-> more serious presentation.
+> Optional dark mood and palette hint for `topic-to-video`. This is not a
+> HyperFrames implementation spec. The Phase 8 sub-agent uses the `hyperframes`
+> skill and project `DESIGN.md` process for actual CSS, layout, animation, and
+> rendering decisions.
 > The companion handdrawn reference is `references/design-dawn.md`.
 
 ## Palette (use ONLY these colors)
@@ -45,52 +44,8 @@
 
 **Do not use Dawn handwriting fonts in Moon** unless the user explicitly asks for a handdrawn contrast. Moon should feel restrained, technical, and editorial.
 
-### Font loading
-
-Run the Moon font download mode:
-
-```bash
-bash /home_ext/ljie/.copilot/skills/topic-to-video/scripts/fonts-download.sh fonts moon
-```
-
-Then add this in the composition `<head>` before the main `<style>` block:
-
-```html
-<link rel="stylesheet" href="fonts/rose-pine-moon-fonts.css" />
-```
-
-Use these CSS variables in the composition:
-
-```css
-:root {
-  --bg: #232136;
-  --surface: #2a273f;
-  --overlay: #393552;
-  --text: #e0def4;
-  --muted: #908caa;
-  --subtle: #6e6a86;
-  --line: #56526e;
-  --line-subtle: #44415a;
-  --highlight-low: #2a283e;
-  --foam: #9ccfd8;
-  --love: #eb6f92;
-  --iris: #c4a7e7;
-  --gold: #f6c177;
-  --rose: #ea9a97;
-  --pine: #3e8fb0;
-  --font-zh-title: 'NotoSerifSC', serif;
-  --font-zh-body: 'NotoSansSC', sans-serif;
-  --font-zh-caption: 'NotoSansSC', sans-serif;
-  --font-latin-emphasis: 'IBMPlexMono', monospace;
-  --font-latin-body: 'IBMPlexMono', monospace;
-}
-
-body {
-  font-family: var(--font-zh-body);
-  color: var(--text);
-  background: var(--bg);
-}
-```
+The main agent pre-stages Moon fonts with `scripts/fonts-download.sh`. The
+HyperFrames sub-agent decides how to load and apply those local font assets.
 
 ## Video Sizes
 
@@ -103,12 +58,11 @@ body {
 | Code / monospace | 22-34px | 22-30px | 22-32px |
 | Padding (.scene) | 90px 140px | 90px 80px | 90px 70px |
 
-## Shapes
+## Shape Mood
 
-- **Cards**: `border-radius: 10-16px`, flat fill using `--surface`, 2px border in `--line`.
-- **Data panels**: `border-radius: 8-12px`, use `--overlay`, compact padding, no heavy shadow.
-- **Pills/tags**: `border-radius: 999px`, padding `8px 18px`, uppercase or monospace labels.
-- **Highlights**: use a thin underline, left border, or small tag. Avoid large bright fills.
+- Compact flat panels and serious editorial data blocks.
+- Highlights should read as lines, tags, or small marks rather than large bright fills.
+- Avoid heavy shadow and playful ornament.
 
 ## Motion
 
