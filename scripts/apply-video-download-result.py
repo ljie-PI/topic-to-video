@@ -108,6 +108,12 @@ def main() -> int:
                     if entry.get("slug") == slug and update_entry(entry, args.url, local_path, subtitle_path):
                         updated_slugs.append(slug)
 
+        manifest["pending_downloads"] = [
+            pending
+            for pending in manifest.get("pending_downloads", []) or []
+            if pending.get("url") != args.url
+        ]
+
         write_json(manifest_path, manifest)
 
         metadata_updated = []

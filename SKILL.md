@@ -132,4 +132,6 @@ Execute each phase by reading its dedicated file before acting.
 | `apply-video-download-result.py` | Apply yt-dlp download results into manifest metadata | — |
 | `check-cjk-fonts.py` | Optional post-render CJK font sanity check | — |
 
-**System deps:** `ffmpeg`, `playwright` (`pip install playwright`, NO `playwright install chromium`), `dashscope`, system Chrome (auto-detected), `yt-dlp`, `python3` with venv.
+**System deps:** `ffmpeg`, `playwright` (`pip install playwright`, NO `playwright install chromium`), system Chrome (auto-detected), `yt-dlp`, `python3` with venv.
+
+**Python packages (install into the venv):** `dashscope` (CosyVoice TTS + Paraformer ASR), plus anything the helper scripts import.

@@ -109,7 +109,7 @@ def main() -> int:
                     'matched_at_char': idx,
                     'matched_word_index': word_idx,
                     'begin_ms': begin_ms,
-                    'begin_s': round(begin_ms / 1000, 3),
+                    'begin_s': round(begin_ms / 1000, 6),
                 }
             )
             results.append(result)

@@ -1,6 +1,6 @@
 # topic-to-video
 
-A Codex skill that turns a topic, article URL, or text into a narrated video
+A skill that turns a topic, article URL, or text into a narrated video
 (3-10 minutes) using CosyVoice cloned-voice TTS, Paraformer ASR, harvested
 materials, and a delegated HyperFrames render step.
 
@@ -32,8 +32,8 @@ final composition + render step is delegated to a coding sub-agent that has the
 #
 # The skill drives:
 #   Phase 1 inputs → Phase 2 research → Phase 3-4 material harvest + vision-analyze
-#   → Phase 5 narration → Phase 6 CosyVoice TTS → Phase 7 Paraformer ASR + scene anchor
-#   → Phase 7 pre-stage fonts
+#   → Phase 5 narration → Phase 6 CosyVoice TTS
+#   → Phase 7 Paraformer ASR transcript + pre-stage fonts
 #   → Phase 8 writes {work_dir}/{topic_name}/composition-brief.md
 #            and invokes a HyperFrames sub-agent
 # The sub-agent owns scene segmentation, DESIGN.md, index.html, lint, inspect,
