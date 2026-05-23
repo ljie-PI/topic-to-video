@@ -12,7 +12,7 @@ A narrated video (3-10 minutes) using:
 - **HyperFrames** for downstream HTML composition + render (delegated)
 - **CosyVoice** (via Aliyun DashScope) for cloned-voice TTS — Chinese default
 - **Paraformer** (via DashScope) for word-level ASR timestamps
-- A configurable style hint for the downstream HyperFrames agent
+- A configurable style hint for the downstream HyperFrames sub-agent
 
 **Output:** `{work_dir}/{topic_name}/composition/renders/final.mp4` ready to publish (produced by the Phase 8 coding sub-agent).
 
@@ -35,7 +35,7 @@ These rules each prevent a specific bug a baseline agent hit. **Do not "improve"
 ### Fonts & Text
 4. **Pre-stage deterministic WOFF2 fonts.** Download with `scripts/fonts-download.sh` and point the Phase 8 brief at `fonts/`.
    ↳ Don't: ask the main agent to solve composition font CSS.
-5. **Font implementation belongs to HyperFrames.** The Phase 8 agent uses the local fonts and the `hyperframes` skill for typography rules.
+5. **Font implementation belongs to HyperFrames.** The Phase 8 sub-agent uses the local fonts and the `hyperframes` skill for typography rules.
 
 ### Materials
 6. **Every asset traces to `material-catalog.json`.** No catalog citation → no asset on screen.

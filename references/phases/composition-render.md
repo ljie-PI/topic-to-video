@@ -37,7 +37,7 @@ lint/inspect have no errors.
 ```
 
 If the environment has no native sub-agent tool, a short CLI fallback is
-acceptable only if it passes the prompt above and lets the coding agent read
+acceptable only if it passes the prompt above and lets the coding sub-agent read
 `composition-brief.md` itself. Do not use `-p "$(cat composition-brief.md)"`.
 
 Do not drive composition from the main agent's session.

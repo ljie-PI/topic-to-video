@@ -1,8 +1,8 @@
 ### Phase 4 — Material Understanding & Selection
 
-**Prefer delegating to a subagent.** This phase is context-heavy (vision analysis on many images/frames, 30-50+ tool calls). Use the current runtime's native subagent/delegation tool when available. Give the subagent the manifest path, research brief, and this phase file; it produces `material-catalog.json`. The main agent reads only the final catalog.
+**Prefer delegating to a sub-agent.** This phase is context-heavy (vision analysis on many images/frames, 30-50+ tool calls). Use the current runtime's native sub-agent/delegation tool when available. Give the sub-agent the manifest path, research brief, and this phase file; it produces `material-catalog.json`. The main agent reads only the final catalog.
 
-If no subagent tool exists in the current environment, run this phase inline but keep context bounded: process one manifest entry at a time and write results incrementally to `material-catalog.json`.
+If no sub-agent tool exists in the current environment, run this phase inline but keep context bounded: process one manifest entry at a time and write results incrementally to `material-catalog.json`.
 
 Iterate over `harvest_page/manifest.json["entries"]` from Phase 3. For each entry, build a "material entry" in `{work_dir}/{topic_name}/material-catalog.json`.
 

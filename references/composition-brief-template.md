@@ -37,7 +37,7 @@ composition, typography, layout, animation, and render decisions.
 1. Audio is final. Do not regenerate TTS and do not call HyperFrames TTS.
 2. Use `transcribe/transcript.json` for word-level timing. If you need a
    deterministic scene timing file, you may generate one in `transcribe/`, but
-   scene segmentation and visual cue timing are owned by the HyperFrames agent.
+   scene segmentation and visual cue timing are owned by the HyperFrames sub-agent.
 3. All material-backed visuals must resolve through `material-catalog.json`.
    Do not invent stock visuals when a catalog material is required.
 4. If you cut a source video clip from the catalog, strip its original audio
