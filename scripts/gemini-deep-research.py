@@ -59,7 +59,7 @@ GEMINI_URL = 'https://gemini.google.com/app'
 
 SEL = {
     'input_box': "//div[contains(@class,'ql-editor') and @role='textbox']",
-    'send_button': "//button[contains(@class,'send-button')]",
+    'send_button': "//button[@aria-label='发送' or @aria-label='Send message' or @aria-label='Send' or contains(@class,'send-button')]",
     'tools_button': "//button[contains(@class,'toolbox-drawer-button') or @aria-label='上传和工具' or @aria-label='Upload and tools' or contains(@aria-label,'Tools')]",
     'tool_menu': "//toolbox-drawer | //mat-action-list[@id='toolbox-drawer-menu'] | //mat-action-list[contains(@class,'menu-list-container')]",
     'deep_research_item': (
@@ -69,7 +69,7 @@ SEL = {
         " or contains(normalize-space(text()),'深度研究')]]"
         " | //mat-action-list//button[contains(normalize-space(.),'Deep Research')]"
     ),
-    'confirm_button': "//button[@data-test-id='confirm-button']",
+    'confirm_button': "//button[@aria-label='Start research' or @data-test-id='confirm-button' or contains(normalize-space(.),'Start research') or contains(normalize-space(.),'开始研究')]",
     'last_message': "(//message-content)[last()]",
     'last_sources': "(//message-content)[last()]//sources-carousel-inline",
 }
