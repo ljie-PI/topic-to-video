@@ -109,8 +109,8 @@ def parse_args() -> argparse.Namespace:
                    help=f'Chrome profile dir (default {DEFAULT_PROFILE_DIR}).')
     p.add_argument('--chrome-path', default=None,
                    help='Path to Chrome executable. Auto-detected if unset.')
-    p.add_argument('--headless', default='auto', choices=('auto', 'on', 'off'),
-                   help="Chrome headless mode. 'auto' (default) = headless when DISPLAY is unset.")
+    p.add_argument('--headless', default='off', choices=('auto', 'on', 'off'),
+                   help="Chrome headless mode. Default 'off' — this script needs a real logged-in Chrome session.")
     p.add_argument('--no-sandbox', action='store_true', default=None,
                    help='Pass --no-sandbox to Chrome (auto-enabled when running as root or inside a container).')
     p.add_argument('--timeout', type=int, default=600,
@@ -192,6 +192,7 @@ def launch_chrome(chrome_path: str, cdp_url: str, profile_dir: Path,
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-features=Translate',
+        '--window-size=1680,1680',
     ]
     if _should_be_headless(headless_mode):
         args.append('--headless=new')
