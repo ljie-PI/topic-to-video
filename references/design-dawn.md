@@ -1,6 +1,6 @@
 # Style Hint — Rosé Pine Dawn × Notion 手绘风
 
-> `topic-to-video` 的可选 mood 与配色提示。这不是 HyperFrames 的实现规范。Phase 8 的子 agent 会通过 `hyperframes` skill 和项目自身的 `DESIGN.md` 流程，决定具体的 CSS、布局、动画与渲染。
+> `topic-to-video` 的可选 mood 与配色提示。这不是 HyperFrames 的实现规范。Phase 8 的 sub-agent 会通过 `hyperframes` skill 和项目自身的 `DESIGN.md` 流程，决定具体的 CSS、布局、动画与渲染。
 
 ## 配色（只用以下颜色）
 
@@ -37,7 +37,7 @@
 
 **绝不要用 Caveat 或 PatrickHand 显示中文字符** —— 它们没有 CJK 字形，浏览器会 fallback 成乱码渲染。
 
-混排中文 + 拉丁字符时，HyperFrames 子 agent 应有意识地使用项目字体。本文件只指定希望使用的字体家族，不规定 CSS 实现。
+混排中文 + 拉丁字符时，HyperFrames sub-agent 应有意识地使用项目字体。本文件只指定希望使用的字体家族，不规定 CSS 实现。
 
 ## 视频尺寸（覆盖网页常规尺寸）
 
@@ -49,13 +49,13 @@
 | 数据 label | 22-32px | 22-30px | 22-32px |
 | Padding（.scene） | 90px 140px | 90px 80px | 90px 70px |
 
-## 形状基调
+## 形状风格
 
 - 平面、有质感的卡片和 tag。
 - 圆角 label 在服务于信息设计时可以使用。
 - 避免厚重阴影；保持手绘氛围轻盈、安静。
 
-## 动效基调
+## 动效风格
 
 - 每个装饰元素：环境感 breathe / drift / rotate（`sine.inOut yoyo`，有限重复）
 - 每次入场：每个 scene 用 3+ 种不同 ease（混用 `expo.out`、`back.out(1.7)`、`power3.out`、`sine.out`）

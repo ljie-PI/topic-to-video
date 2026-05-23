@@ -46,7 +46,7 @@ scripts/harvest-pages.py \
 
 第一次调用会在 `{work_dir}/chrome_profile` 启动 Chrome；后续调用通过 CDP（`http://localhost:9222`）复用同一进程。Chrome 在多次调用之间保持运行。单条 URL 失败不会拖垮整个 batch。
 
-输出：`harvest_page/manifest.json` + `harvest_page/<url-slug>/` 目录（每个 URL 一个）。`manifest.entries[]` 的形状如下——每个渲染页 entry 含有 `text_excerpt`、`metrics`、`images[]`、`videos[]`，以及可选的 `scroll_recording`；YouTube/Bilibili 直链 entry 的 `videos[]` 带有 `download_required: true` 且没有 scroll recording。manifest 顶层还会带一个 **`pending_downloads[]`** —— 列出 harvester 检测到的所有 YouTube/Bilibili URL（不管是直接通过 `--urls` 传入的，还是从页面里发现内嵌的）。
+输出：`harvest_page/manifest.json` + `harvest_page/<url-slug>/` 目录（每个 URL 一个）。`manifest.entries[]` 的结构如下——每个渲染页 entry 含有 `text_excerpt`、`metrics`、`images[]`、`videos[]`，以及可选的 `scroll_recording`；YouTube/Bilibili 直链 entry 的 `videos[]` 带有 `download_required: true` 且没有 scroll recording。manifest 顶层还会带一个 **`pending_downloads[]`** —— 列出 harvester 检测到的所有 YouTube/Bilibili URL（不管是直接通过 `--urls` 传入的，还是从页面里发现内嵌的）。
 
 #### Paper mode：把解析出来的论文并入 manifest
 
@@ -82,6 +82,6 @@ scripts/video-download.py \
     --result-json /path/to/video-download-result.json
   ```
   这一步会将 `download_required` 置为 `false`、加上 `local_path` 和可选的 `subtitle_path`、把 `id` 设为下载文件的 stem，并把更新同步扩散到所有 `also_referenced_by` slug。
-- 如果 `video-download.py` 返回 `{"success": false}`（地区封锁、年龄门、410 等），保留 `download_required: true` 并跳过它——Phase 4 会忽略它。如果该话题正好依赖这段 clip，用 `web_search` 找一个被转发的镜像，并用新 URL 重跑 `harvest-pages.py`。
+- 如果 `video-download.py` 返回 `{"success": false}`（地区封锁、年龄限制、410 等），保留 `download_required: true` 并跳过它——Phase 4 会忽略它。如果该话题正好依赖这段 clip，用 `web_search` 找一个被转发的镜像，并用新 URL 重跑 `harvest-pages.py`。
 
 这种解耦让 `harvest-pages.py` 的运行时间由 Playwright（快、确定）主导，而 yt-dlp 的失败被局限在单条 URL 上，不会拖垮整个 batch。

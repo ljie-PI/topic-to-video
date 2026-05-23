@@ -33,7 +33,7 @@
 
 5. **过滤：** 丢掉 VLM 评分 <5/10 或者偏题的素材。不要把垃圾带进解说阶段。
 
-**`material-catalog.json` 的形状：**
+**`material-catalog.json` 的结构：**
 
 ```json
 {
@@ -61,7 +61,7 @@
 ```
 
 - `entries[*].slug` 在每个 URL 上唯一，与 harvest 输出目录名一致。
-- 每张图 / 每个视频都带一个 `id`（harvester 写出的文件 stem，例如 `img_001` 或 YouTube video id）。Phase 5/7/8 通过 **`material_ref`** 引用素材——schema 在 Phase 7 中首次定义时给出。Phase 8 的 coding 子 agent 负责把 `material_ref` 解析成 catalog entry → `local_path`；主 agent 永远不直接碰 `local_path`。
-- `semantic_description` 是 VLM 生成的 caption；Phase 8 的 HyperFrames 子 agent 用它做 composition 决策。
+- 每张图 / 每个视频都带一个 `id`（harvester 写出的文件 stem，例如 `img_001` 或 YouTube video id）。Phase 5/7/8 通过 **`material_ref`** 引用素材——schema 在 Phase 7 中首次定义时给出。Phase 8 的 coding sub-agent 负责把 `material_ref` 解析成 catalog entry → `local_path`；主 agent 永远不直接碰 `local_path`。
+- `semantic_description` 是 VLM 生成的 caption；Phase 8 的 HyperFrames sub-agent 用它做 composition 决策。
 
 **输出：** `extract_frames/<slug>/<video-name>/`、`vision_analyze/<slug>/`、`material-catalog.json`。

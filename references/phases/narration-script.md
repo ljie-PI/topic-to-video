@@ -1,6 +1,6 @@
 ### Phase 5 — 撰写解说脚本
 
-**输入：** Phase 2 的研究 brief + Phase 4 的 `material-catalog.json` + 用户偏好的切入角度与时长。某段自然依赖某个具体视觉素材时，在散文里顺带提到对应的 catalog slug 或资源。**不要**在这里设计 HyperFrames 的 scene、卡片、时间轴或 `info_units`；scene 切分和视觉结构归 Phase 8 的 HyperFrames 子 agent。
+**输入：** Phase 2 的研究 brief + Phase 4 的 `material-catalog.json` + 用户偏好的切入角度与时长。某段自然依赖某个具体视觉素材时，在正文里顺带提到对应的 catalog slug 或资源。**不要**在这里设计 HyperFrames 的 scene、卡片、时间轴或 `info_units`；scene 切分和视觉结构归 Phase 8 的 HyperFrames sub-agent。
 
 目标：
 
@@ -19,7 +19,7 @@
 
 - 只使用**研究 brief 中的事实**——每个数字、人名、日期和引文都要可追溯。
 - 在有用的地方引用收集到的素材，并为每个 scene 标注推荐的视觉资源。
-- 3-10 分钟、`speech_rate=1.2` 下约 **7.5 字符/秒** → `3min ≈ 1350 字`、`5min ≈ 2250 字`、`10min ≈ 4500 字`。
+- 3-10 分钟、`speech_rate=1.2` 下约 **7.5 字符/秒** → `3min ≈ 1350 chars`、`5min ≈ 2250 chars`、`10min ≈ 4500 chars`。
 - 15-40 段（按目标时长伸缩），段间用空行分隔（每段约对应一个 scene = 6-15 秒音频）。
 - 数字用中文字符（`二零二六` 而不是 `2026`）—— TTS 朗读更自然。
 - 英文专有名词保留原文（`Anthropic`、`Claude Code`、`Boris`）。

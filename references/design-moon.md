@@ -1,6 +1,6 @@
 # Style Hint — Rosé Pine Moon × 严肃技术编辑风
 
-> `topic-to-video` 的可选深色 mood 与配色提示。这不是 HyperFrames 的实现规范。Phase 8 的子 agent 会通过 `hyperframes` skill 和项目自身的 `DESIGN.md` 流程，决定具体的 CSS、布局、动画与渲染。
+> `topic-to-video` 的可选深色 mood 与配色提示。这不是 HyperFrames 的实现规范。Phase 8 的 sub-agent 会通过 `hyperframes` skill 和项目自身的 `DESIGN.md` 流程，决定具体的 CSS、布局、动画与渲染。
 > 配套的手绘参考是 `references/design-dawn.md`。
 
 ## 配色（只用以下颜色）
@@ -8,7 +8,7 @@
 **Backgrounds**
 - 主画布：`#232136`（Moon base）
 - 卡片表面：`#2a273f`（Moon surface）
-- Elevated overlay：`#393552`（Moon overlay)
+- Elevated overlay：`#393552`（Moon overlay）
 
 **Text**
 - Primary / 标题：`#e0def4`（Moon text）
@@ -41,7 +41,7 @@
 
 **Moon 风格中不要使用 Dawn 的手写字体**，除非用户明确要求"手绘对比"。Moon 应当克制、技术、编辑感强。
 
-主 agent 通过 `scripts/fonts-download.sh` 预置 Moon 字体。HyperFrames 子 agent 决定如何加载和应用这些本地字体资源。
+主 agent 通过 `scripts/fonts-download.sh` 预置 Moon 字体。HyperFrames sub-agent 决定如何加载和应用这些本地字体资源。
 
 ## 视频尺寸
 
@@ -54,7 +54,7 @@
 | 代码 / 等宽 | 22-34px | 22-30px | 22-32px |
 | Padding（.scene） | 90px 140px | 90px 80px | 90px 70px |
 
-## 形状基调
+## 形状风格
 
 - 紧凑的平面 panel 和严肃的编辑式 data block。
 - 高亮应表现为线、tag 或小标记，而不是大面积的亮色填充。

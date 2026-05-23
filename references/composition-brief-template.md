@@ -33,11 +33,12 @@
 
 ## Upstream Contracts
 1. 音频已是终稿。不要重新生成 TTS，也不要调用 HyperFrames 的 TTS。
-2. 词级时间用 `transcribe/transcript.json`。如果需要一份确定性的 scene 时间轴文件，可以在 `transcribe/` 下生成，但 scene 切分和视觉提示时间归 HyperFrames 子 agent。
+2. 词级时间用 `transcribe/transcript.json`。如果需要一份确定性的 scene 时间轴文件，可以在 `transcribe/` 下生成，但 scene 切分和视觉提示时间归 HyperFrames sub-agent。
 3. 所有以素材为底的视觉都必须通过 `material-catalog.json` 解析。需要 catalog 素材的地方，不要凭空造一个 stock 视觉。
 4. 如果从 catalog 中切出一段源视频片段，要用 `-an` 剥掉它的原始音频；`narration.mp3` 是最终视频里唯一的解说人声。
 5. 字体加载用 `fonts/` 下的本地资源，确保确定性。不要依赖系统的 `fc-match` 字体。
 6. 所有 composition、动画、校验与渲染工作都用 `hyperframes` 和 `hyperframes-cli` skills。父 skill `topic-to-video` 只负责上面列出的上游资源。
+7. 渲染时必须传 `--workers 1`。多 worker 在本机环境会产生奇数高度帧，导致编码异常。
 
 ## Deliverables
 - composition/index.html
