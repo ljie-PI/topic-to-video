@@ -70,9 +70,9 @@
 
 ## 不要做
 
-- 不要替换 Dawn 的手绘默认风格；Moon 是可选项。
-- 不要在 Moon 中使用 `MaShanZheng`、`LongCang`、`Caveat` 或 `PatrickHand`，除非用户明确要求手绘混搭对比。
-- 不要把 `#6e6a86` 用作正文。
-- 不要在深色背景上使用满屏 linear gradient。
-- 同一个 scene 的主内容里不要叠加超过一种 accent 色。
-- 不要把 accent 色做大面积背景；只用作线、tag、数字或小符号。
+- ❌ 不要替换 Dawn 的手绘默认风格；Moon 是可选项。
+- ❌ 不要在 Moon 中使用 `MaShanZheng`、`LongCang`、`Caveat` 或 `PatrickHand`，除非用户明确要求手绘混搭对比。
+- ❌ 不要把 `#6e6a86` 用作正文。
+- ❌ 不要在深色背景上使用满屏 linear gradient。
+- ❌ 同一个 scene 的主内容里不要叠加超过一种 accent 色。
+- ❌ 不要把 accent 色做大面积背景；只用作线、tag、数字或小符号。
