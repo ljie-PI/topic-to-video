@@ -15,6 +15,7 @@
 - 素材 catalog：material-catalog.json
 - 场景-素材匹配建议：scene-material-suggestions.json（如存在；优先参考，可有充分理由偏离）
 - 已预置字体：fonts/
+- 风格规范文件（如适用）：references/design-<theme>.md
 
 ## Style Hint
 <来自 Phase 1 的自由格式 mood、受众、配色与节奏提示。示例：
@@ -26,7 +27,8 @@
 - references/design-moon.md —— 深色技术 / 编辑氛围参考
 - references/palettes.md —— 备选的 mood / palette 路由
 
-这些参考是 style hint，不是实现规范。所有实际的 composition、排版、布局、动画与渲染决策，请走 `hyperframes` skill 和项目自己的 `DESIGN.md` 流程。
+若上方 Inputs 未指定 design 文件，这些参考是 style hint，不是实现规范
+若已指定 design 文件，以 design 文件中的具体数值（配色 hex 值、字体族、字重）为准，Style Hint 的自由格式描述退为补充说明。所有实际的 composition、排版、布局、动画与渲染决策，请走 `hyperframes` skill 和项目自己的 `DESIGN.md` 流程。
 
 ## Upstream Contracts
 1. 音频已是终稿。不要重新生成 TTS，也不要调用 HyperFrames 的 TTS。
@@ -40,7 +42,7 @@
 ## Visual Quality Constraints
 1. **无静止帧**：画面不得出现超过 2 秒的静止状态。每个 scene 内至少保持一个持续的视觉动效（文字渐入 / 逐字出现、素材缓移 / Ken Burns、数据 callout 浮现、进度指示器等）。
 2. **scene 间有明确过渡**：相邻 scene 之间使用显式转场（淡入淡出、滑动、交叉溶解等），避免硬切造成视觉跳跃。
-3. **常驻底部字幕条**：视频全程在底部渲染字幕条，显示当前正在朗读的句子。切换时机基于 `transcript.json` 的词级时间戳，与音频偏移不超过 0.2 秒。字幕条背景使用半透明遮罩，确保在任意画面背景下均可读。
+3. **常驻底部字幕条**：视频全程在底部**水平居中**渲染字幕条，显示当前正在朗读的句子。切换时机基于 `transcript.json` 的词级时间戳，与音频偏移不超过 0.2 秒。字幕条背景使用半透明遮罩，确保在任意画面背景下均可读。
 
 ## Deliverables
 - composition/index.html
