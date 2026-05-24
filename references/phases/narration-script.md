@@ -31,3 +31,48 @@
 **生成 TTS 之前先把脚本给用户看。** 让对方调整语气、增删某段，或者在你花掉 API 预算前否决某个方向。
 
 存到 `narration.txt`。
+
+### Phase 5.5 — 场景-素材匹配建议
+
+`narration.txt` 经用户确认后，在进入 Phase 6（TTS）之前，主 agent inline 完成此步骤（无需 sub-agent）。
+
+**输入：** `narration.txt` + `material-catalog.json`
+
+**步骤：**
+
+1. 把 `narration.txt` 按空行切分为段落，每段即为一个潜在 scene，顺序编号（`scene_1`, `scene_2`, ...）。
+2. 对每个 scene，通读其旁白文本，再遍历 `material-catalog.json` 中所有图片和视频 clip 的 `semantic_description`，选出最匹配的 1-3 个素材，写明理由（理由要对应旁白的具体内容，不要泛泛而谈）。
+3. 如果某个 scene 在 catalog 中找不到合适素材（所有候选相关性较低），显式标记 `"no_match": true`，而不是强行指派一个不相关的素材。
+4. 输出 `scene-material-suggestions.json`，结构如下：
+
+```json
+[
+  {
+    "scene_index": 1,
+    "narration_excerpt": "前 20 字...",
+    "suggestions": [
+      {
+        "material_ref": "img_001",
+        "reason": "图中展示了 X，与旁白提到的 Y 直接对应"
+      },
+      {
+        "material_ref": "2MJDdzSXL74:12.0-18.5",
+        "reason": "该片段演示了 Z 流程，配合旁白对 Z 的描述"
+      }
+    ]
+  },
+  {
+    "scene_index": 2,
+    "narration_excerpt": "...",
+    "no_match": true,
+    "suggestions": []
+  }
+]
+```
+
+**约束：**
+- 这份文件是**建议**，不是硬约束。Phase 8 的 HyperFrames sub-agent 优先参考，但可以在有充分理由时偏离（例如视觉节奏需要，或素材已被相邻 scene 占用）。
+- 不要把 `no_match` 的 scene 强行填入素材；留空让 HyperFrames sub-agent 用纯排版 / 文字卡片处理。
+- 同一素材可以被多个 scene 引用，但应避免连续三个以上 scene 使用同一张图。
+
+输出到 `scene-material-suggestions.json`（与 `narration.txt` 同级）。

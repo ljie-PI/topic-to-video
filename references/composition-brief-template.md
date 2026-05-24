@@ -13,11 +13,8 @@
 - 解说脚本：narration.txt
 - 带词级时间戳的 ASR transcript：transcribe/transcript.json
 - 素材 catalog：material-catalog.json
+- 场景-素材匹配建议：scene-material-suggestions.json（如存在；优先参考，可有充分理由偏离）
 - 已预置字体：fonts/
-
-如果之前跑过姐妹项目，可能还存在以下可选输入：
-
-- 姐妹项目的设计参考：composition/DESIGN.md 或拷贝过来的 fonts/
 
 ## Style Hint
 <来自 Phase 1 的自由格式 mood、受众、配色与节奏提示。示例：

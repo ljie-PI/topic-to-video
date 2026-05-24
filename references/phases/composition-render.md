@@ -12,7 +12,7 @@ HyperFrames sub-agent 拥有以下工作：
 
 #### 8.1 — 写 `composition-brief.md`
 
-从 `references/composition-brief-template.md` 出发，写出 `{work_dir}/{topic_name}/composition-brief.md`，填入项目 metadata、输入路径，以及来自 Phase 1 的 style hint。brief 要简短。**不要**把 HyperFrames 实现规则、GSAP 代码片段或布局指令塞进去。
+从 `references/composition-brief-template.md` 出发，写出 `{work_dir}/{topic_name}/composition-brief.md`，填入项目 metadata、输入路径，以及来自 Phase 1 的 style hint。 brief 要简短。
 
 #### 8.2 — 调用一个 coding sub-agent
 
@@ -29,9 +29,9 @@ lint/inspect have no errors. Render with `--workers 1` to avoid
 odd-height frame issues on this machine.
 ```
 
-如果环境里没有原生 sub-agent 工具，仅当 CLI fallback 能把上面那段 prompt 原样传过去、并让 coding sub-agent 自己去读 `composition-brief.md` 时，才可以接受。**不要**写 `-p "$(cat composition-brief.md)"`。
+如果环境里没有原生 sub-agent 工具，仅当 CLI fallback 能把上面那段 prompt 原样传过去、并让 coding sub-agent 自己去读 `composition-brief.md` 时，才可以接受。
 
-不要在主 agent 的会话里驱动 composition。
+**不要**在主 agent 的会话里驱动 composition。
 
 #### 8.3 — sanity-check 结果
 
