@@ -1,8 +1,18 @@
 ### Phase 4 — 素材理解与筛选
 
-**优先委派给 sub-agent。** 本阶段 context 消耗大（要对很多图片 / 帧做视觉分析，30-50+ 次工具调用）。可用时使用当前 runtime 原生的 sub-agent / 委派工具，把 manifest 路径、研究 brief 和这份阶段文档交给它；它产出 `material-catalog.json`。主 agent 只读最终的 catalog。
+**优先委派给 sub-agent。** 本阶段 context 消耗大（要对很多图片 / 帧做视觉分析，30-50+ 次工具调用）。可用时使用当前 runtime 原生的 sub-agent / 委派工具，把 manifest 路径、研究 brief、**话题 context 摘要**和这份阶段文档交给它；它产出 `material-catalog.json`。主 agent 只读最终的 catalog。
 
 如果当前环境没有 sub-agent 工具，可以 inline 跑这一阶段，但要把 context 控制住：一次处理一条 manifest 条目，把结果增量写进 `material-catalog.json`。
+
+#### 话题 context 摘要
+
+在开始视觉分析之前，主 agent 先从当前 context（研究 brief、用户输入、叙事角度）提炼一份**话题 context 摘要**，供所有视觉分析调用使用。摘要为自然语言，200 字以内，包含：
+
+- 视频的核心主题与叙事角度（"这是一段关于 X 的中文解说视频，重点讲解 Y 和 Z"）
+- 目标受众与风格基调
+- 3-5 个核心论点或关键概念（供 VLM 判断图片能"说明"哪个论点）
+
+这份摘要在整个 Phase 4 中作为常量传入每次视觉分析，写到 `vision_analyze/topic-context.txt` 备查。如果委派给 sub-agent，把摘要内容直接写进委派 prompt。
 
 遍历 Phase 3 产出的 `harvest_page/manifest.json["entries"]`。对每一条 entry，在 `{work_dir}/{topic_name}/material-catalog.json` 里建一个 "material entry"。
 
@@ -21,11 +31,11 @@
    scripts/subtitle-parse.py <subtitle> --keywords '<terms from research brief>'
    ```
 
-3. **视觉分析**：用 `scripts/vision-analyze.py`：
-   - 对图片（光栅图和 SVG）：每个 URL 一个 batch（每次调用最多 10 张）。prompt 询问 subject、视觉风格、1-10 的适配度评分。
-   - 对每个视频：一个 batch 跑在抽出的帧上。prompt 额外询问最相关片段的起止时间戳。
-   - **Mode 1（显式 VLM）：** 若已设置 `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` → 直接走 OpenAI 兼容的调用。
-   - **Mode 2（委派）：** 否则 → 脚本返回 `delegate_to_agent` 和图片路径列表；agent 用自己的 `view` 工具看图。
+3. **视觉分析**：用 `scripts/vision-analyze.py`，传入 `--context-file vision_analyze/topic-context.txt`：
+   - 对图片（光栅图和 SVG）：每个 URL 一个 batch（每次调用最多 10 张）。prompt 结合话题 context 摘要，询问"这张图在讲解该话题时可以用来说明什么论点或概念"、视觉风格、1-10 的适配度评分。
+   - 对每个视频：一个 batch 跑在抽出的帧上。prompt 额外询问最相关片段的起止时间戳，以及该片段适合说明话题的哪个方面。
+   - **Mode 1（显式 VLM）：** 若已设置 `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` → 直接走 OpenAI 兼容的调用，话题 context 摘要作为 system prompt 或 user prompt 前缀注入。
+   - **Mode 2（主 agent 直接分析）：** 否则 → 脚本返回 `delegate_to_agent` 和图片路径列表。此时由**主 agent 自身的多模态视觉能力**（Read 图片文件，让模型直接看图）完成分析——使用与主 agent 其他推理相同的模型，不调用任何外部工具。分析时把话题 context 摘要带入 prompt，与 Mode 1 保持一致，产出同样格式的 `semantic_description` 和 `score`，并手动写入 `material-catalog.json`。
 
    **Paper-origin entries（`source_type: "paper_pdf"`）：** 论文里的 figure 和 table 在 PDF 中本就带有权威的 caption（位于 `paper_metadata.figure_captions` / `table_captions`）。直接把这些 caption 作为 `semantic_description`，默认 `score: 8`。只对没有 caption 的论文素材跑 VLM。
 
@@ -62,6 +72,6 @@
 
 - `entries[*].slug` 在每个 URL 上唯一，与 harvest 输出目录名一致。
 - 每张图 / 每个视频都带一个 `id`（harvester 写出的文件 stem，例如 `img_001` 或 YouTube video id）。Phase 5/7/8 通过 **`material_ref`** 引用素材——schema 在 Phase 7 中首次定义时给出。Phase 8 的 coding sub-agent 负责把 `material_ref` 解析成 catalog entry → `local_path`；主 agent 永远不直接碰 `local_path`。
-- `semantic_description` 是 VLM 生成的 caption；Phase 8 的 HyperFrames sub-agent 用它做 composition 决策。
+- `semantic_description` 是结合话题 context 生成的叙事锚点描述（"适合用于说明 X 概念 / Y 论点"），而非纯粹的图像内容描述；Phase 5.5 和 Phase 8 的 HyperFrames sub-agent 都依赖它做匹配决策。
 
 **输出：** `extract_frames/<slug>/<video-name>/`、`vision_analyze/<slug>/`、`material-catalog.json`。

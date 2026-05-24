@@ -45,7 +45,7 @@ scripts/harvest-pages.py \
   --viewport 1680x1680
 ```
 
-第一次调用会在 `{work_dir}/chrome_profile` 启动 Chrome；后续调用通过 CDP（`http://localhost:9222`）复用同一进程。Chrome 在多次调用之间保持运行。单条 URL 失败不会拖垮整个 batch。
+第一次调用会在 `{work_dir}/chrome_profile` 启动 Chrome，窗口和viewport大小为 1680x1680，后续调用通过 CDP（`http://localhost:9222`）复用同一进程。Chrome 在多次调用之间保持运行。单条 URL 失败不会拖垮整个 batch。
 
 输出：`harvest_page/manifest.json` + `harvest_page/<url-slug>/` 目录（每个 URL 一个）。`manifest.entries[]` 的结构如下——每个渲染页 entry 含有 `text_excerpt`、`metrics`、`images[]`、`videos[]`，以及可选的 `scroll_recording`；YouTube/Bilibili 直链 entry 的 `videos[]` 带有 `download_required: true` 且没有 scroll recording。manifest 顶层还会带一个 **`pending_downloads[]`** —— 列出 harvester 检测到的所有 YouTube/Bilibili URL（不管是直接通过 `--urls` 传入的，还是从页面里发现内嵌的）。
 
