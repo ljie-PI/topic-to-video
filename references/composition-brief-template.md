@@ -37,6 +37,11 @@
 6. 所有 composition、动画、校验与渲染工作都用 `hyperframes` 和 `hyperframes-cli` skills。父 skill `topic-to-video` 只负责上面列出的上游资源。
 7. 渲染时必须传 `--workers 1`。多 worker 在本机环境会产生奇数高度帧，导致编码异常。
 
+## Visual Quality Constraints
+1. **无静止帧**：画面不得出现超过 2 秒的静止状态。每个 scene 内至少保持一个持续的视觉动效（文字渐入 / 逐字出现、素材缓移 / Ken Burns、数据 callout 浮现、进度指示器等）。
+2. **scene 间有明确过渡**：相邻 scene 之间使用显式转场（淡入淡出、滑动、交叉溶解等），避免硬切造成视觉跳跃。
+3. **常驻底部字幕条**：视频全程在底部渲染字幕条，显示当前正在朗读的句子。切换时机基于 `transcript.json` 的词级时间戳，与音频偏移不超过 0.2 秒。字幕条背景使用半透明遮罩，确保在任意画面背景下均可读。
+
 ## Deliverables
 - composition/index.html
 - composition/DESIGN.md
