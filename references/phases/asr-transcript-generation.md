@@ -12,34 +12,7 @@ scripts/transcribe-paraformer.py \
   {work_dir}/{topic_name}/transcribe/transcript.json
 ```
 
-#### 7.1b — 数字规范化后处理
-
-ASR 转录的是 `narration.txt` 里的中文数字（"一万六千二百八十八"）。字幕条直接读 `transcript.json`，因此需要在原始 transcript 上做一次数字规范化，把中文数字序列转换为阿拉伯数字，时间戳保持不变。
-
-```bash
-scripts/normalize-transcript-numbers.py \
-  {work_dir}/{topic_name}/transcribe/transcript.json
-```
-
-脚本原地修改 `transcript.json`：识别连续中文数字字符（零一二三四五六七八九十百千万亿等），调用 `cn2an` 库转换为阿拉伯数字，合并对应词的时间戳（取首词 start、末词 end）。其余字段不变。
-
-如果脚本不存在或 `cn2an` 未安装，主 agent 可 inline 用 Python 完成同等逻辑：
-
-```python
-import json, cn2an, re
-
-with open("transcript.json") as f:
-    data = json.load(f)
-
-# 对每条 sentence 的 text 字段做 cn2an 转换
-for sent in data.get("sentences", []):
-    sent["text"] = cn2an.transform(sent["text"], "cn2an")
-
-with open("transcript.json", "w") as f:
-    json.dump(data, f, ensure_ascii=False, indent=2)
-```
-
-输出仍是 `transcript.json`，供 Phase 8 HyperFrames sub-agent 直接用于字幕渲染。
+DashScope Paraformer-v2 默认开启 inverse text normalization（ITN），narration 里的中文数字（如"一万六千二百八十八"、"二零二六"）会在 ASR 输出中自动转成阿拉伯数字（`16288`、`2026`），无需额外后处理脚本。
 
 #### 7.2 — 预置字体
 

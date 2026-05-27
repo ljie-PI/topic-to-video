@@ -77,9 +77,7 @@ Mood：科技、深邃、高级。搭配几何感 sans。
 
 字体：`Space Grotesk` 或 `Manrope`（标题） + `Inter`（正文） + `JetBrains Mono`（代码）。
 
-⚠️ 深色背景会让字体看起来更粗 —— 正文字重降 50（例如用 350 而不是 400）。在 accent 之下加一层细微的 radial glow（透明度 ~15-25%，永远不要 5%）。
-
-⚠️ 深色背景上不要用满屏 linear gradient —— H.264 会出现 banding。改用 radial 或 纯色 + 局部 glow。
+⚠️ 深色背景会让字体看起来更粗 —— 正文字重降 50（例如用 350 而不是 400）。
 
 ## 如何选择
 

@@ -65,7 +65,6 @@
 - 入场应当克制：`power3.out`、`expo.out`、`sine.out`。
 - 位移幅度比 Dawn 小：`y: 20-44`、`x: 20-40`、`scale: 0.96-1`。
 - 除非内容需要罕见的强调瞬间，否则避免 bouncy 的 `back.out(1.7)`。
-- 深色背景上不要使用满屏 linear gradient。改用纯色背景 + 局部 radial accent，透明度 15-25%。
 - 环境装饰要克制：网格、细线、小轨道标记、终端式 cursor 或图谱节点。
 
 ## 不要做

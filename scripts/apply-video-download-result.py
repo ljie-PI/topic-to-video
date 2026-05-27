@@ -49,7 +49,13 @@ def choose_files(files: list[str]) -> tuple[str, str | None]:
     return video_files[0], subtitle_files[0] if subtitle_files else None
 
 
-def update_entry(entry: dict[str, Any], url: str, local_path: str, subtitle_path: str | None) -> bool:
+def update_entry(
+    entry: dict[str, Any],
+    url: str,
+    local_path: str,
+    subtitle_path: str | None,
+    video_info: dict[str, Any] | None,
+) -> bool:
     changed = False
     for video in entry.get("videos", []) or []:
         if video.get("url") != url:
@@ -60,16 +66,33 @@ def update_entry(entry: dict[str, Any], url: str, local_path: str, subtitle_path
         video["id"] = Path(local_path).stem
         if subtitle_path:
             video["subtitle_path"] = subtitle_path
+        if video_info:
+            width = video_info.get("width")
+            height = video_info.get("height")
+            duration = video_info.get("duration_seconds")
+            if isinstance(width, int) and width > 0:
+                video["width"] = width
+            if isinstance(height, int) and height > 0:
+                video["height"] = height
+            if isinstance(duration, (int, float)) and duration > 0:
+                video["duration_seconds"] = float(duration)
         changed = True
     return changed
 
 
-def update_metadata(harvest_dir: Path, slug: str, url: str, local_path: str, subtitle_path: str | None) -> bool:
+def update_metadata(
+    harvest_dir: Path,
+    slug: str,
+    url: str,
+    local_path: str,
+    subtitle_path: str | None,
+    video_info: dict[str, Any] | None,
+) -> bool:
     metadata_path = harvest_dir / slug / "metadata.json"
     if not metadata_path.is_file():
         return False
     metadata = read_json(metadata_path)
-    changed = update_entry(metadata, url, local_path, subtitle_path)
+    changed = update_entry(metadata, url, local_path, subtitle_path, video_info)
     if changed:
         write_json(metadata_path, metadata)
     return changed
@@ -93,11 +116,21 @@ def main() -> int:
             return 0
 
         local_path, subtitle_path = choose_files(result.get("files") or [])
+        videos_info = result.get("videos") or []
+        video_info: dict[str, Any] | None = None
+        for entry in videos_info:
+            if isinstance(entry, dict) and entry.get("path") == local_path:
+                video_info = entry
+                break
+        if video_info is None and videos_info:
+            first = videos_info[0]
+            if isinstance(first, dict):
+                video_info = first
         manifest = read_json(manifest_path)
 
         updated_slugs = []
         for entry in manifest.get("entries", []) or []:
-            if entry.get("slug") == args.source_slug and update_entry(entry, args.url, local_path, subtitle_path):
+            if entry.get("slug") == args.source_slug and update_entry(entry, args.url, local_path, subtitle_path, video_info):
                 updated_slugs.append(args.source_slug)
 
         for pending in manifest.get("pending_downloads", []) or []:
@@ -105,7 +138,7 @@ def main() -> int:
                 continue
             for slug in pending.get("also_referenced_by", []) or []:
                 for entry in manifest.get("entries", []) or []:
-                    if entry.get("slug") == slug and update_entry(entry, args.url, local_path, subtitle_path):
+                    if entry.get("slug") == slug and update_entry(entry, args.url, local_path, subtitle_path, video_info):
                         updated_slugs.append(slug)
 
         manifest["pending_downloads"] = [
@@ -118,7 +151,7 @@ def main() -> int:
 
         metadata_updated = []
         for slug in sorted(set(updated_slugs)):
-            if update_metadata(harvest_dir, slug, args.url, local_path, subtitle_path):
+            if update_metadata(harvest_dir, slug, args.url, local_path, subtitle_path, video_info):
                 metadata_updated.append(slug)
 
         print_json(
@@ -129,6 +162,9 @@ def main() -> int:
                 "metadata_updated": metadata_updated,
                 "local_path": local_path,
                 "subtitle_path": subtitle_path,
+                "width": (video_info or {}).get("width"),
+                "height": (video_info or {}).get("height"),
+                "duration_seconds": (video_info or {}).get("duration_seconds"),
             }
         )
         return 0
