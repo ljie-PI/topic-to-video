@@ -45,6 +45,11 @@
    - 容器与素材的所有 transform / 动效（Ken Burns、缓移、缩放、淡入、视差）**必须绑定在同一个元素或一组同步元素**上。禁止 "容器静止、素材独立动" 或 "素材静止、容器独立动"——任一情形都会让素材跑出容器或容器露边。
    - design preset 允许的装饰（`border`、`box-shadow`、`border-radius`）必须**贴在素材的可视外边沿**——不能通过 padding / 容器 `background-color` / 透明边距 把装饰推出去形成可见间隙。
    - 反例：素材外一圈火柴盒式背板色（容器有 `background-color` 且 `padding > 0`）；素材在容器中 `object-fit: contain` 露出 letterbox；容器 `transform: scale(1.2)` 但内部 `<img>` 不动。
+10. **每个 scene 根元素必须带稳定 ID 与时间区间**：`composition/index.html` 中每个 scene 的根元素必须同时带这三个 data 属性，供主 agent 在 Phase 8 Visual QA Audit 中把"秒数 / 素材 src"反查到具体 scene：
+    - `data-scene-id="s1"`（任意稳定字符串，**跨重渲必须保持不变**；建议 `s1` / `s2` / ... 按时间顺序编号）
+    - `data-scene-start="0"`（该 scene 起点秒，相对视频开头，浮点）
+    - `data-scene-end="6.5"`（该 scene 终点秒，浮点；与下一 scene 的 `data-scene-start` 相等）
+    所有素材标签（`<img>` / `<video>` / 带 `background-image` 的元素）必须位于某个带 `data-scene-id` 的 scene 根元素**内部**。多次重渲只修复部分 scene 时，未修复 scene 的 `data-scene-id` 与其 DOM / CSS / 动画必须**逐字节保持不变**——主 agent 凭此校验 sub-agent 是否只动了被点名的 scene。
 
 ## Visual Quality Constraints
 
