@@ -12,8 +12,6 @@ scripts/transcribe-paraformer.py \
   {work_dir}/{topic_name}/transcribe/transcript.json
 ```
 
-DashScope Paraformer-v2 默认开启 inverse text normalization（ITN），narration 里的中文数字（如"一万六千二百八十八"、"二零二六"）会在 ASR 输出中自动转成阿拉伯数字（`16288`、`2026`），无需额外后处理脚本。
-
 #### 7.2 — 预置字体
 
 如果 `{work_dir}/{topic_name}/fonts/` 已经包含所选风格对应的 `.woff2` 文件与 style CSS，则跳过。

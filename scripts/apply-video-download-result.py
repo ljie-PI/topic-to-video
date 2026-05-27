@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 
-VIDEO_EXTS = {".mp4", ".webm", ".mov", ".mkv"}
+VIDEO_EXTS = {".mp4", ".webm", ".mov", ".mkv", ".m4v", ".avi"}
 SUBTITLE_EXTS = {".srt", ".vtt", ".ass", ".json"}
 
 
