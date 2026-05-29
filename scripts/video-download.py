@@ -11,13 +11,74 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
 TOOL_NAME = 'video-download'
+
+VIDEO_EXTS = {'.mp4', '.webm', '.mov', '.mkv', '.m4v', '.avi'}
 
 
 def log(message: str) -> None:
     print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
+
+
+def probe_video_dimensions(path: str) -> Dict[str, Any]:
+    """Run ffprobe to read width/height/duration of the first video stream.
+
+    Returns a dict with keys path, width, height, duration_seconds. Width/height
+    are None if ffprobe is unavailable or the file is not a probeable video.
+    """
+    result: Dict[str, Any] = {
+        'path': path,
+        'width': None,
+        'height': None,
+        'duration_seconds': None,
+    }
+    try:
+        completed = subprocess.run(
+            [
+                'ffprobe',
+                '-v', 'error',
+                '-select_streams', 'v:0',
+                '-show_entries', 'stream=width,height:format=duration',
+                '-of', 'json',
+                path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except FileNotFoundError:
+        log('ffprobe not on PATH; skipping dimension probe')
+        return result
+    except subprocess.TimeoutExpired:
+        log(f'ffprobe timed out for {path}')
+        return result
+    if completed.returncode != 0:
+        log(f'ffprobe failed for {path}: {(completed.stderr or "").strip()[:200]}')
+        return result
+    try:
+        info = json.loads(completed.stdout or '{}')
+    except json.JSONDecodeError:
+        log(f'ffprobe returned non-JSON for {path}')
+        return result
+    streams = info.get('streams') or []
+    if streams:
+        stream = streams[0]
+        width = stream.get('width')
+        height = stream.get('height')
+        if isinstance(width, int) and isinstance(height, int) and width > 0 and height > 0:
+            result['width'] = width
+            result['height'] = height
+    duration_str = ((info.get('format') or {}).get('duration')) or ''
+    try:
+        duration = float(duration_str)
+        if duration > 0:
+            result['duration_seconds'] = duration
+    except (TypeError, ValueError):
+        pass
+    return result
 
 
 def parse_args() -> argparse.Namespace:
@@ -131,10 +192,21 @@ def main() -> int:
         if not files:
             files = [str(path.resolve()) for path in sorted(output_dir.iterdir()) if path.is_file()]
         log(f'Download complete ({len(files)} file(s))')
+
+        videos_info = []
+        if not args.subtitles_only:
+            video_paths = [p for p in files if Path(p).suffix.lower() in VIDEO_EXTS]
+            for video_path in video_paths:
+                info = probe_video_dimensions(video_path)
+                if info['width'] and info['height']:
+                    log(f'  probed {Path(video_path).name}: {info["width"]}x{info["height"]}')
+                videos_info.append(info)
+
         result = {
             'success': True,
             'output_dir': str(output_dir),
             'files': files,
+            'videos': videos_info,
             'stdout_tail': tail_text(combined_output),
         }
         print(json.dumps(result, ensure_ascii=False))
