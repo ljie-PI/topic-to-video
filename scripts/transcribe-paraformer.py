@@ -187,6 +187,11 @@ def main() -> int:
             model=model,
             file_urls=[file_url],
             language_hints=language_hints,
+            # paraformer-v2 后端只对带这个 header 的请求解析 oss:// URL；
+            # 缺这个 header 时返回 FILE_DOWNLOAD_FAILED。SDK 的 Transcription
+            # 类没自动加（不像 image_synthesis / multimodal_conversation 等），
+            # 必须手动传。
+            headers={'X-DashScope-OssResourceResolve': 'enable'},
         )
         if submit_response.status_code != HTTPStatus.OK:
             raise RuntimeError(
