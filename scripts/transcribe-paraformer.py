@@ -13,13 +13,16 @@ DashScope 非实时语音识别 (paraformer-v2) for Chinese / mixed audio.
 
 为什么仍然 import dashscope SDK 而不是裸 `requests`:
   - 文档要求 file_url 是公网 URL；narration.mp3 是本地文件，必须先上传。
-  - dashscope SDK 的 Transcription.async_call() 内部就是上面这三步 REST 调用，
-    并且自带本地文件到临时 OSS 的上传协议 (DashScope file resource API)。
-  - 复用 SDK 的鉴权与轮询逻辑，避免重新实现一份不稳定的上传 + retry 协议。
-  - 转写结果的下载用裸 `requests`（contract 就是一个公网可访问的 JSON URL）。
+  - dashscope SDK 暴露了 `OssUtils.upload(model, file_path, api_key)`，
+    会向 DashScope 申请上传凭证并把本地文件 POST 到对应 OSS bucket，
+    返回 `oss://...` URL — paraformer-v2 的 file_urls 直接接受。
+  - `Transcription.async_call() / wait() / fetch()` 是上述 REST 流程的
+    薄封装；裸 requests 实现会需要复刻签名 / 轮询 / OSS 凭证刷新等
+    协议细节，得不偿失。
+  - 转写结果的下载用裸 `requests`（transcription_url 是公网 JSON）。
 
 Usage:
-  python3 transcribe-paraformer.py <input.mp3|http(s)://...> <output.json>
+  python3 transcribe-paraformer.py <input.mp3|http(s)://...|oss://...> <output.json>
 
 可选环境变量:
   DASHSCOPE_API_KEY     (必填)
@@ -138,19 +141,24 @@ def parse_transcription_payload(payload: dict) -> list[dict]:
 
 def main() -> int:
     if len(sys.argv) != 3:
-        message = 'Usage: transcribe-paraformer.py <input.mp3|http(s)://...> <output.json>'
+        message = 'Usage: transcribe-paraformer.py <input.mp3|http(s)://...|oss://...> <output.json>'
         log(message)
         print_json({'success': False, 'error': message})
         return 2
 
     try:
         from dashscope.audio.asr import Transcription
+        from dashscope.utils.oss_utils import OssUtils
         import dashscope
 
         audio_arg, out_path = sys.argv[1], sys.argv[2]
 
-        is_url = audio_arg.startswith('http://') or audio_arg.startswith('https://')
-        if not is_url and not os.path.isfile(audio_arg):
+        is_remote = (
+            audio_arg.startswith('http://')
+            or audio_arg.startswith('https://')
+            or audio_arg.startswith('oss://')
+        )
+        if not is_remote and not os.path.isfile(audio_arg):
             raise FileNotFoundError(f'not found: {audio_arg}')
 
         api_key = os.environ.get('DASHSCOPE_API_KEY')
@@ -160,12 +168,24 @@ def main() -> int:
 
         model = os.environ.get('ASR_MODEL', 'paraformer-v2')
         language_hints = parse_language_hints()
-        log(f'submit async transcription: model={model} file={audio_arg} '
-            f'language_hints={language_hints}')
 
+        if is_remote:
+            file_url = audio_arg
+            log(f'using remote audio URL: {file_url}')
+        else:
+            log(f'uploading local audio to DashScope OSS: {audio_arg}')
+            file_url, _ = OssUtils.upload(
+                model=model,
+                file_path=os.path.abspath(audio_arg),
+                api_key=api_key,
+            )
+            log(f'uploaded to {file_url}')
+
+        log(f'submit async transcription: model={model} '
+            f'language_hints={language_hints}')
         submit_response = Transcription.async_call(
             model=model,
-            file_urls=[audio_arg],
+            file_urls=[file_url],
             language_hints=language_hints,
         )
         if submit_response.status_code != HTTPStatus.OK:
@@ -177,7 +197,7 @@ def main() -> int:
         task_id = submit_response.output.task_id
         log(f'task submitted: task_id={task_id}; waiting for completion')
 
-        result_response = Transcription.wait(task_id=task_id)
+        result_response = Transcription.wait(task=task_id)
         if result_response.status_code != HTTPStatus.OK:
             raise RuntimeError(
                 f'task fetch failed: status_code={result_response.status_code} '
