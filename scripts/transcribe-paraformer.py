@@ -1,35 +1,19 @@
 #!/usr/bin/env python3
 """
-DashScope 非实时语音识别 (paraformer-v2) for Chinese / mixed audio.
-
-参考文档:
-  https://help.aliyun.com/zh/model-studio/non-realtime-speech-recognition-user-guide
-
-接口模式 — HTTP REST 异步任务 (OpenAI 兼容风格的 REST 调用 + task_id 轮询):
-  POST  /api/v1/services/audio/asr/transcription   (X-DashScope-Async: enable)
-        → task_id
-  GET   /api/v1/tasks/{task_id}                     轮询直到 SUCCEEDED / FAILED
-  GET   transcription_url                           下载词级时间戳 JSON
-
-为什么仍然 import dashscope SDK 而不是裸 `requests`:
-  - 文档要求 file_url 是公网 URL；narration.mp3 是本地文件，必须先上传。
-  - dashscope SDK 暴露了 `OssUtils.upload(model, file_path, api_key)`，
-    会向 DashScope 申请上传凭证并把本地文件 POST 到对应 OSS bucket，
-    返回 `oss://...` URL — paraformer-v2 的 file_urls 直接接受。
-  - `Transcription.async_call() / wait() / fetch()` 是上述 REST 流程的
-    薄封装；裸 requests 实现会需要复刻签名 / 轮询 / OSS 凭证刷新等
-    协议细节，得不偿失。
-  - 转写结果的下载用裸 `requests`（transcription_url 是公网 JSON）。
+DashScope Paraformer-v2 (non-realtime) ASR for Chinese / mixed audio.
 
 Usage:
   python3 transcribe-paraformer.py <input.mp3|http(s)://...|oss://...> <output.json>
 
-可选环境变量:
-  DASHSCOPE_API_KEY     (必填)
-  ASR_MODEL             默认 paraformer-v2；其它可选 qwen3-asr-flash-filetrans
-  ASR_LANGUAGE_HINTS    JSON 数组，默认 ["zh", "en"]
+Requires:
+  source .venv/bin/activate
+  export DASHSCOPE_API_KEY="sk-..."
 
-Output JSON shape (保持与既有下游兼容):
+Optional env:
+  ASR_MODEL             default paraformer-v2; e.g. qwen3-asr-flash-filetrans
+  ASR_LANGUAGE_HINTS    JSON array, default ["zh", "en"]
+
+Output JSON shape:
   [
     {
       "begin": 0,           # ms
@@ -40,13 +24,10 @@ Output JSON shape (保持与既有下游兼容):
     ...
   ]
 
-WHY 切到非实时 paraformer-v2 (而不是 paraformer-realtime-v2):
-  - 实时模型上限 ~5min，且 SDK 必须显式传 format / sample_rate，否则报
-    `status_code=44 sample rate ... not equals with real ...`。
-  - 非实时 paraformer-v2 / qwen3-asr-flash-filetrans 走 file-based REST 异步
-    任务，自动识别 format 与 sample rate，单文件支持 ≤12h、≤2GB。
-  - 默认开启 ITN（inverse text normalization），narration 里的"一万六千二百
-    八十八"会被自动归一化成 "16288"。
+WHY NOT Whisper / npx hyperframes transcribe:
+  - Hyperframes whisper download often fails with empty error
+  - Whisper.cpp JSON output fragments multi-byte UTF-8 (中文乱码)
+  - Paraformer-v2 returns clean UTF-8 + word-level timestamps
 """
 from __future__ import annotations
 

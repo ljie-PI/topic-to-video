@@ -12,8 +12,6 @@ scripts/transcribe-paraformer.py \
   {work_dir}/{topic_name}/transcribe/transcript.json
 ```
 
-脚本走 DashScope 非实时识别（[文档](https://help.aliyun.com/zh/model-studio/non-realtime-speech-recognition-user-guide)）：HTTP REST 异步任务，自动识别 `format` 与 `sample_rate`，无需 ffprobe 探测；默认模型 `paraformer-v2`，可通过 `ASR_MODEL` 环境变量切到 `qwen3-asr-flash-filetrans` 等其他模型。默认开启 ITN，narration 中的"一万六千二百八十八"会被自动归一化成 `16288`。
-
 #### 7.2 — 预置字体
 
 如果 `{work_dir}/{topic_name}/fonts/` 已经包含所选风格对应的 `.woff2` 文件与 style CSS，则跳过。
