@@ -47,7 +47,7 @@ ls -la {work_dir}/{topic_name}/composition/renders/final.mp4
 
 #### 8.4 — Post-Render Visual QA Audit
 
-8.3 基础 sanity-check 通过后，主 agent 必须对 final.mp4 跑视觉抽帧 QA，覆盖 3 项**必须 render 后才能查**的质量项（静帧 ≤ 2s / 同图不跨 scene 复用 / 旁白与画面一致），以及 7 项静帧检查的复核。
+8.3 基础 sanity-check 通过后，主 agent 必须对 final.mp4 跑视觉抽帧 QA，覆盖 3 项**必须 render 后才能查**的质量项（静帧 ≤ 2s / 同图不跨 scene 复用 / 旁白与画面一致），以及静帧检查的复核（含**素材容器无 letterbox / pillarbox**这一必查项）。
 
 **Step 1 — 每秒抽帧**
 
@@ -69,9 +69,11 @@ ffmpeg -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 
 或对相邻抽帧两两计算感知 hash（如 `imagehash` 库的 `phash`）。任意连续 ≥ 3 张 1fps 抽帧（即 ≥ 2 秒）的 hash 距离低于阈值 → 标记 `static_frame` 违规，记录 `[start_s, end_s, duration_s]`。**通过解析 `composition/index.html` 中各 scene 根元素的 `data-scene-start` / `data-scene-end`（Upstream Contract #10），把每个违规的 `[start_s, end_s]` 反查到对应的 `scene_id`，写入 finding 的 `scene_id` 字段**（若违规跨多个 scene，列出所有相关 `scene_id`）。
 
+**注意**：满足"非静止"的动效必须来自内容本身（素材运动 / 文本逐个出现 / callout 浮现）。横贯或纵贯画面的扫描线 / 扫光 / sweep / 进度扫描条等覆盖层**不算**有效动效——即便它让 hash 距离变化、绕过了上面的自动检测，也仍属违规（对应 Critical #2）：在 Step 5 发现此类覆盖层时直接判 fail，并连同其所在 scene 一起要求重渲。
+
 **Step 3 — 同图跨 scene 复用检测**
 
-扫 `composition/index.html` 与各 scene 子模板（如有），按 Upstream Contract #10 的 `data-scene-id` 划分 scene 块，提取每个块内的 `<img src=>`、`<video src=>`、`background-image: url(...)`。建立 `src → [scene_ids]` 映射；同一 src 出现在 ≥ 2 个 `scene_id` 内 → 标记 `reused_material` 违规，finding 中列出所有命中的 `scene_ids`。例外：DESIGN.md 中明确标注 "intentional callback" 的素材豁免。
+扫 `composition/index.html` 与各 scene 子模板（如有），按 Upstream Contract #10 的 `data-scene-id` 划分 scene 块，提取每个块内的 `<img src=>`、`<video src=>`、`background-image: url(...)`。建立 `src → [scene_ids]` 映射；同一 src 出现在 ≥ 2 个 `scene_id` 内 → 标记 `reused_material` 违规，finding 中列出所有命中的 `scene_ids`。**此为硬性约束（对应 Upstream Contract #11 素材唯一性）：每个素材在整片中恰好出现在一个 scene，任何跨 scene 复用一律 fail，无 "intentional callback" 等豁免。** 连续同素材的 scene 应在 `scene-material-suggestions.json` 阶段已合并为单个 scene，因此渲染产物中不应再出现同 src 跨 scene。
 
 **Step 4 — 旁白对齐检测**
 
@@ -85,13 +87,13 @@ python3 scripts/vision-analyze.py \
 
 任何 `no` / `partial` 标记为 `narration_mismatch` 违规。**每条 finding 必须带 `scene_id`（用句子覆盖的秒数中点查 `data-scene-start/end` 区间得到，跨 scene 时列出所有命中）。**
 
-**Step 5 — 静帧 7 项复核（spot-check）**
+**Step 5 — 静帧 9 项复核（spot-check）**
 
 随机抽 `N = max(5, ceil(total_seconds / 30))` 张帧，对每张调 `vision-analyze.py`：
 
 ```bash
 python3 scripts/vision-analyze.py \
-  --prompt "检查这帧画面 6 项视觉质量（参考 composition-brief.md Critical Constraints #7-#11 与 Style #13）：① 图片有无模糊 / 关键信息被裁切；② 任何元素是否超出画面边界 / 被截断；③ 同时显示的元素之间有无重叠遮挡；④ DOM 层次是否扁平（无 '框中套框'）+ 颜色对比度是否达标；⑤ 字号最大/最小比是否 ≤ 3 + 大标题是否未自动换行；⑥ 有无 > 10% 视口的纯空白区域。逐项回答 pass/fail + 理由" \
+  --prompt "检查这帧画面 9 项视觉质量（参考 composition-brief.md Critical Constraints #2、#7-#11、#6/#12、Upstream Contract #8/#9 与 Style #13）：① 图片有无模糊 / 关键信息被裁切；② 任何元素是否超出画面边界 / 被截断；③ 同时显示的元素之间有无重叠遮挡；④ DOM 层次是否扁平（无 '框中套框'）+ 颜色对比度是否达标；⑤ 字号最大/最小比是否 ≤ 3 + 大标题是否未自动换行；⑥ 内容区（视口去掉底部约 12-18% 字幕安全带后）有无 > 10% 视口的纯空白区域；⑦ 底部字幕安全带内除字幕条外是否混入了其他前景文本/callout/素材（侵入即 fail，全幅背景素材垫底不算）；⑧ 素材容器边框内是否出现 letterbox / pillarbox：素材与边框之间有露出容器底色的等宽空带（上下或左右）—— 有则 fail；⑨ 画面上是否有横贯/纵贯的扫描线、扫光、sweep、进度扫描条等覆盖层（用来糊弄'非静止'要求的运动条纹）—— 有则 fail。逐项回答 pass/fail + 理由" \
   --images <随机抽的 frame_XXXX.jpg>
 ```
 

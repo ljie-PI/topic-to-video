@@ -37,7 +37,7 @@
 
 存到 `narration.txt`。
 
-### Phase 5.5 — 场景-素材匹配建议
+### Phase 5.5 — 场景-素材唯一分配
 
 `narration.txt` 经用户确认后，在进入 Phase 6（TTS）之前，主 agent inline 完成此步骤（无需 sub-agent）。
 
@@ -45,39 +45,47 @@
 
 **步骤：**
 
-1. 把 `narration.txt` 按空行切分为段落，每段即为一个潜在 scene，顺序编号（`scene_1`, `scene_2`, ...）。
-2. 对每个 scene，通读其旁白文本，再遍历 `material-catalog.json` 中所有图片和视频 clip 的 `semantic_description`，选出最匹配的 1-3 个素材，写明理由（理由要对应旁白的具体内容，不要泛泛而谈）。
-3. 如果某个 scene 在 catalog 中找不到合适素材（所有候选相关性较低），显式标记 `"no_match": true`，而不是强行指派一个不相关的素材。
-4. 输出 `scene-material-suggestions.json`，结构如下：
+1. 把 `narration.txt` 按空行切分为段落，每段顺序编号（`para_1`, `para_2`, ...）。
+2. 对每个段落，通读其旁白文本，遍历 `material-catalog.json` 中所有图片和视频 clip 的 `semantic_description`，对每个候选素材给出 1-10 的匹配分与理由（理由要对应旁白的具体内容，不要泛泛而谈）。
+3. **全局唯一分配**：每个素材（图片 / 视频 clip）最多分配给一个段落。按匹配分做全局贪心分配——分数最高的 (段落, 素材) 配对先定，已被占用的素材不再分配给其他段落；每个段落最终最多得到一个主素材。
+4. 段落在 catalog 中没有可用素材（候选分均较低，或合适素材已被占用且无次优）时，显式标记 `"no_match": true`，**不复用已被占用的素材**，留给纯文字 scene。
+5. **连续同素材合并**：相邻段落分配到同一素材（同一图片，或同一视频的同一 clip）且旁白都在讲该素材时，合并为一个 scene。合并后该素材连续展示，时长可超过 8s；被合并的每个原段落各自成为该 scene 的一个 `text_beat`，文本信息按原每 5-8s 节奏刷新/轮换。
+6. 顺序编号最终 scene（`scene_1`, `scene_2`, ...）并输出 `scene-material-suggestions.json`，结构如下：
 
 ```json
 [
   {
     "scene_index": 1,
-    "narration_excerpt": "前 20 字...",
-    "suggestions": [
-      {
-        "material_ref": "img_001",
-        "reason": "图中展示了 X，与旁白提到的 Y 直接对应"
-      },
-      {
-        "material_ref": "2MJDdzSXL74:12.0-18.5",
-        "reason": "该片段演示了 Z 流程，配合旁白对 Z 的描述"
-      }
+    "material_ref": "img_001",
+    "reason": "图中展示了 X，与旁白提到的 Y 直接对应",
+    "text_beats": [
+      {"para": "para_1", "narration_excerpt": "前 20 字..."},
+      {"para": "para_2", "narration_excerpt": "前 20 字..."}
     ]
   },
   {
     "scene_index": 2,
-    "narration_excerpt": "...",
+    "material_ref": "2MJDdzSXL74:12.0-18.5",
+    "reason": "该片段演示了 Z 流程，配合旁白对 Z 的描述",
+    "text_beats": [
+      {"para": "para_3", "narration_excerpt": "..."}
+    ]
+  },
+  {
+    "scene_index": 3,
     "no_match": true,
-    "suggestions": []
+    "material_ref": null,
+    "text_beats": [
+      {"para": "para_4", "narration_excerpt": "..."}
+    ]
   }
 ]
 ```
 
 **约束：**
-- 这份文件是**建议**，不是硬约束。Phase 8 的 HyperFrames sub-agent 优先参考，但可以在有充分理由时偏离（例如视觉节奏需要，或素材已被相邻 scene 占用）。
-- 不要把 `no_match` 的 scene 强行填入素材；留空让 HyperFrames sub-agent 用纯排版 / 文字卡片处理。
-- 同一素材可以被多个 scene 引用，但应避免连续三个以上 scene 使用同一张图。
+- 每个素材（图片 / 视频 clip）最多用于一个 scene。不复用素材。
+- `no_match` 的 scene 不强行填素材，留空让 HyperFrames sub-agent 用纯排版 / 文字卡片处理。
+- 合并 scene 中素材连续展示可超 8s，但 `text_beats` 仍按原每 5-8s 节奏刷新，遵守原场景文本时间限制。
+- 这份文件是 Phase 8 的素材分配依据。HyperFrames sub-agent 必须保持素材唯一性，不得把同一素材复用到多个 scene。
 
 输出到 `scene-material-suggestions.json`（与 `narration.txt` 同级）。
