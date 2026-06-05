@@ -83,9 +83,8 @@
 ```
 
 **约束：**
-- 每个素材（图片 / 视频 clip）最多用于一个 scene。不复用素材。
+- 每个素材（图片 / 视频 clip）最多用于一个 scene，不复用。
 - `no_match` 的 scene 不强行填素材，留空让 HyperFrames sub-agent 用纯排版 / 文字卡片处理。
-- 合并 scene 中素材连续展示可超 8s，但 `text_beats` 仍按原每 5-8s 节奏刷新，遵守原场景文本时间限制。
-- 这份文件是 Phase 8 的素材分配依据。HyperFrames sub-agent 必须保持素材唯一性，不得把同一素材复用到多个 scene。
+- 合并 scene 中素材展示可超 8s，但 `text_beats` 仍按原每 5-8s 节奏刷新。
 
 输出到 `scene-material-suggestions.json`（与 `narration.txt` 同级）。

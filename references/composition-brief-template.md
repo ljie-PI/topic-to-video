@@ -13,7 +13,7 @@
 - 解说脚本：narration.txt
 - 带词级时间戳的 ASR transcript：transcribe/transcript.json
 - 素材 catalog：material-catalog.json
-- 场景-素材分配：scene-material-suggestions.json（如存在；已做全局唯一分配与连续同素材合并，按 Upstream Contract #11 视为素材→scene 的硬性分配，不得复用素材）
+- 场景-素材分配：scene-material-suggestions.json（如存在；按 Upstream Contract #11 视为素材→scene 的硬性分配）
 - 已预置字体：fonts/
 - 风格规范文件（如适用）：references/design-<theme>.md
 
@@ -53,13 +53,13 @@
        margin: 0 auto;
      }
      ```
-     `width = min(可用宽, 可用高 × 比例)`，盒子永远 = 素材比例；`object-fit` 取 contain / cover / fill 均无空带、无裁切、无变形。要限制高度就调 `availH` 输入，**禁止再单独写 `max-height` 压扁容器**。
+     盒子恒等于素材比例，`object-fit` 取 contain / cover / fill 均无空带 / 裁切 / 变形。要限高就调 `availH` 输入，**禁止再单独写 `max-height` 压扁容器**。
 10. **每个 scene 根元素必须带稳定 ID 与时间区间**：`composition/index.html` 中每个 scene 的根元素必须同时带这三个 data 属性，供主 agent 在 Phase 8 Visual QA Audit 中把"秒数 / 素材 src"反查到具体 scene：
     - `data-scene-id="s1"`（任意稳定字符串，**跨重渲必须保持不变**；建议 `s1` / `s2` / ... 按时间顺序编号）
     - `data-scene-start="0"`（该 scene 起点秒，相对视频开头，浮点）
     - `data-scene-end="6.5"`（该 scene 终点秒，浮点；与下一 scene 的 `data-scene-start` 相等）
     所有素材标签（`<img>` / `<video>` / 带 `background-image` 的元素）必须位于某个带 `data-scene-id` 的 scene 根元素**内部**。多次重渲只修复部分 scene 时，未修复 scene 的 `data-scene-id` 与其 DOM / CSS / 动画必须**逐字节保持不变**——主 agent 凭此校验 sub-agent 是否只动了被点名的 scene。
-11. **素材唯一性**：每个 catalog 素材（图片 / 视频 clip，按 `material_ref` 或解析后的 src 唯一标识）在整片中**恰好出现在一个 scene**，禁止跨 scene 复用。素材→scene 的分配以 `scene-material-suggestions.json` 为准（该文件已做全局唯一分配并合并了连续同素材的 scene）。某 scene 在该文件中标记 `no_match` 时，用纯排版 / 文字卡片处理，不得借用其他 scene 的素材。
+11. **素材唯一性**：每个 catalog 素材（图片 / 视频 clip）在整片中**恰好出现在一个 scene**，分配以 `scene-material-suggestions.json` 为准；`no_match` 的 scene 用纯排版 / 文字卡片，不借用其他 scene 的素材。
 12. **字幕安全区**：视口底部预留一条高度为视口高度 12–18%（1080p 下约 140–200px）的水平带，**专属底部字幕**（见 Critical #6）。除字幕条外，任何**前景**文本 / 素材 / callout / 装饰元素**禁止进入该带**。所有 scene 的内容元素仅在"内容区 = 视口 − 字幕安全带"内排布。例外：占满画面的**全幅背景素材**可延伸至该带之下垫底（此时字幕条按 #6 的半透明遮罩压在其上，符合 #9 例外 ①）。
 
 ## Visual Quality Constraints
@@ -67,7 +67,7 @@
 ### 🔴 Critical Constraints — 违反任何一条都必须重渲，HyperFrames sub-agent 不得绕过
 
 1. **每个 scene 5-8 秒**：普通 scene 时长上限 8 秒，超过必须拆分（**单素材合并 scene 例外，见本条下方**）。下限 5 秒以下的微 scene 可以接受（用于强节奏切片），但避免连续多个 < 3 秒的微 scene。
-   - **例外（单素材合并 scene）**：`scene-material-suggestions.json` 中由连续同素材合并而成的 scene，其**素材展示**可连续超过 8s；但该 scene 内**素材之外的文本信息单元**（标题、要点、data callout 等）仍必须按每 5–8s 的节奏刷新 / 轮换（对应合并前各 `text_beat`），不得整段长 scene 只显示一组静态文本。此例外仅放宽素材展示时长，不放宽文本节奏，且仍受 #2 / #3 约束。
+   - **例外（单素材合并 scene）**：由连续同素材合并而成的 scene（见 `scene-material-suggestions.json`），其**素材展示**可连续超过 8s；但 scene 内文本信息单元（标题、要点、callout 等）仍须按每 5–8s 刷新 / 轮换（对应合并前各 `text_beat`），且仍受 #2 / #3 约束。
 2. **画面禁止超过 2 秒的静止**：scene 内任意时刻必须有持续视觉动效。**有效动效必须来自内容本身**：素材 Ken Burns / 缓移 / 缩放、文字渐入 / 逐字出现、数据 callout 浮现、装饰元素**极轻微** drift（低对比、不喧宾夺主）。整 scene 静帧 > 2s = 重渲。
    - **禁止用覆盖层"凑"动效**：禁止横贯 / 纵贯画面的扫描线、扫光、sweep、进度扫描条等覆盖在静止画面上的运动条纹来满足本规则。这类廉价手法不计为有效动效，且本身视为视觉缺陷 = 重渲。
 3. **多个文本元素必须随旁白逐个出现**：场景内 ≥ 2 个非素材文本元素（要点、数据 callout、标签等）禁止同时显示。每个元素的出现时机绑定 `transcript.json` 词级时间戳，与旁白提及该内容对齐。一次性把全屏内容堆满再开始旁白 = 重渲。
