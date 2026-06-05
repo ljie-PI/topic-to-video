@@ -71,7 +71,7 @@ ffmpeg -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 
 **Step 3 — 同图跨 scene 复用检测**
 
-扫 `composition/index.html` 与各 scene 子模板（如有），按 Upstream Contract #10 的 `data-scene-id` 划分 scene 块，提取每个块内的 `<img src=>`、`<video src=>`、`background-image: url(...)`。建立 `src → [scene_ids]` 映射；同一 src 出现在 ≥ 2 个 `scene_id` 内 → 标记 `reused_material` 违规，finding 中列出所有命中的 `scene_ids`。**任何跨 scene 复用一律 fail（对应 Upstream Contract #11 素材唯一性），取消原 "intentional callback" 豁免。**
+扫 `composition/index.html` 与各 scene 子模板（如有），按 Upstream Contract #10 的 `data-scene-id` 划分 scene 块，提取每个块内的 `<img src=>`、`<video src=>`、`background-image: url(...)`。建立 `src → [scene_ids]` 映射（仅统计可追溯到 `material-catalog.json` 的素材 src；通用 UI 贴图 / 装饰纹理 / 蒙版等非 catalog 资源不计）；同一 src 出现在 ≥ 2 个 `scene_id` 内 → 标记 `reused_material` 违规，finding 中列出所有命中的 `scene_ids`。**任何跨 scene 复用一律 fail（对应 Upstream Contract #11 素材唯一性），取消原 "intentional callback" 豁免。**
 
 **Step 4 — 旁白对齐检测**
 
