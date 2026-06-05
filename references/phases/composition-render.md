@@ -47,7 +47,7 @@ ls -la {work_dir}/{topic_name}/composition/renders/final.mp4
 
 #### 8.4 — Post-Render Visual QA Audit
 
-8.3 基础 sanity-check 通过后，主 agent 必须对 final.mp4 跑视觉抽帧 QA，覆盖 3 项**必须 render 后才能查**的质量项（静帧 ≤ 2s / 同图不跨 scene 复用 / 旁白与画面一致），以及 7 项静帧检查的复核。
+8.3 基础 sanity-check 通过后，主 agent 必须对 final.mp4 跑视觉抽帧 QA，覆盖 3 项**必须 render 后才能查**的质量项（静帧 ≤ 2s / 同图不跨 scene 复用 / 旁白与画面一致），以及 9 项静帧检查的复核。
 
 **Step 1 — 每秒抽帧**
 
@@ -71,7 +71,7 @@ ffmpeg -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 
 **Step 3 — 同图跨 scene 复用检测**
 
-扫 `composition/index.html` 与各 scene 子模板（如有），按 Upstream Contract #10 的 `data-scene-id` 划分 scene 块，提取每个块内的 `<img src=>`、`<video src=>`、`background-image: url(...)`。建立 `src → [scene_ids]` 映射；同一 src 出现在 ≥ 2 个 `scene_id` 内 → 标记 `reused_material` 违规，finding 中列出所有命中的 `scene_ids`。例外：DESIGN.md 中明确标注 "intentional callback" 的素材豁免。
+扫 `composition/index.html` 与各 scene 子模板（如有），按 Upstream Contract #10 的 `data-scene-id` 划分 scene 块，提取每个块内的 `<img src=>`、`<video src=>`、`background-image: url(...)`。建立 `src → [scene_ids]` 映射（仅统计可追溯到 `material-catalog.json` 的素材 src；通用 UI 贴图 / 装饰纹理 / 蒙版等非 catalog 资源不计）；同一 src 出现在 ≥ 2 个 `scene_id` 内 → 标记 `reused_material` 违规，finding 中列出所有命中的 `scene_ids`。**任何跨 scene 复用一律 fail（对应 Upstream Contract #11 素材唯一性），取消原 "intentional callback" 豁免。**
 
 **Step 4 — 旁白对齐检测**
 
@@ -85,13 +85,13 @@ python3 scripts/vision-analyze.py \
 
 任何 `no` / `partial` 标记为 `narration_mismatch` 违规。**每条 finding 必须带 `scene_id`（用句子覆盖的秒数中点查 `data-scene-start/end` 区间得到，跨 scene 时列出所有命中）。**
 
-**Step 5 — 静帧 7 项复核（spot-check）**
+**Step 5 — 静帧 9 项复核（spot-check）**
 
 随机抽 `N = max(5, ceil(total_seconds / 30))` 张帧，对每张调 `vision-analyze.py`：
 
 ```bash
 python3 scripts/vision-analyze.py \
-  --prompt "检查这帧画面 6 项视觉质量（参考 composition-brief.md Critical Constraints #7-#11 与 Style #13）：① 图片有无模糊 / 关键信息被裁切；② 任何元素是否超出画面边界 / 被截断；③ 同时显示的元素之间有无重叠遮挡；④ DOM 层次是否扁平（无 '框中套框'）+ 颜色对比度是否达标；⑤ 字号最大/最小比是否 ≤ 3 + 大标题是否未自动换行；⑥ 有无 > 10% 视口的纯空白区域。逐项回答 pass/fail + 理由" \
+  --prompt "检查这帧画面 9 项视觉质量（参考 composition-brief.md：Critical #2/#6/#7-#11、Upstream Contract #8/#9/#12、Style #13）：① 图片有无模糊 / 关键信息被裁切；② 任何元素是否超出画面边界 / 被截断；③ 同时显示的元素之间有无重叠遮挡；④ DOM 层次是否扁平（无 '框中套框'）+ 颜色对比度是否达标；⑤ 字号最大/最小比是否 ≤ 3 + 大标题是否未自动换行；⑥ 内容区（视口去掉底部约 12-18% 字幕安全带后）有无 > 10% 视口的纯空白区域；⑦ 底部字幕安全带内除字幕条外是否混入了其他前景文本/callout/素材（侵入即 fail，全幅背景素材垫底不算）；⑧ 素材容器边框内是否出现 letterbox / pillarbox：素材与边框之间有露出容器底色的等宽空带（上下或左右）—— 有则 fail；⑨ 画面上是否有横贯/纵贯的扫描线、扫光、sweep、进度扫描条等覆盖层（用来糊弄'非静止'要求的运动条纹）—— 有则 fail。逐项回答 pass/fail + 理由" \
   --images <随机抽的 frame_XXXX.jpg>
 ```
 
