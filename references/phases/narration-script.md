@@ -45,7 +45,7 @@
 
 **步骤：**
 
-1. 把 `narration.txt` 按空行切分为段落，每段顺序编号（`para_1`, `para_2`, ...）。
+1. 把 `narration.txt` 按空行切分为段落，按顺序处理。
 2. 对每个段落，通读其旁白文本，遍历 `material-catalog.json` 中所有图片和视频 clip 的 `semantic_description`，对每个候选素材给出 1-10 的匹配分与理由（理由要对应旁白的具体内容，不要泛泛而谈）。
 3. **全局唯一分配**：每个素材（图片 / 视频 clip）最多分配给一个段落。按匹配分做全局贪心分配——分数最高的 (段落, 素材) 配对先定，已被占用的素材不再分配给其他段落；每个段落最终最多得到一个主素材。
 4. 段落在 catalog 中没有可用素材（候选分均较低，或合适素材已被占用且无次优）时，显式标记 `"no_match": true`，**不复用已被占用的素材**，留给纯文字 scene。
@@ -59,8 +59,8 @@
     "material_ref": "img_001",
     "reason": "图中展示了 X，与旁白提到的 Y 直接对应",
     "text_beats": [
-      {"para": "para_1", "narration_excerpt": "前 20 字..."},
-      {"para": "para_2", "narration_excerpt": "前 20 字..."}
+      {"narration_excerpt": "前 20 字..."},
+      {"narration_excerpt": "前 20 字..."}
     ]
   },
   {
@@ -68,7 +68,7 @@
     "material_ref": "2MJDdzSXL74:12.0-18.5",
     "reason": "该片段演示了 Z 流程，配合旁白对 Z 的描述",
     "text_beats": [
-      {"para": "para_3", "narration_excerpt": "..."}
+      {"narration_excerpt": "..."}
     ]
   },
   {
@@ -76,7 +76,7 @@
     "no_match": true,
     "material_ref": null,
     "text_beats": [
-      {"para": "para_4", "narration_excerpt": "..."}
+      {"narration_excerpt": "..."}
     ]
   }
 ]

@@ -69,8 +69,6 @@ ffmpeg -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 
 或对相邻抽帧两两计算感知 hash（如 `imagehash` 库的 `phash`）。任意连续 ≥ 3 张 1fps 抽帧（即 ≥ 2 秒）的 hash 距离低于阈值 → 标记 `static_frame` 违规，记录 `[start_s, end_s, duration_s]`。**通过解析 `composition/index.html` 中各 scene 根元素的 `data-scene-start` / `data-scene-end`（Upstream Contract #10），把每个违规的 `[start_s, end_s]` 反查到对应的 `scene_id`，写入 finding 的 `scene_id` 字段**（若违规跨多个 scene，列出所有相关 `scene_id`）。
 
-**注意**：扫描线 / 扫光 / sweep 等覆盖层可能改变 hash 骗过本步检测，但不算有效动效（Critical #2），由 Step 5 第 ⑨ 项兜底判 fail。
-
 **Step 3 — 同图跨 scene 复用检测**
 
 扫 `composition/index.html` 与各 scene 子模板（如有），按 Upstream Contract #10 的 `data-scene-id` 划分 scene 块，提取每个块内的 `<img src=>`、`<video src=>`、`background-image: url(...)`。建立 `src → [scene_ids]` 映射；同一 src 出现在 ≥ 2 个 `scene_id` 内 → 标记 `reused_material` 违规，finding 中列出所有命中的 `scene_ids`。**任何跨 scene 复用一律 fail（对应 Upstream Contract #11 素材唯一性），取消原 "intentional callback" 豁免。**
