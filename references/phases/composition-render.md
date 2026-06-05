@@ -47,7 +47,7 @@ ls -la {work_dir}/{topic_name}/composition/renders/final.mp4
 
 #### 8.4 — Post-Render Visual QA Audit
 
-8.3 基础 sanity-check 通过后，主 agent 必须对 final.mp4 跑视觉抽帧 QA，覆盖 3 项**必须 render 后才能查**的质量项（静帧 ≤ 2s / 同图不跨 scene 复用 / 旁白与画面一致），以及静帧检查的复核（含**素材容器无 letterbox / pillarbox**这一必查项）。
+8.3 基础 sanity-check 通过后，主 agent 必须对 final.mp4 跑视觉抽帧 QA，覆盖 3 项**必须 render 后才能查**的质量项（静帧 ≤ 2s / 同图不跨 scene 复用 / 旁白与画面一致），以及 9 项静帧检查的复核。
 
 **Step 1 — 每秒抽帧**
 
