@@ -69,7 +69,7 @@ ffmpeg -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 
 或对相邻抽帧两两计算感知 hash（如 `imagehash` 库的 `phash`）。任意连续 ≥ 3 张 1fps 抽帧（即 ≥ 2 秒）的 hash 距离低于阈值 → 标记 `static_frame` 违规，记录 `[start_s, end_s, duration_s]`。**通过解析 `composition/index.html` 中各 scene 根元素的 `data-scene-start` / `data-scene-end`（Upstream Contract #10），把每个违规的 `[start_s, end_s]` 反查到对应的 `scene_id`，写入 finding 的 `scene_id` 字段**（若违规跨多个 scene，列出所有相关 `scene_id`）。
 
-**注意**：满足"非静止"的动效必须来自内容本身（素材运动 / 文本逐个出现 / callout 浮现）。横贯或纵贯画面的扫描线 / 扫光 / sweep / 进度扫描条等覆盖层**不算**有效动效——即便它让 hash 距离变化、绕过了上面的自动检测，也仍属违规（对应 Critical #2）：在 Step 5 发现此类覆盖层时直接判 fail，并连同其所在 scene 一起要求重渲。
+**注意**：满足"非静止"的动效必须来自内容本身；扫描线 / 扫光 / sweep / 进度扫描条等覆盖层即便能改变 hash 绕过自动检测，也不算有效动效（对应 Critical #2），由 Step 5 判 fail 并重渲。
 
 **Step 3 — 同图跨 scene 复用检测**
 
@@ -93,7 +93,7 @@ python3 scripts/vision-analyze.py \
 
 ```bash
 python3 scripts/vision-analyze.py \
-  --prompt "检查这帧画面 9 项视觉质量（参考 composition-brief.md Critical Constraints #2、#7-#11、#6/#12、Upstream Contract #8/#9 与 Style #13）：① 图片有无模糊 / 关键信息被裁切；② 任何元素是否超出画面边界 / 被截断；③ 同时显示的元素之间有无重叠遮挡；④ DOM 层次是否扁平（无 '框中套框'）+ 颜色对比度是否达标；⑤ 字号最大/最小比是否 ≤ 3 + 大标题是否未自动换行；⑥ 内容区（视口去掉底部约 12-18% 字幕安全带后）有无 > 10% 视口的纯空白区域；⑦ 底部字幕安全带内除字幕条外是否混入了其他前景文本/callout/素材（侵入即 fail，全幅背景素材垫底不算）；⑧ 素材容器边框内是否出现 letterbox / pillarbox：素材与边框之间有露出容器底色的等宽空带（上下或左右）—— 有则 fail；⑨ 画面上是否有横贯/纵贯的扫描线、扫光、sweep、进度扫描条等覆盖层（用来糊弄'非静止'要求的运动条纹）—— 有则 fail。逐项回答 pass/fail + 理由" \
+  --prompt "检查这帧画面 9 项视觉质量（参考 composition-brief.md：Critical #2/#6/#7-#11、Upstream Contract #8/#9/#12、Style #13）：① 图片有无模糊 / 关键信息被裁切；② 任何元素是否超出画面边界 / 被截断；③ 同时显示的元素之间有无重叠遮挡；④ DOM 层次是否扁平（无 '框中套框'）+ 颜色对比度是否达标；⑤ 字号最大/最小比是否 ≤ 3 + 大标题是否未自动换行；⑥ 内容区（视口去掉底部约 12-18% 字幕安全带后）有无 > 10% 视口的纯空白区域；⑦ 底部字幕安全带内除字幕条外是否混入了其他前景文本/callout/素材（侵入即 fail，全幅背景素材垫底不算）；⑧ 素材容器边框内是否出现 letterbox / pillarbox：素材与边框之间有露出容器底色的等宽空带（上下或左右）—— 有则 fail；⑨ 画面上是否有横贯/纵贯的扫描线、扫光、sweep、进度扫描条等覆盖层（用来糊弄'非静止'要求的运动条纹）—— 有则 fail。逐项回答 pass/fail + 理由" \
   --images <随机抽的 frame_XXXX.jpg>
 ```
 

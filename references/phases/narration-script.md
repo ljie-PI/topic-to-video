@@ -37,7 +37,7 @@
 
 存到 `narration.txt`。
 
-### Phase 5.5 — 场景-素材唯一分配
+### Phase 5.5 — 场景-素材匹配建议
 
 `narration.txt` 经用户确认后，在进入 Phase 6（TTS）之前，主 agent inline 完成此步骤（无需 sub-agent）。
 
