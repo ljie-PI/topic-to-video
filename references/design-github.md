@@ -68,13 +68,13 @@
 | --- | --- | --- | --- |
 | Info（蓝） | `#DDF4FF` | `#0969DA` | `#0A3069` |
 | Success（绿） | `#DAFBE1` | `#1F883D` | `#0A5128` |
-| Attention（黄） | `#FFF8C5` | `#9A6700` | `#7D4E00` |
-| Danger（红） | `#FFEBE9` | `#CF222E` | `#A40E26` |
-| Done（紫） | `#FBEFFF` | `#8250DF` | `#512A97` |
+| Attention（黄） | `#FFF8C5` | `#BE7D00` | `#7D4E00` |
+| Danger（红） | `#FFEBE9` | `#CF2230` | `#A40E26` |
+| Done（紫） | `#FBEFFF` | `#8534F3` | `#512A97` |
 
 ## 排版
 
-中文字体复用 **Moon 预设**（`references/design-moon.md`）的确定性 CJK 字体，经 `scripts/fonts-download.sh <fonts_dir> moon` 预置；拉丁品牌字体可选。
+中文字体复用 **Moon 预设**（`references/design-moon.md`）的确定性 CJK 字体，经 `scripts/fonts-download.sh <target_dir> moon` 预置；拉丁品牌字体可选。
 
 | 用途 | 字体 | 字重 | 备注 |
 | --- | --- | --- | --- |

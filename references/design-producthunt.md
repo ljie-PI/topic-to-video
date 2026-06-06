@@ -52,7 +52,7 @@
 
 ## 排版
 
-中文字体复用 **Moon 预设**（`references/design-moon.md`）的确定性 CJK 字体，经 `scripts/fonts-download.sh <fonts_dir> moon` 预置；拉丁品牌字体（Inter）可选。
+中文字体复用 **Moon 预设**（`references/design-moon.md`）的确定性 CJK 字体，经 `scripts/fonts-download.sh <target_dir> moon` 预置；拉丁品牌字体（Inter）可选。
 
 | 用途 | 字体 | 字重 | 备注 |
 |------|------|------|------|
@@ -110,7 +110,7 @@
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   width: 56px; height: 64px; border-radius: 8px;
   background: #FFFFFF; border: 2px solid #FF6154; color: #FF6154;
-  font-family: "Inter", sans-serif; font-weight: 700;
+  font-family: "IBMPlexMono", monospace; font-weight: 700;
 }
 .ph-upvote .count {
   font-size: 14px; line-height: 1; margin-top: 2px;
