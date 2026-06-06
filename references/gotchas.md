@@ -20,7 +20,7 @@
 python3 scripts/voice-clone.py \
   --input-file {work_dir}/{topic_name}/narration.txt \
   --output-dir {work_dir}/{topic_name}/voice_clone \
-  --speech-rate 1.2
+  --speech-rate 1.4
 ```
 
 通过 `--voice` 或 `COSYVOICE_VOICE_ID` 设置音色。

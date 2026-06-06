@@ -51,8 +51,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--speech-rate',
         type=float,
-        default=1.2,
-        help='CosyVoice speech_rate value (default: 1.2).',
+        default=1.4,
+        help='CosyVoice speech_rate value (default: 1.4).',
     )
     parser.add_argument(
         '--output-dir',
