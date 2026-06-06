@@ -101,7 +101,7 @@ python3 scripts/vision-analyze.py \
 
 **Step 5 — 静帧 12 项复核（spot-check）**
 
-随机抽 `N = max(5, ceil(total_seconds / 30))` 张帧，对每张调 `vision-analyze.py`。**重渲轮**：只从上一轮 `affected_scenes` 中 scene 覆盖秒数对应的帧里抽样，不抽未改 scene 的帧。
+随机抽 `N = max(5, ceil(total_seconds / 30))` 张帧，对每张调 `vision-analyze.py`。**重渲轮**：只从上一轮 `affected_scenes` 中 scene 覆盖秒数对应的帧里抽样，不抽未改 scene 的帧。**例外**：若 `affected_scenes` 含 `global`（全局字幕容器被改动），字幕位置/遮罩会影响全片所有 scene（可能与未改 scene 的底部内容产生新遮挡或侵入安全带），此时字幕相关检查（⑦⑪⑫）**恢复全片抽样**，其余检查项仍可限定在被改 scene。
 
 ```bash
 python3 scripts/vision-analyze.py \
@@ -134,7 +134,7 @@ python3 scripts/vision-analyze.py \
 }
 ```
 
-`affected_scenes` = 上述 4 个数组中所有 finding 涉及的 `scene_id` 去重并按视频时间顺序排序。`verdict = "pass"` 当且仅当 4 个数组都为空（此时 `affected_scenes` 也为空）。
+`affected_scenes` = 上述 4 个数组中所有 finding 涉及的 `scene_id` 去重并按视频时间顺序排序。哨兵值 `global`（全局字幕容器等不属于任何单一 scene 的问题）不参与时间排序，**固定排在列表最末**。`verdict = "pass"` 当且仅当 4 个数组都为空（此时 `affected_scenes` 也为空）。
 
 **同时追加一条记录到累积日志 `composition/qa-history.md`**（不存在则创建），每轮一节，便于事后追踪反复点、优化后续流程：
 
@@ -151,15 +151,15 @@ python3 scripts/vision-analyze.py \
 
 **Step 7 — 决策**
 
-维护两个跨轮状态：`round`（从 1 起）和 `prev_total_findings`（上一轮 4 个数组的 finding 总数）。
+维护两个跨轮状态：`round`（从 1 起）和 `prev_total_findings`（上一轮 4 个数组的 finding 总数；**首轮 `round == 1` 时初始化为 `+inf`**，使无进展守卫只在 `round > 1`、确实有上一轮基线时才生效）。
 
 - `verdict == "pass"` → 在 `qa-history.md` 末尾写一段**人类可读总结**（共几轮、哪些 scene 反复出现在 `affected_scenes`、最终 verdict），然后进 Phase 9（bgm-mix）。
 - `verdict == "fail"` → 先判止损，再决定是否重渲：
 
   **止损判定（命中任一即停）**：
   - **全局轮数上限**：`round >= 3`（已完成 3 轮仍 fail）。
-  - **无进展守卫**：本轮 finding 总数 `>= prev_total_findings`（相邻两轮没有严格下降，说明在打地鼠 / 反复返工）。
-  - **同集合早停**：同一 `affected_scenes` 集合连续 2 次重渲仍 fail。
+  - **无进展守卫**：`round > 1` 且本轮 finding 总数 `>= prev_total_findings`（相邻两轮没有严格下降，说明在打地鼠 / 反复返工）。首轮不触发本守卫。
+  - **同集合早停**：同一 `affected_scenes` **集合**连续 2 次重渲仍 fail。比较按**集合**判等（忽略元素顺序，`global` 也按集合成员参与），不要按数组字符串相等。
 
   命中止损 → **停**，在 `qa-history.md` 写人类可读总结（含止损原因），把当前 `qa-report.json` 与总结要点交还用户，由用户决定接受降级 / 人工修 HTML / 回退更早 phase 调整素材 / 解说脚本。**不要继续自动重渲。**
 
@@ -177,7 +177,7 @@ python3 scripts/vision-analyze.py \
 
 | 约束 | QA 覆盖 |
 |------|---------|
-| Critical #1（每个 scene 5-8s） | 解析 `data-scene-start/end` 区间校验；时长本身仅创建期 |
+| Critical #1（每个 scene 5-8s） | 每轮解析 `data-scene-start/end` 区间校验时长（确定性、无 vision 成本，post-render 每轮都查）；时长是否「合理对应内容节奏」仅创建期 |
 | Critical #2（静止 ≤ 2s） | Step 2（ffmpeg scene 滤波 / phash） |
 | Critical #3（多文本随旁白逐个出现） | Step 4 部分覆盖；逐个出现节奏主要仅创建期 |
 | Critical #4（图片持续动效） | Step 2 间接（静帧检测）；动效类型仅创建期 |
