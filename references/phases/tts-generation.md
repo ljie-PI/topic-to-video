@@ -12,7 +12,7 @@ export COSYVOICE_VOICE_ID="cosyvoice-v3.5-plus-..."
 python3 scripts/voice-clone.py \
   --input-file {work_dir}/{topic_name}/narration.txt \
   --output-dir {work_dir}/{topic_name}/voice_clone \
-  --speech-rate 1.2
+  --speech-rate 1.4
 
 ffprobe -v error -show_entries format=duration \
   -of default=noprint_wrappers=1:nokey=1 \
