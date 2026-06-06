@@ -6,6 +6,7 @@
 ## 配色（只用以下颜色）
 
 **Backgrounds**
+
 - 主画布：`#FFFFFF`（白）
 - 次级面板：`#F6F8FA`（hero band / page title 后面的浅灰条）
 - Elevated / 悬停：`#E4EBE6`（绿调浅 hover）
@@ -13,15 +14,18 @@
 - 黑色块：`#000000`（footer、深色 hero、terminal 风）
 
 **Text**
+
 - Primary / 标题：`#1F2328`（深近黑）
 - Secondary / 次级 / 副标：`#59636E`（中灰）
 - Muted / 装饰（**不能**用于正文）：`#8C959F`
 
 **Borders / 分割线**
+
 - 标准 1px：`#D1D9E0`
 - 弱：`#EFEFEF`
 
 **Accents —— 每个 scene 选一个**
+
 - Blue `#0969DA` —— 链接、tab underline、repo path hover、信息高亮
 - Success / Star green `#1F883D` —— 主 "Star" CTA、成功状态
 - Success fg `#08872B` —— "N stars this week" 计数文字
@@ -47,23 +51,48 @@
 - Java → `#B07219`
 - Ruby → `#701516`
 
+### 标题配色与高亮 box
+
+画布保持白 / 浅灰，但标题与 callout 可以上色（每个 scene 仍只用一个 accent 家族）：
+
+**标题**
+
+- 正文标题维持 `#1F2328`。
+- Hero 可坐落在浅色 band 上：中性 `#F6F8FA`，或下方 box 的「底」色做淡 accent band。
+- 标题里的关键词用 accent 上色（其余字保持 `#1F2328`）：Blue `#0969DA`、Success `#1F883D`、Done purple `#8534F3`。
+- Section eyebrow（小标签）：accent 文字 + 对应 subtle 底做成 pill。
+
+**高亮 box / callout**（小卡，**不是**满屏背景）—— 底 / 1px 边 / 文字 三件套（Primer token，已校对对比度）：
+
+| 语义 | 底 | 边 | 文字 |
+| --- | --- | --- | --- |
+| Info（蓝） | `#DDF4FF` | `#0969DA` | `#0A3069` |
+| Success（绿） | `#DAFBE1` | `#1F883D` | `#0A5128` |
+| Attention（黄） | `#FFF8C5` | `#9A6700` | `#7D4E00` |
+| Danger（红） | `#FFEBE9` | `#CF222E` | `#A40E26` |
+| Done（紫） | `#FBEFFF` | `#8250DF` | `#512A97` |
+
 ## 排版
 
-| 用途 | 字体 | 字重 | 备注 |
-|------|------|------|------|
-| 显示 / Hero 标题 | `Mona Sans VF`（variable wdth+wght+opsz） | 600 | 全部场景的主字体 |
-| 中文标题 / 中文正文 | `Mona Sans VF` 退回系统 CJK | — | Mona Sans 无 CJK 字形，混排走系统 fallback |
-| Repo path / 数据 / 命令 | `Mona Sans Mono VF`（variable wght） | 600 | `owner / repo`、星数、代码片段 |
-| 备用 marketing 显示 | `Hubot Sans`（variable） | 700-900 | 仅 marketing hero；不要在 repo 卡里出现 |
+中文字体复用 **Moon 预设**（`references/design-moon.md`）的确定性 CJK 字体，经 `scripts/fonts-download.sh <fonts_dir> moon` 预置；拉丁品牌字体可选。
 
-**绝不要用 Mona Sans 显示长串中文** —— 它没有 CJK 字形。中文要么走 `system-ui / sans-serif` 兜底，要么在工作区追加 `NotoSansSC.woff2`。
+| 用途 | 字体 | 字重 | 备注 |
+| --- | --- | --- | --- |
+| 中文标题 / Hero | `NotoSerifSC` | 700 | 引自 Moon；严肃编辑感 |
+| 中文 section 标题 | `NotoSerifSC` | 600 |  |
+| 中文正文 | `NotoSansSC` | 400 |  |
+| 中文字幕 | `NotoSansSC` | 500 |  |
+| Repo path / 数据 / 命令 / 英文 | `IBMPlexMono` | 400 / 600 | `owner / repo`、星数、代码、语言名 |
+| 拉丁品牌显示（可选） | `Mona Sans VF` | 600 | 仅当 workspace 提供该字体时用于纯英文 hero / 标签；无则回退 `IBMPlexMono` |
+
+**绝不要用 Mona Sans 显示中文** —— 它没有 CJK 字形。中文一律走 `NotoSerifSC` / `NotoSansSC`。
 
 **全部数据读数必须** `font-variant-numeric: tabular-nums`，避免动画计数时数字宽度抖动。
 
 ## 视频尺寸（覆盖网页常规尺寸）
 
 | 元素 | 1920×1080 | 1080×1440 | 1080×1920 | 字重 |
-|------|-----------|-----------|-----------|------|
+| --- | --- | --- | --- | --- |
 | Hero 标题（"Trending this week"） | 130-180px | 110-150px | 116-160px | 600 |
 | Section 标题 | 64-88px | 54-74px | 58-80px | 600 |
 | Repo path `owner / repo`（mono） | 56-72px | 48-62px | 52-66px | 600 |
@@ -75,7 +104,7 @@
 
 - 1px 边框，**不要阴影**。GitHub 整体不用 drop shadow。
 - 圆角统一 6px（卡片）/ 8px（按钮 pill）。
-- 不要把 accent 色做大面积背景；只用作链接、按钮、色点、状态标签。
+- 不要把**饱和** accent 色做满屏背景；链接 / 按钮 / 色点 / 状态标签用实色 accent，区域填充只用上表的浅 subtle 底（hero band、callout box）。
 
 ## 图标
 
@@ -112,7 +141,7 @@
 
 ## 不要做
 
-- ❌ 不要用 Roboto、Inter、系统 sans 替代 Mona Sans。Mona Sans 就是 GitHub 的品牌。
+- ❌ 不要用 Mona Sans 渲染中文（无 CJK 字形）。中文一律走 `NotoSerifSC` / `NotoSansSC`；Mona Sans 仅作可选拉丁品牌显示。
 - ❌ 不要给 Octocat 染色。白底黑、黑底白，仅此而已。
 - ❌ 不要给卡片加 drop shadow。GitHub 用 1px 边框。阴影 = 非 GitHub 感。
 - ❌ 不要引入第 5 个 accent 色。在上面捕获的色板里挑。
