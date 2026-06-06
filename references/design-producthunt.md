@@ -31,17 +31,39 @@
 - Productivity → 底 `#EEF7FF`、文字 `#0075FF`
 - Design → 底 `#FFF1ED`、文字 `#FF6154`
 
+### 标题配色与高亮 box
+
+画布保持白，但标题与 callout 可以上色（每个 scene 一个 accent 家族）：
+
+**标题**
+- 正文标题维持 `#21293C`。
+- Hero 可坐落在浅色 band 上：中性 `#F8F9FA`，或淡橙 `#FFF1ED` / 淡蓝 `#EEF7FF`。
+- 标题关键词、排名数字、"今日 / Top" 用品牌橙 `#FF6154` 上色（其余字保持 `#21293C`）。
+- Section eyebrow（uppercase）：橙 `#FF6154` 或蓝 `#0075FF` 文字。
+
+**高亮 box / callout**（小卡，**不是**满屏背景）—— 底 / 1px 边 / 文字 三件套：
+
+| 语义 | 底 | 边 | 文字 |
+|------|----|----|------|
+| 主推（橙） | `#FFF1ED` | `#FF6154` | `#C8392F` |
+| 注册 / info（蓝） | `#EEF7FF` | `#0075FF` | `#0B4FA8` |
+| Maker / verified（绿） | `#E6F7F1` | `#00B27F` | `#046B50` |
+| 中性（chip） | `#F4F2EE` | `#E5E7EB` | `#21293C` |
+
 ## 排版
 
-PH 几乎全部使用 **Inter**；logotype 用自定义圆滑显示字体，但 Inter 800 + 紧排（`letter-spacing: -0.02em`）是社区通用替代。
+中文字体复用 **Moon 预设**（`references/design-moon.md`）的确定性 CJK 字体，经 `scripts/fonts-download.sh <target_dir> moon` 预置；拉丁品牌字体（Inter）可选。
 
 | 用途 | 字体 | 字重 | 备注 |
 |------|------|------|------|
-| UI / 产品名 / tagline / meta / nav | `Inter`（variable 优先） | 400/500/600/700 | 通用 |
-| Section 大标题（"Top Products Launching Today"） | `Inter` 800 + tight tracking | 800 | 紧排 -0.02em |
-| Logotype 替身 | `Inter 800` 或 `Helvetica Bold` | — | "Product" semibold + "Hunt" bold |
+| 中文标题 / Hero | `NotoSerifSC` | 700 | 引自 Moon |
+| 中文 section 标题 | `NotoSerifSC` | 600 | |
+| 中文正文 / tagline / meta | `NotoSansSC` | 400 / 500 | |
+| 中文字幕 | `NotoSansSC` | 500 | |
+| 数字 / upvote / 英文数据 | `IBMPlexMono` | 600 | tabular-nums |
+| 拉丁品牌显示（可选） | `Inter`（variable） | 700 / 800 | 仅当 workspace 提供；纯英文 hero / 产品名，紧排 -0.02em；无则回退 `NotoSansSC` |
 
-中文混排走系统 CJK fallback；正文里中文较多时，工作区追加 `NotoSansSC.woff2`。
+**绝不要用 Inter 显示中文长串**（无 CJK 字形）；中文一律走 `NotoSerifSC` / `NotoSansSC`。所有读数 `font-variant-numeric: tabular-nums`。
 
 ## 视频尺寸（覆盖网页常规尺寸）
 
@@ -59,7 +81,7 @@ PH 几乎全部使用 **Inter**；logotype 用自定义圆滑显示字体，但 
 
 - 圆角统一：卡片 12-16px、缩略图 8-12px。**永远不用尖角**。
 - 不要厚阴影。最多 `0 2px 8px rgba(0,0,0,.04)` 的 hover 微抬。
-- 橙色用于 mark、upvote、CTA 按钮 —— **不要做大面积背景**。画布保持白。
+- 橙色用于 mark、upvote、CTA 按钮 —— **不要做饱和满屏背景**。画布保持白；区域填充只用上表的浅 tint 底（hero band、callout box）。
 
 ## 图标
 
@@ -88,7 +110,7 @@ PH 几乎全部使用 **Inter**；logotype 用自定义圆滑显示字体，但 
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   width: 56px; height: 64px; border-radius: 8px;
   background: #FFFFFF; border: 2px solid #FF6154; color: #FF6154;
-  font-family: "Inter", sans-serif; font-weight: 700;
+  font-family: "IBMPlexMono", monospace; font-weight: 700;
 }
 .ph-upvote .count {
   font-size: 14px; line-height: 1; margin-top: 2px;
@@ -114,6 +136,6 @@ PH 是对话感、有活力的 —— 视频也要对得上。
 - ❌ 不要把 kitty 放进 P disc 里面。disc 只是字母 P；猫是单独的 marketing 资产。
 - ❌ 不要用 Helvetica / Arial 替代 Inter（仅 preview 可临时 fallback）。
 - ❌ Logotype 不要小写或斜体。永远是 "Product Hunt"，两个首字母大写的单词。
-- ❌ 不要把橙做大面积背景。canvas 保持白；橙只用在 mark、upvote、CTA pill 上。
+- ❌ 不要把**饱和**橙做满屏背景。canvas 保持白；饱和橙只用在 mark、upvote、CTA pill 上；区域底色用浅橙 `#FFF1ED` 等 tint。
 - ❌ 不要用厚 drop shadow。PH 用 1px 边框 + 最多极淡 hover lift。
 - ❌ Hero 字号不要超过 160px。
