@@ -27,7 +27,7 @@ Mood：严肃、技术、克制、编辑感。适合 AI、SaaS、编程、商业
 --pine:      #3e8fb0
 ```
 
-字体：`NotoSerifSC` 用于中文标题 + `NotoSansSC` 用于中文正文 / 字幕 + `IBMPlexMono` 用于英文、数据与代码。
+字体：`NotoSansSC` 用于中文标题、正文与字幕 + `IBMPlexMono` 用于英文、数据与代码。
 
 ⚠️ Moon 不是手绘风。除非用户明确要求把手绘元素融进 Moon 风格，否则不要使用 `MaShanZheng`、`LongCang`、`Caveat` 或 `PatrickHand`。
 

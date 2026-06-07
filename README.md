@@ -34,4 +34,4 @@
 | 风格 | 参考文件 | 字体 | 适用场景 |
 |------|---------|------|---------|
 | **Rosé Pine Dawn**（默认建议） | `references/design-dawn.md` | Caveat、PatrickHand、MaShanZheng、LongCang | 温暖、手绘风的讲解视频 |
-| **Rosé Pine Moon** | `references/design-moon.md` | NotoSerifSC、NotoSansSC、IBMPlexMono | 深色、严肃的技术 / 编辑向内容 |
+| **Rosé Pine Moon** | `references/design-moon.md` | NotoSansSC、IBMPlexMono | 深色、严肃的技术 / 编辑向内容 |
