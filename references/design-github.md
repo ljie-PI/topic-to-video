@@ -78,14 +78,14 @@
 
 | 用途 | 字体 | 字重 | 备注 |
 | --- | --- | --- | --- |
-| 中文标题 / Hero | `NotoSerifSC` | 700 | 引自 Moon；严肃编辑感 |
-| 中文 section 标题 | `NotoSerifSC` | 600 |  |
+| 中文标题 / Hero | `NotoSansSC` | 700 | 引自 Moon |
+| 中文 section 标题 | `NotoSansSC` | 600 |  |
 | 中文正文 | `NotoSansSC` | 400 |  |
 | 中文字幕 | `NotoSansSC` | 500 |  |
 | Repo path / 数据 / 命令 / 英文 | `IBMPlexMono` | 400 / 600 | `owner / repo`、星数、代码、语言名 |
 | 拉丁品牌显示（可选） | `Mona Sans VF` | 600 | 仅当 workspace 提供该字体时用于纯英文 hero / 标签；无则回退 `IBMPlexMono` |
 
-**绝不要用 Mona Sans 显示中文** —— 它没有 CJK 字形。中文一律走 `NotoSerifSC` / `NotoSansSC`。
+**绝不要用 Mona Sans 显示中文** —— 它没有 CJK 字形。中文一律走 `NotoSansSC`。
 
 **全部数据读数必须** `font-variant-numeric: tabular-nums`，避免动画计数时数字宽度抖动。
 
@@ -141,7 +141,7 @@
 
 ## 不要做
 
-- ❌ 不要用 Mona Sans 渲染中文（无 CJK 字形）。中文一律走 `NotoSerifSC` / `NotoSansSC`；Mona Sans 仅作可选拉丁品牌显示。
+- ❌ 不要用 Mona Sans 渲染中文（无 CJK 字形）。中文一律走 `NotoSansSC`；Mona Sans 仅作可选拉丁品牌显示。
 - ❌ 不要给 Octocat 染色。白底黑、黑底白，仅此而已。
 - ❌ 不要给卡片加 drop shadow。GitHub 用 1px 边框。阴影 = 非 GitHub 感。
 - ❌ 不要引入第 5 个 accent 色。在上面捕获的色板里挑。

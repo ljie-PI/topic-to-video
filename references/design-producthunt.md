@@ -56,14 +56,14 @@
 
 | 用途 | 字体 | 字重 | 备注 |
 |------|------|------|------|
-| 中文标题 / Hero | `NotoSerifSC` | 700 | 引自 Moon |
-| 中文 section 标题 | `NotoSerifSC` | 600 | |
+| 中文标题 / Hero | `NotoSansSC` | 700 | 引自 Moon |
+| 中文 section 标题 | `NotoSansSC` | 600 | |
 | 中文正文 / tagline / meta | `NotoSansSC` | 400 / 500 | |
 | 中文字幕 | `NotoSansSC` | 500 | |
 | 数字 / upvote / 英文数据 | `IBMPlexMono` | 600 | tabular-nums |
 | 拉丁品牌显示（可选） | `Inter`（variable） | 700 / 800 | 仅当 workspace 提供；纯英文 hero / 产品名，紧排 -0.02em；无则回退 `NotoSansSC` |
 
-**绝不要用 Inter 显示中文长串**（无 CJK 字形）；中文一律走 `NotoSerifSC` / `NotoSansSC`。所有读数 `font-variant-numeric: tabular-nums`。
+**绝不要用 Inter 显示中文长串**（无 CJK 字形）；中文一律走 `NotoSansSC`。所有读数 `font-variant-numeric: tabular-nums`。
 
 ## 视频尺寸（覆盖网页常规尺寸）
 

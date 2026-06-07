@@ -122,7 +122,6 @@ for index, url in enumerate(urls):
         destination.write_bytes(fetch(url))
     css = css.replace(url, filename)
 
-css = css.replace("'Noto Serif SC'", "'NotoSerifSC'")
 css = css.replace("'Noto Sans SC'", "'NotoSansSC'")
 css = css.replace("'IBM Plex Mono'", "'IBMPlexMono'")
 css = css.replace("'Ma Shan Zheng'", "'MaShanZheng'")
@@ -143,7 +142,7 @@ download_dawn() {
 download_moon() {
   download_google_fonts \
     "moon" \
-    "https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap"
+    "https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap"
 }
 
 case "$STYLE" in
