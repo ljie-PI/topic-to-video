@@ -49,7 +49,7 @@
 2. 对每个段落，通读其旁白文本，遍历 `material-catalog.json` 中所有图片和视频 clip 的 `semantic_description`，对每个候选素材给出 1-10 的匹配分与理由（理由要对应旁白的具体内容，不要泛泛而谈）。
 3. **全局唯一分配**：每个素材（图片 / 视频 clip）最多分配给一个段落。按匹配分做全局贪心分配——分数最高的 (段落, 素材) 配对先定，已被占用的素材不再分配给其他段落；每个段落最终最多得到一个主素材。
 4. 段落在 catalog 中没有可用素材（候选分均较低，或合适素材已被占用且无次优）时，显式标记 `"no_match": true`，**不复用已被占用的素材**，留给纯文字 scene。
-5. **连续同素材合并**：相邻段落分配到同一素材（同一图片，或同一视频的同一 clip）且旁白都在讲该素材时，合并为一个 scene。合并后该素材连续展示，时长可超过 8s；被合并的每个原段落各自成为该 scene 的一个 `text_beat`，文本信息按原每 5-8s 节奏刷新/轮换。
+5. **连续同素材合并**：相邻段落分配到同一素材（同一图片，或同一视频的同一 clip）且旁白都在讲该素材时，合并为一个 scene。合并后该素材连续展示，时长可超过 8s；被合并的每个原段落各自成为该 scene 的一个 `text_beat`，文本信息按原每 5-8s 节奏刷新/轮换。`text_beat` 是 Phase 8 的句子级显示单元：下游根据 transcript 找到对应完整句子的开始时间，并在该句开始前短暂提前显示相关文本信息。
 6. 顺序编号最终 scene（`scene_1`, `scene_2`, ...）并输出 `scene-material-suggestions.json`，结构如下：
 
 ```json
@@ -59,8 +59,15 @@
     "material_ref": "img_001",
     "reason": "图中展示了 X，与旁白提到的 Y 直接对应",
     "text_beats": [
-      {"narration_excerpt": "前 20 字..."},
-      {"narration_excerpt": "前 20 字..."}
+      {
+        "narration_excerpt": "前 20 字...",
+        "sentence_excerpt": "用于定位完整句子的短句...",
+        "visual_role": "headline | bullet | callout | data_label"
+      },
+      {
+        "narration_excerpt": "前 20 字...",
+        "sentence_excerpt": "用于定位完整句子的短句..."
+      }
     ]
   },
   {
@@ -68,7 +75,10 @@
     "material_ref": "2MJDdzSXL74:12.0-18.5",
     "reason": "该片段演示了 Z 流程，配合旁白对 Z 的描述",
     "text_beats": [
-      {"narration_excerpt": "..."}
+      {
+        "narration_excerpt": "...",
+        "sentence_excerpt": "..."
+      }
     ]
   },
   {
@@ -76,7 +86,10 @@
     "no_match": true,
     "material_ref": null,
     "text_beats": [
-      {"narration_excerpt": "..."}
+      {
+        "narration_excerpt": "...",
+        "sentence_excerpt": "..."
+      }
     ]
   }
 ]
@@ -86,5 +99,7 @@
 - 每个素材（图片 / 视频 clip）最多用于一个 scene，不复用。
 - `no_match` 的 scene 不强行填素材，留空让 HyperFrames sub-agent 用纯排版 / 文字卡片处理。
 - 合并 scene 中素材展示可超 8s，但 `text_beats` 仍按原每 5-8s 节奏刷新。
+- `text_beats[].sentence_excerpt` 是给 Phase 8 定位完整句子开始时间用的短句，不是版式设计。它应能在 `transcribe/transcript.json` 对应句子中找到；如果省略，Phase 8 用 `narration_excerpt` 自行匹配完整句子。
+- `text_beats[].visual_role` 只是语义建议（如 `headline`、`bullet`、`callout`、`data_label`），不指定具体布局；实际排版仍由 Phase 8 根据旁白、素材尺寸和 peak-state audit 决定。
 
 输出到 `scene-material-suggestions.json`（与 `narration.txt` 同级）。

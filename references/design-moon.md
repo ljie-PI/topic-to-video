@@ -58,14 +58,16 @@
 
 - 紧凑的平面 panel 和严肃的编辑式 data block。
 - 高亮应表现为线、tag 或小标记，而不是大面积的亮色填充。
-- 避免厚重阴影和俏皮装饰。
+- 背景默认是 `#232136` 纯色 + 极淡网格 / 细线 / 低对比结构；环境装饰只能是 flat / line-based。
+- 图片 / 视频素材默认无可见卡片框、无 border、无 outline、无 padding、无 shadow、无 glow、无可见容器底色。
+- 避免厚重阴影、发光层和俏皮装饰。
 
 ## 动效
 
 - 入场应当克制：`power3.out`、`expo.out`、`sine.out`。
 - 位移幅度比 Dawn 小：`y: 20-44`、`x: 20-40`、`scale: 0.96-1`。
 - 除非内容需要罕见的强调瞬间，否则避免 bouncy 的 `back.out(1.7)`。
-- 环境装饰要克制：网格、细线、小轨道标记、终端式 cursor 或图谱节点。
+- 环境装饰要克制：网格、细线、小轨道标记、终端式 cursor 或图谱节点。它们必须是 flat / line-based，不要做成 radial glow、blurred orb、neon halo 或发光阴影。
 
 ## 不要做
 
@@ -73,5 +75,8 @@
 - ❌ 不要在 Moon 中使用 `MaShanZheng`、`LongCang`、`Caveat` 或 `PatrickHand`，除非用户明确要求手绘混搭对比。
 - ❌ 不要把 `#6e6a86` 用作正文。
 - ❌ 不要在深色背景上使用满屏 linear gradient。
+- ❌ 不要使用 `radial-gradient` spotlight、localized glow、ambient orb、neon halo 或发光阴影。
+- ❌ 不要给图片 / 视频素材加可见 border、outline、padding、卡片底、shadow、glow 或 inset 框感。
+- ❌ 不要把 foreground caption、tag、badge、callout、label 压在图片 / 视频素材之上；需要说明素材时放到素材外部信息区。
 - ❌ 同一个 scene 的主内容里不要叠加超过一种 accent 色。
 - ❌ 不要把 accent 色做大面积背景；只用作线、tag、数字或小符号。
