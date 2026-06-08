@@ -21,26 +21,24 @@ HyperFrames sub-agent 拥有以下工作：
 Prompt 示例：
 
 ```text
-Read composition-brief.md in the current workspace and produce the deliverables.
-Use the hyperframes and hyperframes-cli skills. You own scene segmentation,
-material mapping, composition design, animation, lint/inspect fixes, and final
-rendering. Before writing final HTML/CSS/GSAP, create a Scene Layout Inventory
-in composition/DESIGN.md: for every scene, record narration summary,
-material_ref, material width/height + aspect ratio, text beats, chosen layout
-archetype, peak-state layout audit, and sentence-level display timings. Before
-the FIRST render, do a self-audit against the Critical Constraints in
-composition-brief.md (especially: subtitle is a single global fixed element
-anchored at the bottom and never wraps; subtitle background shrink-fits text
-instead of using fixed/100% width; no element overflows the viewport;
-simultaneously-shown elements don't overlap; foreground text/tags/callouts do
-not cover image/video materials; media has no visible border/padding/card
-frame/shadow/glow; title text boxes never wrap to 2+ lines; font max/min <= 3;
-Moon/dark-tech scenes have no radial spotlight/glow/orb; entrance tweens do not
-blanket-use immediateRender:false and non-media elements have deterministic
-hidden initial states). Fix what static inspection can catch before rendering.
-Iterate until composition/renders/final.mp4 exists and HyperFrames lint/inspect
-have no errors. Render with `--workers 1` to avoid odd-height frame issues on
-this machine.
+读取当前工作区的 composition-brief.md，并产出所有 deliverables。
+使用 hyperframes 和 hyperframes-cli skills。scene 切分、素材映射、
+composition 设计、动画、lint/inspect 修复和最终渲染都由你负责。
+在编写最终 HTML/CSS/GSAP 之前，先在 composition/DESIGN.md 中创建
+「Scene Layout Inventory（逐 scene 版式清单）」：每个 scene 记录旁白摘要、
+material_ref、素材 width/height + aspect ratio、text beats、选择的 layout
+archetype、peak-state layout audit，以及句子级显示时机。第一次 render
+之前，对 composition-brief.md 中的 Critical Constraints 做 self-audit，
+尤其检查：字幕是单个全局 fixed 底部元素且不换行；字幕背景宽度随文本
+shrink-to-fit，不使用固定宽 / 100% 宽；没有元素溢出 viewport；同时显示
+的元素不重叠；foreground 文本 / tag / callout 不覆盖图片或视频素材；
+素材没有可见 border / padding / 卡片框 / shadow / glow；标题文本框不折成
+2+ 行；同一 scene 字号 max/min <= 3；Moon / 深色技术 scene 没有 radial
+spotlight / glow / orb；entrance tween 不要 blanket 使用
+immediateRender:false，非素材元素必须有确定的 hidden 初态。先修复静态检查
+能发现的问题，再开始 render。迭代直到 composition/renders/final.mp4 存在，
+且 HyperFrames lint/inspect 无错误。render 必须使用 `--workers 1`，避免
+本机出现奇数高度帧问题。
 ```
 
 如果环境里没有原生 sub-agent 工具，仅当 CLI fallback 能把上面那段 prompt 原样传过去、并让 coding sub-agent 自己去读 `composition-brief.md` 时，才可以接受。
@@ -51,10 +49,10 @@ this machine.
 
 要求 sub-agent 在第一次 render 前完成并在 `composition/DESIGN.md` 中留下可读记录：
 
-1. **Scene Layout Inventory 覆盖每个 scene**：每行包含 `scene_id`、旁白摘要、`material_ref`、素材尺寸 / aspect ratio、text beats、layout archetype、peak-state audit 结果、以及每个非素材元素对应的完整旁白句子和出现时间点。
+1. **逐 scene 版式清单覆盖每个 scene**：每行包含 `scene_id`、旁白摘要、`material_ref`、素材尺寸 / aspect ratio、text beats、layout archetype、peak-state audit 结果、以及每个非素材元素对应的完整旁白句子和出现时间点。
 2. **Peak-state layout audit**：对每个 scene，先按“所有非字幕元素都显示”的状态检查元素是否溢出 viewport / 内容区、是否互相覆盖、是否覆盖 catalog 素材、素材是否 letterbox / pillarbox、内容区空白面积是否 > 10%、构图是否明显失衡 / 不成型。失败先调整布局，再写动画。
 3. **句子级显示时序**：把 transcript 按完整句子切分；每个非素材文本元素在它服务的句子开始前短暂提前出现，而不是 scene start 一次性出现。旧 text beat 需要淡出或降级，不能永久累积。
-4. **禁用模式扫描**：检查 `composition/index.html` / CSS / GSAP 中不得出现固定宽字幕框、`width:100%` 字幕遮罩、大 `min-width` 字幕框、素材 `width + max-height/height` 同时约束、素材 border / outline / padding / shadow / glow / 卡片底、foreground overlay、`radial-gradient` spotlight / ambient orb / localized glow，以及所有 entrance tween blanket `immediateRender:false`。
+4. **禁用模式扫描**：检查 `composition/index.html` / CSS / GSAP 中不得出现固定宽字幕框、`width:100%` 字幕遮罩、大 `min-width` 字幕框、素材 `width + max-height/height` 同时约束、素材 border / outline / padding / shadow / glow / 卡片底、前景覆盖素材、`radial-gradient` spotlight / ambient orb / localized glow，以及所有 entrance tween blanket `immediateRender:false`。
 
 #### 8.3 — sanity-check 结果
 
@@ -210,7 +208,7 @@ python3 scripts/vision-analyze.py \
 | Upstream #9（素材无边框 / 无卡片底 / 无 padding / 无 shadow/glow） | 8.2a 禁用模式扫描 + Step 5 ⑬ |
 | Upstream #11（素材唯一性） | Step 3 |
 | Upstream #12（字幕安全区 / 锚点） | Step 5 ⑦（侵入）+ ⑪（锚点稳定） |
-| Upstream #13（每 scene 按旁白与素材尺寸自适应布局） | 8.2a Scene Layout Inventory + Step 5 ⑭ |
+| Upstream #13（每 scene 按旁白与素材尺寸自适应布局） | 8.2a 逐 scene 版式清单 + Step 5 ⑭ |
 | Upstream #14（peak-state layout audit） | 8.2a peak-state audit 记录 + Step 5 ②③⑥⑧⑬⑭ |
 | Upstream #15（DESIGN.md scene inventory） | 8.2a 静态检查 |
 | Style #12（scene 间过渡） | 仅创建期 |
