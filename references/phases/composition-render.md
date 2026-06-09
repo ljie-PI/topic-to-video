@@ -1,6 +1,6 @@
 ### Phase 8 — 委派 HyperFrames Composition + Render
 
-从这一步开始，composition 由一个使用 `hyperframes` 与 `hyperframes-cli` skills 的 coding sub-agent 拥有。`topic-to-video` 主 agent 只负责准备上游资源、写一份精简的 handoff brief、调用 sub-agent，并对返回的 MP4 做 sanity check。
+从这一步开始，composition 由一个使用 `hyperframes` 与 `hyperframes-cli` skills 的 coding sub-agent 拥有。`topic-to-video` 主 agent 只负责准备上游资源、写一份精简的 composition handoff、物化固定 contract / design references、调用 sub-agent，并对返回的 MP4 做 sanity check。
 
 HyperFrames sub-agent 拥有以下工作：
 - 基于 `narration.txt` 和 `transcribe/transcript.json` 切分 scene
@@ -10,25 +10,40 @@ HyperFrames sub-agent 拥有以下工作：
 - `composition/index.html` 和 `composition/DESIGN.md`
 - `hyperframes lint`、`hyperframes inspect`，以及渲染迭代
 
-#### 8.1 — 写 `composition-brief.md`
+#### 8.1 — 写 `composition-handoff.md`
 
-从 `references/composition-brief-template.md` 出发，写出 `{work_dir}/{topic_name}/composition-brief.md`，填入项目 metadata、输入路径，以及来自 Phase 1 的 style hint。 brief 要简短。
+从 `references/composition-handoff-template.md` 出发，写出 `{work_dir}/{topic_name}/composition-handoff.md`，填入项目 metadata、输入路径、来自 Phase 1 的 style hint，以及从用户输入 / follow-up feedback / `style-prompt.md` 提取的 `User-derived Customized Rules`。handoff 要简短，但 customized rules 必须可执行，不能只写抽象审美词。
+
+同时把固定 references 复制到项目工作区，供 sub-agent 从磁盘读取本地副本：
+
+- 必需：`references/composition-contract.md` → `{work_dir}/{topic_name}/references/composition-contract.md`
+- 如 handoff 指定 design route：`references/design-<theme>.md` → `{work_dir}/{topic_name}/references/design-<theme>.md`
+
+`composition-handoff.md` 只记录项目变量和 customized rules，不复制 / 摘要 contract 的 hard constraints。若 customized rule 与 contract hard constraints 冲突，必须在 handoff 的 Conflict handling 中写明；不能静默放宽 contract。
+
+Legacy fallback：旧项目若已存在 `{work_dir}/{topic_name}/composition-brief.md`，可以作为 legacy handoff 继续读取；新项目一律生成 `composition-handoff.md`。
 
 #### 8.2 — 调用一个 coding sub-agent
 
-优先使用当前客户端 / runtime 原生的 sub-agent 或委派工具。prompt 要简短，且应让 sub-agent 自己从磁盘读 brief 文件，而不是把整份 brief 拼进 shell 命令里。
+优先使用当前客户端 / runtime 原生的 sub-agent 或委派工具。prompt 要简短，且应让 sub-agent 自己从磁盘读 handoff / contract / design 文件，而不是把整份 contract 拼进 shell 命令里。
 
 Prompt 示例：
 
 ```text
-读取当前工作区的 composition-brief.md，并产出所有 deliverables。
+读取当前工作区的 composition-handoff.md，以及工作区本地 references/composition-contract.md。
+如果 handoff 指定了 references/design-*.md，也读取对应 design 文件。若任一必需文件缺失，
+停止并反馈主 agent，不要凭默认审美继续制作。产出所有 deliverables。
 使用 hyperframes 和 hyperframes-cli skills。scene 切分、素材映射、
 composition 设计、动画、lint/inspect 修复和最终渲染都由你负责。
 在编写最终 HTML/CSS/GSAP 之前，先在 composition/DESIGN.md 中创建
+「Reference Read Check」：确认已读取 composition-handoff.md、
+references/composition-contract.md 和指定 design 文件，并保留 contract 的
+Upstream / Critical / Style 规则编号。
+再创建
 「Scene Layout Inventory（逐 scene 版式清单）」：每个 scene 记录旁白摘要、
 material_ref、素材 width/height + aspect ratio、text beats、选择的 layout
 archetype、peak-state layout audit，以及句子级显示时机。第一次 render
-之前，对 composition-brief.md 中的 Critical Constraints 做 self-audit，
+之前，对 composition contract + handoff customized rules 做 self-audit，
 尤其检查：字幕是单个全局 fixed 底部元素且不换行；字幕背景宽度随文本
 shrink-to-fit，不使用固定宽 / 100% 宽；没有元素溢出 viewport；同时显示
 的元素不重叠；foreground 文本 / tag / callout 不覆盖图片或视频素材；
@@ -41,7 +56,7 @@ immediateRender:false，非素材元素必须有确定的 hidden 初态。先修
 本机出现奇数高度帧问题。
 ```
 
-如果环境里没有原生 sub-agent 工具，仅当 CLI fallback 能把上面那段 prompt 原样传过去、并让 coding sub-agent 自己去读 `composition-brief.md` 时，才可以接受。
+如果环境里没有原生 sub-agent 工具，仅当 CLI fallback 能把上面那段 prompt 原样传过去、并让 coding sub-agent 自己去读 `composition-handoff.md`、`references/composition-contract.md` 与指定 design 文件时，才可以接受。
 
 **不要**在主 agent 的会话里驱动 composition。
 
@@ -53,6 +68,7 @@ immediateRender:false，非素材元素必须有确定的 hidden 初态。先修
 2. **Peak-state layout audit**：对每个 scene，先按“所有非字幕元素都显示”的状态检查元素是否溢出 viewport / 内容区、是否互相覆盖、是否覆盖 catalog 素材、素材是否 letterbox / pillarbox、内容区空白面积是否 > 10%、构图是否明显失衡 / 不成型。失败先调整布局，再写动画。
 3. **句子级显示时序**：把 transcript 按完整句子切分；每个非素材文本元素在它服务的句子开始前短暂提前出现，而不是 scene start 一次性出现。旧 text beat 需要淡出或降级，不能永久累积。
 4. **禁用模式扫描**：检查 `composition/index.html` / CSS / GSAP 中不得出现固定宽字幕框、`width:100%` 字幕遮罩、大 `min-width` 字幕框、素材 `width + max-height/height` 同时约束、素材 border / outline / padding / shadow / glow / 卡片底、前景覆盖素材、`radial-gradient` spotlight / ambient orb / localized glow，以及所有 entrance tween blanket `immediateRender:false`。
+5. **Customized rules coverage**：逐条读取 `composition-handoff.md` 的 `User-derived Customized Rules`，在 `composition/DESIGN.md` 记录每条如何被布局 / 动画 / QA 方案覆盖；若发现它与 contract hard constraints 冲突，以 contract 为底线并反馈主 agent。
 
 #### 8.3 — sanity-check 结果
 
@@ -121,7 +137,7 @@ python3 scripts/vision-analyze.py \
 
 ```bash
 python3 scripts/vision-analyze.py \
-  --prompt "检查这帧画面 15 项视觉质量（参考 composition-brief.md：Critical #2/#6/#7-#11、Upstream Contract #8/#9/#12-#15、Style #13/#14）：① 图片有无模糊 / 关键信息被裁切；② 任何元素是否超出画面边界 / 被截断；③ 同时显示的元素之间有无重叠遮挡，尤其检查 foreground 文本/tag/callout 是否压在图片或视频素材之上；④ DOM 层次是否扁平（无 '框中套框'）+ 颜色对比度是否达标；⑤ 字号最大/最小比是否 ≤ 3；⑥ 内容区（视口去掉底部约 12-18% 字幕安全带后）有无 > 10% 视口的纯空白区域；⑦ 底部字幕安全带内除字幕条外是否混入了其他前景文本/callout/素材（侵入即 fail，全幅背景素材垫底不算）；⑧ 素材是否出现 letterbox / pillarbox：素材边缘外有无露出容器底色的等宽空带（上下或左右）—— 有则 fail；⑨ 画面上是否有横贯/纵贯的扫描线、扫光、sweep、进度扫描条等覆盖层（用来糊弄'非静止'要求的运动条纹）—— 有则 fail；⑩ 标题文本框是否折成 2+ 行（任一标题/主标题位文本出现换行即 fail，参考 Critical #11）；⑪ 底部字幕是否位置稳定：水平居中、垂直锚定在底部字幕安全带内（不偏上压住内容、不在画面中部漂移），参考 Upstream Contract #12；⑫ 字幕是否单行 + 背景遮罩宽度贴合当前文字（无固定宽/整行宽/大 min-width 造成的大片空遮罩），参考 Critical #6；⑬ 图片/视频素材是否有可见 border、outline、padding、卡片底、shadow、glow 或 inset 框感—— 有则 fail；⑭ 当前 scene 构图是否像固定模板硬套：与前后 scene 相同的素材位置/文本轨/卡片结构无明显内容理由，或没有根据素材横竖/方形比例调整布局；⑮ 非素材文字是否明显早于其对应完整句子大段提前出现，或多个 text beat 累积堆满屏幕。逐项回答 pass/fail + 理由" \
+  --prompt "检查这帧画面 15 项视觉质量（参考 composition contract + handoff：Critical #2/#6/#7-#11、Upstream Contract #8/#9/#12-#15、Style #13/#14，以及 handoff 中的 User-derived Customized Rules）：① 图片有无模糊 / 关键信息被裁切；② 任何元素是否超出画面边界 / 被截断；③ 同时显示的元素之间有无重叠遮挡，尤其检查 foreground 文本/tag/callout 是否压在图片或视频素材之上；④ DOM 层次是否扁平（无 '框中套框'）+ 颜色对比度是否达标；⑤ 字号最大/最小比是否 ≤ 3；⑥ 内容区（视口去掉底部约 12-18% 字幕安全带后）有无 > 10% 视口的纯空白区域；⑦ 底部字幕安全带内除字幕条外是否混入了其他前景文本/callout/素材（侵入即 fail，全幅背景素材垫底不算）；⑧ 素材是否出现 letterbox / pillarbox：素材边缘外有无露出容器底色的等宽空带（上下或左右）—— 有则 fail；⑨ 画面上是否有横贯/纵贯的扫描线、扫光、sweep、进度扫描条等覆盖层（用来糊弄'非静止'要求的运动条纹）—— 有则 fail；⑩ 标题文本框是否折成 2+ 行（任一标题/主标题位文本出现换行即 fail，参考 Critical #11）；⑪ 底部字幕是否位置稳定：水平居中、垂直锚定在底部字幕安全带内（不偏上压住内容、不在画面中部漂移），参考 Upstream Contract #12；⑫ 字幕是否单行 + 背景遮罩宽度贴合当前文字（无固定宽/整行宽/大 min-width 造成的大片空遮罩），参考 Critical #6；⑬ 图片/视频素材是否有可见 border、outline、padding、卡片底、shadow、glow 或 inset 框感—— 有则 fail；⑭ 当前 scene 构图是否像固定模板硬套：与前后 scene 相同的素材位置/文本轨/卡片结构无明显内容理由，或没有根据素材横竖/方形比例调整布局；⑮ 非素材文字是否明显早于其对应完整句子大段提前出现，或多个 text beat 累积堆满屏幕。逐项回答 pass/fail + 理由" \
   --images <随机抽的 frame_XXXX.jpg>
 ```
 
@@ -189,7 +205,7 @@ python3 scripts/vision-analyze.py \
 
 #### 8.5 — 约束 → QA 覆盖映射
 
-下表列出 `composition-brief.md` 中每条 Visual Quality Constraint 由哪一步 QA 覆盖。标「仅创建期」的项渲染后不可（或难以）从抽帧静态判定，主要靠 8.2 的创建期 self-audit 与 sub-agent 自查保证，不进入 post-render fail/重渲循环。
+下表列出 `references/composition-contract.md` 中每条 Visual Quality Constraint 由哪一步 QA 覆盖。标「仅创建期」的项渲染后不可（或难以）从抽帧静态判定，主要靠 8.2 的创建期 self-audit 与 sub-agent 自查保证，不进入 post-render fail/重渲循环。`composition-handoff.md` 中的 User-derived Customized Rules 需要由 sub-agent 在创建期 self-audit 中逐项覆盖；能从抽帧判断的项目也应进入 Step 5 spot-check 反馈。
 
 | 约束 | QA 覆盖 |
 |------|---------|
