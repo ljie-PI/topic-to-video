@@ -21,22 +21,38 @@ HyperFrames sub-agent 拥有以下工作：
 Prompt 示例：
 
 ```text
-Read composition-brief.md in the current workspace and produce the deliverables.
-Use the hyperframes and hyperframes-cli skills. You own scene segmentation,
-material mapping, composition design, animation, lint/inspect fixes, and final
-rendering. Before the FIRST render, do a self-audit against the Critical
-Constraints in composition-brief.md (especially: subtitle is a single global
-fixed element anchored at the bottom and never wraps; no element overflows the
-viewport; simultaneously-shown elements don't overlap; title text boxes never
-wrap to 2+ lines; font max/min <= 3) and fix what static inspection can catch
-before rendering. Iterate until composition/renders/final.mp4 exists and
-HyperFrames lint/inspect have no errors. Render with `--workers 1` to avoid
-odd-height frame issues on this machine.
+读取当前工作区的 composition-brief.md，并产出所有 deliverables。
+使用 hyperframes 和 hyperframes-cli skills。scene 切分、素材映射、
+composition 设计、动画、lint/inspect 修复和最终渲染都由你负责。
+在编写最终 HTML/CSS/GSAP 之前，先在 composition/DESIGN.md 中创建
+「Scene Layout Inventory（逐 scene 版式清单）」：每个 scene 记录旁白摘要、
+material_ref、素材 width/height + aspect ratio、text beats、选择的 layout
+archetype、peak-state layout audit，以及句子级显示时机。第一次 render
+之前，对 composition-brief.md 中的 Critical Constraints 做 self-audit，
+尤其检查：字幕是单个全局 fixed 底部元素且不换行；字幕背景宽度随文本
+shrink-to-fit，不使用固定宽 / 100% 宽；没有元素溢出 viewport；同时显示
+的元素不重叠；foreground 文本 / tag / callout 不覆盖图片或视频素材；
+素材没有可见 border / padding / 卡片框 / shadow / glow；标题文本框不折成
+2+ 行；同一 scene 字号 max/min <= 3；Moon / 深色技术 scene 没有 radial
+spotlight / glow / orb；entrance tween 不要 blanket 使用
+immediateRender:false，非素材元素必须有确定的 hidden 初态。先修复静态检查
+能发现的问题，再开始 render。迭代直到 composition/renders/final.mp4 存在，
+且 HyperFrames lint/inspect 无错误。render 必须使用 `--workers 1`，避免
+本机出现奇数高度帧问题。
 ```
 
 如果环境里没有原生 sub-agent 工具，仅当 CLI fallback 能把上面那段 prompt 原样传过去、并让 coding sub-agent 自己去读 `composition-brief.md` 时，才可以接受。
 
 **不要**在主 agent 的会话里驱动 composition。
+
+#### 8.2a — 首次 render 前 static / layout self-audit
+
+要求 sub-agent 在第一次 render 前完成并在 `composition/DESIGN.md` 中留下可读记录：
+
+1. **逐 scene 版式清单覆盖每个 scene**：每行包含 `scene_id`、旁白摘要、`material_ref`、素材尺寸 / aspect ratio、text beats、layout archetype、peak-state audit 结果、以及每个非素材元素对应的完整旁白句子和出现时间点。
+2. **Peak-state layout audit**：对每个 scene，先按“所有非字幕元素都显示”的状态检查元素是否溢出 viewport / 内容区、是否互相覆盖、是否覆盖 catalog 素材、素材是否 letterbox / pillarbox、内容区空白面积是否 > 10%、构图是否明显失衡 / 不成型。失败先调整布局，再写动画。
+3. **句子级显示时序**：把 transcript 按完整句子切分；每个非素材文本元素在它服务的句子开始前短暂提前出现，而不是 scene start 一次性出现。旧 text beat 需要淡出或降级，不能永久累积。
+4. **禁用模式扫描**：检查 `composition/index.html` / CSS / GSAP 中不得出现固定宽字幕框、`width:100%` 字幕遮罩、大 `min-width` 字幕框、素材 `width + max-height/height` 同时约束、素材 border / outline / padding / shadow / glow / 卡片底、前景覆盖素材、`radial-gradient` spotlight / ambient orb / localized glow，以及所有 entrance tween blanket `immediateRender:false`。
 
 #### 8.3 — sanity-check 结果
 
@@ -52,7 +68,7 @@ ls -la {work_dir}/{topic_name}/composition/renders/final.mp4
 
 #### 8.4 — Post-Render Visual QA Audit
 
-8.3 基础 sanity-check 通过后，主 agent 必须对 final.mp4 跑视觉抽帧 QA，覆盖 3 项**必须 render 后才能查**的质量项（静帧 ≤ 2s / 同图不跨 scene 复用 / 旁白与画面一致），以及 12 项静帧检查的复核。
+8.3 基础 sanity-check 通过后，主 agent 必须对 final.mp4 跑视觉抽帧 QA，覆盖 3 项**必须 render 后才能查**的质量项（静帧 ≤ 2s / 同图不跨 scene 复用 / 旁白与画面一致），以及 15 项静帧检查的复核。
 
 **两种 QA 轮模式（控制成本，见 Step 4/5/7）**：
 - **首轮 = 全量审计**：对全片抽帧，旁白对齐按下方公式**抽样**（非逐句），静帧 / 复用 / spot-check 全片跑。
@@ -99,13 +115,13 @@ python3 scripts/vision-analyze.py \
 
 任何 `no` / `partial` 标记为 `narration_mismatch` 违规。**每条 finding 必须带 `scene_id`（用句子覆盖的秒数中点查 `data-scene-start/end` 区间得到，跨 scene 时列出所有命中）。**
 
-**Step 5 — 静帧 12 项复核（spot-check）**
+**Step 5 — 静帧 15 项复核（spot-check）**
 
 随机抽 `N = max(5, ceil(total_seconds / 30))` 张帧，对每张调 `vision-analyze.py`。**重渲轮**：只从上一轮 `affected_scenes` 中 scene 覆盖秒数对应的帧里抽样，不抽未改 scene 的帧。**例外**：若 `affected_scenes` 含 `global`（全局字幕容器被改动），字幕位置/遮罩会影响全片所有 scene（可能与未改 scene 的底部内容产生新遮挡或侵入安全带），此时字幕相关检查（⑦⑪⑫）**恢复全片抽样**，其余检查项仍可限定在被改 scene。
 
 ```bash
 python3 scripts/vision-analyze.py \
-  --prompt "检查这帧画面 12 项视觉质量（参考 composition-brief.md：Critical #2/#6/#7-#11、Upstream Contract #8/#9/#12、Style #13）：① 图片有无模糊 / 关键信息被裁切；② 任何元素是否超出画面边界 / 被截断；③ 同时显示的元素之间有无重叠遮挡；④ DOM 层次是否扁平（无 '框中套框'）+ 颜色对比度是否达标；⑤ 字号最大/最小比是否 ≤ 3；⑥ 内容区（视口去掉底部约 12-18% 字幕安全带后）有无 > 10% 视口的纯空白区域；⑦ 底部字幕安全带内除字幕条外是否混入了其他前景文本/callout/素材（侵入即 fail，全幅背景素材垫底不算）；⑧ 素材容器边框内是否出现 letterbox / pillarbox：素材与边框之间有露出容器底色的等宽空带（上下或左右）—— 有则 fail；⑨ 画面上是否有横贯/纵贯的扫描线、扫光、sweep、进度扫描条等覆盖层（用来糊弄'非静止'要求的运动条纹）—— 有则 fail；⑩ 标题文本框是否折成 2+ 行（任一标题/主标题位文本出现换行即 fail，参考 Critical #11）；⑪ 底部字幕是否位置稳定：水平居中、垂直锚定在底部字幕安全带内（不偏上压住内容、不在画面中部漂移），参考 Upstream Contract #12；⑫ 字幕是否单行 + 背景遮罩宽度贴合文字（无固定宽/整行宽造成的大片空遮罩），参考 Critical #6。逐项回答 pass/fail + 理由" \
+  --prompt "检查这帧画面 15 项视觉质量（参考 composition-brief.md：Critical #2/#6/#7-#11、Upstream Contract #8/#9/#12-#15、Style #13/#14）：① 图片有无模糊 / 关键信息被裁切；② 任何元素是否超出画面边界 / 被截断；③ 同时显示的元素之间有无重叠遮挡，尤其检查 foreground 文本/tag/callout 是否压在图片或视频素材之上；④ DOM 层次是否扁平（无 '框中套框'）+ 颜色对比度是否达标；⑤ 字号最大/最小比是否 ≤ 3；⑥ 内容区（视口去掉底部约 12-18% 字幕安全带后）有无 > 10% 视口的纯空白区域；⑦ 底部字幕安全带内除字幕条外是否混入了其他前景文本/callout/素材（侵入即 fail，全幅背景素材垫底不算）；⑧ 素材是否出现 letterbox / pillarbox：素材边缘外有无露出容器底色的等宽空带（上下或左右）—— 有则 fail；⑨ 画面上是否有横贯/纵贯的扫描线、扫光、sweep、进度扫描条等覆盖层（用来糊弄'非静止'要求的运动条纹）—— 有则 fail；⑩ 标题文本框是否折成 2+ 行（任一标题/主标题位文本出现换行即 fail，参考 Critical #11）；⑪ 底部字幕是否位置稳定：水平居中、垂直锚定在底部字幕安全带内（不偏上压住内容、不在画面中部漂移），参考 Upstream Contract #12；⑫ 字幕是否单行 + 背景遮罩宽度贴合当前文字（无固定宽/整行宽/大 min-width 造成的大片空遮罩），参考 Critical #6；⑬ 图片/视频素材是否有可见 border、outline、padding、卡片底、shadow、glow 或 inset 框感—— 有则 fail；⑭ 当前 scene 构图是否像固定模板硬套：与前后 scene 相同的素材位置/文本轨/卡片结构无明显内容理由，或没有根据素材横竖/方形比例调整布局；⑮ 非素材文字是否明显早于其对应完整句子大段提前出现，或多个 text beat 累积堆满屏幕。逐项回答 pass/fail + 理由" \
   --images <随机抽的 frame_XXXX.jpg>
 ```
 
@@ -179,7 +195,7 @@ python3 scripts/vision-analyze.py \
 |------|---------|
 | Critical #1（每个 scene 5-8s） | 每轮解析 `data-scene-start/end` 区间校验时长（确定性、无 vision 成本，post-render 每轮都查）；时长是否「合理对应内容节奏」仅创建期 |
 | Critical #2（静止 ≤ 2s） | Step 2（ffmpeg scene 滤波 / phash） |
-| Critical #3（多文本随旁白逐个出现） | Step 4 部分覆盖；逐个出现节奏主要仅创建期 |
+| Critical #3（多文本按句子级节奏逐个出现） | 8.2a 句子级显示时序 + Step 4 部分覆盖 + Step 5 ⑮ |
 | Critical #4（图片持续动效） | Step 2 间接（静帧检测）；动效类型仅创建期 |
 | Critical #5（素材占主体 ≥ 50%） | 仅创建期（未进 spot-check） |
 | Critical #6（字幕单行 / shrink-to-fit） | Step 5 ⑪⑫ |
@@ -189,10 +205,16 @@ python3 scripts/vision-analyze.py \
 | Critical #10（DOM 扁平 + 对比度） | Step 5 ④ |
 | Critical #11（字号比 / 标题不换行） | Step 5 ⑤（字号比）+ ⑩（标题不换行） |
 | Upstream #8/#9（素材比例 / 无 letterbox） | Step 5 ⑧ |
+| Upstream #9（素材无边框 / 无卡片底 / 无 padding / 无 shadow/glow） | 8.2a 禁用模式扫描 + Step 5 ⑬ |
 | Upstream #11（素材唯一性） | Step 3 |
 | Upstream #12（字幕安全区 / 锚点） | Step 5 ⑦（侵入）+ ⑪（锚点稳定） |
+| Upstream #13（每 scene 按旁白与素材尺寸自适应布局） | 8.2a 逐 scene 版式清单 + Step 5 ⑭ |
+| Upstream #14（peak-state layout audit） | 8.2a peak-state audit 记录 + Step 5 ②③⑥⑧⑬⑭ |
+| Upstream #15（DESIGN.md scene inventory） | 8.2a 静态检查 |
 | Style #12（scene 间过渡） | 仅创建期 |
 | Style #13（居中 / 无大块留白） | Step 5 ⑥ |
+| Style #14（Moon / 深色技术风无 glow/orb/spotlight） | 8.2a 禁用模式扫描 + Step 5 ⑨ |
+| 句子级文本显示 / text beat 不累积 | 8.2a 句子级显示时序 + Step 4 部分覆盖 + Step 5 ⑮ |
 | 旁白与画面一致 | Step 4 |
 
 新增/调整 QA 检查项时，同步更新本表，保持「规则 ↔ 检查」一一对账。
