@@ -14,7 +14,7 @@
 | `yt-dlp` | 放在 PATH 上——`scripts/video-download.py` 需要 |
 | `DASHSCOPE_API_KEY` | 设置在环境变量里（例如 `~/.zshrc`）——TTS/ASR 必需 |
 | `VLM_*`（可选） | 同时设 `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` 即可启用显式视觉模型；未设置时 `vision-analyze.py` 会回退到 agent 自己的 `view` 工具 |
-| sub-agent 支持（Phase 8） | 优先使用当前客户端原生的 sub-agent / 委派工具。仅当用一句短 prompt 让 agent 自己读 `composition-handoff.md` 与工作区本地 `references/composition-contract.md` 时，CLI fallback 才可接受 |
+| sub-agent 支持（Phase 8） | 优先使用当前客户端原生的 sub-agent / 委派工具。仅当用一句短 prompt 让 agent 自己读 `composition-handoff.md` 与工作区本地 `references/composition-rules.md` 时，CLI fallback 才可接受 |
 | `hyperframes` + `hyperframes-cli` skills（Phase 8） | 由 composition sub-agent 加载。sub-agent 的 HyperFrames CLI 间接依赖 Node.js；主 agent 自身不写 `composition/index.html`。文档：https://hyperframes.heygen.com/quickstart |
 
 ## Quick Start
