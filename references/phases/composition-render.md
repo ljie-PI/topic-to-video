@@ -47,7 +47,7 @@ composition 设计、动画、lint/inspect 修复和最终渲染。
 
 先修复 self-audit 能发现的问题，再开始 render。
 迭代直到 composition/renders/final.mp4 存在，且 HyperFrames lint/inspect 无错误。
-render 必须使用 `--workers 1`（单 worker 渲染，避免本机多 worker 产生奇数高度帧导致编码异常）。
+render 必须使用 `--workers 1`。
 ```
 
 如果环境里没有原生 sub-agent 工具，仅当 CLI fallback 能把上面那段 prompt 原样传过去、并让 coding sub-agent 自己去读 `composition-handoff.md`、`references/composition-rules.md` 与指定 design 文件时，才可以接受。
