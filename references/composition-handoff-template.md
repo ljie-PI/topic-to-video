@@ -1,10 +1,10 @@
 # Composition Handoff — <TOPIC>
 
-本文件是每个视频项目的 Phase 8 handoff，位于项目工作区根目录。它只记录本项目变量和用户定制约束；固定 hard rules 来自工作区本地副本 `references/composition-rules.md`。
+本文件位于项目工作区根目录。它记录本项目变量、输入路径、style hint、用户定制约束和冲突说明；固定规则与 QA 协议来自工作区本地副本 `references/composition-rules.md`。
 
 ## Required References
 
-Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前，把这些文件物化到项目工作区，并在本节写入实际相对路径。
+Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前物化这些文件，并在本节写入实际相对路径。
 
 - Rules：`references/composition-rules.md`（必需；从 skill 的 `references/composition-rules.md` 复制到项目工作区）
 - Design：`references/design-<theme>.md`（如适用；从 skill 的对应 design 文件复制到项目工作区）
@@ -18,16 +18,18 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前，把这些文件物
 - Orientation：<1920x1080 | 1080x1920 | 1080x1440>
 - Output：`composition/renders/final.mp4`
 
-## Inputs
+## Expected Inputs
 
-路径相对于本 handoff，本 handoff 位于工作区根目录。
+路径相对于本 handoff；本 handoff 位于工作区根目录。
 
 - 最终解说音频：`voice_clone/narration.mp3`
 - 解说脚本：`narration.txt`
 - 带词级时间戳的 ASR transcript：`transcribe/transcript.json`
 - 素材 catalog：`material-catalog.json`
-- 场景-素材分配：`scene-material-suggestions.json`（如存在；按 Rules Upstream #11 视为素材→scene 的硬性分配）
+- 场景-素材分配：`scene-material-suggestions.json`（如存在）
 - 已预置字体：`fonts/`
+
+输入文件的固定解释规则以 `references/composition-rules.md` 为准。
 
 ## Style Hint
 
@@ -41,7 +43,7 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前，把这些文件物
 - `references/design-moon.md` —— 深色技术 / 编辑氛围参考
 - `references/palettes.md` —— 备选的 mood / palette 路由
 
-若上方 Required References 未指定 design 文件，这些参考只是 style hint，不是实现规范。若已指定 design 文件，以 design 文件中的具体数值（配色 hex 值、字体族、字重）为准；Style Hint 的自由格式描述退为补充说明。
+若 Required References 未指定 design 文件，这些参考只是 style hint，不是实现规范。若已指定 design 文件，以 design 文件中的具体数值为准；Style Hint 的自由格式描述退为补充说明。
 
 ## User-derived Customized Rules
 
@@ -56,12 +58,19 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前，把这些文件物
 - <规则 1：尽量保留用户原话，必要时改写为可执行约束>
 - <规则 2>
 
-### Conflict handling
+## Rule Application Notes
 
-- Customized rules 只写在本 handoff 中；无论是收紧还是放宽要求，都不得修改或覆盖 `references/composition-rules.md`。
-- 如果 customized rule 与 rules 文件冲突，主 agent 必须在本 handoff 中写明冲突，并在调用 sub-agent 前向用户确认。
-- 如果 customized rule 与 design 文件冲突，以 customized rule 优先；design 文件退为风格参考。
-- HyperFrames sub-agent 遇到未标注冲突时，必须以 rules 文件为底线，并在 `composition/DESIGN.md` 记录处理方式。
+`references/composition-rules.md` 的 Rule Boundary 是权威边界。Customized rules 可以补充项目偏好，但不得修改或覆盖 rules 文件。
+
+### Conflict notes
+
+- <如果 customized rule 与 rules 文件冲突，在这里写明；没有则写 “None”。>
+
+### Design-file notes
+
+- <如果 customized rule 与 design 文件冲突，在这里写明采用哪条项目偏好；没有则写 “None”。>
+
+HyperFrames sub-agent 遇到未标注冲突时，必须以 `references/composition-rules.md` 为底线，并在 `composition/DESIGN.md` 记录处理方式。
 
 ## Project-specific Overrides
 
@@ -69,4 +78,12 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前，把这些文件物
 
 ## Deliverable Reminder
 
-最终 deliverables 与硬性质量规则以 `references/composition-rules.md` 为准。
+本项目期望产物：
+
+- `composition/index.html`
+- `composition/DESIGN.md`
+- `composition/renders/final.mp4`
+- `composition/qa-report.json`（执行 post-render visual QA 后）
+- `composition/qa-history.md`（执行 post-render visual QA 后）
+
+固定产物质量要求以 `references/composition-rules.md` 为准。
