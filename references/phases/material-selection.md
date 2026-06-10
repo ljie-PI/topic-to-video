@@ -39,7 +39,7 @@
 
    **Paper-origin entries（`source_type: "paper_pdf"`）：** 论文里的 figure 和 table 在 PDF 中本就带有权威的 caption（位于 `paper_metadata.figure_captions` / `table_captions`）。直接把这些 caption 作为 `semantic_description`，默认 `score: 8`。只对没有 caption 的论文素材跑 VLM。
 
-4. **组合**：把 `entry.text_excerpt` + 图片描述 + 各帧描述合成 catalog entry。**关键：** 对每个视频，写一份 `selected_clips` 列表，元素形如 `{start, end, reason, frame_paths[]}` —— 这些就是 Phase 5（解说）和 Phase 8（composition）会引用的片段。
+4. **组合**：把 `entry.text_excerpt` + 图片描述 + 各帧描述合成 catalog entry。**关键：** 对每个视频，写一份 `selected_clips` 列表，元素形如 `{start, end, reason, frame_paths[]}` —— 这些就是 Phase 5（脚本与场景-素材匹配）和 Phase 8（composition）会引用的片段。
 
 5. **过滤：** 丢掉 VLM 评分 <5/10 或者偏题的素材。不要把垃圾带进解说阶段。
 
@@ -79,7 +79,7 @@
 
 - `entries[*].slug` 在每个 URL 上唯一，与 harvest 输出目录名一致。
 - 每张图 / 每个视频都带一个 `id`（harvester 写出的文件 stem，例如 `img_001` 或 YouTube video id）。Phase 5/7/8 通过 **`material_ref`** 引用素材——schema 在 Phase 7 中首次定义时给出。Phase 8 的 coding sub-agent 负责把 `material_ref` 解析成 catalog entry → `local_path`；主 agent 永远不直接碰 `local_path`。
-- `semantic_description` 是结合话题 context 生成的叙事锚点描述（"适合用于说明 X 概念 / Y 论点"），而非纯粹的图像内容描述；Phase 5.5 和 Phase 8 的 HyperFrames sub-agent 都依赖它做匹配决策。
+- `semantic_description` 是结合话题 context 生成的叙事锚点描述（"适合用于说明 X 概念 / Y 论点"），而非纯粹的图像内容描述；Phase 5.5 的场景-素材匹配和 Phase 8 的 HyperFrames sub-agent 都依赖它做匹配决策。
 - **`width` / `height` 必须透传**：图片由 harvester 抓取时记录；视频由 `video-download.py` + `apply-video-download-result.py` 通过 ffprobe 写入 manifest，构建 catalog 时直接搬过来。Phase 8 的 HyperFrames sub-agent 用这两个字段为每个素材容器设置正确的宽高比，**禁止猜或假设 16:9**。若个别素材缺失（旧 manifest、抓取失败），catalog 里写 `null` 而不是省略字段；下游应当回退到 ffprobe 实测或居中适配，并在 `composition/DESIGN.md` 中标注。
 
 **输出：** `extract_frames/<slug>/<video-name>/`、`vision_analyze/<slug>/`、`material-catalog.json`。

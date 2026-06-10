@@ -1,6 +1,6 @@
 # Gotchas Catalog —— 上游 pipeline 踩坑清单
 
-本文件聚焦 `topic-to-video` 的上游问题：调研、抓取、TTS、ASR、确定性资源以及 handoff contract。HyperFrames composition、CSS、GSAP、lint、inspect 与渲染实现的坑请去看 `hyperframes`、`hyperframes-cli` 和 `gsap` 这三个 skill。
+本文件聚焦 `topic-to-video` 的上游问题：调研、抓取、TTS、ASR、确定性资源以及 handoff contract。`SKILL.md` 只保留必须常驻上下文的核心护栏；这里记录具体症状、原因和恢复方式。HyperFrames composition、CSS、animation/effect skills、lint、inspect 与渲染实现的坑请去看 `hyperframes`、`hyperframes-cli` 以及对应 skill（如 `gsap`、`animejs`、`waapi`、`css-animations`、`lottie`、`three`、`typegpu`）。Tailwind 属于静态 layout / style utility，不负责 render-critical motion timing。
 
 ## 1. 中文场景下避免使用 Whisper / HyperFrames Transcribe
 
@@ -97,3 +97,39 @@ scripts/merge-paper-manifest.py \
 - `playwright` import 出错：`pip install playwright`
 - `dashscope` import 出错：在 venv 里安装 DashScope SDK
 - `mineru` 缺失：`pip install "mineru[pipeline]"`
+
+## 12. Paper mode 不要跳过主论文解析
+
+用户给了 PDF 或论文 URL 时，不能只靠模型训练数据概括论文。先解析主论文，产出 `harvest_page/main-paper/metadata.json`，再把论文 figure / table 并入统一素材流。
+
+修复：用 `scripts/parse-pdf.py` 解析本地 PDF 或 URL；云端失败时按 MinerU 条目回退到本地或本地文件模式。
+
+## 13. catalog 未建立前不要写脚本或匹配素材
+
+Phase 5 只能引用 Phase 4 产出的 `material-catalog.json`。如果 catalog 还没建，脚本会凭空安排素材，后续 handoff 也无法追溯资源来源。
+
+修复：先完成 vision analyze 和 catalog 生成。用户明确跳过素材时，仍要在 Phase 5/8 中按“无素材”路径处理，不要伪造 `material_ref`。
+
+## 14. `harvest-pages.py` 返回 0 张图
+
+页面加载慢、cookie banner 或懒加载可能导致抓取结果为空。
+
+修复：调大 `--page-load-timeout`，必要时用共享 Chrome profile 先处理 cookie banner，再重跑抓取。
+
+## 15. `vision-analyze.py` 返回 `delegate_to_agent`
+
+这表示当前环境缺少可用 VLM 配置，脚本无法自动完成视觉分析。
+
+修复：设置 `VLM_API_KEY` / `VLM_BASE_URL` / `VLM_MODEL` 后重跑；如果没有 VLM，用 `view` 工具检查图片并手写分析结果。
+
+## 16. `WARN: anchor not found for X`
+
+字幕或 scene timing 锚点找不到，通常是大小写、标点、ASR 断句或 TTS 文本与 transcript 不一致。
+
+修复：从实际 `transcribe/transcript.json` 文本中挑 anchor，避免凭 `narration.txt` 原文硬配。
+
+## 17. 主 agent 不手写 composition HTML
+
+主 agent 只负责生成 `composition-handoff.md` 并物化固定 references。`composition/index.html`、场景布局、动画、lint/inspect 修复和渲染迭代都属于 Phase 8 HyperFrames coding sub-agent。
+
+修复：如果发现主 agent 已开始手写 HTML，停下并改为补全 handoff、rules 和素材引用；让 HyperFrames sub-agent 接管 composition。

@@ -1,6 +1,6 @@
 ### Phase 8 — 委派 HyperFrames Composition + Render
 
-从这一步开始，composition 交由一个使用 `hyperframes` 与 `hyperframes-cli` skills 的 coding sub-agent 负责执行。`topic-to-video` 主 agent 只负责准备上游资源、写 `composition-handoff.md`、物化固定 rules / design references、调用 sub-agent，并按 rules 执行 sanity-check / Visual QA / feedback loop。
+从这一步开始，composition 交由一个使用 `hyperframes` 与 `hyperframes-cli` skills 的 coding sub-agent 负责执行；动画 / 视觉效果可按项目需要使用 `gsap`、`animejs`、`waapi`、`css-animations`、`lottie`、`three` 或 `typegpu`。Tailwind 只作为静态布局 / 样式支持，不是 animation/effect adapter。`topic-to-video` 主 agent 只负责准备上游资源、写 `composition-handoff.md`、物化固定 rules / design references、调用 sub-agent，并按 rules 执行 sanity-check / Visual QA / feedback loop。
 
 #### 8.1 — 写 `composition-handoff.md`
 
@@ -30,11 +30,19 @@ Prompt 示例：
 如果必需文件缺失，停止并反馈主 agent。
 
 使用 hyperframes 和 hyperframes-cli skills 完成 scene 切分、素材映射、
-composition authoring、HTML/CSS/GSAP、pre-render self-audit、
+composition authoring、HTML/CSS、pre-render self-audit、
 lint/inspect、HTML-to-video render。
 
+Animation / effect skill 选择：
+- 如果 handoff 或用户明确指定 skill，优先使用该 skill；
+- 否则选择最小合适实现：css-animations / waapi 用于简单 DOM motion，gsap 用于 timeline/tween-heavy choreography，animejs 用于 Anime.js-specific 实现；
+- lottie 用于 Lottie / dotLottie 资产，three 用于 Three.js / WebGL scene 或 camera motion，typegpu 用于 WebGPU / WGSL shader / particle / liquid effects；
+- tailwind 只用于静态 layout / style utility，不负责 render-critical motion timing；
+- 只加载实际需要的 skill docs；
+- 在 composition/DESIGN.md 记录选择的 skill(s) 和原因。
+
 严格遵守 references/composition-rules.md：
-- Phase 8.2 — Sub-agent Execution Rules
+- Scope and Required References
 - Phase 8.3 — Pre-render Self-Audit Rules
 - Phase 8.4 — HTML-to-video Render Rules
 
@@ -65,4 +73,4 @@ sanity-check 通过后，主 agent 按 `references/composition-rules.md` 的 **P
 
 按 `references/composition-rules.md` 的 **Phase 8.7 — QA Feedback Loop** 决定进入 Phase 9、反馈 sub-agent 限定范围重渲，或触发止损交还用户。
 
-规则与 QA 覆盖关系见 `references/composition-rules.md` 的 **Phase 8.8 — QA Coverage Mapping**。
+规则与 QA 覆盖关系见 `references/composition-rules.md` 的 **Rule Coverage Matrix**。

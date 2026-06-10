@@ -47,6 +47,13 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前物化这些文件，
 
 若 Required References 未指定 design 文件，这些参考只是 style hint，不是实现规范。若已指定 design 文件，以 design 文件中的具体数值为准；Style Hint 的自由格式描述退为补充说明。
 
+## Animation / Effect Skill Preference
+
+- Preference：`None`，或用户指定的一个 / 多个 skill：`gsap` / `animejs` / `waapi` / `css-animations` / `lottie` / `three` / `typegpu`
+- Reason：用户或项目为何要求这些 skill；没有则写 “None”。
+
+Tailwind 可以作为静态 layout / style utility 偏好记录在 Style Hint 或 Project-specific Overrides 中，但不属于 animation/effect skill。若没有明确偏好，HyperFrames sub-agent 选择最小合适 skill(s)，并在 `composition/DESIGN.md` 记录原因。此字段只能补充项目偏好，不得覆盖 `references/composition-rules.md`。
+
 ## User-derived Customized Rules
 
 这些规则来自用户输入、project prompt、`style-prompt.md` 或主 agent 与用户确认过的偏好。它们是本项目的额外约束，不属于全局固定规则。
@@ -62,7 +69,7 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前物化这些文件，
 
 ## Rule Application Notes
 
-`references/composition-rules.md` 的 Rule Boundary 是权威边界。Customized rules 可以补充项目偏好，但不得修改或覆盖 rules 文件。
+`references/composition-rules.md` 的 Scope and Required References 是权威边界。Customized rules 可以补充项目偏好，但不得修改或覆盖 rules 文件。
 
 ### Conflict notes
 

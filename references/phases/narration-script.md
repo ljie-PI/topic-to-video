@@ -1,4 +1,8 @@
-### Phase 5 — 撰写解说脚本
+### Phase 5 — 生成解说脚本并匹配场景素材
+
+Phase 5 包含两个步骤：`Phase 5.1 — 撰写解说脚本` 产出用户确认后的 `narration.txt`；`Phase 5.5 — 场景-素材匹配建议` 基于确认后的脚本和 `material-catalog.json` 产出 `scene-material-suggestions.json`。
+
+#### Phase 5.1 — 撰写解说脚本
 
 **输入：** Phase 2 的研究 brief + Phase 4 的 `material-catalog.json` + 用户偏好的切入角度与时长。某段自然依赖某个具体视觉素材时，在正文里顺带提到对应的 catalog slug 或资源。**不要**在这里设计 HyperFrames 的 scene、卡片、时间轴或 `info_units`；scene 切分和视觉结构归 Phase 8 的 HyperFrames sub-agent。
 
@@ -37,7 +41,7 @@
 
 存到 `narration.txt`。
 
-### Phase 5.5 — 场景-素材匹配建议
+#### Phase 5.5 — 场景-素材匹配建议
 
 `narration.txt` 经用户确认后，在进入 Phase 6（TTS）之前，主 agent inline 完成此步骤（无需 sub-agent）。
 
