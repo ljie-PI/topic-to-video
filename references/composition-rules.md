@@ -119,7 +119,6 @@ Recommended authoring pattern:
 
 ## Phase 8.2 — Sub-agent Execution Rules
 
-- 如果用户 query 指定了 coding agent / 委派目标，优先使用该目标；否则使用当前客户端 / runtime 原生 sub-agent 或委派工具。
 - sub-agent 必须读取 `composition-handoff.md`、`references/composition-rules.md` 和 handoff 指定的 `references/design-<theme>.md`（如有）。
 - composition authoring、HTML/CSS/GSAP、HyperFrames lint/inspect 和 HTML-to-video render 都由 HyperFrames coding sub-agent 执行。
 - 主 agent 不在自己的会话里手工 patch `composition/index.html`；视觉修复必须反馈给 sub-agent。
