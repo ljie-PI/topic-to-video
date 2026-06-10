@@ -11,12 +11,11 @@ HyperFrames sub-agent 执行以下流程：
 
 #### 8.1 — 写 `composition-handoff.md`
 
-从 `references/composition-handoff-template.md` 出发，写出 `{work_dir}/{topic_name}/composition-handoff.md`，填入项目 metadata、输入路径、来自 Phase 1 的 style hint，以及从用户输入 / follow-up feedback / `style-prompt.md` 提取的 `User-derived Customized Rules`。Customized rules 必须可执行，不能只写抽象审美词。
+从 `references/composition-handoff-template.md` 出发，写出 `{work_dir}/{topic_name}/composition-handoff.md`，填入项目 metadata、输入路径、来自 Phase 1 的 style hint，以及从用户输入 / follow-up feedback / `style-prompt.md` 提取的 `User-derived Customized Rules`。Customized rules 必须可执行，不能只写抽象审美词。如果 handoff 指定 design route，同时把对应 `references/design-<theme>.md` 复制到 `{work_dir}/{topic_name}/references/design-<theme>.md`。
 
 同时把固定 references 复制到项目工作区，供 sub-agent 从磁盘读取本地副本：
 
 - 必需：`references/composition-rules.md` → `{work_dir}/{topic_name}/references/composition-rules.md`
-- 如 handoff 指定 design route：`references/design-<theme>.md` → `{work_dir}/{topic_name}/references/design-<theme>.md`
 
 `composition-handoff.md` 只记录项目变量和 customized rules，不复制 / 摘要 rules 文件中的 hard constraints。若 customized rule 与 rules 文件中的 hard constraints 冲突，必须在 handoff 的 Conflict handling 中写明；不能静默放宽 rules 文件。
 
