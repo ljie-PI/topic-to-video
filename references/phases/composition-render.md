@@ -23,7 +23,7 @@ Legacy fallback：旧项目若已存在 `{work_dir}/{topic_name}/composition-bri
 
 #### 8.2 — 调用一个 coding sub-agent
 
-优先使用当前客户端 / runtime 原生的 sub-agent 或委派工具。prompt 要简短，且应让 sub-agent 自己从磁盘读 handoff / rules / design 文件，而不是把整份 rules 文件 拼进 shell 命令里。
+优先使用当前客户端 / runtime 原生的 sub-agent 或委派工具。prompt 要简短，且应让 sub-agent 自己从磁盘读 `composition-handoff.md`、`references/composition-rules.md` 和指定的 `references/design-<theme>.md`，而不是把整份 rules 文件拼进 shell 命令里。
 
 Prompt 示例：
 
