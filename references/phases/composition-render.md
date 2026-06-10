@@ -17,7 +17,7 @@ HyperFrames sub-agent 执行以下流程：
 
 - 必需：`references/composition-rules.md` → `{work_dir}/{topic_name}/references/composition-rules.md`
 
-`composition-handoff.md` 只记录项目变量和 customized rules，不复制 / 摘要 rules 文件中的 hard constraints。若 customized rule 与 rules 文件中的 hard constraints 冲突，必须在 handoff 的 Conflict handling 中写明；不能静默放宽 rules 文件。
+`composition-handoff.md` 只记录项目变量和 customized rules，不复制 / 摘要 rules 文件中的 hard constraints。Customized rules 只能在 rules 文件基础上增加或收紧要求；如果用户偏好会放宽 hard constraints，必须在 handoff 中明确标注，不得直接覆盖 rules 文件。
 
 Legacy fallback：旧项目若已存在 `{work_dir}/{topic_name}/composition-brief.md`，可以作为 legacy handoff 继续读取；新项目一律生成 `composition-handoff.md`。
 
