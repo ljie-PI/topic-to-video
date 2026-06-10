@@ -23,7 +23,7 @@ Legacy fallback：旧项目若已存在 `{work_dir}/{topic_name}/composition-bri
 
 #### 8.2 — 调用一个 coding sub-agent
 
-优先使用当前客户端 / runtime 原生的 sub-agent 或委派工具。prompt 要简短，且应让 sub-agent 自己从磁盘读 `composition-handoff.md`、`references/composition-rules.md` 和指定的 `references/design-<theme>.md`。
+如果用户 query 指定了 coding agent / 委派目标，优先使用该目标；否则使用当前客户端 / runtime 原生的 sub-agent 或委派工具。prompt 要简短，且应让 sub-agent 自己从磁盘读 `composition-handoff.md`、`references/composition-rules.md` 和指定的 `references/design-<theme>.md`。
 
 Prompt 示例：
 
@@ -39,7 +39,7 @@ Prompt 示例：
 composition 设计、动画、lint/inspect 修复和最终渲染。
 
 在编写 HTML/CSS/GSAP 前，先在 composition/DESIGN.md 记录：
-1. Reference Read Check：确认已读取 handoff、rules 和 design 文件。
+1. Reference Read Check：确认已读取 `composition-handoff.md`、`references/composition-rules.md` 和 `references/design-<theme>.md`（如有）。
 2. Scene Layout Inventory：逐 scene 记录旁白摘要、material_ref、
    素材尺寸 / aspect ratio、text beats、layout archetype、
    peak-state layout audit 和句子级显示时机。
@@ -50,7 +50,7 @@ composition 设计、动画、lint/inspect 修复和最终渲染。
 render 必须使用 `--workers 1`。
 ```
 
-如果环境里没有原生 sub-agent 工具，仅当 CLI fallback 能把上面那段 prompt 原样传过去、并让 coding sub-agent 自己去读 `composition-handoff.md`、`references/composition-rules.md` 与指定 design 文件时，才可以接受。
+如果环境里没有原生 sub-agent 工具，仅当 CLI fallback 能把上面那段 prompt 原样传过去、并让 coding sub-agent 自己去读 `composition-handoff.md`、`references/composition-rules.md` 与指定的 `references/design-<theme>.md` 时，才可以接受。
 
 **不要**在主 agent 的会话里驱动 composition。
 
