@@ -184,7 +184,7 @@ ffmpeg -y -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 
 ### Step 3 — 素材跨 scene 复用检测
 
-按 `data-scene-id` 划分 scene，提取 catalog 素材 src。任一 catalog src 出现在多个 scene，记为 `reused_material` finding。通用 UI 贴图 / 装饰纹理 / 蒙版等非 catalog 资源不计。
+按 `data-scene-id` 划分 scene，提取 catalog 素材 src。任一 catalog src 出现在多个 scene，记为 `reused_material` finding，并记录所有命中的 `scene_ids`。通用 UI 贴图 / 装饰纹理 / 蒙版等非 catalog 资源不计。
 
 ### Step 4 — 旁白对齐检测
 
@@ -218,16 +218,24 @@ ffmpeg -y -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 
 ```json
 {
-  "static_frames": [],
-  "reused_materials": [],
-  "narration_mismatches": [],
-  "spot_check_fails": [],
-  "affected_scenes": [],
-  "verdict": "pass"
+  "static_frames": [
+    {"scene_id": "s4", "start_s": 12, "end_s": 17, "duration_s": 5}
+  ],
+  "reused_materials": [
+    {"src": "materials/example.png", "scene_ids": ["s3", "s7"]}
+  ],
+  "narration_mismatches": [
+    {"scene_id": "s5", "sentence": "...", "frames": ["frame_0034.jpg"], "verdict": "partial", "reason": "..."}
+  ],
+  "spot_check_fails": [
+    {"scene_id": "s8", "frame": "frame_0123.jpg", "issue": "字幕遮罩过宽", "detail": "..."}
+  ],
+  "affected_scenes": ["s3", "s4", "s5", "s7", "s8"],
+  "verdict": "fail"
 }
 ```
 
-`affected_scenes` 为所有 finding 的 `scene_id` 去重后按时间排序；`global` 固定排在最后。四类 finding 都为空时 `verdict = "pass"`。
+`affected_scenes` 为所有 finding 的 `scene_id` / `scene_ids` 去重后按时间排序；`global` 固定排在最后。四类 finding 都为空时 `verdict = "pass"`，并且 `affected_scenes` 为空。
 
 同时追加 `composition/qa-history.md`，记录轮次、模式、finding 数量、affected scenes 和反馈给 sub-agent 的修复摘要。
 

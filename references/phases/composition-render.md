@@ -13,7 +13,7 @@
 
 `composition-handoff.md` 只记录项目变量、实际输入路径、style hint、customized rules 和 conflict notes；固定规则来自 `references/composition-rules.md`，不得复制 / 摘要 / 覆盖。
 
-Legacy fallback：旧项目若已存在 `{work_dir}/{topic_name}/composition-brief.md`，可以作为 legacy handoff 继续读取；新项目一律生成 `composition-handoff.md`。
+Legacy fallback：旧项目若只有 `{work_dir}/{topic_name}/composition-brief.md`，主 agent 必须先把它迁移 / 归一化为 `composition-handoff.md`，再调用 sub-agent；sub-agent 仍统一读取 `composition-handoff.md`。
 
 #### 8.2 — 调用一个 coding sub-agent
 
