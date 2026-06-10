@@ -6,6 +6,7 @@ HyperFrames sub-agent 执行以下流程：
 - 读取时间轴输入：`narration.txt` 是纯文本解说脚本（段落通常用空行分隔）；`transcribe/transcript.json` 是句子数组，每项形如 `{ "begin": <ms>, "end": <ms>, "text": "...", "words": [{"text": "...", "begin": <ms>, "end": <ms>}] }`
 - 生成 scene timeline：按 `narration.txt` 的语义段落 / 完整句子组织视觉段落，并用 `transcribe/transcript.json` 的词级时间戳确定每个 scene 的 start/end；必要时按 5-8 秒约束拆分或合并相邻句子
 - 如需可复现或便于调试，把 scene timeline 写成 `transcribe/scene-timeline.json`，记录每个 scene 的 `scene_id`、`start`、`end`、覆盖的句子文本和对应 word range；这只是辅助产物，不取代 `composition/index.html` 中的 `data-scene-start/end`
+- 不把 scene timeline 固定成主 agent 脚本：scene 切分需要同时考虑旁白语义、素材映射、视觉节奏和 5-8 秒约束，归 HyperFrames sub-agent 决策；只有格式校验、锚点对齐等确定性辅助才适合脚本化
 - 基于 `material-catalog.json` 完成 material-to-scene 映射
 - 视觉信息设计、布局、排版、动画与转场
 - `composition/index.html` 和 `composition/DESIGN.md`
