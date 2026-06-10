@@ -28,30 +28,26 @@ Legacy fallback：旧项目若已存在 `{work_dir}/{topic_name}/composition-bri
 Prompt 示例：
 
 ```text
-读取当前工作区的 composition-handoff.md，以及工作区本地 references/composition-rules.md。
-如果 handoff 指定了 references/design-*.md，也读取对应 design 文件。若任一必需文件缺失，
-停止并反馈主 agent，不要凭默认审美继续制作。产出所有 deliverables。
-使用 hyperframes 和 hyperframes-cli skills。scene 切分、素材映射、
-composition 设计、动画、lint/inspect 修复和最终渲染都由你负责。
-在编写最终 HTML/CSS/GSAP 之前，先在 composition/DESIGN.md 中创建
-「Reference Read Check」：确认已读取 composition-handoff.md、
-references/composition-rules.md 和指定 design 文件，并保留 rules 文件的
-Upstream / Critical / Style 规则编号。
-再创建
-「Scene Layout Inventory（逐 scene 版式清单）」：每个 scene 记录旁白摘要、
-material_ref、素材 width/height + aspect ratio、text beats、选择的 layout
-archetype、peak-state layout audit，以及句子级显示时机。第一次 render
-之前，对 composition rules + handoff customized rules 做 self-audit，
-尤其检查：字幕是单个全局 fixed 底部元素且不换行；字幕背景宽度随文本
-shrink-to-fit，不使用固定宽 / 100% 宽；没有元素溢出 viewport；同时显示
-的元素不重叠；foreground 文本 / tag / callout 不覆盖图片或视频素材；
-素材没有可见 border / padding / 卡片框 / shadow / glow；标题文本框不折成
-2+ 行；同一 scene 字号 max/min <= 3；Moon / 深色技术 scene 没有 radial
-spotlight / glow / orb；entrance tween 不要 blanket 使用
-immediateRender:false，非素材元素必须有确定的 hidden 初态。先修复静态检查
-能发现的问题，再开始 render。迭代直到 composition/renders/final.mp4 存在，
-且 HyperFrames lint/inspect 无错误。render 必须使用 `--workers 1`，避免
-本机出现奇数高度帧问题。
+读取当前工作区的以下文件：
+- composition-handoff.md
+- references/composition-rules.md
+- handoff 指定的 references/design-*.md（如有）
+
+如果必需文件缺失，停止并反馈主 agent。
+
+使用 hyperframes 和 hyperframes-cli skills 完成 scene 切分、素材映射、
+composition 设计、动画、lint/inspect 修复和最终渲染。
+
+在编写 HTML/CSS/GSAP 前，先在 composition/DESIGN.md 记录：
+1. Reference Read Check：确认已读取 handoff、rules 和 design 文件。
+2. Scene Layout Inventory：逐 scene 记录旁白摘要、material_ref、
+   素材尺寸 / aspect ratio、text beats、layout archetype、
+   peak-state layout audit 和句子级显示时机。
+3. Self-audit：逐项覆盖 composition-rules.md 和 handoff customized rules。
+
+先修复 self-audit 能发现的问题，再开始 render。
+迭代直到 composition/renders/final.mp4 存在，且 HyperFrames lint/inspect 无错误。
+render 必须使用 `--workers 1`。
 ```
 
 如果环境里没有原生 sub-agent 工具，仅当 CLI fallback 能把上面那段 prompt 原样传过去、并让 coding sub-agent 自己去读 `composition-handoff.md`、`references/composition-rules.md` 与指定 design 文件时，才可以接受。
