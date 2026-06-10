@@ -29,8 +29,9 @@ Prompt 示例：
 
 如果必需文件缺失，停止并反馈主 agent。
 
-使用 hyperframes 和 hyperframes-cli skills 完成 composition authoring、
-HTML/CSS/GSAP、pre-render self-audit、lint/inspect、HTML-to-video render。
+使用 hyperframes 和 hyperframes-cli skills 完成 scene 切分、素材映射、
+composition authoring、HTML/CSS/GSAP、pre-render self-audit、
+lint/inspect、HTML-to-video render。
 
 严格遵守 references/composition-rules.md：
 - Phase 8.2 — Sub-agent Execution Rules
