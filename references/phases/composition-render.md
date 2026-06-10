@@ -1,6 +1,6 @@
 ### Phase 8 — 委派 HyperFrames Composition + Render
 
-从这一步开始，composition 由一个使用 `hyperframes` 与 `hyperframes-cli` skills 的 coding sub-agent 拥有。`topic-to-video` 主 agent 只负责准备上游资源、写 `composition-handoff.md`、物化固定 rules / design references、调用 sub-agent，并按 rules 执行 sanity-check / Visual QA / feedback loop。
+从这一步开始，composition 交由一个使用 `hyperframes` 与 `hyperframes-cli` skills 的 coding sub-agent 负责执行。`topic-to-video` 主 agent 只负责准备上游资源、写 `composition-handoff.md`、物化固定 rules / design references、调用 sub-agent，并按 rules 执行 sanity-check / Visual QA / feedback loop。
 
 #### 8.1 — 写 `composition-handoff.md`
 
