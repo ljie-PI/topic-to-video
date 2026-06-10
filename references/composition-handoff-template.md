@@ -58,14 +58,14 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前，把这些文件物
 
 ### Conflict handling
 
-- Customized rules 可以收紧 `references/composition-rules.md`，但不能静默放宽 rules 文件中的 hard constraints。
-- 如果 customized rule 与 rules 文件冲突，主 agent 必须在本 handoff 中写明冲突，并在调用 sub-agent 前向用户确认或选择更严格规则。
+- Customized rules 只写在本 handoff 中；无论是收紧还是放宽要求，都不得修改或覆盖 `references/composition-rules.md`。
+- 如果 customized rule 与 rules 文件冲突，主 agent 必须在本 handoff 中写明冲突，并在调用 sub-agent 前向用户确认。
 - 如果 customized rule 与 design 文件冲突，以 customized rule 优先；design 文件退为风格参考。
 - HyperFrames sub-agent 遇到未标注冲突时，必须以 rules 文件为底线，并在 `composition/DESIGN.md` 记录处理方式。
 
 ## Project-specific Overrides
 
-<仅写本项目特有、且不会放宽 rules 文件中的 hard constraints 的覆盖项。没有则写 “None”。>
+<仅写本项目特有、且不会修改或覆盖 `references/composition-rules.md` 的覆盖项。没有则写 “None”。>
 
 ## Deliverable Reminder
 

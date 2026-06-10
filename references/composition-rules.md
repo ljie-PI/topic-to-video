@@ -12,7 +12,7 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前，把本文件物化
 4. 项目 handoff 指定的 design 文件，例如 `references/design-moon.md`。
 5. HyperFrames / GSAP 等下游 skill 的默认建议。
 
-Customized rules 可以收紧本规则文件，但不能静默放宽 hard constraints。若 customized rule 与本规则文件冲突，主 agent 必须在 handoff 中标注；sub-agent 必须以本规则文件为底线，并在 `composition/DESIGN.md` 记录冲突处理，不得自行选择更宽松规则。
+Customized rules 只记录在 `composition-handoff.md` 中；无论是收紧还是放宽要求，都不得修改或覆盖本规则文件。若 customized rule 与本规则文件冲突，主 agent 必须在 handoff 中标注；sub-agent 必须在 `composition/DESIGN.md` 记录冲突处理。
 
 ## Expected Inputs
 
