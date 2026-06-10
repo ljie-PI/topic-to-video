@@ -20,7 +20,7 @@
 
 #### R2 — Transcript timing
 
-时间边界以 `transcribe/transcript.json` 为准。scene 切分和非字幕 text beat 出现时机必须绑定到该 transcript 的句子 / 分句边界；字幕切换以字幕单元在 transcript 中的起止时间为准，和音频偏移 <= 0.2 秒。
+时间边界以 `transcribe/transcript.json` 为准。scene 切分和非字幕 text beat 出现时机必须绑定到该 transcript 的句子 / 分句边界。最终字幕必须读取 `transcribe/subtitle-units.json`：subtitle unit 的 timing 来自 transcript 句子 / 词时间，display text 以 transcript 文本为底，并可包含 `narration.txt` 高置信度匹配带来的 Latin words 拼写修正。字幕切换和音频偏移 <= 0.2 秒。
 
 #### R3 — Material catalog
 
@@ -83,7 +83,7 @@ Recommended authoring pattern:
 
 #### R14 — Global subtitle
 
-字幕必须使用单个全局容器，固定锚定在底部字幕安全区内（建议 bottom 为视口高度 6-9%，1080p 约 65-97px），全片水平居中且基线稳定。字幕单元先按句号 / 问号 / 感叹号切分；过长时再按分号 / 逗号 / 顿号 / 自然停顿拆分，直到每个单元都可单行显示。每个字幕单元必须单行（如 `white-space: nowrap`），不得靠缩字号到下限、放宽 `max-width` 或换行塞下长句。半透明背景遮罩必须 shrink-to-fit，随文字宽度自适应并保证任意画面背景下可读；禁止固定 `width: 100%`、大 `min-width` 或整行遮罩。
+字幕必须使用单个全局容器，固定锚定在底部字幕安全区内（建议 bottom 为视口高度 6-9%，1080p 约 65-97px），全片水平居中且基线稳定。字幕单元来自 `transcribe/subtitle-units.json`，每个单元必须单行显示（如 `white-space: nowrap`）。如果某个 unit 无法单行显示，必须回到 transcript-timed unit 拆分逻辑，把它拆成更小的 calibrated units；不得靠缩字号到下限、放宽 `max-width` 或换行塞下长句。半透明背景遮罩必须 shrink-to-fit，随文字宽度自适应并保证任意画面背景下可读；禁止固定 `width: 100%`、大 `min-width` 或整行遮罩。
 
 #### R15 — Media dominance and quality
 
@@ -119,7 +119,7 @@ Recommended authoring pattern:
 
 执行方式：
 
-1. **Source pass**：读取 `composition/index.html`、CSS / JS、`composition-handoff.md`、`material-catalog.json`、`scene-material-suggestions.json` 和 `transcribe/transcript.json`，建立 scene inventory，并扫描 forbidden patterns。
+1. **Source pass**：读取 `composition/index.html`、CSS / JS、`composition-handoff.md`、`material-catalog.json`、`scene-material-suggestions.json`、`transcribe/transcript.json` 和 `transcribe/subtitle-units.json`，建立 scene inventory，并扫描 forbidden patterns。
 2. **Peak-state pass**：对每个 scene 选择一个或多个 peak-state 时间点（所有非字幕元素应可见、主要 text beat 已出现、退出动画未开始），用 HyperFrames / 浏览器可 seek 的预览能力或等价 DOM inspection 打开 `composition/index.html`，seek 到这些时间点。
 3. **Geometry measurement**：在每个 peak state 读取 scene root、素材、文本、callout、decor、全局字幕容器的 bounding boxes，并计算 viewport、内容区、字幕安全区。
 4. **Rule checks**：用几何数据检查元素溢出、重叠、前景压素材、素材占比、内容区使用率、alignment、margin / padding / gap、素材容器比例 / 露底、字幕安全区侵入和字幕框尺寸。
@@ -133,7 +133,7 @@ Recommended authoring pattern:
 3. **Peak-state / Scene Visual Audit**：覆盖每个 scene，满足 R10，并记录 viewport / 内容区 / 字幕安全区边界、主要元素 bounding boxes、元素是否溢出 / 截断 / 重叠、前景文本 / caption / tag / callout 是否压素材、内容区使用率、素材主体占比、标题 / 文本块 / 素材 / callout alignment、margin / padding / gap 是否一致、素材容器是否紧贴素材、字幕安全区是否只被全局字幕条使用。
 4. **Layout Fix Record**：记录每个失败项如何通过 layout 尺寸、位置、字号、信息密度、间距、拆 scene 或素材替换修复；不得只写“已修复”。
 5. **Sentence-level timing plan**：覆盖 R19；多个非素材文本元素不得在 scene start 一次性全亮。
-6. **Forbidden pattern scan**：扫描固定宽字幕框、字幕 `width:100%` / 大 `min-width` / 多行、字幕脱离安全区、前景元素侵入安全区、字幕切换偏离音频 > 0.2 秒、素材错比例容器、错误 `object-fit: cover` 裁切、`object-fit: contain` 暴露容器底色 / letterbox、素材 `width + max-height/height`、素材可见框 / 底色 / padding / shadow / glow、catalog 素材跨 scene 复用、`no_match` 借用素材、前景覆盖素材、`radial-gradient` spotlight / ambient orb / localized glow、廉价扫描线 / sweep，以及所有 entrance tween blanket `immediateRender:false`。若使用 `gsap.from()` 做入场动画，应保留默认 immediate render，或用 CSS 初始态兜底。
+6. **Forbidden pattern scan**：扫描缺失 `transcribe/subtitle-units.json`、字幕直接使用 raw ASR text、固定宽字幕框、字幕 `width:100%` / 大 `min-width` / 多行、字幕脱离安全区、前景元素侵入安全区、字幕切换偏离音频 > 0.2 秒、素材错比例容器、错误 `object-fit: cover` 裁切、`object-fit: contain` 暴露容器底色 / letterbox、素材 `width + max-height/height`、素材可见框 / 底色 / padding / shadow / glow、catalog 素材跨 scene 复用、`no_match` 借用素材、前景覆盖素材、`radial-gradient` spotlight / ambient orb / localized glow、廉价扫描线 / sweep，以及所有 entrance tween blanket `immediateRender:false`。若使用 `gsap.from()` 做入场动画，应保留默认 immediate render，或用 CSS 初始态兜底。
 7. **Customized rules coverage**：逐条读取 `composition-handoff.md` 的 `User-derived Customized Rules`，记录每条如何被布局 / 动画 / QA 方案覆盖；冲突按 Scope and Required References 处理。
 
 ### Phase 8.4 — HTML-to-video Render Rules
@@ -200,8 +200,8 @@ ffmpeg -y -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 7. 字幕安全区无非字幕前景元素侵入。
 8. 素材无 letterbox / pillarbox。
 9. 无扫描线 / sweep / 进度条等廉价动效覆盖层。
-10. 底部字幕位置稳定、水平居中、位于安全区内，切换与音频偏移 <= 0.2 秒。
-11. 字幕单行，遮罩 shrink-to-fit，无固定宽度 / 大 `min-width` / 整行遮罩。
+10. 底部字幕位置稳定、水平居中、位于安全区内，文本来自 `transcribe/subtitle-units.json`，切换与音频偏移 <= 0.2 秒。
+11. 字幕单行，遮罩 shrink-to-fit，无固定宽度 / 大 `min-width` / 整行遮罩；无法单行时拆分 calibrated units，不换行。
 12. 素材无可见 border / padding / 卡片底 / shadow / glow，且无容器露底 / letterbox。
 13. 有素材 scene 的素材占内容区主体；多素材并列时每个素材尺寸足够。
 14. layout 不像固定模板硬套，能体现素材横竖 / 方形比例差异。
@@ -263,12 +263,12 @@ ffmpeg -y -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 
 | Rule | Authoring / source check | Pre-render check | Post-render QA / feedback |
 | --- | --- | --- | --- |
-| R1-R4 | 读取 handoff 指定输入；只使用本地音频、transcript、catalog 和 fonts | Reference Read Check | Phase 8.5 audio sanity-check；Phase 8.6 narration / material spot-check |
+| R1-R4 | 读取 handoff 指定输入；只使用本地音频、transcript、subtitle units、catalog 和 fonts | Reference Read Check | Phase 8.5 audio sanity-check；Phase 8.6 narration / material spot-check |
 | R5-R6 | 为每个 scene 写稳定 data 属性；按 `scene-material-suggestions.json` 分配素材 | 检查 scene inventory、素材引用、`no_match` 处理 | 检测素材跨 scene 复用；用 scene data 反查 finding |
 | R7 | authoring 时控制 scene 时长、微 scene、合并 scene 和 text beat 刷新 | `DESIGN.md` 记录时长设计 | 每轮解析 `data-scene-start/end` |
 | R8-R10 | 按 scene 旁白、text beats、素材尺寸 / 类型选择 layout；写 inventory 和 peak-state audit | Scene Visual Audit 覆盖 bounding boxes、内容区使用率、alignment、margin / padding / gap、overlap / overflow 和失败处理 | spot-check 构图、空白、溢出、重叠、素材比例 |
 | R11-R12 | 用 catalog 尺寸设置 wrapper aspect-ratio；素材填满容器且无可见框 | 扫描错比例容器、错误 object-fit、`width + max-height/height`、素材容器露底和可见框模式 | 抽帧检查裁切、变形、letterbox / pillarbox / 容器露底 / 素材框感 |
-| R13-R14 | 布局计算排除字幕安全区；使用单个全局字幕容器 | 检查安全区、字幕 CSS、单行高度、遮罩宽度、切换 timing 和非字幕元素侵入 | 抽帧检查字幕位置、单行、遮罩宽度、遮挡和 timing |
+| R13-R14 | 布局计算排除字幕安全区；使用单个全局字幕容器和 calibrated subtitle units | 检查安全区、字幕 CSS、单行高度、遮罩宽度、`subtitle-units.json` 来源、切换 timing 和非字幕元素侵入 | 抽帧检查字幕位置、单行、遮罩宽度、遮挡和 timing |
 | R15-R17 | 确保素材占主体、清晰完整、元素不越界不重叠、字号/对比度达标 | Scene Visual Audit 检查 media dominance、bounds、overlap、typography 和 contrast | spot-check 画面清晰度、放大比例、重叠、越界、字号、对比度 |
 | R18 | 为素材 / 文本 / callout 设计持续动效和转场 | 扫描廉价覆盖层动效和缺失转场 | 静帧检测和 spot-check 扫描线 / sweep / 图片持续 motion / scene transition |
 | R19 | 文本元素绑定完整旁白句子；入场有初始态 | 扫描 blanket `immediateRender:false` 和 text beat 累积 | 旁白对齐抽样 + spot-check 文本提前 / 累积 |

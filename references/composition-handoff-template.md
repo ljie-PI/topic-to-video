@@ -25,6 +25,7 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前物化这些文件，
 - 最终解说音频：`voice_clone/narration.mp3`
 - 解说脚本：`narration.txt`
 - 带词级时间戳的 ASR transcript：`transcribe/transcript.json`
+- 校准后的字幕单元：`transcribe/subtitle-units.json`
 - 素材 catalog：`material-catalog.json`
 - 场景-素材分配：`scene-material-suggestions.json`（如存在）
 - 已预置字体：`fonts/`

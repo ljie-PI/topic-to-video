@@ -2,15 +2,26 @@
 
 本阶段为下游的 HyperFrames sub-agent 准备时间轴与字体输入。`topic-to-video` 主 agent **不**负责设计 scene、写 `info_units`、把素材映射到布局，或者生成 HyperFrames 的 HTML。
 
-#### 7.1 — 生成 ASR transcript
+#### 7.1 — 生成并校准 ASR transcript
 
-如果 `{work_dir}/{topic_name}/transcribe/transcript.json` 已存在、且是包含至少一句话和词级时间戳的合法 JSON，则跳过。
+如果 `{work_dir}/{topic_name}/transcribe/transcript.json` 已存在、且是包含至少一句话和词级时间戳的合法 JSON，并且 `{work_dir}/{topic_name}/transcribe/subtitle-units.json` 已存在且可读取，则跳过。
 
 ```bash
 scripts/transcribe-paraformer.py \
   {work_dir}/{topic_name}/voice_clone/narration.mp3 \
   {work_dir}/{topic_name}/transcribe/transcript.json
 ```
+
+随后生成 transcript-first 的字幕单元：
+
+```bash
+scripts/calibrate-transcript.py \
+  --narration {work_dir}/{topic_name}/narration.txt \
+  --transcript {work_dir}/{topic_name}/transcribe/transcript.json \
+  --output {work_dir}/{topic_name}/transcribe/subtitle-units.json
+```
+
+校准规则：字幕单元和 timing 以 `transcribe/transcript.json` 为准；`narration.txt` 只作为纠错来源，用于高置信度匹配时修正 Latin words / 产品名 / 模型名拼写。匹配以中文内容为主，CJK 字符权重大于 Latin，并把中文数字和阿拉伯数字视作可匹配形式（如 transcript 的 `13432` 可匹配 narration 的 `一万三千四百三十二`）。找不到对应 narration 句子时，保留 transcript 文本并在 `subtitle-units.json` 中标记 `transcript_fallback`，不要阻塞流程。若 `narration.txt` 在 TTS 后被改过，必须重新生成 TTS + ASR + subtitle units。
 
 #### 7.2 — 预置字体
 

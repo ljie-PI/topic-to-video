@@ -133,3 +133,9 @@ Phase 5 只能引用 Phase 4 产出的 `material-catalog.json`。如果 catalog 
 主 agent 只负责生成 `composition-handoff.md` 并物化固定 references。`composition/index.html`、场景布局、动画、lint/inspect 修复和渲染迭代都属于 Phase 8 HyperFrames coding sub-agent。
 
 修复：如果发现主 agent 已开始手写 HTML，停下并改为补全 handoff、rules 和素材引用；让 HyperFrames sub-agent 接管 composition。
+
+## 18. 字幕文本不要直接照搬未校准 ASR
+
+ASR 的时间戳最接近音频，但文本可能把 Latin words、产品名或模型名识别错。最终字幕应来自 `transcribe/subtitle-units.json`：以 `transcribe/transcript.json` 的句子 / 词时间为底，用 `narration.txt` 中匹配到的原句修正 Latin 拼写。匹配时中文内容权重更高，并把中文数字和阿拉伯数字归一化后比较，避免 `13432` 和 `一万三千四百三十二` 这类表达匹配失败。
+
+修复：重跑 `scripts/calibrate-transcript.py`。如果 `narration.txt` 在 TTS 后改过，先重新生成 TTS 和 ASR；如果找不到对应 narration 句子，保留 transcript 文本并在 subtitle units 里标记 `transcript_fallback`。
