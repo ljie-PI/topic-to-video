@@ -3,7 +3,7 @@
 从这一步开始，composition 由一个使用 `hyperframes` 与 `hyperframes-cli` skills 的 coding sub-agent 拥有。`topic-to-video` 主 agent 只负责准备上游资源、写一份精简的 composition handoff、物化固定 rules / design references、调用 sub-agent，并对返回的 MP4 做 sanity check。
 
 HyperFrames sub-agent 执行以下流程：
-- 读取 `narration.txt`（纯文本解说脚本）和 `transcribe/transcript.json`（带句子 / 词级毫秒时间戳的 ASR JSON），由 LLM 负责 scene 语义分组；每个 scene 的 start/end 必须取自 ASR 词级时间戳，不得由 LLM 估算
+- 读取 `narration.txt`（纯文本解说脚本）和 `transcribe/transcript.json`（带句子 / 词级毫秒时间戳的 ASR JSON），据此进行 scene 语义分组；每个 scene 的 start/end 必须取自 ASR 词级时间戳，不得估算
 - 基于 `material-catalog.json` 完成 material-to-scene 映射
 - 视觉信息设计、布局、排版、动画与转场
 - `composition/index.html` 和 `composition/DESIGN.md`
