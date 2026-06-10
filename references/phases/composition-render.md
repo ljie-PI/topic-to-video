@@ -4,7 +4,7 @@
 
 HyperFrames sub-agent 执行以下流程：
 - 读取时间轴输入：`narration.txt` 是纯文本解说脚本；`transcribe/transcript.json` 是带句子 / 词级毫秒时间戳的 ASR JSON（`begin` / `end` / `text` / `words`）
-- 由 HyperFrames sub-agent 生成 scene timeline：结合旁白语义、素材映射、视觉节奏和 5-8 秒约束确定每个 scene 的 start/end；如需调试，可额外写 `transcribe/scene-timeline.json`，但最终以 `composition/index.html` 的 `data-scene-start/end` 为准
+- 由 HyperFrames sub-agent（LLM coding agent）读取上述输入并生成 scene timeline：LLM 负责语义分组、素材映射和视觉节奏判断；每个 scene 的 start/end 必须取自 `transcribe/transcript.json` 的词级时间戳，不得由 LLM 估算；如需调试，可额外写 `transcribe/scene-timeline.json`，但最终以 `composition/index.html` 的 `data-scene-start/end` 为准
 - 基于 `material-catalog.json` 完成 material-to-scene 映射
 - 视觉信息设计、布局、排版、动画与转场
 - `composition/index.html` 和 `composition/DESIGN.md`
