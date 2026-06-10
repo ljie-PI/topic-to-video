@@ -51,7 +51,7 @@ lint/inspect、HTML-to-video render。
 
 #### 8.4 — HTML-to-video render
 
-这里的 render 指从 `composition/index.html` 渲染成 `composition/renders/final.mp4`，不是生成 HTML。要求见 `references/composition-rules.md` 的 **Phase 8.4 — HTML-to-video Render Rules**。
+按 `references/composition-rules.md` 的 **Phase 8.4 — HTML-to-video Render Rules** 执行。
 
 #### 8.5 — Sanity check
 
