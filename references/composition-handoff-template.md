@@ -33,9 +33,9 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前物化这些文件，
 
 ## Style Hint
 
-<来自 Phase 1 的自由格式 mood、受众、配色与节奏提示。示例：
-"中文解说讲解视频，温暖的手绘笔记本氛围，节奏舒缓。"
-"中文 AI/SaaS 技术编辑风，深色严肃语调，信息密集但易读，多 data callout。">
+来自 Phase 1 的自由格式 mood、受众、配色与节奏提示。示例：
+- "中文解说讲解视频，温暖的手绘笔记本氛围，节奏舒缓。"
+- "中文 AI/SaaS 技术编辑风，深色严肃语调，信息密集但易读，多 data callout。"
 
 可选的风格路由参考：
 
