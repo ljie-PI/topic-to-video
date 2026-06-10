@@ -151,7 +151,7 @@ def load_transcript(path: str) -> list[dict[str, Any]]:
 
 
 def display_len(text: str) -> int:
-    return len(''.join(ch for ch in text if not ch.isspace()))
+    return len(text.strip())
 
 
 def words_to_text(words: list[Word]) -> str:
@@ -275,8 +275,6 @@ def parse_chinese_number(text: str) -> int | None:
     if not text:
         return None
     if all(char in CHINESE_DIGITS for char in text):
-        if len(text) == 1:
-            return None
         return int(''.join(str(CHINESE_DIGITS[char]) for char in text))
 
     total = 0
@@ -466,6 +464,7 @@ def calibrate(args: argparse.Namespace) -> dict[str, Any]:
     out_units: list[dict[str, Any]] = []
     matched_units = 0
     fallback_units = 0
+    correction_overflow_fallback_units = 0
     warnings: list[str] = []
 
     previous_end = -1
@@ -485,6 +484,7 @@ def calibrate(args: argparse.Namespace) -> dict[str, Any]:
 
         display_text = unit.text
         corrections: list[dict[str, str]] = []
+        rejected_corrections: list[dict[str, str]] = []
         unapplied_latin_tokens: list[str] = []
         source = 'transcript_fallback'
         match_confidence = 0.0
@@ -497,6 +497,16 @@ def calibrate(args: argparse.Namespace) -> dict[str, Any]:
             cursor = max(cursor, match.end)
             display_text, corrections, unapplied_latin_tokens = apply_latin_corrections(unit.text, match.text)
             source = 'transcript_with_narration_latin_corrections' if corrections else 'transcript_with_narration_match'
+            if corrections and display_len(display_text) > args.max_chars:
+                rejected_corrections = corrections
+                display_text = unit.text
+                corrections = []
+                correction_overflow_fallback_units += 1
+                source = 'transcript_correction_overflow_fallback'
+                warnings.append(
+                    f'unit {index} kept transcript text because Latin corrections exceeded '
+                    f'--max-chars={args.max_chars}: {unit.text[:40]}'
+                )
         else:
             fallback_units += 1
             warnings.append(f'unit {index} used transcript fallback: {unit.text[:40]}')
@@ -516,6 +526,8 @@ def calibrate(args: argparse.Namespace) -> dict[str, Any]:
         }
         if unapplied_latin_tokens:
             out_unit['unapplied_latin_tokens'] = unapplied_latin_tokens
+        if rejected_corrections:
+            out_unit['rejected_corrections'] = rejected_corrections
         out_units.append(out_unit)
 
     return {
@@ -526,6 +538,7 @@ def calibrate(args: argparse.Namespace) -> dict[str, Any]:
             'unit_count': len(out_units),
             'matched_units': matched_units,
             'fallback_units': fallback_units,
+            'correction_overflow_fallback_units': correction_overflow_fallback_units,
             'warnings': warnings,
         },
     }
