@@ -95,7 +95,7 @@ Media layout-role routing：
 | `band` | 超宽素材作为横向信息带，如 logo row、timeline、UI strip、长表头。band 必须足够高以可读；如果只能显示成细线，应改用 `viewport_reveal` 或 `comparison_sequence`。 |
 | `detail_callout` | 显示素材关键区域，并用外置信息解释重点。不得把 callout 压在素材关键内容上；如用局部窗口，需记录 `focal_region` 和理由。 |
 | `comparison_pair` | 两个素材同屏对比。横屏优先左右并排，竖屏 / 竖向优先上下分区；统一高度或统一可读尺度，避免厚边框和过大间距。 |
-| `comparison_sequence` | 三个及以上素材，或两个素材同屏后不可读时，优先分时 / carousel / 拆 scene。不要默认三等分或小宫格。 |
+| `comparison_sequence` | 同一 scene 内三个及以上素材，或两个素材同屏后不可读时，用分时 / carousel 展示，且需要 2 个以上 `material_refs`。若改为拆 scene，拆出的 scene 使用各自真实主角色（如 `media_first` / `video_first` / `viewport_reveal` / `detail_callout`），并在 `layout_reason` 说明它属于同一对比序列。不要默认三等分或小宫格。 |
 
 Role-to-layout routing：
 
