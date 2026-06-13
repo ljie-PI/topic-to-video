@@ -79,11 +79,11 @@ Recommended authoring pattern:
 
 #### R13 — Subtitle safe area
 
-视口底部预留 12-18% 高度作为专属字幕安全区（1080p 约 130-195px）。authoring 时内容区必须按 `viewport - subtitle safe area` 计算；除全局字幕条外，任何前景文本 / callout / 素材 / 装饰不得进入该安全区。全幅背景素材可延伸到安全区下方垫底，此时字幕条用半透明遮罩压在其上。
+视口底部预留 9-12% 高度作为专属字幕安全区（1080p 约 97-130px），且安全区高度必须贴合字幕条实际占位（字幕行高 + 上下小边距）。authoring 时内容区必须按 `viewport - subtitle safe area` 计算；除全局字幕条外，任何前景文本 / callout / 素材 / 装饰不得进入该安全区。全幅背景素材可延伸到安全区下方垫底，此时字幕条用半透明遮罩压在其上。
 
 #### R14 — Global subtitle
 
-字幕必须使用单个全局容器，固定锚定在底部字幕安全区内（建议 bottom 为视口高度 6-9%，1080p 约 65-97px），全片水平居中且基线稳定。字幕单元来自 `transcribe/subtitle-units.json`，每个单元必须单行显示（如 `white-space: nowrap`）。如果某个 unit 无法单行显示，必须回到 transcript-timed unit 拆分逻辑，把它拆成更小的 calibrated units；不得靠缩字号到下限、放宽 `max-width` 或换行塞下长句。半透明背景遮罩必须 shrink-to-fit，随文字宽度自适应并保证任意画面背景下可读；禁止固定 `width: 100%`、大 `min-width` 或整行遮罩。
+字幕必须使用单个全局容器，固定锚定在底部字幕安全区内并与安全区上下贴合（建议 bottom 为视口高度 3-5%，1080p 约 32-54px；字幕条顶缘应接近安全区顶缘，安全区内不得留出明显空带导致字幕悬高），全片水平居中且基线稳定。字幕单元来自 `transcribe/subtitle-units.json`，每个单元必须单行显示（如 `white-space: nowrap`）。如果某个 unit 无法单行显示，必须回到 transcript-timed unit 拆分逻辑，把它拆成更小的 calibrated units；不得靠缩字号到下限、放宽 `max-width` 或换行塞下长句。半透明背景遮罩必须 shrink-to-fit，随文字宽度自适应并保证任意画面背景下可读；禁止固定 `width: 100%`、大 `min-width` 或整行遮罩。
 
 #### R15 — Media dominance and quality
 
