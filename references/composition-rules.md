@@ -34,11 +34,11 @@
 
 #### R5 — Scene identity
 
-`composition/index.html` 中每个 scene 根元素必须同时有稳定的 `data-scene-id`、`data-scene-start`、`data-scene-end`。所有 `<img>` / `<video>` / `background-image` 素材元素必须位于某个 scene 根元素内部。属于同一 `media_continuation` 的相邻 scene 必须在 scene 根元素上标记同一个 `data-continuation-group`，并用 `data-continuation-index` 表示顺序，便于 QA 识别合法连续复用。重渲修复时，未受影响 scene 的 DOM / CSS / 动画和时间区间必须保持不变。
+`composition/index.html` 中每个 scene 根元素必须同时有稳定的 `data-scene-id`、`data-scene-start`、`data-scene-end`。所有 `<img>` / `<video>` / `background-image` 素材元素必须位于某个 scene 根元素内部。属于同一 continuation group 的相邻 scene 必须在 scene 根元素上标记同一个 `data-continuation-group`（等于 Phase 5.2 的 `continuation_group_id`），并用 1-based `data-continuation-index` 表示 group 内顺序，便于 QA 识别合法连续复用。重渲修复时，未受影响 scene 的 DOM / CSS / 动画和时间区间必须保持不变。
 
 #### R6 — Material uniqueness
 
-默认每个 catalog 素材（图片 / 视频 clip）在整片中恰好出现在一个 scene，分配以 `scene-material-suggestions.json` 为准。`no_match` scene 用纯排版 / 文字卡片，不借用其他 scene 的素材。例外：论文 figure、技术架构图、UI 截图、流程图等可以在连续的 `media_continuation` group 中跨相邻 scene 复用同一 catalog 素材，但必须在 `scene-material-suggestions.json` 中显式标注相同 `material_ref`、`layout_role = "media_continuation"` 和同一 `continuation_group_id` / `continuation_of`；未声明的跨 scene 素材复用仍视为违规。
+默认每个 catalog 素材（图片 / 视频 clip）在整片中恰好出现在一个 scene，分配以 `scene-material-suggestions.json` 为准。`no_match` scene 用纯排版 / 文字卡片，不借用其他 scene 的素材。例外：论文 figure、技术架构图、UI 截图、流程图等可以在连续的 continuation group 中跨相邻 scene 复用同一 catalog 素材。group 起点可保留主布局角色（如 `media_first` / `video_first` / `viewport_reveal`），后续跨 scene 复用素材的 scene 必须标注 `layout_role = "media_continuation"`、相同 `material_ref`、相同 `continuation_group_id`，并用 `continuation_of` 指向 group 起点的 `scene_index`；未声明的跨 scene 素材复用仍视为违规。
 
 #### R7 — Scene duration
 
@@ -46,7 +46,14 @@
 
 #### R8 — Scene-specific layout
 
-每个 scene 必须由 coding sub-agent 根据该 scene 的旁白文本、`scene-material-suggestions.json` 中的 `text_beats` / `material_ref` / `layout_role`、`scene-text-plan.json` 中对应 scene 的 `visual_text_units`（如存在）、以及 `material-catalog.json` 中对应素材的尺寸 / 类型 / `layout_affordance`（如存在）定制 authoring，再按内容区尺寸（viewport - 字幕安全区 - scene padding）单独排版。禁止套用统一模板后只替换文字 / 图片；相邻 scene 不得无理由复用同一主版式。根据素材比例、输出朝向、`layout_role`、text beat 数量和 visual text unit 类型选择 layout archetype：横图 / 横视频用宽幅主体 + 外置信息区或 `media_first` / `video_first`，竖图 / 竖视频按输出朝向选择左右分栏或上下分区，方图用中心素材 + 周边信息块，极端比例素材用 `viewport_reveal` / `band` / `detail_callout`，无素材 scene 用纯排版 / 数据块 / 流程图 / 架构图 / 时间线 / 对比矩阵等信息图表达。
+每个 scene 必须由 coding sub-agent 按 scene 单独 authoring，不得套统一模板后只替换文字 / 图片。排版输入包括：
+
+- 旁白文本与 `scene-material-suggestions.json` 的 `text_beats` / `material_ref` / `layout_role`；
+- `scene-text-plan.json` 中对应 scene 的 `visual_text_units`（如存在）；
+- `material-catalog.json` 中对应素材的尺寸、类型、`layout_affordance` 和 `focal_region`（如存在）；
+- 内容区尺寸（viewport - 字幕安全区 - scene padding）。
+
+Phase 8 必须按素材比例、输出朝向、`layout_role`、text beat 数量和 visual text unit 类型选择 layout；具体 routing 见下表。相邻 scene 不得无理由复用同一主版式，但声明过的 continuation group 应保持同一主素材稳定显示。
 
 `scene-text-plan.json` 的解释流程：
 
@@ -253,7 +260,7 @@ ffmpeg -y -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 
 #### Step 3 — 素材跨 scene 复用检测
 
-按 `data-scene-id` 划分 scene，提取 catalog 素材 src。任一 catalog src 出现在多个 scene 时，先检查命中的 scene 是否属于同一个已声明的 `media_continuation` group（同一 `data-continuation-group`，且对应 `scene-material-suggestions.json` 中具有相同 `material_ref` 和合法的 `layout_role = "media_continuation"` / group 起点）。若是，记为合法 continuation，不报 `reused_material`；若不是，记为 `reused_material` finding，并记录所有命中的 `scene_ids`。通用 UI 贴图 / 装饰纹理 / 蒙版等非 catalog 资源不计。
+按 `data-scene-id` 划分 scene，提取 catalog 素材 src。任一 catalog src 出现在多个 scene 时，先检查命中的 scene 是否属于同一个已声明的 continuation group：同一 `data-continuation-group`，group 起点与后续 `media_continuation` scene 的 `scene-material-suggestions.json` 均具有相同 `material_ref`，且后续 scene 的 `continuation_of` 指向 group 起点的 `scene_index`。若是，记为合法 continuation，不报 `reused_material`；若不是，记为 `reused_material` finding，并记录所有命中的 `scene_ids`。通用 UI 贴图 / 装饰纹理 / 蒙版等非 catalog 资源不计。
 
 #### Step 4 — 旁白对齐检测
 

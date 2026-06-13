@@ -33,6 +33,8 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前物化这些文件，
 
 输入文件的固定解释规则以 `references/composition-rules.md` 为准。
 
+Phase 8 需要按 `references/composition-rules.md` 读取 layout-aware 字段：`material-catalog.json` 可能包含 `aspect_ratio`、`ratio_bucket`、`layout_affordance`、`focal_region`；`scene-material-suggestions.json` 可能包含 `layout_role`、`layout_reason`、`continuation_group_id`、`continuation_of`。这些字段是布局决策输入，不替代固定规则。
+
 ### Scene text-plan routing
 
 若 `scene-text-plan.json` 存在，Phase 8 HyperFrames sub-agent 必须把它作为非字幕屏幕文本的结构化输入，而不是普通 style hint：
