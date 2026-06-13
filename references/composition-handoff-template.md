@@ -28,9 +28,20 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前物化这些文件，
 - 校准后的字幕单元：`transcribe/subtitle-units.json`
 - 素材 catalog：`material-catalog.json`
 - 场景-素材分配：`scene-material-suggestions.json`（如存在）
+- 屏幕文本块规划：`scene-text-plan.json`（如存在）
 - 已预置字体：`fonts/`
 
 输入文件的固定解释规则以 `references/composition-rules.md` 为准。
+
+### Scene text-plan routing
+
+若 `scene-text-plan.json` 存在，Phase 8 HyperFrames sub-agent 必须把它作为非字幕屏幕文本的结构化输入，而不是普通 style hint：
+
+1. 按 `scene_index` 把 `scene-text-plan.json` 条目与 `scene-material-suggestions.json` 条目 join。
+2. 对每个 scene，先读取 `material_ref` / `no_match` 和 catalog 尺寸，再读取该 scene 的 `visual_text_units`。
+3. `priority: "primary"` 的 unit 是必须尝试实现的信息单元；若因素材尺寸、字幕安全区或 overlap 无法实现，必须在 `composition/DESIGN.md` 记录降级原因。
+4. `visual_role` / `domain_hint` / `template_hint` 只指定信息形态，不指定最终 DOM / CSS；最终布局仍以 `references/composition-rules.md` 的素材占比、安全区、overlap 和 peak-state audit 为准。
+5. 有图片 / 视频素材的 scene，`visual_text_units` 默认放在素材外置信息区、侧栏、上 / 下信息带、角标区或分时轮换区；禁止把前景文本压在 catalog 素材主体上。
 
 ## Style Hint
 

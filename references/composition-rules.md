@@ -24,7 +24,7 @@
 
 #### R3 — Material catalog
 
-所有以素材为底的视觉都必须通过 `material-catalog.json` 解析；需要 catalog 素材时不得凭空造 stock 视觉。`scene-material-suggestions.json` 如存在，视为素材到 scene 的硬性分配。
+所有以素材为底的视觉都必须通过 `material-catalog.json` 解析；需要 catalog 素材时不得凭空造 stock 视觉。`scene-material-suggestions.json` 如存在，视为素材到 scene 的硬性分配。`scene-text-plan.json` 如存在，视为非字幕屏幕文本块的结构化建议；它不能覆盖素材分配，也不能要求前景文本遮挡素材。
 
 #### R4 — Local fonts
 
@@ -46,11 +46,51 @@
 
 #### R8 — Scene-specific layout
 
-每个 scene 必须由 coding sub-agent 根据该 scene 的旁白文本、`scene-material-suggestions.json` 中的 `text_beats` / `material_ref`、以及 `material-catalog.json` 中对应素材的尺寸 / 类型定制 authoring，再按内容区尺寸（viewport - 字幕安全区 - scene padding）单独排版。禁止套用统一模板后只替换文字 / 图片；相邻 scene 不得无理由复用同一主版式。根据素材比例和 text beat 数量选择 layout archetype：横图 / 横视频用宽幅主体 + 外置信息区，竖图用左右分栏，方图用中心素材 + 周边信息块，无素材 scene 用纯排版 / 数据块。
+每个 scene 必须由 coding sub-agent 根据该 scene 的旁白文本、`scene-material-suggestions.json` 中的 `text_beats` / `material_ref`、`scene-text-plan.json` 中对应 scene 的 `visual_text_units`（如存在）、以及 `material-catalog.json` 中对应素材的尺寸 / 类型定制 authoring，再按内容区尺寸（viewport - 字幕安全区 - scene padding）单独排版。禁止套用统一模板后只替换文字 / 图片；相邻 scene 不得无理由复用同一主版式。根据素材比例、输出朝向、text beat 数量和 visual text unit 类型选择 layout archetype：横图 / 横视频用宽幅主体 + 外置信息区，竖图 / 竖视频按输出朝向选择左右分栏或上下分区，方图用中心素材 + 周边信息块，无素材 scene 用纯排版 / 数据块 / 流程图 / 架构图 / 时间线 / 对比矩阵等信息图表达。
+
+`scene-text-plan.json` 的解释流程：
+
+1. 以 `scene_index` 为 key，把 text-plan scene 与 `scene-material-suggestions.json` scene 对齐；不得按数组位置猜测。
+2. 对齐后先解析 `material_ref` / `no_match` 和 catalog `width` / `height` / 素材 kind，再解析 `visual_text_units`。
+3. 把每个 unit 映射为一个或多个非字幕信息元素：`display_text` 通常是标题 / 标签；`supporting_points` 通常是列表项、流程节点、指标、模块、关系节点或代码/命令行内容。
+4. `visual_role` 只定义信息形态，不定义具体布局模板。Phase 8 必须根据素材比例、画幅、字幕安全区和 density 选择最终 layout。
+5. `priority: "primary"` 的 unit 必须尝试实现；`secondary` / `decorative` 可合并、缩短、轮换或降级，但必须在 `composition/DESIGN.md` 记录。
+
+Material-aware routing：
+
+| Scene condition | Layout routing |
+| --- | --- |
+| `no_match: true` | 用纯排版信息图承载 `visual_text_units`；至少尝试一个结构型 unit（`process_flow` / `architecture_diagram` / `timeline` / `comparison_matrix` / `network_graph`）或 2-4 个短文本 / data units。 |
+| 横图 / 横视频 | 素材作为宽幅主体；文本进入右侧 / 下方外置信息区、顶部 metadata band 或分时轮换 callout。不得覆盖素材主体。 |
+| 竖图 / 竖视频 | 根据输出朝向选择左右分栏或上下分区；素材保持完整比例，文本组织为 stacked callouts / data blocks / list。 |
+| 方图 / UI 截图 | 素材居中或偏一侧；周边信息块围绕但不压素材，必要时只实现 primary unit。 |
+| 论文 figure / table / chart | 保持 figure/table 可读；用外置信息区解释 1-3 个关键结论，不重画完整表格，不用文本遮挡轴线、图例、caption 或关键曲线。 |
+| 视频 clip | 视频主体优先；文本使用短标签、状态说明或时间点 callout。复杂流程 / 架构图应放到相邻 `no_match` 或低素材密度 scene，而不是遮挡视频。 |
+
+Orientation-aware routing：
+
+| Output orientation | Layout routing |
+| --- | --- |
+| 横屏 `1920x1080` | 可用左右分栏、宽幅素材 + 右侧信息区、下方 info rail。横图 / 横视频可占内容区主体宽度；多 unit 可横向排列为 metric strip / timeline。 |
+| 竖向 `1080x1440` | 不要直接套横屏右侧栏。优先上下分区：上方 / 中部放素材主体，下方或顶部放 shrink-to-fit 信息带；也可使用 60/40 或 55/45 的上下 split。竖图 / 竖视频可左右窄分栏，但必须给字幕安全区留足空间。复杂 `process_flow` / `architecture_diagram` 优先改成纵向节点链、stacked modules、分页轮换，而不是横向大图。 |
+| 竖屏 `1080x1920` | 优先纵向叙事：素材、标题、callout、data blocks 依次堆叠或分时轮换；避免左右分栏导致文本过窄。结构型 unit 用纵向 timeline / stepper / module stack；多指标用 2 列以内卡片。 |
+
+对 `1080x1440` 和 `1080x1920`，字幕安全区通常比横屏更高；素材和非字幕文本都必须按 R13 计算在内容区内，不得为了塞更多 text units 侵入底部字幕区域。若 `visual_text_units` 过多，优先分时轮换或降级 `secondary` / `decorative` units，而不是缩小字体到不可读。
+
+Role-to-layout routing：
+
+| `visual_role` | Preferred layout treatment |
+| --- | --- |
+| `data_block` / `metric_strip` | 数字卡、横向指标条、计数器或小型比较块；数值必须突出，使用 tabular nums。 |
+| `list` / `feature_grid` | 2-4 项短列表或网格；每项短 label + 一行 detail，避免长段落。 |
+| `process_flow` / `timeline` / `state_machine` | 节点 + 连接线 / 箭头 / 时间轴；节点数量过多时只保留 primary path。 |
+| `architecture_diagram` / `network_graph` | 模块 / 节点 / 关系线；如果有素材，放在外置信息区或独立 no_match scene，不覆盖素材。 |
+| `code_block` / `terminal_block` / `file_tree` | 等宽块、终端窗或目录树；只展示关键行，避免完整文件 / 长日志。 |
+| `callout` / `quote` / `paper_figure_callout` | 短结论卡、注释框或 figure 外置解释；不能压在图片 / 视频主体上。 |
 
 #### R9 — Scene inventory
 
-`composition/DESIGN.md` 必须记录每个 scene 的 `scene_id`、旁白摘要、`material_ref`、素材尺寸 / aspect ratio、text beats、layout archetype、peak-state audit 结果，以及每个非素材元素对应的完整旁白句子和出现时间点。
+`composition/DESIGN.md` 必须记录每个 scene 的 `scene_id`、旁白摘要、`material_ref`、素材尺寸 / aspect ratio、text beats、`scene-text-plan.json` 中对应的 `visual_text_units`（如有）、layout archetype、peak-state audit 结果，以及每个非素材元素对应的完整旁白句子和出现时间点。对每个已实现的 visual text unit，记录 `unit_id`、`visual_role`、`display_text`、`priority`、来源 text beat、最终 DOM selector 和出现 timing；若某个 `primary` unit 被降级或未实现，必须记录原因。
 
 #### R10 — Peak-state layout audit
 
@@ -105,7 +145,7 @@ Recommended authoring pattern:
 
 #### R19 — Text timing and entrance state
 
-多个非素材文本元素必须按完整旁白句子逐个出现，禁止 scene start 一次性全亮。文本元素服务于哪一句，就在该句开始前短暂提前显示，保证旁白读到该句时相关文本已可见。旧 text beat 需要淡出或降级，不能永久累积。入场动画必须有正确初始态，避免元素在 tween 前闪现。
+多个非素材文本元素必须按完整旁白句子逐个出现，禁止 scene start 一次性全亮。文本元素服务于哪一句，就在该句开始前短暂提前显示，保证旁白读到该句时相关文本已可见。若 `scene-text-plan.json` 存在，`priority: "primary"` 的 `visual_text_units` 必须优先实现；`secondary` / `decorative` 可因安全布局降级，但必须在 `composition/DESIGN.md` 记录。旧 text beat 需要淡出或降级，不能永久累积。入场动画必须有正确初始态，避免元素在 tween 前闪现。
 
 #### R20 — Style constraints
 
@@ -119,10 +159,10 @@ Recommended authoring pattern:
 
 执行方式：
 
-1. **Source pass**：读取 `composition/index.html`、CSS / JS、`composition-handoff.md`、`material-catalog.json`、`scene-material-suggestions.json`、`transcribe/transcript.json` 和 `transcribe/subtitle-units.json`，建立 scene inventory，并扫描 forbidden patterns。
+1. **Source pass**：读取 `composition/index.html`、CSS / JS、`composition-handoff.md`、`material-catalog.json`、`scene-material-suggestions.json`、`scene-text-plan.json`（如存在）、`transcribe/transcript.json` 和 `transcribe/subtitle-units.json`，建立 scene inventory，并扫描 forbidden patterns。
 2. **Peak-state pass**：对每个 scene 选择一个或多个 peak-state 时间点（所有非字幕元素应可见、主要 text beat 已出现、退出动画未开始），用 HyperFrames / 浏览器可 seek 的预览能力或等价 DOM inspection 打开 `composition/index.html`，seek 到这些时间点。
 3. **Geometry measurement**：在每个 peak state 读取 scene root、素材、文本、callout、decor、全局字幕容器的 bounding boxes，并计算 viewport、内容区、字幕安全区。
-4. **Rule checks**：用几何数据检查元素溢出、重叠、前景压素材、素材占比、内容区使用率、alignment、margin / padding / gap、素材容器比例 / 露底、字幕安全区侵入和字幕框尺寸。
+4. **Rule checks**：用几何数据检查元素溢出、重叠、前景压素材、素材占比、内容区使用率、alignment、margin / padding / gap、素材容器比例 / 露底、字幕安全区侵入和字幕框尺寸；若存在 `scene-text-plan.json`，还必须检查 primary visual text unit 是否实现、结构型 role 是否被合理视觉化、文本是否位于素材外置信息区或分时轮换区。
 5. **Fix loop**：任一检查失败时，sub-agent 必须修改 layout / CSS / DOM / 动画初始态并重新跑 8.3，不得靠隐藏元素、延后显示或动画错开来掩盖 peak-state layout 问题。
 6. **Audit output**：把每个 scene 的检查摘要、失败项和修复记录写入 `composition/DESIGN.md`；不能只写 “checked” / “pass”。
 
@@ -130,11 +170,12 @@ Recommended authoring pattern:
 
 1. **Reference Read Check**：确认已读取 `composition-handoff.md`、`references/composition-rules.md` 和 handoff 指定的 `references/design-<theme>.md`（如有）。
 2. **Scene Layout Inventory**：覆盖每个 scene，满足 R9。
-3. **Peak-state / Scene Visual Audit**：覆盖每个 scene，满足 R10，并记录 viewport / 内容区 / 字幕安全区边界、主要元素 bounding boxes、元素是否溢出 / 截断 / 重叠、前景文本 / caption / tag / callout 是否压素材、内容区使用率、素材主体占比、标题 / 文本块 / 素材 / callout alignment、margin / padding / gap 是否一致、素材容器是否紧贴素材、字幕安全区是否只被全局字幕条使用。
+3. **Peak-state / Scene Visual Audit**：覆盖每个 scene，满足 R10，并记录 viewport / 内容区 / 字幕安全区边界、主要元素 bounding boxes、元素是否溢出 / 截断 / 重叠、前景文本 / caption / tag / callout 是否压素材、内容区使用率、素材主体占比、标题 / 文本块 / 素材 / callout alignment、margin / padding / gap 是否一致、素材容器是否紧贴素材、字幕安全区是否只被全局字幕条使用；若 scene 有素材，记录文本信息区相对素材的位置（侧栏 / 下方带 / 顶部 band / 周边块 / 分时轮换）。
 4. **Layout Fix Record**：记录每个失败项如何通过 layout 尺寸、位置、字号、信息密度、间距、拆 scene 或素材替换修复；不得只写“已修复”。
-5. **Sentence-level timing plan**：覆盖 R19；多个非素材文本元素不得在 scene start 一次性全亮。
+5. **Sentence-level timing plan**：覆盖 R19；多个非素材文本元素不得在 scene start 一次性全亮。若存在 `scene-text-plan.json`，记录每个 `primary` visual text unit 的实现情况；未实现 / 降级的 unit 必须有原因。
 6. **Forbidden pattern scan**：扫描缺失 `transcribe/subtitle-units.json`、字幕直接使用 raw ASR text、固定宽字幕框、字幕 `width:100%` / 大 `min-width`、横屏字幕多行 / 竖屏字幕超过两行、字幕脱离安全区、安全区为不会出现的额外行数预留过大空间、前景元素侵入安全区、字幕切换偏离音频 > 0.2 秒、素材错比例容器、错误 `object-fit: cover` 裁切、`object-fit: contain` 暴露容器底色 / letterbox、素材 `width + max-height/height`、素材可见框 / 底色 / padding / shadow / glow、catalog 素材跨 scene 复用、`no_match` 借用素材、前景覆盖素材、`radial-gradient` spotlight / ambient orb / localized glow、廉价扫描线 / sweep，以及所有 entrance tween blanket `immediateRender:false`。若使用 `gsap.from()` 做入场动画，应保留默认 immediate render，或用 CSS 初始态兜底。
-7. **Customized rules coverage**：逐条读取 `composition-handoff.md` 的 `User-derived Customized Rules`，记录每条如何被布局 / 动画 / QA 方案覆盖；冲突按 Scope and Required References 处理。
+7. **Structured text-plan coverage**：若存在 `scene-text-plan.json`，逐 scene 核对 `visual_text_units`，记录每个 `unit_id` 的实现 / 降级 / 跳过状态、采用的 layout treatment、以及是否与素材分离；禁止把 `process_flow`、`architecture_diagram`、`network_graph`、`timeline`、`comparison_matrix` 等结构型 unit 简单退化成一整段普通文本，除非 `composition/DESIGN.md` 明确说明受素材尺寸、字幕安全区或 overlap 约束。
+8. **Customized rules coverage**：逐条读取 `composition-handoff.md` 的 `User-derived Customized Rules`，记录每条如何被布局 / 动画 / QA 方案覆盖；冲突按 Scope and Required References 处理。
 
 ### Phase 8.4 — HTML-to-video Render Rules
 
@@ -266,12 +307,12 @@ ffmpeg -y -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 | R1-R4 | 读取 handoff 指定输入；只使用本地音频、transcript、subtitle units、catalog 和 fonts | Reference Read Check | Phase 8.5 audio sanity-check；Phase 8.6 narration / material spot-check |
 | R5-R6 | 为每个 scene 写稳定 data 属性；按 `scene-material-suggestions.json` 分配素材 | 检查 scene inventory、素材引用、`no_match` 处理 | 检测素材跨 scene 复用；用 scene data 反查 finding |
 | R7 | authoring 时控制 scene 时长、微 scene、合并 scene 和 text beat 刷新 | `DESIGN.md` 记录时长设计 | 每轮解析 `data-scene-start/end` |
-| R8-R10 | 按 scene 旁白、text beats、素材尺寸 / 类型选择 layout；写 inventory 和 peak-state audit | Scene Visual Audit 覆盖 bounding boxes、内容区使用率、alignment、margin / padding / gap、overlap / overflow 和失败处理 | spot-check 构图、空白、溢出、重叠、素材比例 |
+| R8-R10 | 按 scene 旁白、text beats、`scene-text-plan.json` visual text units、素材尺寸 / 类型选择 layout；写 inventory 和 peak-state audit | Scene Visual Audit 覆盖 bounding boxes、内容区使用率、alignment、margin / padding / gap、overlap / overflow、visual text unit 实现状态和失败处理 | spot-check 构图、空白、溢出、重叠、素材比例、结构型文本是否退化 |
 | R11-R12 | 用 catalog 尺寸设置 wrapper aspect-ratio；素材填满容器且无可见框 | 扫描错比例容器、错误 object-fit、`width + max-height/height`、素材容器露底和可见框模式 | 抽帧检查裁切、变形、letterbox / pillarbox / 容器露底 / 素材框感 |
 | R13-R14 | 布局计算排除字幕安全区；使用单个全局字幕容器和 calibrated subtitle units；横屏单行、竖屏最多两行 | 检查安全区、字幕 CSS、按朝向的最大行数与行高、遮罩宽度、`subtitle-units.json` 来源、切换 timing 和非字幕元素侵入 | 抽帧检查字幕位置、行数、遮罩宽度、遮挡和 timing |
 | R15-R17 | 确保素材占主体、清晰完整、元素不越界不重叠、字号/对比度达标 | Scene Visual Audit 检查 media dominance、bounds、overlap、typography 和 contrast | spot-check 画面清晰度、放大比例、重叠、越界、字号、对比度 |
 | R18 | 为素材 / 文本 / callout 设计持续动效和转场 | 扫描廉价覆盖层动效和缺失转场 | 静帧检测和 spot-check 扫描线 / sweep / 图片持续 motion / scene transition |
-| R19 | 文本元素绑定完整旁白句子；入场有初始态 | 扫描 blanket `immediateRender:false` 和 text beat 累积 | 旁白对齐抽样 + spot-check 文本提前 / 累积 |
+| R19 | 文本元素绑定完整旁白句子；优先实现 `scene-text-plan.json` 的 primary units；入场有初始态 | 扫描 blanket `immediateRender:false`、text beat 累积和 primary unit 未实现 | 旁白对齐抽样 + spot-check 文本提前 / 累积 / 结构型文本降级 |
 | R20 | 按 style hint / design file 实现风格；不使用禁用 glow 模式 | 扫描 glow / orb / spotlight 和内容区大块空白 | spot-check 空白、模板感和深色技术风漂移 |
 | Customized rules | authoring 时逐条覆盖 handoff rules | `DESIGN.md` 记录每条覆盖方式 | 可见规则进入 spot-check / narration alignment |
 
