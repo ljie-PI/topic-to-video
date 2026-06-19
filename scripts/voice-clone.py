@@ -48,6 +48,12 @@ DASHSCOPE_MODEL = "cosyvoice-v3.5-plus"
 DEFAULT_VOXCPM_MODEL = "openbmb/VoxCPM2"
 DEFAULT_REF_ASR_MODEL = "Qwen/Qwen3-ASR-1.7B"
 
+# Default playback speed per backend. VoxCPM speaks at a natural ~1.0 pace; 1.2
+# (applied via ffmpeg atempo) lands close to the brisker DashScope/CosyVoice
+# narration pace while preserving pitch. CosyVoice keeps its own 1.4 default.
+DEFAULT_VOXCPM_SPEECH_RATE = 1.2
+DEFAULT_DASHSCOPE_SPEECH_RATE = 1.4
+
 
 def print_json(payload: dict[str, object]) -> None:
     print(json.dumps(payload, ensure_ascii=False))
@@ -100,7 +106,7 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         help='Playback speed. dashscope: CosyVoice speech_rate (default 1.4). '
-             'voxcpm: ffmpeg atempo factor applied post-synthesis (default 1.0).',
+             'voxcpm: ffmpeg atempo factor applied post-synthesis (default 1.2).',
     )
     parser.add_argument(
         '--output-dir',
@@ -273,7 +279,7 @@ def synth_voxcpm(text: str, output_path: Path, args: argparse.Namespace) -> None
         reference_wav_path=str(ref_wav),
     )
     sample_rate = int(model.tts_model.sample_rate)
-    atempo = args.speech_rate if args.speech_rate is not None else 1.0
+    atempo = args.speech_rate if args.speech_rate is not None else DEFAULT_VOXCPM_SPEECH_RATE
     write_mp3(wav, sample_rate, output_path, atempo)
 
 
@@ -291,7 +297,7 @@ def synth_dashscope(text: str, output_path: Path, args: argparse.Namespace) -> N
     dashscope.api_key = api_key
     dashscope.base_websocket_api_url = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference'
 
-    speech_rate = args.speech_rate if args.speech_rate is not None else 1.4
+    speech_rate = args.speech_rate if args.speech_rate is not None else DEFAULT_DASHSCOPE_SPEECH_RATE
     log(f'synthesizing narration to {output_path} (CosyVoice, speech_rate={speech_rate})')
     synthesizer = SpeechSynthesizer(model=DASHSCOPE_MODEL, voice=voice, speech_rate=speech_rate)
     audio = synthesizer.call(text)
