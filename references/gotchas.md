@@ -24,7 +24,7 @@ python3 scripts/voice-clone.py \
   --output-dir {work_dir}/{topic_name}/voice_clone
 ```
 
-默认走**本地 VoxCPM2 克隆**（`TTS_BACKEND=voxcpm`），用 `--reference-wav` / `VOXCPM_REF_WAV` 指定要克隆的音色。云端 fallback 用 `TTS_BACKEND=dashscope`，通过 `--voice` 或 `COSYVOICE_VOICE_ID` 设置 CosyVoice 音色。
+默认走**本地 Qwen3-TTS 克隆**（`TTS_BACKEND=qwen3tts`），用 `--reference-wav` / `VOXCPM_REF_WAV` 指定要克隆的音色；可选 `TTS_BACKEND=voxcpm`（VoxCPM2）。云端 fallback 用 `TTS_BACKEND=dashscope`，通过 `--voice` 或 `COSYVOICE_VOICE_ID` 设置 CosyVoice 音色。
 
 ## 2b. VoxCPM2 ultimate cloning 需要参考音频的 transcript
 

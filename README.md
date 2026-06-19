@@ -1,13 +1,13 @@
 # topic-to-video
 
-把一个主题、文章链接或一段文字变成有解说的视频（通常 3-10 分钟），底层使用本地 VoxCPM2 克隆音色 TTS、本地 Qwen3-ASR 词级 ASR（均以 DashScope 云端作 fallback）、抓取到的素材，以及通过 HyperFrames 完成的渲染。
+把一个主题、文章链接或一段文字变成有解说的视频（通常 3-10 分钟），底层使用本地 Qwen3-TTS 克隆音色 TTS（可选 VoxCPM2）、本地 Qwen3-ASR 词级 ASR（均以 DashScope 云端作 fallback）、抓取到的素材，以及通过 HyperFrames 完成的渲染。
 
 ## Prerequisites
 
 | 工具 | 说明 |
 |------|------|
 | Python 3 + venv | 运行任何 Python 脚本前先 `source .venv/bin/activate` |
-| `torch` (CUDA) + `voxcpm` + `qwen-asr` + `soundfile` | 装在 venv 里——本地 TTS（VoxCPM2）与本地 ASR（Qwen3-ASR + ForcedAligner）。需要 NVIDIA GPU；Turing（如 2080 Ti）用 fp16、不装 flash-attn |
+| `torch` (CUDA) + `qwen-tts` + `voxcpm` + `qwen-asr` + `soundfile` | 装在 venv 里——本地 TTS（默认 Qwen3-TTS，可选 VoxCPM2）与本地 ASR（Qwen3-ASR + ForcedAligner）。需要 NVIDIA GPU；Turing（如 2080 Ti）用 fp16、不装 flash-attn |
 | `dashscope` | 装在 venv 里——云端 fallback：CosyVoice TTS（`TTS_BACKEND=dashscope`）与 Paraformer ASR（`ASR_BACKEND=dashscope`） |
 | `ffmpeg` / `ffprobe` | 音频探测和抽帧 |
 | `playwright` (仅 Python) | `pip install playwright`——**不要** 执行 `playwright install chromium`，本项目通过 CDP 接管系统 Chrome |

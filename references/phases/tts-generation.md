@@ -4,12 +4,12 @@
 
 直接使用 `scripts/voice-clone.py`。**不要**把脚本复制一份，也**不要**把解说文本粘进 Python 源码。
 
-默认走**本地 VoxCPM2 克隆**（ultimate cloning：参考音色 WAV + 其 transcript）：
+默认走**本地 Qwen3-TTS 克隆**（`Qwen3-TTS-12Hz-1.7B-Base`，参考音色 WAV + 其 transcript）：
 
 ```bash
 source .venv/bin/activate  # 从父目录或 venv 所在目录执行
 export VOXCPM_REF_WAV="/path/to/voice_ref.wav"   # 克隆的目标音色（参考音频）
-# 可选：export VOXCPM_MODEL=/path/to/VoxCPM2     # 本地模型目录；缺省自动从 HF 下载
+# 可选：export QWEN3TTS_MODEL=/path/to/Qwen3-TTS-12Hz-1.7B-Base  # 本地模型目录；缺省自动从 HF 下载
 # 可选：export QWEN3_ASR_MODEL=/path/to/Qwen3-ASR-1.7B  # 首次自动转写参考音频用
 
 python3 scripts/voice-clone.py \
@@ -22,11 +22,11 @@ ffprobe -v error -show_entries format=duration \
 ```
 
 参考音色与 transcript：
-- `--reference-wav` 或 `VOXCPM_REF_WAV` 指定参考音频（任意采样率 / 声道，脚本内部按需重采样）。
+- `--reference-wav` 或 `VOXCPM_REF_WAV` 指定参考音频（任意采样率 / 声道，脚本内部按需重采样；变量名沿用 `VOXCPM_REF_WAV`，两个本地后端共用）。
 - 参考音频的逐字 transcript 解析顺序：`--reference-text` / `VOXCPM_REF_TEXT`（可为内联字符串或 `.txt` 路径）→ 参考 WAV 同名 `<ref>.txt` 缓存 → 首次用 Qwen3-ASR 自动转写并缓存到 `<ref>.txt`。
-- 默认 `--speech-rate` 1.2（VoxCPM / Qwen3-TTS 通过 ffmpeg `atempo` 后处理，贴近云端节奏）。
+- 默认 `--speech-rate` 1.2（Qwen3-TTS / VoxCPM 通过 ffmpeg `atempo` 后处理，贴近云端节奏）。
 
-可选本地后端 Qwen3-TTS（`TTS_BACKEND=qwen3tts`，模型 `Qwen3-TTS-12Hz-1.7B-Base`，同样靠参考 WAV + transcript 克隆）：纯中文解说可懂度很高、音频更紧凑，但英文专有名词偶有发音瑕疵；VoxCPM2 在中英混排上更稳、且 48kHz。按内容选择即可。
+可选本地后端 VoxCPM2（`TTS_BACKEND=voxcpm`，模型 `openbmb/VoxCPM2`，ultimate cloning）：中英混排更稳、48kHz 输出，但音频更长、稍慢。Qwen3-TTS 纯中文可懂度更高、更紧凑、略快，英文专有名词偶有发音瑕疵。按内容选择即可。
 
 云端 fallback（DashScope CosyVoice）：
 

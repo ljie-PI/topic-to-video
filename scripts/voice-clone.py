@@ -2,11 +2,11 @@
 """
 Voice-cloned narration TTS with a local-first backend.
 
-Backends (select via --backend or TTS_BACKEND env, default: voxcpm):
-  voxcpm     Local VoxCPM2 (Apache-2.0) ultimate cloning — reference WAV +
-             its transcript. Runs on the local GPU. No cloud key needed.
+Backends (select via --backend or TTS_BACKEND env, default: qwen3tts):
   qwen3tts   Local Qwen3-TTS (Apache-2.0) voice clone — reference WAV + its
              transcript via Qwen3-TTS-12Hz-1.7B-Base. Runs on the local GPU.
+  voxcpm     Local VoxCPM2 (Apache-2.0) ultimate cloning — reference WAV +
+             its transcript. Runs on the local GPU. 48kHz output.
   dashscope  Aliyun DashScope CosyVoice (cloud fallback). Needs
              DASHSCOPE_API_KEY + COSYVOICE_VOICE_ID.
 
@@ -22,7 +22,7 @@ Usage:
   python3 voice-clone.py --input-file narration.txt --output-dir voice_clone
 
 Optional env:
-  TTS_BACKEND        voxcpm (default) | qwen3tts | dashscope
+  TTS_BACKEND        qwen3tts (default) | voxcpm | dashscope
   VOXCPM_MODEL       VoxCPM model id or local dir (default: openbmb/VoxCPM2)
   VOXCPM_REF_WAV     reference audio for cloning (required for voxcpm/qwen3tts)
   VOXCPM_REF_TEXT    transcript of the reference audio. If unset, a sibling
@@ -83,7 +83,7 @@ def parse_args() -> argparse.Namespace:
         '--backend',
         choices=['voxcpm', 'qwen3tts', 'dashscope'],
         default=None,
-        help='TTS backend. Defaults to TTS_BACKEND env or "voxcpm".',
+        help='TTS backend. Defaults to TTS_BACKEND env or "qwen3tts".',
     )
     parser.add_argument(
         '--input-file',
@@ -369,7 +369,7 @@ def synth_dashscope(text: str, output_path: Path, args: argparse.Namespace) -> N
 def main() -> int:
     try:
         args = parse_args()
-        backend = args.backend or os.environ.get('TTS_BACKEND', 'voxcpm')
+        backend = args.backend or os.environ.get('TTS_BACKEND', 'qwen3tts')
         input_text = read_input_text(args.input_file)
 
         output_dir = Path(args.output_dir).expanduser()
