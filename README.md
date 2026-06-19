@@ -7,7 +7,7 @@
 | 工具 | 说明 |
 |------|------|
 | Python 3 + venv | 运行任何 Python 脚本前先 `source .venv/bin/activate` |
-| `torch` (CUDA) + `qwen-tts` + `voxcpm` + `qwen-asr` + `soundfile` | 装在 venv 里——本地 TTS（默认 Qwen3-TTS，可选 VoxCPM2）与本地 ASR（Qwen3-ASR + ForcedAligner）。需要 NVIDIA GPU；Turing（如 2080 Ti）用 fp16、不装 flash-attn |
+| `torch` (CUDA) + `qwen-tts` + `voxcpm` + `qwen-asr` + `soundfile` | 装在 venv 里——本地 TTS（默认 Qwen3-TTS，可选 VoxCPM2）与本地 ASR（Qwen3-ASR + ForcedAligner）。本地 ASR 默认开 ITN（中文数字→阿拉伯），用随 `voxcpm` 安装的 `wetext`。需要 NVIDIA GPU；Turing（如 2080 Ti）用 fp16、不装 flash-attn |
 | `dashscope` | 装在 venv 里——云端 fallback：CosyVoice TTS（`TTS_BACKEND=dashscope`）与 Paraformer ASR（`ASR_BACKEND=dashscope`） |
 | `ffmpeg` / `ffprobe` | 音频探测和抽帧 |
 | `playwright` (仅 Python) | `pip install playwright`——**不要** 执行 `playwright install chromium`，本项目通过 CDP 接管系统 Chrome |

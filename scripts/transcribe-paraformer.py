@@ -18,6 +18,9 @@ Optional env:
   QWEN3_ASR_MODEL       default Qwen/Qwen3-ASR-1.7B
   QWEN3_ALIGNER_MODEL   default Qwen/Qwen3-ForcedAligner-0.6B
   QWEN3_LANGUAGE        force a language name (e.g. "Chinese"); default auto
+  ASR_ITN               1 (default) applies inverse text normalization
+                        (spoken Chinese numerals -> Arabic digits, e.g.
+                        三点一 -> 3.1) via wetext; set 0 to keep verbatim
   # dashscope backend:
   DASHSCOPE_API_KEY     required for dashscope
   ASR_MODEL             default paraformer-v2; e.g. qwen3-asr-flash-filetrans
@@ -73,6 +76,98 @@ def parse_language_hints() -> list[str]:
 
 DEFAULT_QWEN3_ASR_MODEL = 'Qwen/Qwen3-ASR-1.7B'
 DEFAULT_QWEN3_ALIGNER_MODEL = 'Qwen/Qwen3-ForcedAligner-0.6B'
+
+# Calendar units; ITN is applied per chunk split *after* these so wetext does
+# not collapse a full date (年 + 月) into a slash form like "2026/06" — keeping
+# the cloud-style "2026年6月" and avoiding merge artifacts at the boundary.
+_CAL_UNITS = '年月日号時时分秒'
+_CAL_SPLIT = re.compile(f'(?<=[{_CAL_UNITS}])')
+_ITN_NORMALIZER = None
+_ITN_DISABLED = False
+
+
+def itn_enabled() -> bool:
+    return os.environ.get('ASR_ITN', '1') not in ('0', 'false', 'False', '')
+
+
+def _get_itn_normalizer():
+    """Lazily build a single wetext zh ITN normalizer; None if unavailable."""
+    global _ITN_NORMALIZER, _ITN_DISABLED
+    if _ITN_DISABLED:
+        return None
+    if _ITN_NORMALIZER is None:
+        try:
+            from wetext import Normalizer
+            _ITN_NORMALIZER = Normalizer(lang='zh', operator='itn')
+        except Exception as exc:  # noqa: BLE001 - degrade gracefully
+            log(f'ITN disabled (wetext unavailable: {exc})')
+            _ITN_DISABLED = True
+            return None
+    return _ITN_NORMALIZER
+
+
+def itn_text(text: str) -> str:
+    """Inverse-text-normalize one string (spoken Chinese numbers -> digits).
+
+    Splits at calendar-unit boundaries first so dates keep their unit form.
+    Returns the input unchanged if ITN is unavailable.
+    """
+    norm = _get_itn_normalizer()
+    if norm is None:
+        return text
+    out = []
+    for chunk in _CAL_SPLIT.split(text):
+        out.append(norm.normalize(chunk) if chunk else '')
+    return ''.join(out)
+
+
+def apply_itn_to_sentences(sentences: list[dict]) -> list[dict]:
+    """Rewrite each sentence's text + word tokens to ITN (Arabic digit) form.
+
+    Word-level timestamps are preserved: characters that collapse into one
+    Arabic-digit token inherit the merged span (first.begin .. last.end), and
+    no word is ever dropped. Falls back to the verbatim sentence on any error.
+    """
+    import difflib
+
+    if not itn_enabled() or _get_itn_normalizer() is None:
+        return sentences
+
+    out = []
+    for s in sentences:
+        words = s.get('words') or []
+        try:
+            new_text = itn_text(s.get('text') or '')
+            orig = ''.join(w['text'] for w in words)
+            itn = itn_text(orig)
+            char_word = [wi for wi, w in enumerate(words) for _ in w['text']]
+            new_words = []
+            sm = difflib.SequenceMatcher(None, orig, itn, autojunk=False)
+            for tag, i1, i2, j1, j2 in sm.get_opcodes():
+                if tag == 'equal':
+                    for wi in sorted(set(char_word[i1:i2])):
+                        new_words.append(dict(words[wi]))
+                else:
+                    seg = itn[j1:j2]
+                    if not seg:
+                        continue
+                    wis = sorted(set(char_word[i1:i2])) if i2 > i1 else []
+                    begin = words[wis[0]]['begin'] if wis else (
+                        new_words[-1]['end'] if new_words else (
+                            words[0]['begin'] if words else 0))
+                    end = words[wis[-1]]['end'] if wis else begin
+                    new_words.append({'text': seg, 'begin': begin, 'end': end})
+            out.append({
+                'begin': s['begin'],
+                'end': s['end'],
+                'text': new_text,
+                'words': new_words or words,
+            })
+        except Exception as exc:  # noqa: BLE001 - keep verbatim on failure
+            log(f'ITN skipped for one sentence ({exc})')
+            out.append(s)
+    return out
+
 
 # Sentence-final boundaries used to re-segment the flat aligned token stream
 # (the forced aligner returns one flat list; downstream wants sentences).
@@ -215,7 +310,11 @@ def transcribe_qwen3(audio_arg: str) -> list[dict]:
     if not items:
         log('warning: no aligned tokens returned')
         return []
-    return segment_into_sentences(result.text or '', items)
+    sentences = segment_into_sentences(result.text or '', items)
+    if itn_enabled():
+        log('applying ITN (Chinese numerals -> Arabic digits); set ASR_ITN=0 to disable')
+        sentences = apply_itn_to_sentences(sentences)
+    return sentences
 
 
 # --------------------------------------------------------------------------- #

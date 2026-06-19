@@ -12,6 +12,16 @@
 
 如果本地 GPU 和 DashScope 都不可用，问用户要一份外部 transcript，而不是悄悄切换到 HyperFrames 的 transcribe。
 
+## 1b. 本地 ASR 的数字归一化（ITN）
+
+云端 paraformer-v2 默认把口语中文数字转成阿拉伯写法（`一万六千二百八十八→16288`、`三点一→3.1`），本地 Qwen3-ASR 原始输出是逐字中文。为对齐这一行为，`transcribe-paraformer.py` 的 qwen3 backend 默认开 ITN（`ASR_ITN=1`），用 `wetext`（随 `voxcpm` 安装）做逆文本归一化；`ASR_ITN=0` 可关闭、保留逐字中文。
+
+实现要点 / 坑：
+- 先按日历单位（`年月日时分秒`）切块再分别 ITN，避免 wetext 把 `二零二六年六月` 重排成 `2026/06`，从而保持云端风格 `2026年6月` 并避免合并边界 artifact。
+- 用 `difflib` 把被合并的数字字符的词级时间戳合并成一个阿拉伯数字 token（begin=首字、end=末字），不丢任何 word。
+- `wetext` 缺失或单句异常时自动回退逐字中文，不中断。
+- 注意：开 ITN 后 transcript 用阿拉伯数字，而 `narration.txt` 多用中文数字；做文本对比 / CER 评测时应对两侧都做同样 ITN 归一化，否则数字格式差异会让分数虚高。
+
 ## 2. 不要编辑 TTS 脚本源码
 
 不要把 `voice-clone.py` 复制一份，再把解说粘进 Python 源码。这种做法让 resume 和 review 都变得脆弱。
