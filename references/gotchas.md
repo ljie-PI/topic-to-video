@@ -6,11 +6,13 @@
 
 本工作流中，不要用 Whisper 或 `npx hyperframes transcribe` 处理中文解说。历史 run 多次遇到模型下载失败和 UTF-8 输出乱码。
 
-修复：用 `scripts/transcribe-paraformer.py`，它调用 DashScope **非实时识别接口**（默认 `paraformer-v2`，HTTP REST 异步任务，自动识别 sample rate / format），返回干净的词级时间戳。可通过 `ASR_MODEL` 环境变量切到 `qwen3-asr-flash-filetrans` 等其他兼容模型。
+修复：用 `scripts/transcribe-paraformer.py`。默认走**本地 Qwen3-ASR + Qwen3-ForcedAligner**（`ASR_BACKEND=qwen3`），返回干净的词级时间戳（CJK 按字、Latin 按词），自动识别语言，无需 ffprobe 探测 sample rate / format。云端 fallback 用 `ASR_BACKEND=dashscope`，走 DashScope 非实时 `paraformer-v2`（HTTP REST 异步任务）。
 
-如果 DashScope 不可用，问用户要一份外部 transcript，而不是悄悄切换到 HyperFrames 的 transcribe。
+模型路径可用 `QWEN3_ASR_MODEL` / `QWEN3_ALIGNER_MODEL` 指向本地目录（缺省自动从 HF 下载）。注意输出是**扁平 token 流**，脚本按句末标点（`。！？!?…`）重新切句，再以"保留字符"匹配把 token 归入各句，因此 transcript 文本里的标点来自句子级文本、word 级 token 不含标点。
 
-## 2. 不要编辑 CosyVoice 脚本源码
+如果本地 GPU 和 DashScope 都不可用，问用户要一份外部 transcript，而不是悄悄切换到 HyperFrames 的 transcribe。
+
+## 2. 不要编辑 TTS 脚本源码
 
 不要把 `voice-clone.py` 复制一份，再把解说粘进 Python 源码。这种做法让 resume 和 review 都变得脆弱。
 
@@ -19,15 +21,24 @@
 ```bash
 python3 scripts/voice-clone.py \
   --input-file {work_dir}/{topic_name}/narration.txt \
-  --output-dir {work_dir}/{topic_name}/voice_clone \
-  --speech-rate 1.4
+  --output-dir {work_dir}/{topic_name}/voice_clone
 ```
 
-通过 `--voice` 或 `COSYVOICE_VOICE_ID` 设置音色。
+默认走**本地 VoxCPM2 克隆**（`TTS_BACKEND=voxcpm`），用 `--reference-wav` / `VOXCPM_REF_WAV` 指定要克隆的音色。云端 fallback 用 `TTS_BACKEND=dashscope`，通过 `--voice` 或 `COSYVOICE_VOICE_ID` 设置 CosyVoice 音色。
+
+## 2b. VoxCPM2 ultimate cloning 需要参考音频的 transcript
+
+VoxCPM2 的最高保真克隆是"音频续写"模式，除了参考 WAV 还需要它对应的逐字稿（`prompt_text`）。`voice-clone.py` 的解析顺序：`--reference-text` / `VOXCPM_REF_TEXT`（内联字符串或 `.txt` 路径）→ 参考 WAV 同名 `<ref>.txt` 缓存 → 首次用 Qwen3-ASR 自动转写并写回 `<ref>.txt`。
+
+坑：自动转写会先加载 Qwen3-ASR（多 GB），脚本在转写完成后显式 `del model + torch.cuda.empty_cache()` 再加载 VoxCPM2，避免单卡（如 11GB）同时驻留两个模型导致 OOM。第一次跑某个参考音频会慢一点（多一次 ASR 加载），之后命中 `<ref>.txt` 缓存。
+
+## 2c. Turing GPU（如 RTX 2080 Ti）：用 fp16，不要装 flash-attn
+
+本地 VoxCPM2 / Qwen3-ASR 在 Turing（sm_75）上：脚本统一用 `torch.float16`（**不要** bf16——Turing 无原生 bf16，会很慢），并且**不要**装 flash-attn（Turing 不支持，库不带它也能跑）。VoxCPM2 与 Qwen3-ASR 是分阶段顺序加载的，单卡 11GB 足够。VoxCPM2 加载时 config 标的是 bfloat16，实测在 2080 Ti 上仍能正常合成（~3 it/s）；如遇异常或过慢，可考虑改用更小模型或云端 fallback。
 
 ## 3. 全角中文冒号可能引入 TTS 停顿
 
-当全角冒号 `：` 后紧跟一个长复合句时，CosyVoice 偶尔会在其后插入一段明显停顿。
+当全角冒号 `：` 后紧跟一个长复合句时，TTS 偶尔会在其后插入一段明显停顿。
 
 修复：改用 `——`、逗号，或在生成 TTS 之前断句。
 
@@ -95,7 +106,8 @@ scripts/merge-paper-manifest.py \
 
 常见修复：
 - `playwright` import 出错：`pip install playwright`
-- `dashscope` import 出错：在 venv 里安装 DashScope SDK
+- 本地 TTS/ASR import 出错（`voxcpm` / `qwen_asr` / `torch`）：在 venv 里 `pip install voxcpm qwen-asr` 并安装匹配 CUDA 的 `torch`
+- `dashscope` import 出错（仅云端 fallback 需要）：在 venv 里安装 DashScope SDK
 - `mineru` 缺失：`pip install "mineru[pipeline]"`
 
 ## 12. Paper mode 不要跳过主论文解析
