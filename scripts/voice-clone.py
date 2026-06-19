@@ -39,6 +39,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+# Reduce CUDA allocator fragmentation so long narrations don't OOM on smaller
+# cards (e.g. 11GB). Must be set before torch initializes the CUDA allocator;
+# setdefault leaves any user-provided value untouched.
+os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')
+
 DASHSCOPE_MODEL = "cosyvoice-v3.5-plus"
 DEFAULT_VOXCPM_MODEL = "openbmb/VoxCPM2"
 DEFAULT_REF_ASR_MODEL = "Qwen/Qwen3-ASR-1.7B"
