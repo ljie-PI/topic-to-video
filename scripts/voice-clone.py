@@ -5,6 +5,8 @@ Voice-cloned narration TTS with a local-first backend.
 Backends (select via --backend or TTS_BACKEND env, default: voxcpm):
   voxcpm     Local VoxCPM2 (Apache-2.0) ultimate cloning — reference WAV +
              its transcript. Runs on the local GPU. No cloud key needed.
+  qwen3tts   Local Qwen3-TTS (Apache-2.0) voice clone — reference WAV + its
+             transcript via Qwen3-TTS-12Hz-1.7B-Base. Runs on the local GPU.
   dashscope  Aliyun DashScope CosyVoice (cloud fallback). Needs
              DASHSCOPE_API_KEY + COSYVOICE_VOICE_ID.
 
@@ -20,12 +22,15 @@ Usage:
   python3 voice-clone.py --input-file narration.txt --output-dir voice_clone
 
 Optional env:
-  TTS_BACKEND        voxcpm (default) | dashscope
+  TTS_BACKEND        voxcpm (default) | qwen3tts | dashscope
   VOXCPM_MODEL       VoxCPM model id or local dir (default: openbmb/VoxCPM2)
-  VOXCPM_REF_WAV     reference audio for cloning (required for voxcpm backend)
+  VOXCPM_REF_WAV     reference audio for cloning (required for voxcpm/qwen3tts)
   VOXCPM_REF_TEXT    transcript of the reference audio. If unset, a sibling
                      "<ref>.txt" is used, else it is auto-generated once with
                      Qwen3-ASR and cached next to the reference WAV.
+  QWEN3TTS_MODEL     Qwen3-TTS model id or local dir
+                     (default: Qwen/Qwen3-TTS-12Hz-1.7B-Base)
+  QWEN3TTS_LANGUAGE  Qwen3-TTS language hint (default: Chinese)
   QWEN3_ASR_MODEL    Qwen3-ASR model used for the one-time reference transcript
                      (default: Qwen/Qwen3-ASR-1.7B)
 
@@ -46,12 +51,14 @@ os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')
 
 DASHSCOPE_MODEL = "cosyvoice-v3.5-plus"
 DEFAULT_VOXCPM_MODEL = "openbmb/VoxCPM2"
+DEFAULT_QWEN3TTS_MODEL = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
 DEFAULT_REF_ASR_MODEL = "Qwen/Qwen3-ASR-1.7B"
 
-# Default playback speed per backend. VoxCPM speaks at a natural ~1.0 pace; 1.2
-# (applied via ffmpeg atempo) lands close to the brisker DashScope/CosyVoice
-# narration pace while preserving pitch. CosyVoice keeps its own 1.4 default.
+# Default playback speed per backend. VoxCPM / Qwen3-TTS speak at a natural ~1.0
+# pace; 1.2 (applied via ffmpeg atempo) lands close to the brisker DashScope/
+# CosyVoice narration pace while preserving pitch. CosyVoice keeps its own 1.4.
 DEFAULT_VOXCPM_SPEECH_RATE = 1.2
+DEFAULT_QWEN3TTS_SPEECH_RATE = 1.2
 DEFAULT_DASHSCOPE_SPEECH_RATE = 1.4
 
 
@@ -74,7 +81,7 @@ def parse_args() -> argparse.Namespace:
     parser = JsonArgumentParser(description='Synthesize cloned-voice narration.')
     parser.add_argument(
         '--backend',
-        choices=['voxcpm', 'dashscope'],
+        choices=['voxcpm', 'qwen3tts', 'dashscope'],
         default=None,
         help='TTS backend. Defaults to TTS_BACKEND env or "voxcpm".',
     )
@@ -283,6 +290,56 @@ def synth_voxcpm(text: str, output_path: Path, args: argparse.Namespace) -> None
     write_mp3(wav, sample_rate, output_path, atempo)
 
 
+def synth_qwen3tts(text: str, output_path: Path, args: argparse.Namespace) -> None:
+    import gc
+
+    import torch
+    from qwen_tts import Qwen3TTSModel
+
+    ref_wav_value = args.reference_wav or os.environ.get('VOXCPM_REF_WAV')
+    if not ref_wav_value:
+        raise EnvironmentError(
+            'Qwen3-TTS reference audio not set. Pass --reference-wav or set VOXCPM_REF_WAV.'
+        )
+    ref_wav = Path(ref_wav_value).expanduser()
+    if not ref_wav.is_file():
+        raise FileNotFoundError(f'reference audio not found: {ref_wav}')
+
+    ref_text = resolve_reference_text(ref_wav, args.reference_text)
+
+    model_id = os.environ.get('QWEN3TTS_MODEL', DEFAULT_QWEN3TTS_MODEL)
+    language = os.environ.get('QWEN3TTS_LANGUAGE', 'Chinese')
+    use_cuda = torch.cuda.is_available()
+    dtype = torch.float16 if use_cuda else torch.float32  # Turing: fp16, no flash-attn
+    device = 'cuda:0' if use_cuda else 'cpu'
+
+    log(f'loading Qwen3-TTS model={model_id} device={device} dtype={dtype}')
+    model = Qwen3TTSModel.from_pretrained(model_id, device_map=device, dtype=dtype)
+
+    # Pass the reference clip as a (waveform, sr) tuple loaded via soundfile so
+    # audio I/O does not depend on an external SoX binary.
+    import soundfile as sf
+    ref_audio, ref_sr = sf.read(str(ref_wav))
+    if getattr(ref_audio, 'ndim', 1) > 1:
+        ref_audio = ref_audio.mean(axis=1)  # downmix to mono
+
+    log('synthesizing narration with Qwen3-TTS voice clone')
+    wavs, sr = model.generate_voice_clone(
+        text=text,
+        language=language,
+        ref_audio=(ref_audio, ref_sr),
+        ref_text=ref_text,
+    )
+    wav = wavs[0]
+    del model
+    gc.collect()
+    if use_cuda:
+        torch.cuda.empty_cache()
+
+    atempo = args.speech_rate if args.speech_rate is not None else DEFAULT_QWEN3TTS_SPEECH_RATE
+    write_mp3(wav, int(sr), output_path, atempo)
+
+
 def synth_dashscope(text: str, output_path: Path, args: argparse.Namespace) -> None:
     from dashscope.audio.tts_v2 import SpeechSynthesizer
     import dashscope
@@ -321,6 +378,8 @@ def main() -> int:
 
         if backend == 'voxcpm':
             synth_voxcpm(input_text, output_path, args)
+        elif backend == 'qwen3tts':
+            synth_qwen3tts(input_text, output_path, args)
         elif backend == 'dashscope':
             synth_dashscope(input_text, output_path, args)
         else:
