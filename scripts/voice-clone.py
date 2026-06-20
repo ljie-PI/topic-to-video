@@ -5,15 +5,13 @@ Voice-cloned narration TTS with a local-first backend.
 Backends (select via --backend or TTS_BACKEND env, default: qwen3tts):
   qwen3tts   Local Qwen3-TTS (Apache-2.0) voice clone — reference WAV + its
              transcript via Qwen3-TTS-12Hz-1.7B-Base. Runs on the local GPU.
-  voxcpm     Local VoxCPM2 (Apache-2.0) ultimate cloning — reference WAV +
-             its transcript. Runs on the local GPU. 48kHz output.
   dashscope  Aliyun DashScope CosyVoice (cloud fallback). Needs
              DASHSCOPE_API_KEY + COSYVOICE_VOICE_ID.
 
 Usage:
   source .venv/bin/activate
   # local (default)
-  export VOXCPM_REF_WAV="/path/to/my_voice.wav"        # reference timbre
+  export TTS_REF_WAV="/path/to/my_voice.wav"           # reference timbre
   python3 voice-clone.py --input-file narration.txt --output-dir voice_clone
   # cloud fallback
   export TTS_BACKEND=dashscope
@@ -22,12 +20,13 @@ Usage:
   python3 voice-clone.py --input-file narration.txt --output-dir voice_clone
 
 Optional env:
-  TTS_BACKEND        qwen3tts (default) | voxcpm | dashscope
-  VOXCPM_MODEL       VoxCPM model id or local dir (default: openbmb/VoxCPM2)
-  VOXCPM_REF_WAV     reference audio for cloning (required for voxcpm/qwen3tts)
-  VOXCPM_REF_TEXT    transcript of the reference audio. If unset, a sibling
+  TTS_BACKEND        qwen3tts (default) | dashscope
+  TTS_REF_WAV        reference audio for cloning (required for qwen3tts;
+                     legacy alias: VOXCPM_REF_WAV)
+  TTS_REF_TEXT       transcript of the reference audio. If unset, a sibling
                      "<ref>.txt" is used, else it is auto-generated once with
                      Qwen3-ASR and cached next to the reference WAV.
+                     (legacy alias: VOXCPM_REF_TEXT)
   QWEN3TTS_MODEL     Qwen3-TTS model id or local dir
                      (default: Qwen/Qwen3-TTS-12Hz-1.7B-Base)
   QWEN3TTS_LANGUAGE  Qwen3-TTS language hint (default: Chinese)
@@ -50,17 +49,24 @@ from pathlib import Path
 os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')
 
 DASHSCOPE_MODEL = "cosyvoice-v3.5-plus"
-DEFAULT_VOXCPM_MODEL = "openbmb/VoxCPM2"
 DEFAULT_QWEN3TTS_MODEL = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
 DEFAULT_REF_ASR_MODEL = "Qwen/Qwen3-ASR-1.7B"
 
 # Default playback speed per backend (applied via ffmpeg atempo, pitch-kept).
-# VoxCPM (slower, natural ~1.0 voice) uses 1.2 to approach the brisker cloud
-# pace; Qwen3-TTS with a fast reference voice reads naturally at 1.0. CosyVoice
-# keeps its own 1.4.
-DEFAULT_VOXCPM_SPEECH_RATE = 1.2
+# Qwen3-TTS with a fast reference voice reads naturally at 1.0; CosyVoice keeps
+# its own 1.4.
 DEFAULT_QWEN3TTS_SPEECH_RATE = 1.0
 DEFAULT_DASHSCOPE_SPEECH_RATE = 1.4
+
+
+def reference_wav_env() -> str | None:
+    """Reference WAV path from TTS_REF_WAV (legacy alias VOXCPM_REF_WAV)."""
+    return os.environ.get('TTS_REF_WAV') or os.environ.get('VOXCPM_REF_WAV')
+
+
+def reference_text_env() -> str | None:
+    """Reference transcript from TTS_REF_TEXT (legacy alias VOXCPM_REF_TEXT)."""
+    return os.environ.get('TTS_REF_TEXT') or os.environ.get('VOXCPM_REF_TEXT')
 
 
 def print_json(payload: dict[str, object]) -> None:
@@ -82,7 +88,7 @@ def parse_args() -> argparse.Namespace:
     parser = JsonArgumentParser(description='Synthesize cloned-voice narration.')
     parser.add_argument(
         '--backend',
-        choices=['voxcpm', 'qwen3tts', 'dashscope'],
+        choices=['qwen3tts', 'dashscope'],
         default=None,
         help='TTS backend. Defaults to TTS_BACKEND env or "qwen3tts".',
     )
@@ -101,21 +107,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--reference-wav',
         default=None,
-        help='VoxCPM reference audio for cloning. Defaults to VOXCPM_REF_WAV.',
+        help='Qwen3-TTS reference audio for cloning. Defaults to TTS_REF_WAV '
+             '(legacy alias VOXCPM_REF_WAV).',
     )
     parser.add_argument(
         '--reference-text',
         default=None,
         help='Transcript of the reference audio (inline string or path to a .txt). '
-             'Defaults to VOXCPM_REF_TEXT, a sibling "<ref>.txt", or auto-ASR.',
+             'Defaults to TTS_REF_TEXT (legacy alias VOXCPM_REF_TEXT), a sibling '
+             '"<ref>.txt", or auto-ASR.',
     )
     parser.add_argument(
         '--speech-rate',
         type=float,
         default=None,
         help='Playback speed. dashscope: CosyVoice speech_rate (default 1.4). '
-             'local: ffmpeg atempo factor post-synthesis (voxcpm default 1.2, '
-             'qwen3tts default 1.0).',
+             'qwen3tts: ffmpeg atempo factor post-synthesis (default 1.0).',
     )
     parser.add_argument(
         '--output-dir',
@@ -168,15 +175,15 @@ def detect_duration_seconds(audio_path: Path) -> float:
 
 
 def resolve_reference_text(ref_wav: Path, cli_value: str | None) -> str:
-    """Return the transcript of the reference audio for VoxCPM ultimate cloning.
+    """Return the transcript of the reference audio for voice cloning.
 
     Resolution order:
-      1. --reference-text / VOXCPM_REF_TEXT, treated as a file path if it looks
+      1. --reference-text / TTS_REF_TEXT, treated as a file path if it looks
          path-like, otherwise as an inline string.
       2. A sibling "<ref>.txt" cached next to the reference WAV.
       3. Auto-transcribe the reference once with Qwen3-ASR and cache it.
     """
-    raw = cli_value or os.environ.get('VOXCPM_REF_TEXT')
+    raw = cli_value or reference_text_env()
     if raw and raw.strip():
         candidate = Path(raw)
         looks_like_path = (
@@ -229,8 +236,8 @@ def transcribe_reference_plain(ref_wav: Path) -> str:
         results = model.transcribe(audio=str(ref_wav), language=None)
         text = (results[0].text or '').strip()
     finally:
-        # Free the ASR model before VoxCPM loads — both are multi-GB and the
-        # local GPU (e.g. 11GB) cannot hold them simultaneously.
+        # Free the ASR model before the TTS model loads — both are multi-GB and
+        # the local GPU (e.g. 11GB) cannot hold them simultaneously.
         del model
         gc.collect()
         if torch.cuda.is_available():
@@ -260,48 +267,16 @@ def write_mp3(wav, sample_rate: int, output_path: Path, atempo: float | None) ->
             pass
 
 
-def synth_voxcpm(text: str, output_path: Path, args: argparse.Namespace) -> None:
-    import torch
-    from voxcpm import VoxCPM
-
-    ref_wav_value = args.reference_wav or os.environ.get('VOXCPM_REF_WAV')
-    if not ref_wav_value:
-        raise EnvironmentError(
-            'VoxCPM reference audio not set. Pass --reference-wav or set VOXCPM_REF_WAV.'
-        )
-    ref_wav = Path(ref_wav_value).expanduser()
-    if not ref_wav.is_file():
-        raise FileNotFoundError(f'reference audio not found: {ref_wav}')
-
-    ref_text = resolve_reference_text(ref_wav, args.reference_text)
-
-    model_id = os.environ.get('VOXCPM_MODEL', DEFAULT_VOXCPM_MODEL)
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    log(f'loading VoxCPM model={model_id} device={device}')
-    model = VoxCPM.from_pretrained(model_id, load_denoiser=False, optimize=False, device=device)
-
-    log('synthesizing narration with VoxCPM ultimate cloning')
-    wav = model.generate(
-        text=text,
-        prompt_wav_path=str(ref_wav),
-        prompt_text=ref_text,
-        reference_wav_path=str(ref_wav),
-    )
-    sample_rate = int(model.tts_model.sample_rate)
-    atempo = args.speech_rate if args.speech_rate is not None else DEFAULT_VOXCPM_SPEECH_RATE
-    write_mp3(wav, sample_rate, output_path, atempo)
-
-
 def synth_qwen3tts(text: str, output_path: Path, args: argparse.Namespace) -> None:
     import gc
 
     import torch
     from qwen_tts import Qwen3TTSModel
 
-    ref_wav_value = args.reference_wav or os.environ.get('VOXCPM_REF_WAV')
+    ref_wav_value = args.reference_wav or reference_wav_env()
     if not ref_wav_value:
         raise EnvironmentError(
-            'Qwen3-TTS reference audio not set. Pass --reference-wav or set VOXCPM_REF_WAV.'
+            'Qwen3-TTS reference audio not set. Pass --reference-wav or set TTS_REF_WAV.'
         )
     ref_wav = Path(ref_wav_value).expanduser()
     if not ref_wav.is_file():
@@ -378,9 +353,7 @@ def main() -> int:
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = (output_dir / 'narration.mp3').resolve()
 
-        if backend == 'voxcpm':
-            synth_voxcpm(input_text, output_path, args)
-        elif backend == 'qwen3tts':
+        if backend == 'qwen3tts':
             synth_qwen3tts(input_text, output_path, args)
         elif backend == 'dashscope':
             synth_dashscope(input_text, output_path, args)

@@ -8,7 +8,7 @@
 
 ```bash
 source .venv/bin/activate  # 从父目录或 venv 所在目录执行
-export VOXCPM_REF_WAV="/path/to/voice_ref.wav"   # 克隆的目标音色（参考音频）
+export TTS_REF_WAV="/path/to/voice_ref.wav"   # 克隆的目标音色（参考音频）
 # 可选：export QWEN3TTS_MODEL=/path/to/Qwen3-TTS-12Hz-1.7B-Base  # 本地模型目录；缺省自动从 HF 下载
 # 可选：export QWEN3_ASR_MODEL=/path/to/Qwen3-ASR-1.7B  # 首次自动转写参考音频用
 
@@ -22,11 +22,9 @@ ffprobe -v error -show_entries format=duration \
 ```
 
 参考音色与 transcript：
-- `--reference-wav` 或 `VOXCPM_REF_WAV` 指定参考音频（任意采样率 / 声道，脚本内部按需重采样；变量名沿用 `VOXCPM_REF_WAV`，两个本地后端共用）。
-- 参考音频的逐字 transcript 解析顺序：`--reference-text` / `VOXCPM_REF_TEXT`（可为内联字符串或 `.txt` 路径）→ 参考 WAV 同名 `<ref>.txt` 缓存 → 首次用 Qwen3-ASR 自动转写并缓存到 `<ref>.txt`。
-- 默认 `--speech-rate` 1.2（Qwen3-TTS / VoxCPM 通过 ffmpeg `atempo` 后处理，贴近云端节奏）。
-
-可选本地后端 VoxCPM2（`TTS_BACKEND=voxcpm`，模型 `openbmb/VoxCPM2`，ultimate cloning）：中英混排更稳、48kHz 输出，但音频更长、稍慢。Qwen3-TTS 纯中文可懂度更高、更紧凑、略快，英文专有名词偶有发音瑕疵。按内容选择即可。
+- `--reference-wav` 或 `TTS_REF_WAV`（旧别名 `VOXCPM_REF_WAV` 仍兼容）指定参考音频（任意采样率 / 声道，脚本内部按需重采样）。
+- 参考音频的逐字 transcript 解析顺序：`--reference-text` / `TTS_REF_TEXT`（可为内联字符串或 `.txt` 路径）→ 参考 WAV 同名 `<ref>.txt` 缓存 → 首次用 Qwen3-ASR 自动转写并缓存到 `<ref>.txt`。
+- 默认 `--speech-rate` 1.0（Qwen3-TTS 通过 ffmpeg `atempo` 后处理；参考音色偏快时 1.0 即贴近云端节奏，可按需上调）。
 
 云端 fallback（DashScope CosyVoice）：
 

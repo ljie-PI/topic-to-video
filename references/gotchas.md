@@ -14,7 +14,7 @@
 
 ## 1b. 本地 ASR 的数字归一化（ITN）
 
-云端 paraformer-v2 默认把口语中文数字转成阿拉伯写法（`一万六千二百八十八→16288`、`三点一→3.1`），本地 Qwen3-ASR 原始输出是逐字中文。为对齐这一行为，`transcribe-paraformer.py` 的 qwen3 backend 默认开 ITN（`ASR_ITN=1`），用 `wetext`（随 `voxcpm` 安装）做逆文本归一化；`ASR_ITN=0` 可关闭、保留逐字中文。
+云端 paraformer-v2 默认把口语中文数字转成阿拉伯写法（`一万六千二百八十八→16288`、`三点一→3.1`），本地 Qwen3-ASR 原始输出是逐字中文。为对齐这一行为，`transcribe-paraformer.py` 的 qwen3 backend 默认开 ITN（`ASR_ITN=1`），用独立包 `wetext`（`pip install wetext`）做逆文本归一化；`ASR_ITN=0` 可关闭、保留逐字中文。`wetext` 缺失时自动跳过 ITN、保留逐字中文，不报错。
 
 实现要点 / 坑：
 - 先按日历单位（`年月日时分秒`）切块再分别 ITN，避免 wetext 把 `二零二六年六月` 重排成 `2026/06`，从而保持云端风格 `2026年6月` 并避免合并边界 artifact。
@@ -34,19 +34,19 @@ python3 scripts/voice-clone.py \
   --output-dir {work_dir}/{topic_name}/voice_clone
 ```
 
-默认走**本地 Qwen3-TTS 克隆**（`TTS_BACKEND=qwen3tts`），用 `--reference-wav` / `VOXCPM_REF_WAV` 指定要克隆的音色；可选 `TTS_BACKEND=voxcpm`（VoxCPM2）。云端 fallback 用 `TTS_BACKEND=dashscope`，通过 `--voice` 或 `COSYVOICE_VOICE_ID` 设置 CosyVoice 音色。
+默认走**本地 Qwen3-TTS 克隆**（`TTS_BACKEND=qwen3tts`），用 `--reference-wav` / `TTS_REF_WAV`（旧别名 `VOXCPM_REF_WAV` 仍兼容）指定要克隆的音色。云端 fallback 用 `TTS_BACKEND=dashscope`，通过 `--voice` 或 `COSYVOICE_VOICE_ID` 设置 CosyVoice 音色。
 
-## 2b. VoxCPM2 ultimate cloning 需要参考音频的 transcript
+## 2b. Qwen3-TTS 声音克隆需要参考音频的 transcript
 
-VoxCPM2 的最高保真克隆是"音频续写"模式，除了参考 WAV 还需要它对应的逐字稿（`prompt_text`）。`voice-clone.py` 的解析顺序：`--reference-text` / `VOXCPM_REF_TEXT`（内联字符串或 `.txt` 路径）→ 参考 WAV 同名 `<ref>.txt` 缓存 → 首次用 Qwen3-ASR 自动转写并写回 `<ref>.txt`。
+Qwen3-TTS 的 voice clone 除了参考 WAV 还需要它对应的逐字稿（`ref_text`）。`voice-clone.py` 的解析顺序：`--reference-text` / `TTS_REF_TEXT`（内联字符串或 `.txt` 路径）→ 参考 WAV 同名 `<ref>.txt` 缓存 → 首次用 Qwen3-ASR 自动转写并写回 `<ref>.txt`。
 
-坑：自动转写会先加载 Qwen3-ASR（多 GB），脚本在转写完成后显式 `del model + torch.cuda.empty_cache()` 再加载 VoxCPM2，避免单卡（如 11GB）同时驻留两个模型导致 OOM。第一次跑某个参考音频会慢一点（多一次 ASR 加载），之后命中 `<ref>.txt` 缓存。
+坑：自动转写会先加载 Qwen3-ASR（多 GB），脚本在转写完成后显式 `del model + torch.cuda.empty_cache()` 再加载 Qwen3-TTS，避免单卡（如 11GB）同时驻留两个模型导致 OOM。第一次跑某个参考音频会慢一点（多一次 ASR 加载），之后命中 `<ref>.txt` 缓存。参考音频以 `(waveform, sr)` 元组（soundfile 读取）传入，避开对外部 SoX 二进制的依赖。
 
-坑（长 narration OOM）：在 11GB 卡上合成约 2 分钟以上的长 narration 时，VoxCPM2 的 KV cache 可能在末尾 OOM（`CUDA out of memory ... try expandable_segments`）。`voice-clone.py` 已用 `os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')` 缓解碎片化；实测一段 ~146s 的中文 narration 用此设置可正常合成。仍 OOM 时可把 narration 分段合成再用 ffmpeg 拼接，或切到云端 fallback。
+坑（长 narration OOM）：在 11GB 卡上合成较长 narration 时，TTS 的 KV cache 可能在末尾 OOM（`CUDA out of memory ... try expandable_segments`）。`voice-clone.py` 已用 `os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')` 缓解碎片化。仍 OOM 时可把 narration 分段合成再用 ffmpeg 拼接，或切到云端 fallback。
 
 ## 2c. Turing GPU（如 RTX 2080 Ti）：用 fp16，不要装 flash-attn
 
-本地 VoxCPM2 / Qwen3-ASR 在 Turing（sm_75）上：脚本统一用 `torch.float16`（**不要** bf16——Turing 无原生 bf16，会很慢），并且**不要**装 flash-attn（Turing 不支持，库不带它也能跑）。VoxCPM2 与 Qwen3-ASR 是分阶段顺序加载的，单卡 11GB 足够。VoxCPM2 加载时 config 标的是 bfloat16，实测在 2080 Ti 上仍能正常合成（~3 it/s）；如遇异常或过慢，可考虑改用更小模型或云端 fallback。
+本地 Qwen3-TTS / Qwen3-ASR 在 Turing（sm_75）上：脚本统一用 `torch.float16`（**不要** bf16——Turing 无原生 bf16，会很慢），并且**不要**装 flash-attn（Turing 不支持，库不带它也能跑，启动时会有一条 "flash-attn is not installed" 提示，可忽略）。两个多 GB 模型分阶段顺序加载，单卡 11GB 足够。
 
 ## 3. 全角中文冒号可能引入 TTS 停顿
 
@@ -118,7 +118,7 @@ scripts/merge-paper-manifest.py \
 
 常见修复：
 - `playwright` import 出错：`pip install playwright`
-- 本地 TTS/ASR import 出错（`voxcpm` / `qwen_asr` / `torch`）：在 venv 里 `pip install voxcpm qwen-asr` 并安装匹配 CUDA 的 `torch`
+- 本地 TTS/ASR import 出错（`qwen_tts` / `qwen_asr` / `torch`）：在 venv 里 `pip install qwen-tts qwen-asr wetext` 并安装匹配 CUDA 的 `torch`
 - `dashscope` import 出错（仅云端 fallback 需要）：在 venv 里安装 DashScope SDK
 - `mineru` 缺失：`pip install "mineru[pipeline]"`
 
