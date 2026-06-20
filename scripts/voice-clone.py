@@ -54,11 +54,12 @@ DEFAULT_VOXCPM_MODEL = "openbmb/VoxCPM2"
 DEFAULT_QWEN3TTS_MODEL = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
 DEFAULT_REF_ASR_MODEL = "Qwen/Qwen3-ASR-1.7B"
 
-# Default playback speed per backend. VoxCPM / Qwen3-TTS speak at a natural ~1.0
-# pace; 1.2 (applied via ffmpeg atempo) lands close to the brisker DashScope/
-# CosyVoice narration pace while preserving pitch. CosyVoice keeps its own 1.4.
+# Default playback speed per backend (applied via ffmpeg atempo, pitch-kept).
+# VoxCPM (slower, natural ~1.0 voice) uses 1.2 to approach the brisker cloud
+# pace; Qwen3-TTS with a fast reference voice reads naturally at 1.0. CosyVoice
+# keeps its own 1.4.
 DEFAULT_VOXCPM_SPEECH_RATE = 1.2
-DEFAULT_QWEN3TTS_SPEECH_RATE = 1.2
+DEFAULT_QWEN3TTS_SPEECH_RATE = 1.0
 DEFAULT_DASHSCOPE_SPEECH_RATE = 1.4
 
 
@@ -113,7 +114,8 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         help='Playback speed. dashscope: CosyVoice speech_rate (default 1.4). '
-             'voxcpm: ffmpeg atempo factor applied post-synthesis (default 1.2).',
+             'local: ffmpeg atempo factor post-synthesis (voxcpm default 1.2, '
+             'qwen3tts default 1.0).',
     )
     parser.add_argument(
         '--output-dir',
