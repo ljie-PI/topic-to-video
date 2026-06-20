@@ -1,12 +1,13 @@
 # Composition Handoff — <TOPIC>
 
-本文件位于项目工作区根目录。它记录本项目变量、输入路径、style hint、用户定制约束和冲突说明；固定规则与 QA 协议来自工作区本地副本 `references/composition-rules.md`。
+本文件位于项目工作区根目录。它记录本项目变量、输入路径、style hint、用户定制约束和冲突说明；固定规则来自工作区本地副本 `references/composition-rules.md`，stage / QA 协议来自 `references/composition-stage-protocol.md`。
 
 ## Required References
 
 Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前物化这些文件，并在本节写入实际相对路径。
 
 - Rules：`references/composition-rules.md`（必需；从 skill 的 `references/composition-rules.md` 复制到项目工作区）
+- Stage Protocol：`references/composition-stage-protocol.md`（必需；Phase 8 self-audit / render / Visual QA / feedback loop）
 - Design：`references/design-<theme>.md`（如适用；从 skill 的对应 design 文件复制到项目工作区）
 
 如果任一必需 reference 不存在，HyperFrames sub-agent 必须停止并反馈主 agent，不得凭默认审美继续制作。
@@ -31,19 +32,7 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前物化这些文件，
 - 屏幕文本块规划：`scene-text-plan.json`（如存在）
 - 已预置字体：`fonts/`
 
-输入文件的固定解释规则以 `references/composition-rules.md` 为准。
-
-Phase 8 需要按 `references/composition-rules.md` 读取 layout-aware 字段：`material-catalog.json` 可能包含 `aspect_ratio`、`ratio_bucket`、`layout_affordance`、`focal_region`；`scene-material-suggestions.json` 可能包含 `layout_role`、`layout_reason`、`material_refs`、`continuation_group_id`、`continuation_of`。这些字段是布局决策输入，不替代固定规则。
-
-### Scene text-plan routing
-
-若 `scene-text-plan.json` 存在，Phase 8 HyperFrames sub-agent 必须把它作为非字幕屏幕文本的结构化输入，而不是普通 style hint：
-
-1. 按 `scene_index` 把 `scene-text-plan.json` 条目与 `scene-material-suggestions.json` 条目 join。
-2. 对每个 scene，先读取 `material_ref` / `material_refs` / `no_match`、`layout_role`、catalog 尺寸、`layout_affordance` 和 `focal_region`（如有），再读取该 scene 的 `visual_text_units`。
-3. `priority: "primary"` 的 unit 是必须尝试实现的信息单元；若因素材尺寸、字幕安全区或 overlap 无法实现，必须在 `composition/DESIGN.md` 记录降级原因。
-4. `visual_role` / `domain_hint` / `template_hint` 只指定信息形态，不指定最终 DOM / CSS；最终布局仍以 `references/composition-rules.md` 的素材占比、安全区、overlap 和 peak-state audit 为准。
-5. 有图片 / 视频素材的 scene，`visual_text_units` 默认放在素材外置信息区、侧栏、上 / 下信息带、角标区或分时轮换区；禁止把前景文本压在 catalog 素材关键区域上。例外：`video_first` 的全屏 / 近全屏视频可按 R16 使用少量 shrink-to-fit 半透明短文本浮层，但必须避开主体动作、UI 关键区域、人物脸部和 `focal_region`。
+输入文件的语义解释、`scene-text-plan.json` routing、layout-aware 字段读取和 `visual_role × orientation` 规则以 `references/composition-rules.md` 为准；Phase 8.3-8.7 的执行、检查、QA 和反馈循环以 `references/composition-stage-protocol.md` 为准。
 
 ## Style Hint
 
