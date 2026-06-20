@@ -1,22 +1,73 @@
 #!/usr/bin/env python3
 """
-CosyVoice TTS via Aliyun DashScope.
+Voice-cloned narration TTS with a local-first backend.
 
-Prerequisites:
+Backends (select via --backend or TTS_BACKEND env, default: qwen3tts):
+  qwen3tts   Local Qwen3-TTS (Apache-2.0) voice clone — reference WAV + its
+             transcript via Qwen3-TTS-12Hz-1.7B-Base. Runs on the local GPU.
+  dashscope  Aliyun DashScope CosyVoice (cloud fallback). Needs
+             DASHSCOPE_API_KEY + COSYVOICE_VOICE_ID.
+
+Usage:
   source .venv/bin/activate
+  # local (default)
+  export TTS_REF_WAV="/path/to/my_voice.wav"           # reference timbre
+  python3 voice-clone.py --input-file narration.txt --output-dir voice_clone
+  # cloud fallback
+  export TTS_BACKEND=dashscope
   export DASHSCOPE_API_KEY="sk-..."
   export COSYVOICE_VOICE_ID="cosyvoice-v3.5-plus-..."
+  python3 voice-clone.py --input-file narration.txt --output-dir voice_clone
 
-Output: {output_dir}/narration.mp3 (sample rate 22050)
+Optional env:
+  TTS_BACKEND        qwen3tts (default) | dashscope
+  TTS_REF_WAV        reference audio for cloning (required for qwen3tts;
+                     legacy alias: VOXCPM_REF_WAV)
+  TTS_REF_TEXT       transcript of the reference audio. If unset, a sibling
+                     "<ref>.txt" is used, else it is auto-generated once with
+                     Qwen3-ASR and cached next to the reference WAV.
+                     (legacy alias: VOXCPM_REF_TEXT)
+  QWEN3TTS_MODEL     Qwen3-TTS model id or local dir
+                     (default: Qwen/Qwen3-TTS-12Hz-1.7B-Base)
+  QWEN3TTS_LANGUAGE  Qwen3-TTS language hint (default: Chinese)
+  QWEN3_ASR_MODEL    Qwen3-ASR model used for the one-time reference transcript
+                     (default: Qwen/Qwen3-ASR-1.7B)
+
+Output: {output_dir}/narration.mp3
 """
+import abc
 import argparse
 import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
-MODEL = "cosyvoice-v3.5-plus"
+# Reduce CUDA allocator fragmentation so long narrations don't OOM on smaller
+# cards (e.g. 11GB). Must be set before torch initializes the CUDA allocator;
+# setdefault leaves any user-provided value untouched.
+os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')
+
+DASHSCOPE_MODEL = "cosyvoice-v3.5-plus"
+DEFAULT_QWEN3TTS_MODEL = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+DEFAULT_REF_ASR_MODEL = "Qwen/Qwen3-ASR-1.7B"
+
+# Default playback speed per backend (applied via ffmpeg atempo, pitch-kept).
+# Qwen3-TTS with a fast reference voice reads naturally at 1.0; CosyVoice keeps
+# its own 1.4.
+DEFAULT_QWEN3TTS_SPEECH_RATE = 1.0
+DEFAULT_DASHSCOPE_SPEECH_RATE = 1.4
+
+
+def reference_wav_env() -> str | None:
+    """Reference WAV path from TTS_REF_WAV (legacy alias VOXCPM_REF_WAV)."""
+    return os.environ.get('TTS_REF_WAV') or os.environ.get('VOXCPM_REF_WAV')
+
+
+def reference_text_env() -> str | None:
+    """Reference transcript from TTS_REF_TEXT (legacy alias VOXCPM_REF_TEXT)."""
+    return os.environ.get('TTS_REF_TEXT') or os.environ.get('VOXCPM_REF_TEXT')
 
 
 def print_json(payload: dict[str, object]) -> None:
@@ -35,7 +86,13 @@ class JsonArgumentParser(argparse.ArgumentParser):
 
 
 def parse_args() -> argparse.Namespace:
-    parser = JsonArgumentParser(description='Synthesize narration audio with CosyVoice.')
+    parser = JsonArgumentParser(description='Synthesize cloned-voice narration.')
+    parser.add_argument(
+        '--backend',
+        choices=['qwen3tts', 'dashscope'],
+        default=None,
+        help='TTS backend. Defaults to TTS_BACKEND env or "qwen3tts".',
+    )
     parser.add_argument(
         '--input-file',
         '--text-file',
@@ -46,13 +103,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--voice',
         default=None,
-        help='CosyVoice voice id. Defaults to COSYVOICE_VOICE_ID.',
+        help='DashScope CosyVoice voice id. Defaults to COSYVOICE_VOICE_ID.',
+    )
+    parser.add_argument(
+        '--reference-wav',
+        default=None,
+        help='Qwen3-TTS reference audio for cloning. Defaults to TTS_REF_WAV '
+             '(legacy alias VOXCPM_REF_WAV).',
+    )
+    parser.add_argument(
+        '--reference-text',
+        default=None,
+        help='Transcript of the reference audio (inline string or path to a .txt). '
+             'Defaults to TTS_REF_TEXT (legacy alias VOXCPM_REF_TEXT), a sibling '
+             '"<ref>.txt", or auto-ASR.',
     )
     parser.add_argument(
         '--speech-rate',
         type=float,
-        default=1.4,
-        help='CosyVoice speech_rate value (default: 1.4).',
+        default=None,
+        help='Playback speed. dashscope: CosyVoice speech_rate (default 1.4). '
+             'qwen3tts: ffmpeg atempo factor post-synthesis (default 1.0).',
     )
     parser.add_argument(
         '--output-dir',
@@ -104,41 +175,266 @@ def detect_duration_seconds(audio_path: Path) -> float:
     return round(duration_s, 3)
 
 
-def main() -> int:
+def resolve_reference_text(ref_wav: Path, cli_value: str | None) -> str:
+    """Return the transcript of the reference audio for voice cloning.
+
+    Resolution order:
+      1. --reference-text / TTS_REF_TEXT, treated as a file path if it looks
+         path-like, otherwise as an inline string.
+      2. A sibling "<ref>.txt" cached next to the reference WAV.
+      3. Auto-transcribe the reference once with Qwen3-ASR and cache it.
+    """
+    raw = cli_value or reference_text_env()
+    if raw and raw.strip():
+        stripped = raw.strip()
+        candidate = Path(stripped).expanduser()
+        if candidate.is_file():
+            text = candidate.read_text(encoding='utf-8').strip()
+            if text:
+                return text
+            raise ValueError(f'reference transcript file is empty: {candidate}')
+        # Treat as a path only when it really looks like one: a .txt suffix, or
+        # a path separator with no internal whitespace. A real inline transcript
+        # usually contains spaces (and may contain a "/" as in "AI/人工智能"),
+        # so it must not be misread as a missing file.
+        looks_like_path = stripped.lower().endswith('.txt') or (
+            not any(ch.isspace() for ch in stripped)
+            and (os.sep in stripped or bool(os.altsep and os.altsep in stripped))
+        )
+        if looks_like_path:
+            # A path-looking value that does not resolve is almost certainly a
+            # typo; failing loudly beats silently cloning from the literal path.
+            raise FileNotFoundError(f'reference transcript file not found: {candidate}')
+        return stripped
+
+    sidecar = ref_wav.with_suffix('.txt')
+    if sidecar.is_file():
+        text = sidecar.read_text(encoding='utf-8').strip()
+        if text:
+            log(f'using cached reference transcript: {sidecar}')
+            return text
+
+    log('reference transcript not found; transcribing reference once with Qwen3-ASR')
+    text = transcribe_reference_plain(ref_wav)
+    sidecar.write_text(text + '\n', encoding='utf-8')
+    log(f'cached reference transcript to {sidecar}')
+    return text
+
+
+def transcribe_reference_plain(ref_wav: Path) -> str:
+    """Plain-text (no timestamps) transcription of the reference clip."""
+    import gc
+
+    import torch
+    from qwen_asr import Qwen3ASRModel
+
+    model_id = os.environ.get('QWEN3_ASR_MODEL', DEFAULT_REF_ASR_MODEL)
+    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    model = Qwen3ASRModel.from_pretrained(
+        model_id,
+        dtype=dtype,
+        device_map=device,
+        max_new_tokens=512,
+    )
     try:
-        args = parse_args()
+        results = model.transcribe(audio=str(ref_wav), language=None)
+        text = (results[0].text or '').strip()
+    finally:
+        # Free the ASR model before the TTS model loads — both are multi-GB and
+        # the local GPU (e.g. 11GB) cannot hold them simultaneously.
+        del model
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    if not text:
+        raise RuntimeError('reference transcription returned empty text')
+    return text
+
+
+def _atempo_chain(rate: float | None) -> str | None:
+    """Build an ffmpeg atempo filter (or chain) for any positive speed.
+
+    A single ``atempo`` only supports 0.5–2.0, so out-of-range rates are
+    decomposed into a chain of in-range factors (e.g. 2.5 -> atempo=2.0,atempo=1.25).
+    Returns None when no re-timing is needed.
+    """
+    if rate is None or abs(rate - 1.0) <= 1e-3:
+        return None
+    if rate <= 0:
+        raise ValueError(f'--speech-rate must be positive, got {rate}')
+    factors: list[float] = []
+    remaining = rate
+    while remaining > 2.0:
+        factors.append(2.0)
+        remaining /= 2.0
+    while remaining < 0.5:
+        factors.append(0.5)
+        remaining /= 0.5
+    factors.append(remaining)
+    return ','.join(f'atempo={f:.4f}' for f in factors)
+
+
+def write_mp3(wav, sample_rate: int, output_path: Path, atempo: float | None) -> None:
+    """Write a float waveform to mp3 via ffmpeg, optionally re-timing speed."""
+    import soundfile as sf
+
+    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+        tmp_wav = tmp.name
+    try:
+        sf.write(tmp_wav, wav, sample_rate)
+        cmd = ['ffmpeg', '-y', '-loglevel', 'error', '-i', tmp_wav]
+        atempo_filter = _atempo_chain(atempo)
+        if atempo_filter:
+            cmd += ['-filter:a', atempo_filter]
+        cmd += ['-c:a', 'libmp3lame', '-q:a', '2', str(output_path)]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300)
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or '').strip() or str(exc)
+            raise RuntimeError(f'ffmpeg failed: {detail}') from exc
+    finally:
+        try:
+            os.unlink(tmp_wav)
+        except OSError:
+            pass
+
+
+class TTSBackend(abc.ABC):
+    """Common interface: synthesize narration text into an mp3 file."""
+
+    name: str
+
+    def __init__(self, args: argparse.Namespace) -> None:
+        self.args = args
+
+    @abc.abstractmethod
+    def synthesize(self, text: str, output_path: Path) -> None:
+        raise NotImplementedError
+
+
+class Qwen3TTSBackend(TTSBackend):
+    """Local Qwen3-TTS voice clone (reference WAV + its transcript)."""
+
+    name = 'qwen3tts'
+
+    def synthesize(self, text: str, output_path: Path) -> None:
+        import gc
+
+        import torch
+        from qwen_tts import Qwen3TTSModel
+
+        ref_wav_value = self.args.reference_wav or reference_wav_env()
+        if not ref_wav_value:
+            raise EnvironmentError(
+                'Qwen3-TTS reference audio not set. Pass --reference-wav or set TTS_REF_WAV.'
+            )
+        ref_wav = Path(ref_wav_value).expanduser()
+        if not ref_wav.is_file():
+            raise FileNotFoundError(f'reference audio not found: {ref_wav}')
+
+        ref_text = resolve_reference_text(ref_wav, self.args.reference_text)
+
+        model_id = os.environ.get('QWEN3TTS_MODEL', DEFAULT_QWEN3TTS_MODEL)
+        language = os.environ.get('QWEN3TTS_LANGUAGE', 'Chinese')
+        use_cuda = torch.cuda.is_available()
+        dtype = torch.float16 if use_cuda else torch.float32  # Turing: fp16, no flash-attn
+        device = 'cuda:0' if use_cuda else 'cpu'
+
+        log(f'loading Qwen3-TTS model={model_id} device={device} dtype={dtype}')
+        model = Qwen3TTSModel.from_pretrained(model_id, device_map=device, dtype=dtype)
+
+        # Pass the reference clip as a (waveform, sr) tuple loaded via soundfile
+        # so audio I/O does not depend on an external SoX binary.
+        import soundfile as sf
+        ref_audio, ref_sr = sf.read(str(ref_wav))
+        if getattr(ref_audio, 'ndim', 1) > 1:
+            ref_audio = ref_audio.mean(axis=1)  # downmix to mono
+
+        log('synthesizing narration with Qwen3-TTS voice clone')
+        wavs, sr = model.generate_voice_clone(
+            text=text,
+            language=language,
+            ref_audio=(ref_audio, ref_sr),
+            ref_text=ref_text,
+        )
+        wav = wavs[0]
+        del model
+        gc.collect()
+        if use_cuda:
+            torch.cuda.empty_cache()
+
+        atempo = self.args.speech_rate if self.args.speech_rate is not None else DEFAULT_QWEN3TTS_SPEECH_RATE
+        write_mp3(wav, int(sr), output_path, atempo)
+
+
+class CosyVoiceBackend(TTSBackend):
+    """Cloud DashScope CosyVoice synthesis (fallback)."""
+
+    name = 'dashscope'
+
+    def synthesize(self, text: str, output_path: Path) -> None:
         from dashscope.audio.tts_v2 import SpeechSynthesizer
         import dashscope
 
         api_key = os.environ.get('DASHSCOPE_API_KEY')
         if not api_key:
             raise EnvironmentError('DASHSCOPE_API_KEY env var not set')
-        voice = args.voice or os.environ.get('COSYVOICE_VOICE_ID')
+        voice = self.args.voice or os.environ.get('COSYVOICE_VOICE_ID')
         if not voice:
             raise EnvironmentError('CosyVoice voice id not set. Pass --voice or set COSYVOICE_VOICE_ID.')
-        input_text = read_input_text(args.input_file)
 
         dashscope.api_key = api_key
         dashscope.base_websocket_api_url = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference'
 
-        output_dir = Path(args.output_dir).expanduser()
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = (output_dir / 'narration.mp3').resolve()
-
-        log(f'synthesizing narration to {output_path}')
-        synthesizer = SpeechSynthesizer(model=MODEL, voice=voice, speech_rate=args.speech_rate)
-        audio = synthesizer.call(input_text)
-
+        speech_rate = self.args.speech_rate if self.args.speech_rate is not None else DEFAULT_DASHSCOPE_SPEECH_RATE
+        log(f'synthesizing narration to {output_path} (CosyVoice, speech_rate={speech_rate})')
+        synthesizer = SpeechSynthesizer(model=DASHSCOPE_MODEL, voice=voice, speech_rate=speech_rate)
+        audio = synthesizer.call(text)
         log(
             'requestId='
             f'{synthesizer.get_last_request_id()}, '
             f'first_packet_delay={synthesizer.get_first_package_delay()}ms'
         )
-
+        if not isinstance(audio, (bytes, bytearray)):
+            raise RuntimeError(
+                f'CosyVoice returned no audio (got {type(audio).__name__}); '
+                'check DASHSCOPE_API_KEY / COSYVOICE_VOICE_ID and account quota.'
+            )
         output_path.write_bytes(audio)
+
+
+BACKENDS: dict[str, type[TTSBackend]] = {
+    cls.name: cls for cls in (Qwen3TTSBackend, CosyVoiceBackend)
+}
+
+
+def main() -> int:
+    try:
+        args = parse_args()
+        backend_name = args.backend or os.environ.get('TTS_BACKEND', 'qwen3tts')
+        backend_cls = BACKENDS.get(backend_name)
+        if backend_cls is None:
+            raise ValueError(f'unknown TTS backend: {backend_name}')
+
+        input_text = read_input_text(args.input_file)
+
+        output_dir = Path(args.output_dir).expanduser()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = (output_dir / 'narration.mp3').resolve()
+
+        backend_cls(args).synthesize(input_text, output_path)
+
         duration_s = detect_duration_seconds(output_path)
         log(f'wrote {output_path}')
-        print_json({'success': True, 'output_path': str(output_path), 'duration_s': duration_s})
+        print_json(
+            {
+                'success': True,
+                'backend': backend_name,
+                'output_path': str(output_path),
+                'duration_s': duration_s,
+            }
+        )
         return 0
     except SystemExit:
         raise

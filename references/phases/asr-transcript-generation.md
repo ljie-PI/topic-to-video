@@ -7,10 +7,12 @@
 如果 `{work_dir}/{topic_name}/transcribe/transcript.json` 已存在、且是包含至少一句话和词级时间戳的合法 JSON，并且 `{work_dir}/{topic_name}/transcribe/subtitle-units.json` 已存在且可读取，则跳过。
 
 ```bash
-scripts/transcribe-paraformer.py \
+scripts/transcribe.py \
   {work_dir}/{topic_name}/voice_clone/narration.mp3 \
   {work_dir}/{topic_name}/transcribe/transcript.json
 ```
+
+默认走**本地 Qwen3-ASR + ForcedAligner**，输出词级时间戳并默认开启数字归一化（中文数字→阿拉伯）。云端 fallback：`ASR_BACKEND=dashscope` + `DASHSCOPE_API_KEY`。后端、模型路径、ITN 开关等细节见 `scripts/transcribe.py --help`。
 
 随后生成 transcript-first 的字幕单元：
 
