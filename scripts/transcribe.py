@@ -49,8 +49,6 @@ import sys
 import unicodedata
 from http import HTTPStatus
 
-import requests
-
 
 def print_json(payload: dict[str, object]) -> None:
     print(json.dumps(payload, ensure_ascii=False))
@@ -398,6 +396,7 @@ class ParaformerBackend(ASRBackend):
         from dashscope.audio.asr import Transcription
         from dashscope.utils.oss_utils import OssUtils
         import dashscope
+        import requests
 
         is_remote = is_remote_audio(audio_arg)
         if not is_remote and not os.path.isfile(audio_arg):

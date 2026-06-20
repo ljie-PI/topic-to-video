@@ -187,7 +187,7 @@ def resolve_reference_text(ref_wav: Path, cli_value: str | None) -> str:
     raw = cli_value or reference_text_env()
     if raw and raw.strip():
         stripped = raw.strip()
-        candidate = Path(raw).expanduser()
+        candidate = Path(stripped).expanduser()
         if candidate.is_file():
             text = candidate.read_text(encoding='utf-8').strip()
             if text:

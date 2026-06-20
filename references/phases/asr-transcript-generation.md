@@ -12,7 +12,7 @@ scripts/transcribe.py \
   {work_dir}/{topic_name}/transcribe/transcript.json
 ```
 
-默认走**本地 Qwen3-ASR + ForcedAligner**（CJK 按字 / Latin 按词的词级时间戳，自动识别语言）。可选 env：`QWEN3_ASR_MODEL`（默认 `Qwen/Qwen3-ASR-1.7B`，可指向本地目录）、`QWEN3_ALIGNER_MODEL`（默认 `Qwen/Qwen3-ForcedAligner-0.6B`）、`QWEN3_LANGUAGE`（强制语言名，缺省自动）、`ASR_ITN`（默认 `1` 开启逆文本归一化，把中文数字转阿拉伯：`三点一→3.1`、`二零二六年六月→2026年6月`；`0` 关）。云端 fallback：`ASR_BACKEND=dashscope` + `DASHSCOPE_API_KEY` 走非实时 `paraformer-v2`。
+默认走**本地 Qwen3-ASR + ForcedAligner**，输出词级时间戳并默认开启数字归一化（中文数字→阿拉伯）。云端 fallback：`ASR_BACKEND=dashscope` + `DASHSCOPE_API_KEY`。后端、模型路径、ITN 开关等细节见 `scripts/transcribe.py --help`。
 
 随后生成 transcript-first 的字幕单元：
 
