@@ -6,7 +6,7 @@
 
 本工作流中，不要用 Whisper 或 `npx hyperframes transcribe` 处理中文解说。历史 run 多次遇到模型下载失败和 UTF-8 输出乱码。
 
-修复：用 `scripts/transcribe-paraformer.py`。默认走**本地 Qwen3-ASR + Qwen3-ForcedAligner**（`ASR_BACKEND=qwen3`），返回干净的词级时间戳（CJK 按字、Latin 按词），自动识别语言，无需 ffprobe 探测 sample rate / format。云端 fallback 用 `ASR_BACKEND=dashscope`，走 DashScope 非实时 `paraformer-v2`（HTTP REST 异步任务）。
+修复：用 `scripts/transcribe.py`。默认走**本地 Qwen3-ASR + Qwen3-ForcedAligner**（`ASR_BACKEND=qwen3`），返回干净的词级时间戳（CJK 按字、Latin 按词），自动识别语言，无需 ffprobe 探测 sample rate / format。云端 fallback 用 `ASR_BACKEND=dashscope`，走 DashScope 非实时 `paraformer-v2`（HTTP REST 异步任务）。
 
 模型路径可用 `QWEN3_ASR_MODEL` / `QWEN3_ALIGNER_MODEL` 指向本地目录（缺省自动从 HF 下载）。注意输出是**扁平 token 流**，脚本按句末标点（`。！？!?…`）重新切句，再以"保留字符"匹配把 token 归入各句，因此 transcript 文本里的标点来自句子级文本、word 级 token 不含标点。
 
@@ -14,7 +14,7 @@
 
 ## 1b. 本地 ASR 的数字归一化（ITN）
 
-云端 paraformer-v2 默认把口语中文数字转成阿拉伯写法（`一万六千二百八十八→16288`、`三点一→3.1`），本地 Qwen3-ASR 原始输出是逐字中文。为对齐这一行为，`transcribe-paraformer.py` 的 qwen3 backend 默认开 ITN（`ASR_ITN=1`），用独立包 `wetext`（`pip install wetext`）做逆文本归一化；`ASR_ITN=0` 可关闭、保留逐字中文。`wetext` 缺失时自动跳过 ITN、保留逐字中文，不报错。
+云端 paraformer-v2 默认把口语中文数字转成阿拉伯写法（`一万六千二百八十八→16288`、`三点一→3.1`），本地 Qwen3-ASR 原始输出是逐字中文。为对齐这一行为，`transcribe.py` 的 qwen3 backend 默认开 ITN（`ASR_ITN=1`），用独立包 `wetext`（`pip install wetext`）做逆文本归一化；`ASR_ITN=0` 可关闭、保留逐字中文。`wetext` 缺失时自动跳过 ITN、保留逐字中文，不报错。
 
 实现要点 / 坑：
 - 先按日历单位（`年月日时分秒`）切块再分别 ITN，避免 wetext 把 `二零二六年六月` 重排成 `2026/06`，从而保持云端风格 `2026年6月` 并避免合并边界 artifact。

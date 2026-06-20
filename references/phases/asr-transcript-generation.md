@@ -7,7 +7,7 @@
 如果 `{work_dir}/{topic_name}/transcribe/transcript.json` 已存在、且是包含至少一句话和词级时间戳的合法 JSON，并且 `{work_dir}/{topic_name}/transcribe/subtitle-units.json` 已存在且可读取，则跳过。
 
 ```bash
-scripts/transcribe-paraformer.py \
+scripts/transcribe.py \
   {work_dir}/{topic_name}/voice_clone/narration.mp3 \
   {work_dir}/{topic_name}/transcribe/transcript.json
 ```

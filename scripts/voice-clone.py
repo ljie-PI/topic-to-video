@@ -35,6 +35,7 @@ Optional env:
 
 Output: {output_dir}/narration.mp3
 """
+import abc
 import argparse
 import json
 import os
@@ -185,22 +186,26 @@ def resolve_reference_text(ref_wav: Path, cli_value: str | None) -> str:
     """
     raw = cli_value or reference_text_env()
     if raw and raw.strip():
-        candidate = Path(raw)
-        looks_like_path = (
-            os.sep in raw
-            or (os.altsep and os.altsep in raw)
-            or raw.strip().lower().endswith('.txt')
-        )
+        stripped = raw.strip()
+        candidate = Path(raw).expanduser()
         if candidate.is_file():
             text = candidate.read_text(encoding='utf-8').strip()
             if text:
                 return text
             raise ValueError(f'reference transcript file is empty: {candidate}')
+        # Treat as a path only when it really looks like one: a .txt suffix, or
+        # a path separator with no internal whitespace. A real inline transcript
+        # usually contains spaces (and may contain a "/" as in "AI/人工智能"),
+        # so it must not be misread as a missing file.
+        looks_like_path = stripped.lower().endswith('.txt') or (
+            not any(ch.isspace() for ch in stripped)
+            and (os.sep in stripped or bool(os.altsep and os.altsep in stripped))
+        )
         if looks_like_path:
             # A path-looking value that does not resolve is almost certainly a
             # typo; failing loudly beats silently cloning from the literal path.
             raise FileNotFoundError(f'reference transcript file not found: {candidate}')
-        return raw.strip()
+        return stripped
 
     sidecar = ref_wav.with_suffix('.txt')
     if sidecar.is_file():
@@ -247,6 +252,29 @@ def transcribe_reference_plain(ref_wav: Path) -> str:
     return text
 
 
+def _atempo_chain(rate: float | None) -> str | None:
+    """Build an ffmpeg atempo filter (or chain) for any positive speed.
+
+    A single ``atempo`` only supports 0.5–2.0, so out-of-range rates are
+    decomposed into a chain of in-range factors (e.g. 2.5 -> atempo=2.0,atempo=1.25).
+    Returns None when no re-timing is needed.
+    """
+    if rate is None or abs(rate - 1.0) <= 1e-3:
+        return None
+    if rate <= 0:
+        raise ValueError(f'--speech-rate must be positive, got {rate}')
+    factors: list[float] = []
+    remaining = rate
+    while remaining > 2.0:
+        factors.append(2.0)
+        remaining /= 2.0
+    while remaining < 0.5:
+        factors.append(0.5)
+        remaining /= 0.5
+    factors.append(remaining)
+    return ','.join(f'atempo={f:.4f}' for f in factors)
+
+
 def write_mp3(wav, sample_rate: int, output_path: Path, atempo: float | None) -> None:
     """Write a float waveform to mp3 via ffmpeg, optionally re-timing speed."""
     import soundfile as sf
@@ -256,10 +284,15 @@ def write_mp3(wav, sample_rate: int, output_path: Path, atempo: float | None) ->
     try:
         sf.write(tmp_wav, wav, sample_rate)
         cmd = ['ffmpeg', '-y', '-loglevel', 'error', '-i', tmp_wav]
-        if atempo is not None and abs(atempo - 1.0) > 1e-3:
-            cmd += ['-filter:a', f'atempo={atempo:.4f}']
+        atempo_filter = _atempo_chain(atempo)
+        if atempo_filter:
+            cmd += ['-filter:a', atempo_filter]
         cmd += ['-c:a', 'libmp3lame', '-q:a', '2', str(output_path)]
-        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300)
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300)
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or '').strip() or str(exc)
+            raise RuntimeError(f'ffmpeg failed: {detail}') from exc
     finally:
         try:
             os.unlink(tmp_wav)
@@ -267,105 +300,137 @@ def write_mp3(wav, sample_rate: int, output_path: Path, atempo: float | None) ->
             pass
 
 
-def synth_qwen3tts(text: str, output_path: Path, args: argparse.Namespace) -> None:
-    import gc
+class TTSBackend(abc.ABC):
+    """Common interface: synthesize narration text into an mp3 file."""
 
-    import torch
-    from qwen_tts import Qwen3TTSModel
+    name: str
 
-    ref_wav_value = args.reference_wav or reference_wav_env()
-    if not ref_wav_value:
-        raise EnvironmentError(
-            'Qwen3-TTS reference audio not set. Pass --reference-wav or set TTS_REF_WAV.'
+    def __init__(self, args: argparse.Namespace) -> None:
+        self.args = args
+
+    @abc.abstractmethod
+    def synthesize(self, text: str, output_path: Path) -> None:
+        raise NotImplementedError
+
+
+class Qwen3TTSBackend(TTSBackend):
+    """Local Qwen3-TTS voice clone (reference WAV + its transcript)."""
+
+    name = 'qwen3tts'
+
+    def synthesize(self, text: str, output_path: Path) -> None:
+        import gc
+
+        import torch
+        from qwen_tts import Qwen3TTSModel
+
+        ref_wav_value = self.args.reference_wav or reference_wav_env()
+        if not ref_wav_value:
+            raise EnvironmentError(
+                'Qwen3-TTS reference audio not set. Pass --reference-wav or set TTS_REF_WAV.'
+            )
+        ref_wav = Path(ref_wav_value).expanduser()
+        if not ref_wav.is_file():
+            raise FileNotFoundError(f'reference audio not found: {ref_wav}')
+
+        ref_text = resolve_reference_text(ref_wav, self.args.reference_text)
+
+        model_id = os.environ.get('QWEN3TTS_MODEL', DEFAULT_QWEN3TTS_MODEL)
+        language = os.environ.get('QWEN3TTS_LANGUAGE', 'Chinese')
+        use_cuda = torch.cuda.is_available()
+        dtype = torch.float16 if use_cuda else torch.float32  # Turing: fp16, no flash-attn
+        device = 'cuda:0' if use_cuda else 'cpu'
+
+        log(f'loading Qwen3-TTS model={model_id} device={device} dtype={dtype}')
+        model = Qwen3TTSModel.from_pretrained(model_id, device_map=device, dtype=dtype)
+
+        # Pass the reference clip as a (waveform, sr) tuple loaded via soundfile
+        # so audio I/O does not depend on an external SoX binary.
+        import soundfile as sf
+        ref_audio, ref_sr = sf.read(str(ref_wav))
+        if getattr(ref_audio, 'ndim', 1) > 1:
+            ref_audio = ref_audio.mean(axis=1)  # downmix to mono
+
+        log('synthesizing narration with Qwen3-TTS voice clone')
+        wavs, sr = model.generate_voice_clone(
+            text=text,
+            language=language,
+            ref_audio=(ref_audio, ref_sr),
+            ref_text=ref_text,
         )
-    ref_wav = Path(ref_wav_value).expanduser()
-    if not ref_wav.is_file():
-        raise FileNotFoundError(f'reference audio not found: {ref_wav}')
+        wav = wavs[0]
+        del model
+        gc.collect()
+        if use_cuda:
+            torch.cuda.empty_cache()
 
-    ref_text = resolve_reference_text(ref_wav, args.reference_text)
-
-    model_id = os.environ.get('QWEN3TTS_MODEL', DEFAULT_QWEN3TTS_MODEL)
-    language = os.environ.get('QWEN3TTS_LANGUAGE', 'Chinese')
-    use_cuda = torch.cuda.is_available()
-    dtype = torch.float16 if use_cuda else torch.float32  # Turing: fp16, no flash-attn
-    device = 'cuda:0' if use_cuda else 'cpu'
-
-    log(f'loading Qwen3-TTS model={model_id} device={device} dtype={dtype}')
-    model = Qwen3TTSModel.from_pretrained(model_id, device_map=device, dtype=dtype)
-
-    # Pass the reference clip as a (waveform, sr) tuple loaded via soundfile so
-    # audio I/O does not depend on an external SoX binary.
-    import soundfile as sf
-    ref_audio, ref_sr = sf.read(str(ref_wav))
-    if getattr(ref_audio, 'ndim', 1) > 1:
-        ref_audio = ref_audio.mean(axis=1)  # downmix to mono
-
-    log('synthesizing narration with Qwen3-TTS voice clone')
-    wavs, sr = model.generate_voice_clone(
-        text=text,
-        language=language,
-        ref_audio=(ref_audio, ref_sr),
-        ref_text=ref_text,
-    )
-    wav = wavs[0]
-    del model
-    gc.collect()
-    if use_cuda:
-        torch.cuda.empty_cache()
-
-    atempo = args.speech_rate if args.speech_rate is not None else DEFAULT_QWEN3TTS_SPEECH_RATE
-    write_mp3(wav, int(sr), output_path, atempo)
+        atempo = self.args.speech_rate if self.args.speech_rate is not None else DEFAULT_QWEN3TTS_SPEECH_RATE
+        write_mp3(wav, int(sr), output_path, atempo)
 
 
-def synth_dashscope(text: str, output_path: Path, args: argparse.Namespace) -> None:
-    from dashscope.audio.tts_v2 import SpeechSynthesizer
-    import dashscope
+class CosyVoiceBackend(TTSBackend):
+    """Cloud DashScope CosyVoice synthesis (fallback)."""
 
-    api_key = os.environ.get('DASHSCOPE_API_KEY')
-    if not api_key:
-        raise EnvironmentError('DASHSCOPE_API_KEY env var not set')
-    voice = args.voice or os.environ.get('COSYVOICE_VOICE_ID')
-    if not voice:
-        raise EnvironmentError('CosyVoice voice id not set. Pass --voice or set COSYVOICE_VOICE_ID.')
+    name = 'dashscope'
 
-    dashscope.api_key = api_key
-    dashscope.base_websocket_api_url = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference'
+    def synthesize(self, text: str, output_path: Path) -> None:
+        from dashscope.audio.tts_v2 import SpeechSynthesizer
+        import dashscope
 
-    speech_rate = args.speech_rate if args.speech_rate is not None else DEFAULT_DASHSCOPE_SPEECH_RATE
-    log(f'synthesizing narration to {output_path} (CosyVoice, speech_rate={speech_rate})')
-    synthesizer = SpeechSynthesizer(model=DASHSCOPE_MODEL, voice=voice, speech_rate=speech_rate)
-    audio = synthesizer.call(text)
-    log(
-        'requestId='
-        f'{synthesizer.get_last_request_id()}, '
-        f'first_packet_delay={synthesizer.get_first_package_delay()}ms'
-    )
-    output_path.write_bytes(audio)
+        api_key = os.environ.get('DASHSCOPE_API_KEY')
+        if not api_key:
+            raise EnvironmentError('DASHSCOPE_API_KEY env var not set')
+        voice = self.args.voice or os.environ.get('COSYVOICE_VOICE_ID')
+        if not voice:
+            raise EnvironmentError('CosyVoice voice id not set. Pass --voice or set COSYVOICE_VOICE_ID.')
+
+        dashscope.api_key = api_key
+        dashscope.base_websocket_api_url = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference'
+
+        speech_rate = self.args.speech_rate if self.args.speech_rate is not None else DEFAULT_DASHSCOPE_SPEECH_RATE
+        log(f'synthesizing narration to {output_path} (CosyVoice, speech_rate={speech_rate})')
+        synthesizer = SpeechSynthesizer(model=DASHSCOPE_MODEL, voice=voice, speech_rate=speech_rate)
+        audio = synthesizer.call(text)
+        log(
+            'requestId='
+            f'{synthesizer.get_last_request_id()}, '
+            f'first_packet_delay={synthesizer.get_first_package_delay()}ms'
+        )
+        if not isinstance(audio, (bytes, bytearray)):
+            raise RuntimeError(
+                f'CosyVoice returned no audio (got {type(audio).__name__}); '
+                'check DASHSCOPE_API_KEY / COSYVOICE_VOICE_ID and account quota.'
+            )
+        output_path.write_bytes(audio)
+
+
+BACKENDS: dict[str, type[TTSBackend]] = {
+    cls.name: cls for cls in (Qwen3TTSBackend, CosyVoiceBackend)
+}
 
 
 def main() -> int:
     try:
         args = parse_args()
-        backend = args.backend or os.environ.get('TTS_BACKEND', 'qwen3tts')
+        backend_name = args.backend or os.environ.get('TTS_BACKEND', 'qwen3tts')
+        backend_cls = BACKENDS.get(backend_name)
+        if backend_cls is None:
+            raise ValueError(f'unknown TTS backend: {backend_name}')
+
         input_text = read_input_text(args.input_file)
 
         output_dir = Path(args.output_dir).expanduser()
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = (output_dir / 'narration.mp3').resolve()
 
-        if backend == 'qwen3tts':
-            synth_qwen3tts(input_text, output_path, args)
-        elif backend == 'dashscope':
-            synth_dashscope(input_text, output_path, args)
-        else:
-            raise ValueError(f'unknown TTS backend: {backend}')
+        backend_cls(args).synthesize(input_text, output_path)
 
         duration_s = detect_duration_seconds(output_path)
         log(f'wrote {output_path}')
         print_json(
             {
                 'success': True,
-                'backend': backend,
+                'backend': backend_name,
                 'output_path': str(output_path),
                 'duration_s': duration_s,
             }
