@@ -19,6 +19,25 @@
 | sub-agent 支持（Phase 8） | 优先使用当前客户端原生的 sub-agent / 委派工具。仅当用一句短 prompt 让 agent 自己读 `composition-handoff.md` 与工作区本地 `references/composition-rules.md` 时，CLI fallback 才可接受 |
 | `hyperframes` + `hyperframes-cli` skills（Phase 8） | 由 composition sub-agent 加载。sub-agent 的 HyperFrames CLI 间接依赖 Node.js；主 agent 自身不写 `composition/index.html`。文档：https://hyperframes.heygen.com/quickstart |
 
+## 本地 TTS / ASR（默认，可切云端）
+
+默认在本地 GPU 上推理，无需云端 key：
+
+- **TTS = 本地 Qwen3-TTS 克隆音色**：`TTS_REF_WAV` 指向要克隆的参考音频；脚本会用 Qwen3-ASR 自动转写参考音频并缓存为同名 `<ref>.txt`（也可用 `TTS_REF_TEXT` 直接给）。
+- **ASR = 本地 Qwen3-ASR + ForcedAligner**：返回词级时间戳；默认开 ITN（中文数字→阿拉伯，如 `三点一→3.1`、`二零二六年六月→2026年6月`），`ASR_ITN=0` 关。
+- **模型**：首次运行自动从 HuggingFace 下载（Qwen3-TTS-12Hz-1.7B-Base、Qwen3-ASR-1.7B、Qwen3-ForcedAligner-0.6B）；也可用 `QWEN3TTS_MODEL` / `QWEN3_ASR_MODEL` / `QWEN3_ALIGNER_MODEL` 指向已下载的本地目录。
+- **切云端 fallback**：`export TTS_BACKEND=dashscope` / `export ASR_BACKEND=dashscope`，并设 `DASHSCOPE_API_KEY`（TTS 还需 `COSYVOICE_VOICE_ID`）。
+
+| 环境变量 | 默认 | 说明 |
+|------|------|------|
+| `TTS_BACKEND` | `qwen3tts` | `qwen3tts`（本地）\| `dashscope`（云端 CosyVoice） |
+| `ASR_BACKEND` | `qwen3` | `qwen3`（本地）\| `dashscope`（云端 paraformer-v2） |
+| `TTS_REF_WAV` / `TTS_REF_TEXT` | — | 克隆参考音频 / 其 transcript（旧别名 `VOXCPM_REF_*` 仍兼容） |
+| `ASR_ITN` | `1` | 中文数字→阿拉伯，`0` 关 |
+| `QWEN3TTS_MODEL` / `QWEN3_ASR_MODEL` / `QWEN3_ALIGNER_MODEL` | HF id | 可指向本地模型目录 |
+
+> GPU 注意：本地推理用 **fp16**，**不要**装 flash-attn（Turing/sm_75 不支持）。两个多 GB 模型分阶段顺序加载，单卡 11GB 可跑。
+
 ## Quick Start
 
 ```bash
