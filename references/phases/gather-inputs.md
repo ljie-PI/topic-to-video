@@ -27,4 +27,4 @@ ls {work_dir}/{topic_name}/ 2>/dev/null
 
 等用户确认后再继续。
 
-如果目录不存在，则无可恢复状态，直接从 Phase 1 开始。
+目录不存在时，直接从 Phase 1 开始。

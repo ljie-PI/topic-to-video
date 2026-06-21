@@ -1,7 +1,5 @@
 # Composition Stage Protocol
 
-本文件定义 Phase 8.3-8.7 的 HyperFrames composition 执行协议：预渲染自检、渲染要求、sanity check、渲染后 Visual QA、QA report、feedback loop 和 rule coverage matrix。
-
 `references/composition-rules.md` 是硬约束来源。
 
 ## Stage Protocols
