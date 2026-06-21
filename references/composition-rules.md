@@ -44,6 +44,8 @@
 
 普通 scene 目标时长为 5-8 秒；超过 8 秒必须拆分，连续多个 < 3 秒的微 scene 应避免。连续同素材合并而成的 scene 可以超过 8 秒，但 scene 内文本信息单元仍须按 5-8 秒节奏刷新，并受 R18 / R19 约束。
 
+### Layout and composition rules
+
 #### R8 — Scene-specific layout
 
 每个 scene 必须由 coding sub-agent 按 scene 单独 authoring，不得套统一模板后只替换文字 / 图片。排版输入包括：
@@ -53,19 +55,21 @@
 - `material-catalog.json` 中对应素材（单个 `material_ref` 或 `material_refs` 中所有素材）的尺寸、类型、`layout_affordance` 和 `focal_region`（如存在）；
 - 内容区尺寸（viewport - 字幕安全区 - scene padding）。
 
-Phase 8 必须按素材比例、输出朝向、`layout_role`、text beat 数量和 visual text unit 类型选择 layout；具体 routing 见下表。相邻 scene 不得无理由复用同一主版式，但声明过的 continuation group 应保持同一主素材稳定显示。
+Phase 8 必须按素材比例、输出朝向、`layout_role`、text beat 数量和 visual text unit 类型选择 layout；解析顺序与 routing 见下方 `Layout routing reference`。相邻 scene 不得无理由复用同一主版式，但声明过的 continuation group 应保持同一主素材稳定显示。
+
+### Layout routing reference
 
 `scene-text-plan.json` 的解释流程：
 
 1. 以 `scene_index` 为 key，把 text-plan scene 与 `scene-material-suggestions.json` scene 对齐；不得按数组位置猜测。
 2. 对齐后先解析 `material_ref` / `material_refs` / `no_match`、`layout_role` 和 catalog `width` / `height` / 素材 kind / `layout_affordance` / `focal_region`（如有），再解析 `visual_text_units`。
 3. 把每个 unit 映射为一个或多个非字幕信息元素：`display_text` 通常是标题 / 标签；`supporting_points` 通常是列表项、流程节点、指标、模块、关系节点或代码/命令行内容。
-4. `visual_role` 只定义信息形态，不定义具体布局模板。Phase 8 必须根据素材比例、画幅、字幕安全区和 density 选择最终 layout。
+4. `visual_role` 只定义信息形态，不定义具体布局模板。Phase 8 必须根据素材比例、画幅、字幕安全区和 density 选择最终 layout。`visual_role` 名称不得作为可见文字渲染：标题 / 标签 / 正文 / eyebrow 不得出现 `data_block`、`callout`、`leaderboard`、`process_flow` 等 role 名及其中文直译（数据块 / 标注 / 排行榜 / 流程图等）；可见文字只用 `display_text` / `supporting_points` 等真实内容。
 5. `priority: "primary"` 的 unit 必须尝试实现；`secondary` / `decorative` 可合并、缩短、轮换或降级，但必须在 `composition/DESIGN.md` 记录。
 
 Role resolution order：
 
-1. 读取输出朝向和内容区尺寸（按 R13 排除字幕安全区）。
+1. 读取输出朝向和内容区尺寸（按 R15 排除字幕安全区）。
 2. 读取 `material_ref` / `material_refs` / `no_match` 和 `layout_role`，决定素材主导程度。
 3. 读取 `visual_text_units[].visual_role`、`priority`、`supporting_points`、density 和 shape（如 row / column count、chart series count）。
 4. 按 Material-aware、Media layout-role、Role-to-layout 三组 routing 选择适合当前朝向的 treatment。
@@ -92,14 +96,14 @@ Orientation-aware routing：
 | 竖向 `1080x1440` | 不要直接套横屏右侧栏。优先上下分区：上方 / 中部放素材主体，下方或顶部放 shrink-to-fit 信息带；也可使用 60/40 或 55/45 的上下 split。竖图 / 竖视频可左右窄分栏，但必须给字幕安全区留足空间。复杂 `process_flow` / `architecture_diagram` 优先改成纵向节点链、stacked modules、分页轮换，而不是横向大图。 |
 | 竖屏 `1080x1920` | 优先纵向叙事：素材、标题、callout、data blocks 依次堆叠或分时轮换；避免左右分栏导致文本过窄。结构型 unit 用纵向 timeline / stepper / module stack；多指标用 2 列以内卡片。 |
 
-对 `1080x1440` 和 `1080x1920`，字幕安全区通常比横屏更高；素材和非字幕文本都必须按 R13 计算在内容区内，不得为了塞更多 text units 侵入底部字幕区域。若 `visual_text_units` 过多，优先分时轮换或降级 `secondary` / `decorative` units，而不是缩小字体到不可读。
+对 `1080x1440` 和 `1080x1920`，字幕安全区通常比横屏更高；素材和非字幕文本都必须按 R15 计算在内容区内，不得为了塞更多 text units 侵入底部字幕区域。若 `visual_text_units` 过多，优先分时轮换或降级 `secondary` / `decorative` units，而不是缩小字体到不可读。
 
 Media layout-role routing：
 
 | `layout_role` | Landscape | Portrait / vertical | Notes / forbidden |
 | --- | --- | --- | --- |
 | `no_match` | 用信息图、flow、leaderboard、table/chart、metric cards 或文本卡承载内容。 | 用 vertical stack、stepper、paged/timed sequence；避免横向窄列。 | 不借用其他 scene 素材。 |
-| `video_first` | 视频作为主体，横屏 / 16:9 视频通常宽度和高度都接近内容区可用空间。 | 横屏视频通常作为上半屏或中上部清晰 media slab；文本只用短标签、状态说明、关键数字或一句短结论。 | 视频占满或接近占满画面时仅允许短、shrink-to-fit overlay，遵守 R16。 |
+| `video_first` | 视频作为主体，横屏 / 16:9 视频通常宽度和高度都接近内容区可用空间。 | 横屏视频通常作为上半屏或中上部清晰 media slab；文本只用短标签、状态说明、关键数字或一句短结论。 | 视频占满或接近占满画面时仅允许短、shrink-to-fit overlay，遵守 R12。 |
 | `media_first` | 清晰大图作为主体，优先按内容区可用宽高共同计算，避免只用固定 max-width 压低高度。 | 横图用 media slab + stacked text；竖图用居中主视觉 + 上下 text；信息多时分时、外置、降级或转 continuation。 | 主媒体不得被固定标题区或信息块不必要压小。 |
 | `media_continuation` | 保持相近位置、尺寸、裁切窗口和动效，只刷新解释文本、局部强调或 `focal_region`。 | 同左，尤其保持主素材在相邻 scene 中稳定。 | 避免素材长时间消失后再出现，也避免硬切到完全不同版式。 |
 | `viewport_reveal` | 极端比例素材进入 reveal viewport，按长轴慢速 pan / scroll。 | 同左，但竖屏横图优先横向 reveal，横屏竖图优先纵向 reveal。 | 必须记录 intentional reveal、start / mid / end 可见区域和关键内容。 |
@@ -123,25 +127,15 @@ Role-to-layout routing：
 | `list` / `feature_grid` | 2-4 项 grid / rail；每项短 label + 一行 detail，避免长段落。 | stacked cards 或最多 2 列；过密时轮换 secondary items。 |
 | `comparison_matrix` / `pros_cons` | side-by-side matrix 或双列对比。 | stacked / sequenced comparison；不得把详细矩阵压进窄列。 |
 | `code_block` / `terminal_block` / `file_tree` | 宽面板，可配短解释；只展示关键行，避免完整文件 / 长日志。 | 单个可读面板 + stacked explanation；长行截断 / 摘取关键行，避免多面板小字。 |
-| `callout` / `quote` / `annotated_media` / `definition` / `qa` | 外置 rail / band，或 R16 允许的短 overlay；不能压在图片 / 视频主体上。 | 素材外纵向堆叠或一次一个 callout；避免窄 side rail。 |
+| `callout` / `quote` / `annotated_media` / `definition` / `qa` | 外置 rail / band，或 R12 允许的短 overlay；不能压在图片 / 视频主体上。 | 素材外纵向堆叠或一次一个 callout；避免窄 side rail。 |
 
 对 portrait / vertical 输出，layout 在几何上能塞进 viewport 不代表合格。如果文本框因为沿用横屏布局而过窄、字号被迫降到下限、label 多次换行、或流程节点变成 3 个及以上横向窄列，Phase 8 必须改用纵向堆叠、vertical stepper、paged / timed rotation、或拆 scene。不得用缩字号、隐藏 peak-state 元素或延迟显示来掩盖布局失败。
 
-#### R9 — Scene inventory
+#### R9 — Material aspect ratio
 
-`composition/DESIGN.md` 必须记录每个 scene 的 `scene_id`、旁白摘要、`material_ref` / `material_refs`、`layout_role`、素材尺寸 / aspect ratio、`ratio_bucket` / `focal_region`（如有）、text beats、`scene-text-plan.json` 中对应的 `visual_text_units`（如有）、layout treatment、peak-state audit 结果，以及每个非素材元素对应的完整旁白句子和出现时间点。对每个已实现的 visual text unit，记录 `unit_id`、`visual_role`、`display_text`、`priority`、来源 text beat、最终 DOM selector、出现 timing、输出朝向、采用的 orientation-specific layout treatment；portrait / vertical 时还必须记录为何没有沿用横屏排列，以及过密信息如何降级（stack / page / rotate / split scene）。若某个 `primary` unit 被降级或未实现，必须记录原因。若使用 `media_continuation`，记录相邻 scene 如何保持同一主素材稳定显示；若使用 `viewport_reveal`，记录 start / mid / end 可见区域和关键内容是否完整出现。
+素材容器比例必须来自 `material-catalog.json` 的 `width` / `height`（图片由 harvester 写入，视频由下载 / ffprobe 流程写入）。将 `width / height` 作为 `aspect-ratio` 应用于包裹素材的 wrapper；只有字段为 `null` / 缺失时才 fallback 到运行时实测或 ffprobe。禁止默认 16:9，禁止用错误比例容器 + `object-fit: cover` 裁掉素材，禁止因比例错误产生拉伸、letterbox 或 pillarbox。唯一例外是 R10 的 intentional `viewport_reveal`：外层 reveal viewport 可使用 scene-appropriate ratio，但内层素材仍必须保持原始比例。
 
-#### R10 — Peak-state layout audit
-
-动画前必须检查每个 scene 的 peak state：所有非字幕元素都显示时，元素不得溢出 viewport / 内容区、不得互相遮挡、前景元素不得无约束覆盖 catalog 素材、素材不得 letterbox / pillarbox、内容区纯空白不得超过 10%、构图不得明显失衡；主要元素组在水平 / 垂直方向上的分布必须均衡，视觉重心不得明显偏上、偏下、偏左或偏右；不得用超大空容器或空 media panel 填充画面来规避全局空白检查。`media_first` / `video_first` 主素材不得被标题或信息块不必要地压小；`comparison_pair` 中每个素材必须仍可读。portrait / vertical 中，`process_flow`、`timeline`、`state_machine`、`architecture_diagram`、`network_graph`、`comparison_matrix` 等结构型 unit 不得被横向硬排到文本窄列、字号过小、多次换行或节点不可读。失败必须先调整布局尺寸、位置、字号、信息密度或拆 scene，不得靠“暂时隐藏元素”掩盖问题。`viewport_reveal` 还必须检查 start / mid / end，确认关键内容不会永久隐藏。
-
-### Media, subtitle, and layout rules
-
-#### R11 — Material aspect ratio
-
-素材容器比例必须来自 `material-catalog.json` 的 `width` / `height`（图片由 harvester 写入，视频由下载 / ffprobe 流程写入）。将 `width / height` 作为 `aspect-ratio` 应用于包裹素材的 wrapper；只有字段为 `null` / 缺失时才 fallback 到运行时实测或 ffprobe。禁止默认 16:9，禁止用错误比例容器 + `object-fit: cover` 裁掉素材，禁止因比例错误产生拉伸、letterbox 或 pillarbox。唯一例外是 R12 的 intentional `viewport_reveal`：外层 reveal viewport 可使用 scene-appropriate ratio，但内层素材仍必须保持原始比例。
-
-#### R12 — Material container
+#### R10 — Material container
 
 普通素材容器必须紧贴素材：容器无可见 border / outline / padding / shadow / glow / inset / 卡片底色，素材本身填满 wrapper（如 `width: 100%; height: 100%`）。素材尺寸不适合时，调整布局 / 缩放 / 换素材，不用外框或底色遮丑。容器与素材的 transform / 动效必须绑定在同一元素或一组同步元素上，避免素材跑出容器或容器露边。不要在同一素材容器上同时写死 `width` 和 `max-height` / `height`，否则显式尺寸会覆盖 `aspect-ratio` 推导，造成容器底色 / letterbox 暴露。
 
@@ -174,39 +168,57 @@ Intentional `viewport_reveal` exception:
 
 `viewport_reveal` 只适用于 `layout_role = "viewport_reveal"` 或需要局部可视窗口的 `video_first` / `detail_callout`。外层容器可使用适合 scene 的比例并 `overflow: hidden`；内层图片 / 视频必须保持原始宽高比，不得拉伸。短边对齐容器，长边溢出并沿长轴慢速 pan / scroll；如果只展示局部，必须使用 catalog `focal_region` 或在 `composition/DESIGN.md` 说明设计理由。该例外是有意 reveal，不是 letterbox / pillarbox / accidental clipping。
 
-#### R13 — Subtitle safe area
-
-视口底部预留专属字幕安全区，高度必须贴合字幕条实际占位（字幕行数 × 行高 + 上下小边距），不得显著大于字幕条本身。本次收紧仅针对横屏单行场景：横屏（`1920x1080`）字幕固定单行，安全区从原 12-18% 收紧到约 9-12%（1080p 约 97-130px）；竖屏 / 竖向因允许字幕最多两行，安全区按实际 subtitle box 高度单独预留，`1080x1440` 建议约 150-220px，`1080x1920` 建议约 220-300px。只有双行字幕、较大字号、复杂背景或 subtitle mask 需要更多呼吸空间时才靠近上限；不得为了“保险”长期预留 18% 高度。authoring 时内容区必须按 `viewport - subtitle safe area` 计算；除全局字幕条外，任何前景文本 / callout / 素材 / 装饰不得进入该安全区。全幅背景素材可延伸到安全区下方垫底，此时字幕条用半透明遮罩压在其上。
-
-#### R14 — Global subtitle
-
-字幕必须使用单个全局容器，固定锚定在底部字幕安全区内并与安全区上下贴合（建议 bottom 为视口高度 3-5%，1080p 约 32-54px），全片水平居中且基线稳定。字幕容器必须从安全区底部向上排版（如 `bottom` 锚定 + 文本底对齐），行数变化时基线稳定、不上下跳动。字幕单元来自 `transcribe/subtitle-units.json`。收窄 subtitle safe area 的前提是严格执行最大行数：横屏每个单元最多 1 行（如 `white-space: nowrap`）；竖屏 / 竖向每个单元最多 2 行（通过 `max-width` 自动换行，明确禁止第三行及以上）。无论横竖屏，如果某个 unit 在该朝向允许的最大行数内仍放不下，必须回到 transcript-timed unit 拆分逻辑，把它拆成更小的 calibrated units；不得扩大 safe area 来容纳第三行，不得靠缩字号到下限、放宽 `max-width`、整行遮罩或塞进多余行数。半透明背景遮罩必须 shrink-to-fit，随文字宽度自适应并保证任意画面背景下可读；禁止固定 `width: 100%`、大 `min-width` 或整行遮罩。
-
-#### R15 — Media dominance and quality
+#### R11 — Media dominance and quality
 
 有图片 / 视频素材的 scene，素材应占据内容区主体（通常 >= 50%），禁止缩成角落邮票贴在大段文字旁。`video_first` 和 `media_first` 的主媒体应优先最大化可视区域：横屏输出中的横屏视频 / 清晰横图通常宽度对齐内容区；竖屏 / 竖向输出中的横屏视频 / 横图通常作为上半屏或中上部 media slab，避免缩成小图。主媒体尺寸必须同时按内容区可用宽度和高度计算，不能只用固定 max-width 导致横屏 wide media 高度过低；横屏中作为主证据的 16:9 / wide image 或 video slab 通常应达到内容区高度的 65-85%，若低于约 60%，必须有文本密度、素材质量或构图原因，并在 `composition/DESIGN.md` 记录。Catalog 图片 / 视频的 rendered size 应尽量保持在原始素材尺寸的 0.9x-1.2x 范围内（按主要可见边或短边计算，并在 `composition/DESIGN.md` 记录口径）。低于 0.9x 时容易因缩小过度导致文字 / UI / 图表不可读；高于 1.2x 时容易模糊、像素化或暴露压缩 artifacts。若必须超出范围，必须记录原因、素材替代尝试和 QA 结论。多素材 scene 两个素材可用 `comparison_pair`，三个及以上优先 `comparison_sequence` / carousel / 拆 scene；如必须并列，每个素材 >= 30% 内容区且仍可读。图片必须清晰、关键信息完整，原图分辨率应覆盖渲染尺寸，不得可见模糊、像素化、JPG artifacts 或裁掉文字、图表轴线、人物面部、UI 主控件等关键信息。
 
-#### R16 — Bounds and overlap
+#### R12 — Bounds and overlap
 
 所有视觉元素必须完整位于画面内，不得截断。除全局字幕条覆盖底层画面外，任何前景标题、caption、tag、badge、callout、label、数据块都不得压在图片 / 视频素材关键区域之上，包括 hero 素材。`video_first` 中视频占满或接近占满画面时，允许少量半透明文本框浮在视频上，但必须 shrink-to-fit、短文本、停留时间短、位置稳定，并避开主体动作、鼠标 / 手势、按钮、代码高亮、图表主线、人物脸部和 catalog `focal_region`；不得用长段落或整行遮罩压视频。
+
+#### R13 — Split-column vertical balance
+
+媒体列 + 信息列 / 左右分栏中，两列垂直跨度必须大致对齐；信息列不得只在上部堆内容、下部留大块空白。信息列内容稀疏时，用 `metric_strip` / `list` 等多元素 role 拆出更多条目（随旁白逐个出现）、增高卡片或重新纵向分布，使列内元素纵向均衡填满列高。pills / tag / metadata 等收尾元素不得孤立钉在底边、与上方内容隔一大段空白；应靠近主内容或参与列内纵向分布。单卡仅承载 1-2 短行且四周大留白时，必须增密、并入等高容器或重排，不得作为一列的唯一内容。
+
+#### R14 — Style constraints
+
+文字框内文字应垂直 / 水平居中。内容区不得出现 >10% 视口面积的纯空白；字幕安全区不计入空白统计，也不得为填满而把内容元素铺进该带。除全局内容区空白外，还必须检查大型 card / panel / callout / media shell 的内部 container occupancy。普通信息容器占据大面积时，内部子元素 bounding boxes 不得只占很小比例；若故意使用 hero number / quote / title-card 留白，必须在 `composition/DESIGN.md` 记录为 deliberate hero treatment。任意承载内容的区域 / 列（含无边框 flex / grid 列、文本列），内容必须横向 / 纵向填满该区域，或令该区域留白对称分布；不得把内容单边对齐贴住一侧而令对侧或外侧留大块空白。文本 / 数据应使用整区宽度；区域内容确实稀疏时，收窄或重新居中该区域容器使留白对称，不留单边空白。配对区域（媒体列与文本列、左右分栏）的外侧边距必须大致对称，一侧外边距不得明显大于另一侧。如需呼吸空间，用极淡装饰 / 网格 / 角标占位。Moon / 深色技术编辑风默认纯色 + 极淡网格 / 细线 / 低对比结构，禁止 `radial-gradient` spotlight、localized glow、ambient orb、neon halo、发光阴影和用 glow 充当层次感。
+
+### Subtitle rules
+
+#### R15 — Subtitle safe area
+
+视口底部预留专属字幕安全区，高度必须贴合字幕条实际占位（字幕行数 × 行高 + 上下小边距），不得显著大于字幕条本身。本次收紧仅针对横屏单行场景：横屏（`1920x1080`）字幕固定单行，安全区从原 12-18% 收紧到约 9-12%（1080p 约 97-130px）；竖屏 / 竖向因允许字幕最多两行，安全区按实际 subtitle box 高度单独预留，`1080x1440` 建议约 150-220px，`1080x1920` 建议约 220-300px。只有双行字幕、较大字号、复杂背景或 subtitle mask 需要更多呼吸空间时才靠近上限；不得为了“保险”长期预留 18% 高度。authoring 时内容区必须按 `viewport - subtitle safe area` 计算；除全局字幕条外，任何前景文本 / callout / 素材 / 装饰不得进入该安全区。全幅背景素材可延伸到安全区下方垫底，此时字幕条用半透明遮罩压在其上。
+
+#### R16 — Global subtitle
+
+字幕必须使用单个全局容器，固定锚定在底部字幕安全区内并与安全区上下贴合（建议 bottom 为视口高度 3-5%，1080p 约 32-54px），全片水平居中且基线稳定。字幕容器必须从安全区底部向上排版（如 `bottom` 锚定 + 文本底对齐），行数变化时基线稳定、不上下跳动。字幕单元来自 `transcribe/subtitle-units.json`。收窄 subtitle safe area 的前提是严格执行最大行数：横屏每个单元最多 1 行（如 `white-space: nowrap`）；竖屏 / 竖向每个单元最多 2 行（通过 `max-width` 自动换行，明确禁止第三行及以上）。无论横竖屏，如果某个 unit 在该朝向允许的最大行数内仍放不下，必须回到 transcript-timed unit 拆分逻辑，把它拆成更小的 calibrated units；不得扩大 safe area 来容纳第三行，不得靠缩字号到下限、放宽 `max-width`、整行遮罩或塞进多余行数。半透明背景遮罩必须 shrink-to-fit，随文字宽度自适应并保证任意画面背景下可读；禁止固定 `width: 100%`、大 `min-width` 或整行遮罩。
+
+### Typography rules
 
 #### R17 — Typography, DOM, contrast
 
 同一 scene 内最大 / 最小字号比 <= 3:1；素材 / 文本容器最多 2 层嵌套。正文对比度 >= 4.5:1，大字号标题对比度 >= 3:1。decorative metadata / chrome label 可低至 18-20px，但不得承载主信息；badge / chip / rank label 建议 >=22px（横屏）/ >=24px（竖屏）；body / supporting detail 建议 >=28px（横屏）/ >=30px（竖屏）；callout / card text 建议 >=32px（横屏）/ >=34px（竖屏）；承担 scene 语义锚点的 header / eyebrow 建议 >=28px（横屏）/ >=30px（竖屏）。主标题优先单行；如果必须两行，每行都应保留有意义词组。禁止第二行只有 1-2 个汉字、一个短英文 token 或孤立标点。遇到标题孤行时，必须通过缩短 `display_text`、扩大文本框、微调字号、调整断句、改为 title + subtitle、或分时 reveal 修复。字号微调最多缩小到当前字号的 0.9 倍，且不得低于对应文本类型的字号下限。
 
-### Motion, text, and style rules
+### Motion and text-timing rules
 
 #### R18 — Motion
 
-最终画面不得连续静止超过 2 秒。有效动效必须来自内容本身，如素材 Ken Burns / 缓移 / 缩放、文字渐入、数据 callout 浮现或极轻微低对比装饰 drift。每张图片素材都需要持续动效，同一类图片动效不得重复超过 `ceil(total_images / 5)` 次；视频素材视为自带运动，接近静止的视频按图片处理。普通相邻 scene 需要显式转场，避免硬切。`media_continuation` group 内主媒体层必须稳定，不得对主图 / 视频做 full-scene fade、wipe、slide-out、re-enter 或重新加载式入场；只允许文字、callout、局部高亮、`focal_region` emphasis、轻微镜头推进或信息区替换。禁止用横贯 / 纵贯扫描线、扫光、sweep、进度条等覆盖层凑动效。
+有效动效必须来自内容本身，如素材 Ken Burns / 缓移 / 缩放、文字渐入、数据 callout 浮现、多元素随旁白逐个出现或极轻微低对比装饰 drift。每张图片素材都需要持续动效，同一类图片动效不得重复超过 `ceil(total_images / 5)` 次；视频素材视为自带运动，接近静止的视频按图片处理。普通相邻 scene 需要显式转场，避免硬切。`media_continuation` group 内主媒体层必须稳定，不得对主图 / 视频做 full-scene fade、wipe、slide-out、re-enter 或重新加载式入场；只允许文字、callout、局部高亮、`focal_region` emphasis、轻微镜头推进或信息区替换。禁止用横贯 / 纵贯扫描线、扫光、sweep、进度条等覆盖层凑动效。
 
 #### R19 — Text timing and entrance state
 
-多个非素材文本元素必须按完整旁白句子逐个出现，禁止 scene start 一次性全亮。文本元素服务于哪一句，就在该句开始前短暂提前显示，保证旁白读到该句时相关文本已可见。若 `scene-text-plan.json` 存在，`priority: "primary"` 的 `visual_text_units` 必须优先实现；`secondary` / `decorative` 可因安全布局降级，但必须在 `composition/DESIGN.md` 记录。旧 text beat 需要淡出或降级，不能永久累积。入场动画必须有正确初始态，避免元素在 tween 前闪现。
+多个非素材文本元素必须按完整旁白句子逐个出现，禁止 scene start 一次性全亮。多元素 visual_role 内部的条目 / 节点 / 行 / 标注也必须随对应旁白逐个出现，不在 unit 首次出现时一次性全亮。文本元素服务于哪一句，就在该句开始前短暂提前显示，保证旁白读到该句时相关文本已可见。若 `scene-text-plan.json` 存在，`priority: "primary"` 的 `visual_text_units` 必须优先实现；`secondary` / `decorative` 可因安全布局降级，但必须在 `composition/DESIGN.md` 记录。旧 text beat 需要淡出或降级，不能永久累积。入场动画必须有正确初始态，避免元素在 tween 前闪现。
 
-#### R20 — Style constraints
+### Authoring record and audit rules
 
-文字框内文字应垂直 / 水平居中。内容区不得出现 >10% 视口面积的纯空白；字幕安全区不计入空白统计，也不得为填满而把内容元素铺进该带。除全局内容区空白外，还必须检查大型 card / panel / callout / media shell 的内部 container occupancy。普通信息容器占据大面积时，内部子元素 bounding boxes 不得只占很小比例；若故意使用 hero number / quote / title-card 留白，必须在 `composition/DESIGN.md` 记录为 deliberate hero treatment。任意承载内容的区域 / 列（含无边框 flex / grid 列、文本列），内容必须横向 / 纵向填满该区域，或令该区域留白对称分布；不得把内容单边对齐贴住一侧而令对侧或外侧留大块空白。文本 / 数据应使用整区宽度；区域内容确实稀疏时，收窄或重新居中该区域容器使留白对称，不留单边空白。配对区域（媒体列与文本列、左右分栏）的外侧边距必须大致对称，一侧外边距不得明显大于另一侧。如需呼吸空间，用极淡装饰 / 网格 / 角标占位。Moon / 深色技术编辑风默认纯色 + 极淡网格 / 细线 / 低对比结构，禁止 `radial-gradient` spotlight、localized glow、ambient orb、neon halo、发光阴影和用 glow 充当层次感。
+#### R20 — Scene inventory
+
+`composition/DESIGN.md` 必须记录每个 scene 的 `scene_id`、旁白摘要、`material_ref` / `material_refs`、`layout_role`、素材尺寸 / aspect ratio、`ratio_bucket` / `focal_region`（如有）、text beats、`scene-text-plan.json` 中对应的 `visual_text_units`（如有）、layout treatment、peak-state audit 结果，以及每个非素材元素对应的完整旁白句子和出现时间点。对每个已实现的 visual text unit，记录 `unit_id`、`visual_role`、`display_text`、`priority`、来源 text beat、最终 DOM selector、出现 timing、输出朝向、采用的 orientation-specific layout treatment；portrait / vertical 时还必须记录为何没有沿用横屏排列，以及过密信息如何降级（stack / page / rotate / split scene）。若某个 `primary` unit 被降级或未实现，必须记录原因。若使用 `media_continuation`，记录相邻 scene 如何保持同一主素材稳定显示；若使用 `viewport_reveal`，记录 start / mid / end 可见区域和关键内容是否完整出现。
+
+#### R21 — Peak-state layout audit
+
+动画前必须检查每个 scene 的 peak state：所有非字幕元素都显示时，元素不得溢出 viewport / 内容区、不得互相遮挡、前景元素不得无约束覆盖 catalog 素材、素材不得 letterbox / pillarbox、内容区纯空白不得超过 10%、构图不得明显失衡；主要元素组在水平 / 垂直方向上的分布必须均衡，视觉重心不得明显偏上、偏下、偏左或偏右；不得用超大空容器或空 media panel 填充画面来规避全局空白检查。`media_first` / `video_first` 主素材不得被标题或信息块不必要地压小；`comparison_pair` 中每个素材必须仍可读。portrait / vertical 中，`process_flow`、`timeline`、`state_machine`、`architecture_diagram`、`network_graph`、`comparison_matrix` 等结构型 unit 不得被横向硬排到文本窄列、字号过小、多次换行或节点不可读。失败必须先调整布局尺寸、位置、字号、信息密度或拆 scene，不得靠“暂时隐藏元素”掩盖问题。`viewport_reveal` 还必须检查 start / mid / end，确认关键内容不会永久隐藏。
 
 ## Stage Protocols
 
