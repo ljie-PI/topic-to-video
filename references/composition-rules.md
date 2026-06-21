@@ -80,10 +80,10 @@ Material-aware routing：
 
 | Scene condition | Landscape | Portrait |
 | --- | --- | --- |
-| `no_match: true` | 按 `visual_role` 选择信息图、cards、flow、table / chart 等呈现方式；可横向展开。 | 按 `visual_role` 选择纵向 stack、stepper、paged / timed 呈现方式；避免 3+ 横向窄列和宽表硬缩。 |
+| `no_match: true` | 按 `visual_role` 横屏呈现：`leaderboard` 用 rank list / highlighted row；`process_flow` / `timeline` / `state_machine` 用横向或纵向 flow；`data_table` / `chart` 用 table / chart + highlights；`list` / `feature_grid` / `metric_strip` 用 grid / rail / cards；`architecture_diagram` / `network_graph` 用 grouped columns / layers / clusters。 | 按 `visual_role` 竖屏呈现：`leaderboard` 用榜单卡片 / 分页 Top N；`process_flow` / `timeline` / `state_machine` 用纵向节点链；`data_table` / `chart` 用行卡 / 分页 / 单图；`list` / `feature_grid` / `metric_strip` 用纵向卡片或最多 2 列；`architecture_diagram` / `network_graph` 用 focus window / primary path；避免横向窄列和宽表硬缩。 |
 | 横图 / 横视频 | 素材作为宽幅主体；承载对应 `visual_role` 的外置信息区、metadata band、轻量浮层或分时轮换区不得压素材。 | 使用 wide media slab：素材按原比例占内容区宽度，高度自然推导，放在上部或中上部；其余区域承载对应 `visual_role`。若素材超宽且关键内容分散，可用 `viewport_reveal` 横向 pan。 |
 | 竖图 / 竖视频 | 使用 tall media column：素材按原比例占满内容区高度的 80-100%，宽度自然推导；剩余横向空间承载对应 `visual_role`。若素材过高且关键内容分布在长轴，可用 `viewport_reveal` 纵向 pan。 | 素材可居中作为主视觉，文本上下堆叠；如内容太长，用 `viewport_reveal` 纵向 pan。 |
-| ultra-wide strip | 使用 `band` 或 `viewport_reveal`；band 必须足够高可读，不能变成细线。 | 优先 `viewport_reveal` 横向 pan 或拆分为 timed sequence；不得完整缩成不可读细条。 |
+| ultra-wide strip | 使用 `band` 或 `viewport_reveal`；band 必须足够高可读，不能变成细线。 | 优先 `viewport_reveal` 横向 pan、分时展示或拆 scene；不得完整缩成不可读细条。 |
 | 方图 / UI 截图 | 素材居中或偏一侧；周边信息块围绕但不压素材，必要时只实现 primary unit。 | 上下分区或居中主体 + 短 callout；信息过密时分时出现或只保留 primary。 |
 | 论文 figure / table / chart | 保持 figure/table/chart 可读；用外置信息区解释 1-3 个关键结论，不重画完整表格，不遮挡轴线、图例、caption 或关键曲线。 | figure slab / reveal + 一次一个外置 callout；table/chart 过密时只显示 primary rows / columns / points 或拆 scene。 |
 | 视频 clip | 视频主体优先；文本使用短标签、状态说明或时间点 callout。复杂流程 / 架构图应放到相邻 `no_match` 或低素材密度 scene，而不是遮挡视频。 | 视频作为 media slab 或安全的近全幅背景；复杂信息拆到 `no_match` / continuation，避免长段 overlay。 |
@@ -92,9 +92,9 @@ Orientation-aware routing：
 
 | Output orientation | Layout routing |
 | --- | --- |
-| 横屏 `1920x1080` | 可用左右分栏、宽幅素材 + 右侧信息区、下方 info rail。横图 / 横视频可占内容区主体宽度；多 unit 可横向排列为 metric strip / timeline。 |
-| 竖向 `1080x1440` | 不要直接套横屏右侧栏。优先上下分区：上方 / 中部放素材主体，下方或顶部放 shrink-to-fit 信息带；也可使用 60/40 或 55/45 的上下 split。竖图 / 竖视频可左右窄分栏，但必须给字幕安全区留足空间。复杂 `process_flow` / `architecture_diagram` 优先改成纵向节点链、stacked modules、分页轮换，而不是横向大图。 |
-| 竖屏 `1080x1920` | 优先纵向叙事：素材、标题、callout、data blocks 依次堆叠或分时轮换；避免左右分栏导致文本过窄。结构型 unit 用纵向 timeline / stepper / module stack；多指标用 2 列以内卡片。 |
+| 横屏 `1920x1080` | 可用左右分栏、宽幅素材 + 右侧信息区、下方 info rail。横图 / 横视频可占内容区主体宽度；`metric_strip` / `data_block` 可横向指标条 / 2x2 cards；`process_flow` / `timeline` / `state_machine` 可横向节点链；`list` / `feature_grid` 可 2-4 项 grid / rail。 |
+| 竖向 `1080x1440` | 不要直接套横屏右侧栏。优先上下分区：上方 / 中部放素材主体，下方或顶部放 shrink-to-fit 信息带；也可使用 60/40 或 55/45 的上下 split。竖图 / 竖视频可左右窄分栏，但必须给字幕安全区留足空间。`process_flow` / `timeline` / `state_machine` 用纵向节点链；`architecture_diagram` / `network_graph` 用模块层级、focus window 或 primary path；`data_table` / `chart` / `leaderboard` 用分页、分时、主项高亮或拆 scene。 |
+| 竖屏 `1080x1920` | 优先纵向叙事：素材、标题、callout、data blocks 依次堆叠或分时轮换；避免左右分栏导致文本过窄。`timeline` / `process_flow` / `state_machine` 用纵向节点链；`architecture_diagram` / `network_graph` 用模块层级或 focus window；`metric_strip` / `data_block` 用最多 2 列卡片。 |
 
 对 `1080x1440` 和 `1080x1920`，字幕安全区通常比横屏更高；素材和非字幕文本都必须按 R15 计算在内容区内，不得为了塞更多 text units 侵入底部字幕区域。若 `visual_text_units` 过多，优先分时轮换或降级 `secondary` / `decorative` units，而不是缩小字体到不可读。
 
@@ -102,34 +102,34 @@ Media layout-role routing：
 
 | `layout_role` | Landscape | Portrait | Notes / forbidden |
 | --- | --- | --- | --- |
-| `no_match` | 按 `visual_role` 选择信息图、cards、flow、table/chart 等承载内容。 | 按 `visual_role` 选择 vertical stack、stepper、paged/timed sequence；避免横向窄列。 | 不借用其他 scene 素材。 |
+| `no_match` | 按 `visual_role` 横屏呈现：`leaderboard` 用 rank list / highlighted row；`process_flow` / `timeline` / `state_machine` 用 flow；`data_table` / `chart` 用 table / chart + highlights；`list` / `feature_grid` / `metric_strip` 用 grid / rail / cards。 | 按 `visual_role` 竖屏呈现：`leaderboard` 整体榜单逐项高亮；`process_flow` / `timeline` / `state_machine` 用纵向节点链；`data_table` / `chart` 用分页、分时或单图；`list` / `feature_grid` / `metric_strip` 用纵向卡片或最多 2 列；避免横向窄列。 | 不借用其他 scene 素材。 |
 | `video_first` | 视频作为主体，横屏 / 16:9 视频通常宽度和高度都接近内容区可用空间。 | 横屏视频通常作为上半屏或中上部清晰 media slab；文本只用短标签、状态说明、关键数字或一句短结论。 | 视频占满或接近占满画面时仅允许短、shrink-to-fit overlay，遵守 R12。 |
-| `media_first` | 清晰大图作为主体，优先按内容区可用宽高共同计算，避免只用固定 max-width 压低高度。 | 横图用 media slab + stacked text；竖图用居中主视觉 + 上下 text；信息多时分时、外置、降级或转 continuation。 | 主媒体不得被固定标题区或信息块不必要压小。 |
+| `media_first` | 清晰大图作为主体，优先按内容区可用宽高共同计算，避免只用固定 max-width 压低高度。 | 横图用 media slab + 上下文本区；竖图用居中主视觉 + 上下 text；信息多时分时、外置、降级或转 continuation。 | 主媒体不得被固定标题区或信息块不必要压小。 |
 | `media_continuation` | 保持相近位置、尺寸、裁切窗口和动效，只刷新解释文本、局部强调或 `focal_region`。 | 同左，尤其保持主素材在相邻 scene 中稳定。 | 避免素材长时间消失后再出现，也避免硬切到完全不同版式。 |
 | `viewport_reveal` | 极端比例素材进入 reveal viewport，按长轴慢速 pan / scroll。 | 同左，但竖屏横图优先横向 reveal，横屏竖图优先纵向 reveal。 | 必须记录 intentional reveal、start / mid / end 可见区域和关键内容。 |
-| `band` | 超宽素材作为横向信息带，如 logo row、timeline、UI strip、长表头。 | 仅当足够高可读；否则改用 reveal、sequence 或拆 scene。 | band 不能显示成细线。 |
+| `band` | 超宽素材作为横向信息带，如 logo row、timeline、UI strip、长表头。 | 仅当足够高可读；否则改用 reveal、分时展示或拆 scene。 | band 不能显示成细线。 |
 | `detail_callout` | 显示素材关键区域，并用外置信息解释重点。 | 使用局部窗口或 media slab + 一次一个外置 callout。 | 不得把 callout 压在素材关键内容上。 |
 | `comparison_pair` | 两个素材同屏对比，优先左右并排，统一高度或统一可读尺度。 | 优先上下分区或分时对比，避免两个详细截图被压成窄列。 | 每个素材仍必须可读。 |
-| `comparison_sequence` | 三个及以上素材用分时 / carousel 展示；必要时拆 scene。 | 一次一个或一组少量素材，paged/timed 展示。 | 不默认三等分或小宫格。 |
+| `comparison_sequence` | 三个及以上素材用分时 / carousel 展示；必要时拆 scene。 | 一次一个或一组少量素材，分页 / 分时展示。 | 不默认三等分或小宫格。 |
 
 Role-to-layout routing：
 
 | `visual_role` | 横屏 `1920x1080` | 竖向 `1080x1440` / 竖屏 `1080x1920` |
 | --- | --- | --- |
 | `title` / `product_card` / `section_divider` | title 可作为大标题或身份卡；product card 可配 metric / CTA / tagline。 | title / product card 纵向堆叠，避免贴顶小字；必要时 title + subtitle 分层。 |
-| `leaderboard` | 可 rank list + detail rail / highlighted row / optional media preview。 | stacked rank cards、paged Top N、一次突出一个条目；带素材时素材 preview 必须保持可读，不得多列窄排。 |
+| `leaderboard` | 可 rank list + detail rail / highlighted row / optional media preview。 | 榜单卡片纵向排列、分页 Top N、一次突出一个条目；带素材时素材 preview 必须保持可读，不得多列窄排。 |
 | `big_number` | 大数字 hero、单指标冲击卡或与 summary rail 并排。 | 大数字 + 短解释纵向堆叠；避免过多指标同屏。 |
-| `data_table` | Small table（≤3 rows, ≤3 columns, cells short）可 compact table；medium table（4-8 rows 或 4-5 columns）可 table + highlights / summary rail；large table（>8 rows 或 >5 columns）不得整表硬塞，必须 highlight / summarize / paginate / split，或按数值维度拆成 2-3 个 charts。 | small table 可 compact table 或 stacked mini-table；medium table 转 stacked rows/cards、paged rows，或在数据适合时转 1 个 chart；large table 只显示 primary rows/columns、cards、paged columns、一次一个 chart 或拆 scene。 |
-| `chart` | single chart、chart + summary rail、small multiples（通常 2-3 个）。 | single chart、stacked chart cards、paged / timed chart sequence；避免同屏 3 个以上小图。Chart 只能表达可比较的数值、趋势、占比或分布；文本密集表不得硬转 chart。 |
-| `process_flow` / `timeline` / `state_machine` | 可横向 flow 或纵向 flow；横向节点必须保持可读，节点数通常 3-5。 | 必须优先 vertical stepper、stacked path、paged / timed nodes；禁止 3 个及以上横向窄节点。 |
-| `architecture_diagram` / `network_graph` | 可用 grouped columns、layered bands、readable graph clusters。 | 用 stacked modules / layers、focus window、primary path；避免 dense full graph。 |
-| `data_block` / `metric_strip` | 可用横向指标条、2x2 grid、compact cards；数值必须突出，使用 tabular nums。 | stacked cards 或最多 2 列；不得靠缩小字号塞很多 metric。 |
-| `list` / `feature_grid` | 2-4 项 grid / rail；每项短 label + 一行 detail，避免长段落。 | stacked cards 或最多 2 列；过密时轮换 secondary items。 |
-| `comparison_matrix` / `pros_cons` | side-by-side matrix 或双列对比。 | stacked / sequenced comparison；不得把详细矩阵压进窄列。 |
-| `code_block` / `terminal_block` / `file_tree` | 宽面板，可配短解释；只展示关键行，避免完整文件 / 长日志。 | 单个可读面板 + stacked explanation；长行截断 / 摘取关键行，避免多面板小字。 |
+| `data_table` | Small table（≤3 rows, ≤3 columns, cells short）可 compact table；medium table（4-8 rows 或 4-5 columns）可 table + highlights / summary rail；large table（>8 rows 或 >5 columns）不得整表硬塞，必须 highlight / summarize / paginate / split，或按数值维度拆成 2-3 个 charts。 | small table 可 compact table 或纵向 mini-table；medium table 转行卡 / 分页行，或在数据适合时转 1 个 chart；large table 只显示 primary rows / columns、卡片、分页 columns、一次一个 chart 或拆 scene。 |
+| `chart` | single chart、chart + summary rail、small multiples（通常 2-3 个）。 | 单 chart、图表卡片纵向排列、分页 / 分时 chart；避免同屏 3 个以上小图。Chart 只能表达可比较的数值、趋势、占比或分布；文本密集表不得硬转 chart。 |
+| `process_flow` / `timeline` / `state_machine` | 可横向 flow 或纵向 flow；横向节点必须保持可读，节点数通常 3-5。 | 必须优先纵向步骤链、纵向路径、分页 / 分时节点；禁止 3 个及以上横向窄节点。 |
+| `architecture_diagram` / `network_graph` | 可用 grouped columns、layered bands、readable graph clusters。 | 用模块 / 层级纵向排列、focus window、primary path；避免 dense full graph。 |
+| `data_block` / `metric_strip` | 可用横向指标条、2x2 grid、compact cards；数值必须突出，使用 tabular nums。 | 卡片纵向排列或最多 2 列；不得靠缩小字号塞很多 metric。 |
+| `list` / `feature_grid` | 2-4 项 grid / rail；每项短 label + 一行 detail，避免长段落。 | 卡片纵向排列或最多 2 列；过密时轮换 secondary items。 |
+| `comparison_matrix` / `pros_cons` | side-by-side matrix 或双列对比。 | 上下分组 / 分步对比；不得把详细矩阵压进窄列。 |
+| `code_block` / `terminal_block` / `file_tree` | 宽面板，可配短解释；只展示关键行，避免完整文件 / 长日志。 | 单个可读面板 + 上下解释；长行截断 / 摘取关键行，避免多面板小字。 |
 | `callout` / `quote` / `annotated_media` / `definition` / `qa` | 外置 rail / band，或 R12 允许的短 overlay；不能压在图片 / 视频主体上。 | 素材外纵向堆叠或一次一个 callout；避免窄 side rail。 |
 
-portrait / vertical 输出中，多元素 / 结构型 role（`leaderboard`、`data_table`、`chart`、`timeline`、`process_flow`、`architecture_diagram`、`network_graph`、`comparison_matrix`、`pros_cons`、`metric_strip`、`list`、`feature_grid`、`qa`、`code_block`、`terminal_block`、`file_tree`、`state_machine`、`annotated_media`）不得沿用横屏窄列 / 多列硬排。若文本框过窄、字号触底、label 多次换行或节点 / 行 / 卡片不可读，必须改用纵向堆叠、vertical stepper、stacked cards、focus window、paged / timed rotation 或拆 scene。不得用缩字号、隐藏 peak-state 元素或延迟显示来掩盖布局失败。
+portrait / vertical 输出中，多元素 / 结构型 role（`leaderboard`、`data_table`、`chart`、`timeline`、`process_flow`、`architecture_diagram`、`network_graph`、`comparison_matrix`、`pros_cons`、`metric_strip`、`list`、`feature_grid`、`qa`、`code_block`、`terminal_block`、`file_tree`、`state_machine`、`annotated_media`）不得沿用横屏窄列 / 多列硬排。若文本框过窄、字号触底、label 多次换行或节点 / 行 / 卡片不可读，必须按 role 修复：`process_flow` / `timeline` / `state_machine` 改纵向节点链；`data_table` / `chart` / `leaderboard` 改分页、分时或主项高亮；`list` / `feature_grid` / `metric_strip` / `data_block` 改纵向卡片或最多 2 列；`architecture_diagram` / `network_graph` 改 focus window / primary path；仍不可读时拆 scene。不得用缩字号、隐藏 peak-state 元素或延迟显示来掩盖布局失败。
 
 #### R9 — Material aspect ratio
 
@@ -214,7 +214,7 @@ Intentional `viewport_reveal` exception:
 
 #### R20 — Scene inventory
 
-`composition/DESIGN.md` 必须记录每个 scene 的 `scene_id`、旁白摘要、`material_ref` / `material_refs`、`layout_role`、素材尺寸 / aspect ratio、`ratio_bucket` / `focal_region`（如有）、text beats、`scene-text-plan.json` 中对应的 `visual_text_units`（如有）、布局呈现方式、peak-state audit 结果，以及每个非素材元素对应的完整旁白句子和出现时间点。对每个已实现的 visual text unit，记录 `unit_id`、`visual_role`、`display_text`、`priority`、来源 text beat、最终 DOM selector、出现 timing、输出朝向、采用的按朝向布局呈现方式；portrait / vertical 时还必须记录为何没有沿用横屏排列，以及过密信息如何降级（stack / page / rotate / split scene）。若某个 `primary` unit 被降级或未实现，必须记录原因。若使用 `media_continuation`，记录相邻 scene 如何保持同一主素材稳定显示；若使用 `viewport_reveal`，记录 start / mid / end 可见区域和关键内容是否完整出现。
+`composition/DESIGN.md` 必须记录每个 scene 的 `scene_id`、旁白摘要、`material_ref` / `material_refs`、`layout_role`、素材尺寸 / aspect ratio、`ratio_bucket` / `focal_region`（如有）、text beats、`scene-text-plan.json` 中对应的 `visual_text_units`（如有）、布局呈现方式、peak-state audit 结果，以及每个非素材元素对应的完整旁白句子和出现时间点。对每个已实现的 visual text unit，记录 `unit_id`、`visual_role`、`display_text`、`priority`、来源 text beat、最终 DOM selector、出现 timing、输出朝向、采用的按朝向布局呈现方式；portrait / vertical 时还必须记录为何没有沿用横屏排列，以及过密信息采用的 role-specific 降级方式（纵向节点链、纵向卡片、分页 / 分时主项、focus window、拆 scene）。若某个 `primary` unit 被降级或未实现，必须记录原因。若使用 `media_continuation`，记录相邻 scene 如何保持同一主素材稳定显示；若使用 `viewport_reveal`，记录 start / mid / end 可见区域和关键内容是否完整出现。
 
 #### R21 — Peak-state layout audit
 
