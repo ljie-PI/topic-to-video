@@ -224,4 +224,4 @@ Intentional `viewport_reveal` exception:
 
 Phase 8.3-8.7 必须遵循 `references/composition-stage-protocol.md`。
 
-If `references/composition-stage-protocol.md` is missing or unreadable in the project workspace, the HyperFrames sub-agent must stop and report the missing required reference rather than inventing an audit process.
+若项目 workspace 中缺失或无法读取 `references/composition-stage-protocol.md`，HyperFrames sub-agent 必须停止并报告缺失引用，不得自行发明 audit 流程。

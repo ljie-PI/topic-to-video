@@ -1,8 +1,8 @@
 # Composition Stage Protocol
 
-This file defines Phase 8.3-8.7 execution protocol for HyperFrames composition: pre-render self-audit, render requirements, sanity check, post-render Visual QA, QA report, feedback loop, and rule coverage matrix.
+本文件定义 Phase 8.3-8.7 的 HyperFrames composition 执行协议：预渲染自检、渲染要求、sanity check、渲染后 Visual QA、QA report、feedback loop 和 rule coverage matrix。
 
-`references/composition-rules.md` remains the hard-constraint source.
+`references/composition-rules.md` 是硬约束来源。
 
 ## Stage Protocols
 
@@ -12,7 +12,7 @@ This file defines Phase 8.3-8.7 execution protocol for HyperFrames composition: 
 
 执行方式：
 
-1. **Source pass**：读取 `composition/index.html`、CSS / JS、`composition-handoff.md`、`references/composition-rules.md`、`references/composition-stage-protocol.md`、`material-catalog.json`、`scene-material-suggestions.json`、`scene-text-plan.json`（如存在）、`transcribe/transcript.json` 和 `transcribe/subtitle-units.json`，建立 scene inventory，并扫描 forbidden patterns。
+1. **Source pass**：读取 `composition/index.html`、CSS / JS、`composition-handoff.md`、`references/composition-rules.md`、`references/composition-stage-protocol.md`、`material-catalog.json`、`scene-material-suggestions.json`（如存在）、`scene-text-plan.json`（如存在）、`transcribe/transcript.json` 和 `transcribe/subtitle-units.json`，建立 scene inventory，并扫描 forbidden patterns。
 2. **Peak-state pass**：对每个 scene 选择一个或多个 peak-state 时间点（所有非字幕元素应可见、主要 text beat 已出现、退出动画未开始），用 HyperFrames / 浏览器可 seek 的预览能力或等价 DOM inspection 打开 `composition/index.html`，seek 到这些时间点。
 3. **Geometry measurement**：在每个 peak state 读取 scene root、素材、文本、callout、decor、全局字幕容器的 bounding boxes，并计算 viewport、内容区、字幕安全区；对大型容器还要记录内部子元素 union box、container occupancy ratio、主要元素组视觉中心相对内容区中心的偏移；对每个主要内容列 / 区域（含无边框列）记录内容 bounding box、横向 / 纵向 occupancy、左右 / 上下外侧边距，以及配对列 / 分栏之间的外侧边距差；对主媒体记录 source width / height、rendered width / height、scale factor、占内容区高度比例和面积比例；对主要文本记录 font size、line count 和每行字符 / token 分布。
 4. **Rule checks**：用几何数据检查元素溢出、重叠、前景压素材、素材占比、内容区使用率、alignment、margin / padding / gap、素材容器比例 / 露底、字幕安全区侵入和字幕框尺寸；检查素材 aspect ratio 与输出 orientation 是否冲突，若冲突必须记录 tall media column、wide media slab、band、viewport reveal、stacked text 等 cross-aspect treatment；若存在 `scene-text-plan.json`，还必须检查 primary visual text unit 是否实现、结构型 role 是否被合理视觉化、文本是否位于素材外置信息区、轻量浮层或分时轮换区，并按 `visual_role` 和输出朝向检查最终布局是否使用对应的 orientation-specific treatment；portrait / vertical 输出中，多元素 / 结构型 role 不得直接套用横屏 horizontal flow、side rail 或 multi-column grid。对 `media_first` / `video_first` 检查主媒体是否被不必要压小、scale factor 是否在 0.8x-1.5x、主媒体高度 / 面积是否足够；对 `media_continuation` 检查相邻 scene 视觉锚点是否稳定；对 `viewport_reveal` 检查 start / mid / end 可见区域；检查每个主要内容列 / 区域的 occupancy 与外侧边距对称：任一主列内容横向 occupancy < 60% 或纵向 < 55%，或配对列 / 分栏外侧边距明显不对称时，判为 under-utilized，必须重排 / 收窄 / 补内容，hero / quote / title-card 留白例外必须记录；对标题和主要文本检查是否低于文本类型字号下限、是否存在 orphan line / widow word。
@@ -75,7 +75,7 @@ ffmpeg -y -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 
 #### Step 3 — 素材跨 scene 复用检测
 
-按 `data-scene-id` 划分 scene，提取 `material_ref` 和 `material_refs` 对应的 catalog 素材 src。任一 catalog src 出现在多个 scene 时，先检查命中的 scene 是否属于同一个已声明的 continuation group：同一 `data-continuation-group`，group 起点与后续 `media_continuation` scene 的 `scene-material-suggestions.json` 均具有相同 `material_ref`，且后续 scene 的 `continuation_of` 指向 group 起点的 `scene_index`。若是，记为合法 continuation，不报 `reused_material`；若不是，记为 `reused_material` finding，并记录所有命中的 `scene_ids`。通用 UI 贴图 / 装饰纹理 / 蒙版等非 catalog 资源不计。
+按 `data-scene-id` 划分 scene，提取 `material_ref` 和 `material_refs` 对应的 catalog 素材 src。任一 catalog src 出现在多个 scene 时，先检查命中的 scene 是否属于同一个已声明的 continuation group：同一 `data-continuation-group`，scene data 中 `material_ref` 相同；`scene-material-suggestions.json` 如存在，还要校验 group 起点与后续 `media_continuation` scene 的 `material_ref` 相同，且后续 scene 的 `continuation_of` 指向 group 起点的 `scene_index`。若是，记为合法 continuation，不报 `reused_material`；若不是，记为 `reused_material` finding，并记录所有命中的 `scene_ids`。通用 UI 贴图 / 装饰纹理 / 蒙版等非 catalog 资源不计。
 
 #### Step 4 — 旁白对齐检测
 
@@ -166,7 +166,7 @@ ffmpeg -y -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 | Rule | Authoring / source check | Pre-render check | Post-render QA / feedback |
 | --- | --- | --- | --- |
 | R1-R4 | 读取 handoff 指定输入；只使用本地音频、transcript、subtitle units、catalog 和 fonts | Reference Read Check | Phase 8.5 audio sanity-check；Phase 8.6 narration / material spot-check |
-| R5-R6 | 为每个 scene 写稳定 data 属性；按 `scene-material-suggestions.json` 分配 `material_ref` / `material_refs`；`media_continuation` group 写 `data-continuation-group` / index | 检查 scene inventory、素材引用、`no_match` 处理、continuation group 是否显式声明且相邻 | 检测素材跨 scene 复用；声明过的 `media_continuation` group 作为合法例外；用 scene data 反查 finding |
+| R5-R6 | 为每个 scene 写稳定 data 属性；按 `scene-material-suggestions.json`（如存在）分配 `material_ref` / `material_refs`；`media_continuation` group 写 `data-continuation-group` / index | 检查 scene inventory、素材引用、`no_match` 处理、continuation group 是否显式声明且相邻 | 检测素材跨 scene 复用；声明过的 `media_continuation` group 作为合法例外；用 scene data 反查 finding |
 | R7 | authoring 时控制 scene 时长、微 scene、合并 scene 和 text beat 刷新 | `DESIGN.md` 记录时长设计 | 每轮解析 `data-scene-start/end` |
 | R8 | 按 scene 旁白、text beats、`scene-text-plan.json` visual text units、素材尺寸 / 类型 / `layout_role` 选择 layout；多素材 scene 读取 `material_refs`；按 Layout routing reference 的 `visual_role × orientation` routing 选择 role-specific layout treatment | Scene Visual Audit 覆盖 bounding boxes、内容区使用率、alignment、margin / padding / gap、overlap / overflow、visual text unit 实现状态、cross-aspect treatment、media\\_continuation 稳定性、viewport\\_reveal start/mid/end、portrait / vertical 不硬套 landscape flow/grid/rail 和失败处理 | spot-check 构图、素材比例、layout\\_role 是否合理、role-specific layout treatment 是否匹配输出朝向、cross-aspect 可读性、结构型文本是否退化 |
 | R9-R12 | 用 catalog 尺寸设置普通 wrapper aspect-ratio；素材填满容器且无可见框；仅 `viewport_reveal` 用 scene-ratio reveal viewport + 内层原比例素材；确保素材占主体、清晰完整、media\\_first/video\\_first 最大化可视区域、scale factor 0.8x-1.5x 或记录例外、video overlay 不遮挡关键区域；元素不越界不重叠 | 扫描错比例容器、错误 object-fit、普通素材 `width + max-height/height`、未标注 reveal 的 overflow clipping、素材容器露底；Scene Visual Audit 检查 media dominance、主媒体是否被压小、rendered / source scale factor、video overlay bounds / focal\\_region 避让、comparison 可读性、bounds、overlap | 抽帧检查裁切、变形、letterbox / pillarbox / 容器露底 / 素材框感、画面清晰度、放大比例、重叠、越界、视频浮层遮挡和多素材可读性 |

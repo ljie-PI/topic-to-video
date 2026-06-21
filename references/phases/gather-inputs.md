@@ -26,3 +26,5 @@ ls {work_dir}/{topic_name}/ 2>/dev/null
 > "Found existing workspace for `{topic_name}`. Detected outputs: [harvest (5 URLs), TTS, ASR, scene-timing]. Resume from Phase 5 (script + scene-material matching)? Or start fresh?"
 
 等用户确认后再继续。
+
+如果目录不存在，则无可恢复状态，直接从 Phase 1 开始。
