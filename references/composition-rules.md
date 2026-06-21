@@ -112,7 +112,7 @@ Role-to-layout routing：
 
 | `visual_role` | 横屏 `1920x1080` | 竖向 `1080x1440` / 竖屏 `1080x1920` |
 | --- | --- | --- |
-| `title` / `product_card` | title 可作为大标题或身份卡；product card 可配 metric / CTA / tagline。 | title / product card 纵向堆叠，避免贴顶小字；必要时 title + subtitle 分层。 |
+| `title` / `product_card` / `section_divider` | title 可作为大标题或身份卡；product card 可配 metric / CTA / tagline。 | title / product card 纵向堆叠，避免贴顶小字；必要时 title + subtitle 分层。 |
 | `leaderboard` | 可 rank list + detail rail / highlighted row / optional media preview。 | stacked rank cards、paged Top N、一次突出一个条目；带素材时素材 preview 必须保持可读，不得多列窄排。 |
 | `big_number` | 大数字 hero、单指标冲击卡或与 summary rail 并排。 | 大数字 + 短解释纵向堆叠；避免过多指标同屏。 |
 | `data_table` | Small table（≤3 rows, ≤3 columns, cells short）可 compact table；medium table（4-8 rows 或 4-5 columns）可 table + highlights / summary rail；large table（>8 rows 或 >5 columns）不得整表硬塞，必须 highlight / summarize / paginate / split，或按数值维度拆成 2-3 个 charts。 | small table 可 compact table 或 stacked mini-table；medium table 转 stacked rows/cards、paged rows，或在数据适合时转 1 个 chart；large table 只显示 primary rows/columns、cards、paged columns、一次一个 chart 或拆 scene。 |
@@ -121,9 +121,9 @@ Role-to-layout routing：
 | `architecture_diagram` / `network_graph` | 可用 grouped columns、layered bands、readable graph clusters。 | 用 stacked modules / layers、focus window、primary path；避免 dense full graph。 |
 | `data_block` / `metric_strip` | 可用横向指标条、2x2 grid、compact cards；数值必须突出，使用 tabular nums。 | stacked cards 或最多 2 列；不得靠缩小字号塞很多 metric。 |
 | `list` / `feature_grid` | 2-4 项 grid / rail；每项短 label + 一行 detail，避免长段落。 | stacked cards 或最多 2 列；过密时轮换 secondary items。 |
-| `comparison_matrix` | side-by-side matrix 或双列对比。 | stacked / sequenced comparison；不得把详细矩阵压进窄列。 |
+| `comparison_matrix` / `pros_cons` | side-by-side matrix 或双列对比。 | stacked / sequenced comparison；不得把详细矩阵压进窄列。 |
 | `code_block` / `terminal_block` / `file_tree` | 宽面板，可配短解释；只展示关键行，避免完整文件 / 长日志。 | 单个可读面板 + stacked explanation；长行截断 / 摘取关键行，避免多面板小字。 |
-| `callout` / `quote` / `paper_figure_callout` | 外置 rail / band，或 R16 允许的短 overlay；不能压在图片 / 视频主体上。 | 素材外纵向堆叠或一次一个 callout；避免窄 side rail。 |
+| `callout` / `quote` / `annotated_media` / `definition` / `qa` | 外置 rail / band，或 R16 允许的短 overlay；不能压在图片 / 视频主体上。 | 素材外纵向堆叠或一次一个 callout；避免窄 side rail。 |
 
 对 portrait / vertical 输出，layout 在几何上能塞进 viewport 不代表合格。如果文本框因为沿用横屏布局而过窄、字号被迫降到下限、label 多次换行、或流程节点变成 3 个及以上横向窄列，Phase 8 必须改用纵向堆叠、vertical stepper、paged / timed rotation、或拆 scene。不得用缩字号、隐藏 peak-state 元素或延迟显示来掩盖布局失败。
 
@@ -206,7 +206,7 @@ Intentional `viewport_reveal` exception:
 
 #### R20 — Style constraints
 
-文字框内文字应垂直 / 水平居中。内容区不得出现 >10% 视口面积的纯空白；字幕安全区不计入空白统计，也不得为填满而把内容元素铺进该带。除全局内容区空白外，还必须检查大型 card / panel / callout / media shell 的内部 container occupancy。普通信息容器占据大面积时，内部子元素 bounding boxes 不得只占很小比例；若故意使用 hero number / quote / title-card 留白，必须在 `composition/DESIGN.md` 记录为 deliberate hero treatment。如需呼吸空间，用极淡装饰 / 网格 / 角标占位。Moon / 深色技术编辑风默认纯色 + 极淡网格 / 细线 / 低对比结构，禁止 `radial-gradient` spotlight、localized glow、ambient orb、neon halo、发光阴影和用 glow 充当层次感。
+文字框内文字应垂直 / 水平居中。内容区不得出现 >10% 视口面积的纯空白；字幕安全区不计入空白统计，也不得为填满而把内容元素铺进该带。除全局内容区空白外，还必须检查大型 card / panel / callout / media shell 的内部 container occupancy。普通信息容器占据大面积时，内部子元素 bounding boxes 不得只占很小比例；若故意使用 hero number / quote / title-card 留白，必须在 `composition/DESIGN.md` 记录为 deliberate hero treatment。任意承载内容的区域 / 列（含无边框 flex / grid 列、文本列），内容必须横向 / 纵向填满该区域，或令该区域留白对称分布；不得把内容单边对齐贴住一侧而令对侧或外侧留大块空白。文本 / 数据应使用整区宽度；区域内容确实稀疏时，收窄或重新居中该区域容器使留白对称，不留单边空白。配对区域（媒体列与文本列、左右分栏）的外侧边距必须大致对称，一侧外边距不得明显大于另一侧。如需呼吸空间，用极淡装饰 / 网格 / 角标占位。Moon / 深色技术编辑风默认纯色 + 极淡网格 / 细线 / 低对比结构，禁止 `radial-gradient` spotlight、localized glow、ambient orb、neon halo、发光阴影和用 glow 充当层次感。
 
 ## Stage Protocols
 
