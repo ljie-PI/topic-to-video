@@ -72,17 +72,17 @@ Role resolution order：
 1. 读取输出朝向和内容区尺寸（按 R15 排除字幕安全区）。
 2. 读取 `material_ref` / `material_refs` / `no_match` 和 `layout_role`，决定素材主导程度。
 3. 读取 `visual_text_units[].visual_role`、`priority`、`supporting_points`、density 和 shape（如 row / column count、chart series count）。
-4. 按 Material-aware、Media layout-role、Role-to-layout 三组 routing 选择适合当前朝向的 treatment。
+4. 按 Material-aware、Media layout-role、Role-to-layout 三组 routing 选择适合当前朝向的呈现方式。
 5. 若 `template_hint` 与 `visual_role`、table / chart shape 或当前朝向冲突，忽略 `template_hint`，并在 `composition/DESIGN.md` 记录。
-6. Phase 8 只有在 `chart` unit 已存在，或 `data_table` 明确提供可 chart 的 numeric series / highlighted dimensions 时，才能把 table treatment 转为 chart treatment。
+6. Phase 8 只有在 `chart` unit 已存在，或 `data_table` 明确提供可 chart 的 numeric series / highlighted dimensions 时，才能把 table 呈现方式转为 chart 呈现方式。
 
 Material-aware routing：
 
-| Scene condition | Landscape treatment | Portrait / vertical treatment |
+| Scene condition | Landscape | Portrait |
 | --- | --- | --- |
-| `no_match: true` | 用纯排版信息图承载 `visual_text_units`；flow、grid、metric strip、leaderboard、table / chart 可横向展开。 | 用纵向 stack、stepper、paged / timed treatment；避免 3+ 横向窄列和宽表硬缩。 |
-| 横图 / 横视频 | 素材作为宽幅主体；文本进入右侧 / 下方外置信息区、顶部 metadata band、轻量浮层或分时轮换 callout。 | 使用 wide media slab：素材按原比例占内容区宽度，高度自然推导，放在上部或中上部；其余区域做 stacked text / data / callouts。若素材超宽且关键内容分散，可用 `viewport_reveal` 横向 pan。 |
-| 竖图 / 竖视频 | 使用 tall media column：素材按原比例占满内容区高度的 80-100%，宽度自然推导；剩余横向空间放 text rail / metric cards / callouts。若素材过高且关键内容分布在长轴，可用 `viewport_reveal` 纵向 pan。 | 素材可居中作为主视觉，文本上下堆叠；如内容太长，用 `viewport_reveal` 纵向 pan。 |
+| `no_match: true` | 按 `visual_role` 选择信息图、cards、flow、table / chart 等呈现方式；可横向展开。 | 按 `visual_role` 选择纵向 stack、stepper、paged / timed 呈现方式；避免 3+ 横向窄列和宽表硬缩。 |
+| 横图 / 横视频 | 素材作为宽幅主体；承载对应 `visual_role` 的外置信息区、metadata band、轻量浮层或分时轮换区不得压素材。 | 使用 wide media slab：素材按原比例占内容区宽度，高度自然推导，放在上部或中上部；其余区域承载对应 `visual_role`。若素材超宽且关键内容分散，可用 `viewport_reveal` 横向 pan。 |
+| 竖图 / 竖视频 | 使用 tall media column：素材按原比例占满内容区高度的 80-100%，宽度自然推导；剩余横向空间承载对应 `visual_role`。若素材过高且关键内容分布在长轴，可用 `viewport_reveal` 纵向 pan。 | 素材可居中作为主视觉，文本上下堆叠；如内容太长，用 `viewport_reveal` 纵向 pan。 |
 | ultra-wide strip | 使用 `band` 或 `viewport_reveal`；band 必须足够高可读，不能变成细线。 | 优先 `viewport_reveal` 横向 pan 或拆分为 timed sequence；不得完整缩成不可读细条。 |
 | 方图 / UI 截图 | 素材居中或偏一侧；周边信息块围绕但不压素材，必要时只实现 primary unit。 | 上下分区或居中主体 + 短 callout；信息过密时分时出现或只保留 primary。 |
 | 论文 figure / table / chart | 保持 figure/table/chart 可读；用外置信息区解释 1-3 个关键结论，不重画完整表格，不遮挡轴线、图例、caption 或关键曲线。 | figure slab / reveal + 一次一个外置 callout；table/chart 过密时只显示 primary rows / columns / points 或拆 scene。 |
@@ -100,9 +100,9 @@ Orientation-aware routing：
 
 Media layout-role routing：
 
-| `layout_role` | Landscape | Portrait / vertical | Notes / forbidden |
+| `layout_role` | Landscape | Portrait | Notes / forbidden |
 | --- | --- | --- | --- |
-| `no_match` | 用信息图、flow、leaderboard、table/chart、metric cards 或文本卡承载内容。 | 用 vertical stack、stepper、paged/timed sequence；避免横向窄列。 | 不借用其他 scene 素材。 |
+| `no_match` | 按 `visual_role` 选择信息图、cards、flow、table/chart 等承载内容。 | 按 `visual_role` 选择 vertical stack、stepper、paged/timed sequence；避免横向窄列。 | 不借用其他 scene 素材。 |
 | `video_first` | 视频作为主体，横屏 / 16:9 视频通常宽度和高度都接近内容区可用空间。 | 横屏视频通常作为上半屏或中上部清晰 media slab；文本只用短标签、状态说明、关键数字或一句短结论。 | 视频占满或接近占满画面时仅允许短、shrink-to-fit overlay，遵守 R12。 |
 | `media_first` | 清晰大图作为主体，优先按内容区可用宽高共同计算，避免只用固定 max-width 压低高度。 | 横图用 media slab + stacked text；竖图用居中主视觉 + 上下 text；信息多时分时、外置、降级或转 continuation。 | 主媒体不得被固定标题区或信息块不必要压小。 |
 | `media_continuation` | 保持相近位置、尺寸、裁切窗口和动效，只刷新解释文本、局部强调或 `focal_region`。 | 同左，尤其保持主素材在相邻 scene 中稳定。 | 避免素材长时间消失后再出现，也避免硬切到完全不同版式。 |
@@ -182,7 +182,7 @@ Intentional `viewport_reveal` exception:
 
 #### R14 — Style constraints
 
-文字框内文字应垂直 / 水平居中。内容区不得出现 >10% 视口面积的纯空白；字幕安全区不计入空白统计，也不得为填满而把内容元素铺进该带。除全局内容区空白外，还必须检查大型 card / panel / callout / media shell 的内部 container occupancy。普通信息容器占据大面积时，内部子元素 bounding boxes 不得只占很小比例；若故意使用 hero number / quote / title-card 留白，必须在 `composition/DESIGN.md` 记录为 deliberate hero treatment。任意承载内容的区域 / 列（含无边框 flex / grid 列、文本列），内容必须横向 / 纵向填满该区域，或令该区域留白对称分布；不得把内容单边对齐贴住一侧而令对侧或外侧留大块空白。文本 / 数据应使用整区宽度；区域内容确实稀疏时，收窄或重新居中该区域容器使留白对称，不留单边空白。配对区域（媒体列与文本列、左右分栏）的外侧边距必须大致对称，一侧外边距不得明显大于另一侧。如需呼吸空间，用极淡装饰 / 网格 / 角标占位。Moon / 深色技术编辑风默认纯色 + 极淡网格 / 细线 / 低对比结构，禁止 `radial-gradient` spotlight、localized glow、ambient orb、neon halo、发光阴影和用 glow 充当层次感。
+文字框内文字应垂直 / 水平居中。内容区不得出现 >10% 视口面积的纯空白；字幕安全区不计入空白统计，也不得为填满而把内容元素铺进该带。除全局内容区空白外，还必须检查大型 card / panel / callout / media shell 的内部 container occupancy。普通信息容器占据大面积时，内部子元素 bounding boxes 不得只占很小比例；若故意使用 hero number / quote / title-card 留白，必须在 `composition/DESIGN.md` 记录为 deliberate hero 留白。任意承载内容的区域 / 列（含无边框 flex / grid 列、文本列），内容必须横向 / 纵向填满该区域，或令该区域留白对称分布；不得把内容单边对齐贴住一侧而令对侧或外侧留大块空白。文本 / 数据应使用整区宽度；区域内容确实稀疏时，收窄或重新居中该区域容器使留白对称，不留单边空白。配对区域（媒体列与文本列、左右分栏）的外侧边距必须大致对称，一侧外边距不得明显大于另一侧。如需呼吸空间，用极淡装饰 / 网格 / 角标占位。Moon / 深色技术编辑风默认纯色 + 极淡网格 / 细线 / 低对比结构，禁止 `radial-gradient` spotlight、localized glow、ambient orb、neon halo、发光阴影和用 glow 充当层次感。
 
 ### Subtitle rules
 
@@ -214,7 +214,7 @@ Intentional `viewport_reveal` exception:
 
 #### R20 — Scene inventory
 
-`composition/DESIGN.md` 必须记录每个 scene 的 `scene_id`、旁白摘要、`material_ref` / `material_refs`、`layout_role`、素材尺寸 / aspect ratio、`ratio_bucket` / `focal_region`（如有）、text beats、`scene-text-plan.json` 中对应的 `visual_text_units`（如有）、layout treatment、peak-state audit 结果，以及每个非素材元素对应的完整旁白句子和出现时间点。对每个已实现的 visual text unit，记录 `unit_id`、`visual_role`、`display_text`、`priority`、来源 text beat、最终 DOM selector、出现 timing、输出朝向、采用的 orientation-specific layout treatment；portrait / vertical 时还必须记录为何没有沿用横屏排列，以及过密信息如何降级（stack / page / rotate / split scene）。若某个 `primary` unit 被降级或未实现，必须记录原因。若使用 `media_continuation`，记录相邻 scene 如何保持同一主素材稳定显示；若使用 `viewport_reveal`，记录 start / mid / end 可见区域和关键内容是否完整出现。
+`composition/DESIGN.md` 必须记录每个 scene 的 `scene_id`、旁白摘要、`material_ref` / `material_refs`、`layout_role`、素材尺寸 / aspect ratio、`ratio_bucket` / `focal_region`（如有）、text beats、`scene-text-plan.json` 中对应的 `visual_text_units`（如有）、布局呈现方式、peak-state audit 结果，以及每个非素材元素对应的完整旁白句子和出现时间点。对每个已实现的 visual text unit，记录 `unit_id`、`visual_role`、`display_text`、`priority`、来源 text beat、最终 DOM selector、出现 timing、输出朝向、采用的按朝向布局呈现方式；portrait / vertical 时还必须记录为何没有沿用横屏排列，以及过密信息如何降级（stack / page / rotate / split scene）。若某个 `primary` unit 被降级或未实现，必须记录原因。若使用 `media_continuation`，记录相邻 scene 如何保持同一主素材稳定显示；若使用 `viewport_reveal`，记录 start / mid / end 可见区域和关键内容是否完整出现。
 
 #### R21 — Peak-state layout audit
 
