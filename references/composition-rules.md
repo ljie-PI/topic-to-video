@@ -129,7 +129,7 @@ Role-to-layout routing：
 | `code_block` / `terminal_block` / `file_tree` | 宽面板，可配短解释；只展示关键行，避免完整文件 / 长日志。 | 单个可读面板 + stacked explanation；长行截断 / 摘取关键行，避免多面板小字。 |
 | `callout` / `quote` / `annotated_media` / `definition` / `qa` | 外置 rail / band，或 R12 允许的短 overlay；不能压在图片 / 视频主体上。 | 素材外纵向堆叠或一次一个 callout；避免窄 side rail。 |
 
-对 portrait / vertical 输出，layout 在几何上能塞进 viewport 不代表合格。如果文本框因为沿用横屏布局而过窄、字号被迫降到下限、label 多次换行、或流程节点变成 3 个及以上横向窄列，Phase 8 必须改用纵向堆叠、vertical stepper、paged / timed rotation、或拆 scene。不得用缩字号、隐藏 peak-state 元素或延迟显示来掩盖布局失败。
+portrait / vertical 输出中，多元素 / 结构型 role（`leaderboard`、`data_table`、`chart`、`timeline`、`process_flow`、`architecture_diagram`、`network_graph`、`comparison_matrix`、`pros_cons`、`metric_strip`、`list`、`feature_grid`、`qa`、`code_block`、`terminal_block`、`file_tree`、`state_machine`、`annotated_media`）不得沿用横屏窄列 / 多列硬排。若文本框过窄、字号触底、label 多次换行或节点 / 行 / 卡片不可读，必须改用纵向堆叠、vertical stepper、stacked cards、focus window、paged / timed rotation 或拆 scene。不得用缩字号、隐藏 peak-state 元素或延迟显示来掩盖布局失败。
 
 #### R9 — Material aspect ratio
 
@@ -170,7 +170,7 @@ Intentional `viewport_reveal` exception:
 
 #### R11 — Media dominance and quality
 
-有图片 / 视频素材的 scene，素材应占据内容区主体（通常 >= 50%），禁止缩成角落邮票贴在大段文字旁。`video_first` 和 `media_first` 的主媒体应优先最大化可视区域：横屏输出中的横屏视频 / 清晰横图通常宽度对齐内容区；竖屏 / 竖向输出中的横屏视频 / 横图通常作为上半屏或中上部 media slab，避免缩成小图。主媒体尺寸必须同时按内容区可用宽度和高度计算，不能只用固定 max-width 导致横屏 wide media 高度过低；横屏中作为主证据的 16:9 / wide image 或 video slab 通常应达到内容区高度的 65-85%，若低于约 60%，必须有文本密度、素材质量或构图原因，并在 `composition/DESIGN.md` 记录。Catalog 图片 / 视频的 rendered size 应尽量保持在原始素材尺寸的 0.9x-1.2x 范围内（按主要可见边或短边计算，并在 `composition/DESIGN.md` 记录口径）。低于 0.9x 时容易因缩小过度导致文字 / UI / 图表不可读；高于 1.2x 时容易模糊、像素化或暴露压缩 artifacts。若必须超出范围，必须记录原因、素材替代尝试和 QA 结论。多素材 scene 两个素材可用 `comparison_pair`，三个及以上优先 `comparison_sequence` / carousel / 拆 scene；如必须并列，每个素材 >= 30% 内容区且仍可读。图片必须清晰、关键信息完整，原图分辨率应覆盖渲染尺寸，不得可见模糊、像素化、JPG artifacts 或裁掉文字、图表轴线、人物面部、UI 主控件等关键信息。
+有图片 / 视频素材的 scene，素材应占据内容区主体（通常 >= 50%），禁止缩成角落邮票贴在大段文字旁。`video_first` 和 `media_first` 的主媒体应优先最大化可视区域：横屏输出中的横屏视频 / 清晰横图通常宽度对齐内容区；竖屏 / 竖向输出中的横屏视频 / 横图通常作为上半屏或中上部 media slab，避免缩成小图。主媒体尺寸必须同时按内容区可用宽度和高度计算，不能只用固定 max-width 导致横屏 wide media 高度过低；横屏中作为主证据的 16:9 / wide image 或 video slab 通常应达到内容区高度的 65-85%，若低于约 60%，必须有文本密度、素材质量或构图原因，并在 `composition/DESIGN.md` 记录。Catalog 图片 / 视频的 rendered size 按主要可见边或短边计算，优先保持在原始素材尺寸的 0.9x-1.5x 范围内，并在 `composition/DESIGN.md` 记录口径；超出范围时必须记录原因、素材替代尝试和 QA 结论。多素材 scene 两个素材可用 `comparison_pair`，三个及以上优先 `comparison_sequence` / carousel / 拆 scene；如必须并列，每个素材 >= 30% 内容区且仍可读。图片必须清晰、关键信息完整，原图分辨率应覆盖渲染尺寸，不得可见模糊、像素化、JPG artifacts 或裁掉文字、图表轴线、人物面部、UI 主控件等关键信息。
 
 #### R12 — Bounds and overlap
 
@@ -208,7 +208,7 @@ Intentional `viewport_reveal` exception:
 
 #### R19 — Text timing and entrance state
 
-多个非素材文本元素必须按完整旁白句子逐个出现，禁止 scene start 一次性全亮。多元素 visual_role 内部的条目 / 节点 / 行 / 标注也必须随对应旁白逐个出现，不在 unit 首次出现时一次性全亮。文本元素服务于哪一句，就在该句开始前短暂提前显示，保证旁白读到该句时相关文本已可见。若 `scene-text-plan.json` 存在，`priority: "primary"` 的 `visual_text_units` 必须优先实现；`secondary` / `decorative` 可因安全布局降级，但必须在 `composition/DESIGN.md` 记录。旧 text beat 需要淡出或降级，不能永久累积。入场动画必须有正确初始态，避免元素在 tween 前闪现。
+多个非素材文本元素必须按完整旁白句子逐个出现，禁止 scene start 一次性全亮。多元素 `visual_role` 内部的条目 / 节点 / 行 / 标注也必须随对应旁白逐个出现，不在 unit 首次出现时一次性全亮。文本元素服务于哪一句，就在该句开始前短暂提前显示，保证旁白读到该句时相关文本已可见。若 `scene-text-plan.json` 存在，`priority: "primary"` 的 `visual_text_units` 必须优先实现；`secondary` / `decorative` 可因安全布局降级，但必须在 `composition/DESIGN.md` 记录。旧 text beat 需要淡出或降级，不能永久累积。入场动画必须有正确初始态，避免元素在 tween 前闪现。
 
 ### Authoring record and audit rules
 
@@ -218,7 +218,7 @@ Intentional `viewport_reveal` exception:
 
 #### R21 — Peak-state layout audit
 
-动画前必须检查每个 scene 的 peak state：所有非字幕元素都显示时，元素不得溢出 viewport / 内容区、不得互相遮挡、前景元素不得无约束覆盖 catalog 素材、素材不得 letterbox / pillarbox、内容区纯空白不得超过 10%、构图不得明显失衡；主要元素组在水平 / 垂直方向上的分布必须均衡，视觉重心不得明显偏上、偏下、偏左或偏右；不得用超大空容器或空 media panel 填充画面来规避全局空白检查。`media_first` / `video_first` 主素材不得被标题或信息块不必要地压小；`comparison_pair` 中每个素材必须仍可读。portrait / vertical 中，`process_flow`、`timeline`、`state_machine`、`architecture_diagram`、`network_graph`、`comparison_matrix` 等结构型 unit 不得被横向硬排到文本窄列、字号过小、多次换行或节点不可读。失败必须先调整布局尺寸、位置、字号、信息密度或拆 scene，不得靠“暂时隐藏元素”掩盖问题。`viewport_reveal` 还必须检查 start / mid / end，确认关键内容不会永久隐藏。
+动画前必须检查每个 scene 的 peak state：所有非字幕元素都显示时，元素不得溢出 viewport / 内容区、不得互相遮挡、前景元素不得无约束覆盖 catalog 素材、素材不得 letterbox / pillarbox、内容区纯空白不得超过 10%、构图不得明显失衡；主要元素组在水平 / 垂直方向上的分布必须均衡，视觉重心不得明显偏上、偏下、偏左或偏右；不得用超大空容器或空 media panel 填充画面来规避全局空白检查。`media_first` / `video_first` 主素材不得被标题或信息块不必要地压小；`comparison_pair` 中每个素材必须仍可读。portrait / vertical 中，多元素 / 结构型 unit（`leaderboard`、`data_table`、`chart`、`timeline`、`process_flow`、`architecture_diagram`、`network_graph`、`comparison_matrix`、`pros_cons`、`metric_strip`、`list`、`feature_grid`、`qa`、`code_block`、`terminal_block`、`file_tree`、`state_machine`、`annotated_media`）不得被横向硬排到文本窄列、字号过小、多次换行或内容不可读。失败必须先调整布局尺寸、位置、字号、信息密度或拆 scene，不得靠“暂时隐藏元素”掩盖问题。`viewport_reveal` 还必须检查 start / mid / end，确认关键内容不会永久隐藏。
 
 ## Stage Protocols
 
