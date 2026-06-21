@@ -16,7 +16,7 @@
 | 本地 TTS 参考音频 | `TTS_REF_WAV` 指向要克隆的音色 WAV——本地 TTS 必需（旧别名 `VOXCPM_REF_WAV` 仍兼容） |
 | `DASHSCOPE_API_KEY` | 仅在用云端 fallback（`TTS_BACKEND`/`ASR_BACKEND=dashscope`）时需要 |
 | `VLM_*`（可选） | 同时设 `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` 即可启用显式视觉模型；未设置时 `vision-analyze.py` 会回退到 agent 自己的 `view` 工具 |
-| sub-agent 支持（Phase 8） | 优先使用当前客户端原生的 sub-agent / 委派工具。仅当用一句短 prompt 让 agent 自己读 `composition-handoff.md` 与工作区本地 `references/composition-rules.md` 时，CLI fallback 才可接受 |
+| sub-agent 支持（Phase 8） | 优先使用当前客户端原生的 sub-agent / 委派工具。仅当用一句短 prompt 让 agent 自己读 `composition-handoff.md`、工作区本地 `references/composition-rules.md` 与 `references/composition-stage-protocol.md` 时，CLI fallback 才可接受 |
 | `hyperframes` + `hyperframes-cli` skills（Phase 8） | 由 composition sub-agent 加载。sub-agent 的 HyperFrames CLI 间接依赖 Node.js；主 agent 自身不写 `composition/index.html`。文档：https://hyperframes.heygen.com/quickstart |
 
 ## 本地 TTS / ASR（默认，可切云端）
