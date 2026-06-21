@@ -89,7 +89,7 @@ ffmpeg -y -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 2. 元素不越界、不截断。
 3. 同时显示的元素不重叠，前景元素不压素材关键区域；`video_first` 半透明文本框不得遮挡主体动作、UI 关键区域、人物脸部或 `focal_region`。
 4. DOM 扁平、颜色对比度达标。
-5. 字号比 <= 3，主标题不折行。
+5. 字号比 <= 3。
 6. 内容区无 >10% 纯空白。
 7. 字幕安全区无非字幕前景元素侵入。
 8. 素材无 letterbox / pillarbox。
