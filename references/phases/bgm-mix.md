@@ -20,4 +20,4 @@ python3 scripts/mix-bgm.py \
   --output {work_dir}/{topic_name}/composition/renders/final_with_bgm.mp4
 ```
 
-脚本一次 ffmpeg pass 完成所有事：循环 `--bgm`（默认 `assets/bgm.mp3`）填满整个视频时长、以 `--bgm-volume` 与原解说混音、并用 `-c:v copy` 写出 `final_with_bgm.mp4`（视频流不重编码）。3% 音量足以让音乐听得见又不让解说不清楚——如果听不见就把 `--bgm-volume` 调大，如果盖过人声了就调小。
+脚本一次 ffmpeg pass 完成所有事：循环 `--bgm`（默认 `assets/bgm.mp3`）填满整个视频时长、以 `--bgm-volume` 与原解说混音、并用 `-c:v copy` 写出 `final_with_bgm.mp4`（视频流不重编码）。默认 3% 音量；听不见就把 `--bgm-volume` 调大，盖过人声就调小。

@@ -37,7 +37,7 @@
    - **Mode 1（显式 VLM）：** 若已设置 `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` → 直接走 OpenAI 兼容的调用，话题 context 摘要作为 system prompt 或 user prompt 前缀注入。
    - **Mode 2（主 agent 直接分析）：** 否则 → 脚本返回 `delegate_to_agent` 和图片路径列表。此时由**主 agent 自身的多模态视觉能力**（Read 图片文件，让模型直接看图）完成分析——使用与主 agent 其他推理相同的模型，不调用任何外部工具。分析时把话题 context 摘要带入 prompt，与 Mode 1 保持一致，产出同样格式的 `semantic_description` 和 `score`，并手动写入 `material-catalog.json`。
 
-   **Paper-origin entries（`source_type: "paper_pdf"`）：** 论文里的 figure 和 table 在 PDF 中本就带有权威的 caption（位于 `paper_metadata.figure_captions` / `table_captions`）。直接把这些 caption 作为 `semantic_description`，默认 `score: 8`。只对没有 caption 的论文素材跑 VLM。
+   **Paper-origin entries（`source_type: "paper_pdf"`）：** 直接把 PDF caption（`paper_metadata.figure_captions` / `table_captions`）作为 `semantic_description`，默认 `score: 8`。只对没有 caption 的论文素材跑 VLM。
 
 4. **组合**：把 `entry.text_excerpt` + 图片描述 + 各帧描述合成 catalog entry。**关键：** 对每个视频，写一份 `selected_clips` 列表，元素形如 `{start, end, reason, frame_paths[]}` —— 这些就是 Phase 5（脚本与场景-素材匹配）和 Phase 8（composition）会引用的片段。
 

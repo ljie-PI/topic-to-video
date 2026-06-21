@@ -2,7 +2,7 @@
 
 This file defines Phase 8.3-8.7 execution protocol for HyperFrames composition: pre-render self-audit, render requirements, sanity check, post-render Visual QA, QA report, feedback loop, and rule coverage matrix.
 
-`references/composition-rules.md` remains the hard-constraint source. This protocol explains how those rules are checked and enforced during Phase 8.
+`references/composition-rules.md` remains the hard-constraint source.
 
 ## Stage Protocols
 

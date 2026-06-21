@@ -66,12 +66,12 @@ python3 scripts/parse-pdf.py \
 
 **Checkpoint：** 如果 `harvest_page/related-{short-name}/metadata.json` 已存在则跳过。
 
-**永远不要单凭自己的训练数据写脚本。** 60 秒的视频容不下含糊其辞，任何事实错误都会变成 60 秒的错误。每一个论断都要扎根在新鲜、可引用的来源上。
+**永远不要单凭自己的训练数据写脚本。** 每一个论断都要扎根在新鲜、可引用的来源上。
 
 **流程：**
 
 1. **如果用户给了 URL** → 先 `web_fetch` 它。读完整内容。这是整个视频的脊椎。
-2. **跑 Gemini Deep Research。** 这是主要的研究主干 —— 它产出的报告远比人工 web 搜索更全面、有出处。
+2. **跑 Gemini Deep Research。** 这是主要的研究主干。
    ```bash
    scripts/gemini-deep-research.py \
      --prompt "Comprehensive overview of [topic]: history, key developments, notable figures, technical details, latest news" \
@@ -111,10 +111,10 @@ python3 scripts/parse-pdf.py \
    2. 从 `gemini_deep_research_sources.json` 中筛选出符合 Phase 3 INCLUDE 类型的 URL（官方站、GitHub、docs、blog、YouTube —— 不要聚合页或社交 feed）。
    3. 通过 `web_search` 发现的、符合 INCLUDE 类型的 URL。
    目标 **10-15 个 source URL**，覆盖多样的视觉素材类型。
-6. **写脚本之前，把研究 brief 给用户看。** 对方可能补充背景、纠正误读或者收窄角度。通常 ~1 轮反馈。
+6. **写脚本之前，把研究 brief 给用户看。** 通常 ~1 轮反馈。
 
 **仅在以下情况跳过研究：**
 - 用户明确说"skip research, use this exact text" 且提供了完整内容
 - 主题只是把对方已经写好且整段提供的稿子重新念一遍
 
-**反模式：** 搜一次，然后假装 brief 已完整地开始写。真研究是迭代的 —— 找到一个事实，会引出新的疑问，再去搜。计划 2-3 轮。
+**研究是迭代的：计划 2-3 轮搜索补漏，不要搜一次就开写。**

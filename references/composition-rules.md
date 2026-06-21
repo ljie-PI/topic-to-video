@@ -210,8 +210,6 @@ Intentional `viewport_reveal` exception:
 
 ## Stage Protocols
 
-Detailed Phase 8.3-8.7 execution protocol lives in `references/composition-stage-protocol.md`.
-
-Phase 8 must use that protocol for pre-render self-audit, render requirements, sanity check, post-render Visual QA, QA report, feedback loop, stop-loss handling, and the Rule Coverage Matrix.
+Phase 8.3-8.7 必须遵循 `references/composition-stage-protocol.md`。
 
 If `references/composition-stage-protocol.md` is missing or unreadable in the project workspace, the HyperFrames sub-agent must stop and report the missing required reference rather than inventing an audit process.

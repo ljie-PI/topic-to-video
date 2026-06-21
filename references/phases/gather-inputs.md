@@ -25,4 +25,4 @@ ls {work_dir}/{topic_name}/ 2>/dev/null
 如果该目录存在并包含输出文件，按 "Checkpoint & Resume" 一节的 checkpoint 表去扫描，然后向用户报告：
 > "Found existing workspace for `{topic_name}`. Detected outputs: [harvest (5 URLs), TTS, ASR, scene-timing]. Resume from Phase 5 (script + scene-material matching)? Or start fresh?"
 
-等用户确认后再继续。这是 agent 发现历史 run 的**唯一**机制——没有工作区目录，就没有可恢复的状态。
+等用户确认后再继续。
