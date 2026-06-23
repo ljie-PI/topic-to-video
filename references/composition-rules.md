@@ -26,6 +26,10 @@
 
 所有以素材为底的视觉都必须通过 `material-catalog.json` 解析；需要 catalog 素材时不得凭空造 stock 视觉。`scene-material-suggestions.json` 如存在，视为素材到 scene 的硬性分配。`scene-text-plan.json` 如存在，视为非字幕屏幕文本块的结构化建议；它不能覆盖素材分配，也不能要求前景文本遮挡素材。
 
+#### R3a — No generated web links
+
+生成的旁白、字幕和屏幕文字不要出现网页链接，也不要说“链接放在下面”“点击下方链接”等链接引导。需要标来源时用“官方文档”“GitHub”、产品名、repo 名或论文名；URL 只留在 metadata 中。此规则只约束生成文本，不处理素材截图或录屏里原本存在的 URL。
+
 #### R4 — Local fonts
 
 字体加载使用 `fonts/` 下的本地资源，确保可复现；不要依赖系统 `fc-match`。
