@@ -140,6 +140,7 @@ Topic chip accents（可选）：
 | Topic chip | 22-26px | 22-26px | 22-26px | 500 |
 | Upvote 数（tabular-nums） | 48-64px | 42-56px | 46-60px | 700 |
 | Section eyebrow（uppercase） | 22-26px | 22-26px | 22-26px | 600 |
+| 字幕 | 35px | 35px | 35px | 500 |
 | Padding（.scene） | 90px 140px | 90px 80px | 90px 70px | — |
 
 ## 形状风格
