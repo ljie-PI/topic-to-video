@@ -58,6 +58,13 @@ sanity-check 通过后，主 agent 对 final.mp4 做视觉 QA。
 - **首轮 = 全量审计**：全片抽帧；静帧 / 复用 / spot-check 全片跑，旁白对齐抽样。
 - **重渲轮 = 限定范围审计**：昂贵 vision 检查只覆盖上一轮 `affected_scenes`；静帧 / 复用等无 vision 成本检查仍全片跑。若 `affected_scenes` 含 `global`，字幕相关检查恢复全片抽样。
 
+#### Vision 工具与 VLM key 回退
+
+QA 中所有 vision 检查（Step 4、Step 5）统一通过 `scripts/vision-analyze.py` 调用，按 `VLM_API_KEY` 分流：
+
+- **Mode 1（显式 VLM）：** 设了 `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` → 脚本走 OpenAI 兼容调用，返回 `mode:"vlm"` + `analysis`。
+- **Mode 2（主 agent 直接分析）：** 未设 `VLM_API_KEY` → 脚本返回 `mode:"delegate_to_agent"` 和帧路径，主 agent 用 `view` 工具直接看帧完成检查，产出同样格式的 finding。无 key 不阻断 QA。
+
 #### Step 1 — 每秒抽帧
 
 ```bash
@@ -77,11 +84,11 @@ ffmpeg -y -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 
 #### Step 4 — 旁白对齐检测
 
-按 `transcribe/transcript.json` 的句子边界切分。首轮抽样 `M = max(8, scene 数)` 句，并保证每个 scene 至少覆盖 1 句；重渲轮只检查 affected scenes 中的句子。对每句覆盖帧调用 vision 检查画面是否表达旁白含义，`no` / `partial` 记为 `narration_mismatch` finding。
+按 `transcribe/transcript.json` 的句子边界切分。首轮抽样 `M = max(8, scene 数)` 句，并保证每个 scene 至少覆盖 1 句；重渲轮只检查 affected scenes 中的句子。对每句覆盖帧用 `scripts/vision-analyze.py` 检查画面是否表达旁白含义，`no` / `partial` 记为 `narration_mismatch` finding。
 
 #### Step 5 — 静帧 spot-check
 
-抽样 `N = max(5, ceil(total_seconds / 30))` 张帧。重渲轮只从 affected scenes 覆盖帧抽样，`global` 字幕问题除外。每帧检查：
+抽样 `N = max(5, ceil(total_seconds / 30))` 张帧。重渲轮只从 affected scenes 覆盖帧抽样，`global` 字幕问题除外。每帧用 `scripts/vision-analyze.py` 检查：
 
 1. 图片 / 视频清晰、关键信息完整，放大不超过原始短边 2x。
 2. 元素不越界、不截断。
