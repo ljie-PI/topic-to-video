@@ -154,6 +154,7 @@
 | Repo path `owner / repo`（mono） | 56-72px | 48-62px | 52-66px | 600 |
 | Repo 描述 | 38-46px | 32-40px | 34-42px | 400 |
 | Meta（lang、stars、forks） | 26-32px | 24-30px | 24-30px | 400 |
+| 字幕 | 35px | 35px | 35px | 500 |
 | Padding（.scene） | 90px 140px | 90px 80px | 90px 70px | — |
 
 ## 形状风格

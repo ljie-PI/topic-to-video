@@ -116,6 +116,7 @@
 | Section 标题 | 60-90px | 50-76px | 56-80px |
 | 正文 | 32-56px | 28-46px | 30-48px |
 | 数据 label | 22-32px | 22-30px | 22-32px |
+| 字幕 | 35px | 35px | 35px |
 | Padding（.scene） | 90px 140px | 90px 80px | 90px 70px |
 
 ## 形状风格
