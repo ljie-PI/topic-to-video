@@ -49,6 +49,7 @@ FINDING_ORDER = {
     'oversized_gutter': 3,
     'undersized_text': 4,
     'tight_text_gap': 5,
+    'underfilled_container': 6,
 }
 
 
@@ -324,6 +325,27 @@ def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict
             },
         )
 
+    for container in scene.get('container_metrics') or []:
+        if (
+            container['width_occupancy'] < 0.60
+            or container['height_occupancy'] < 0.55
+        ):
+            add_finding(
+                findings,
+                scene_id,
+                'underfilled_container',
+                'Nested container has too much empty space between the outer box and inner content.',
+                {
+                    'selector': container.get('selector'),
+                    'container': container.get('container'),
+                    'inner_union': container.get('inner_union'),
+                    'width_occupancy': round(container['width_occupancy'], 3),
+                    'height_occupancy': round(container['height_occupancy'], 3),
+                    'min_width_occupancy': 0.60,
+                    'min_height_occupancy': 0.55,
+                },
+            )
+
     return findings
 
 
@@ -467,6 +489,42 @@ async ({ sceneIds }) => {
     return Number.isFinite(best) ? best : null;
   }
 
+  function selectorFor(el) {
+    if (el.id) return `#${el.id}`;
+    const classes = typeof el.className === 'string'
+      ? el.className.trim().split(/\s+/).filter(Boolean).slice(0, 3)
+      : [];
+    if (classes.length) return `${el.tagName.toLowerCase()}.${classes.join('.')}`;
+    return el.tagName.toLowerCase();
+  }
+
+  function containerMetrics(sceneRoot) {
+    const candidates = Array.from(sceneRoot.querySelectorAll('*')).filter((el) => {
+      if (isSubtitle(el) || !visible(el) || isMedia(el)) return false;
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 180 || rect.height < 120 || rect.width * rect.height < 30000) return false;
+      if (!hasVisibleSurface(el)) return false;
+      const children = Array.from(el.querySelectorAll('*')).filter((child) => child !== el && isContentElement(child, sceneRoot));
+      return children.length > 0;
+    });
+    return candidates.map((el) => {
+      const container = rectObject(el.getBoundingClientRect());
+      const childRects = Array.from(el.querySelectorAll('*'))
+        .filter((child) => child !== el && isContentElement(child, sceneRoot))
+        .map((child) => rectObject(child.getBoundingClientRect()))
+        .filter((rect) => hasBox(rect) && rect.area < container.area * 0.98);
+      const innerUnion = unionRect(childRects);
+      if (!innerUnion) return null;
+      return {
+        selector: selectorFor(el),
+        container,
+        inner_union: innerUnion,
+        width_occupancy: innerUnion.width / Math.max(container.width, 1),
+        height_occupancy: innerUnion.height / Math.max(container.height, 1),
+      };
+    }).filter(Boolean);
+  }
+
   function contentAreaFor(sceneRoot) {
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
@@ -519,16 +577,7 @@ async ({ sceneIds }) => {
     };
   }
 
-  const sceneRoots = Array.from(document.querySelectorAll('[data-scene-id]'));
-  const wanted = sceneIds && sceneIds.length ? new Set(sceneIds) : null;
-  const scenes = [];
-
-  for (const sceneRoot of sceneRoots) {
-    const sceneId = sceneRoot.dataset.sceneId || sceneRoot.getAttribute('data-scene-id') || '';
-    if (!sceneId || (wanted && !wanted.has(sceneId))) continue;
-    const start = parseFloat(sceneRoot.dataset.sceneStart || sceneRoot.getAttribute('data-scene-start') || '0') || 0;
-    const end = parseFloat(sceneRoot.dataset.sceneEnd || sceneRoot.getAttribute('data-scene-end') || String(start + 1)) || start + 1;
-    const peakTime = start + Math.max(0.1, (end - start) * 0.6);
+  async function measureSceneAt(sceneRoot, sceneId, start, end, peakTime) {
     await seekTo(peakTime);
 
     const contentElements = Array.from(sceneRoot.querySelectorAll('*')).filter((el) => isContentElement(el, sceneRoot));
@@ -536,7 +585,7 @@ async ({ sceneIds }) => {
     const contentUnion = unionRect(rects);
     const contentArea = contentAreaFor(sceneRoot);
     const hasMaterial = contentElements.some((el) => ['IMG', 'VIDEO', 'PICTURE', 'CANVAS'].includes(el.tagName));
-    scenes.push({
+    return {
       scene_id: sceneId,
       start,
       end,
@@ -547,7 +596,35 @@ async ({ sceneIds }) => {
       content_element_count: contentElements.length,
       text_metrics: textMetrics(contentElements),
       min_positive_gap: minPositiveGap(rects),
-    });
+      container_metrics: containerMetrics(sceneRoot),
+    };
+  }
+
+  function scoreSceneMeasure(scene) {
+    const unionArea = scene.content_union ? scene.content_union.area : 0;
+    const textCount = scene.text_metrics ? scene.text_metrics.count : 0;
+    return unionArea + scene.content_element_count * 1000 + textCount * 500;
+  }
+
+  const sceneRoots = Array.from(document.querySelectorAll('[data-scene-id]'));
+  const wanted = sceneIds && sceneIds.length ? new Set(sceneIds) : null;
+  const scenes = [];
+
+  for (const sceneRoot of sceneRoots) {
+    const sceneId = sceneRoot.dataset.sceneId || sceneRoot.getAttribute('data-scene-id') || '';
+    if (!sceneId || (wanted && !wanted.has(sceneId))) continue;
+    const start = parseFloat(sceneRoot.dataset.sceneStart || sceneRoot.getAttribute('data-scene-start') || '0') || 0;
+    const end = parseFloat(sceneRoot.dataset.sceneEnd || sceneRoot.getAttribute('data-scene-end') || String(start + 1)) || start + 1;
+    const duration = Math.max(end - start, 0.2);
+    const candidateTimes = [0.4, 0.6, 0.78]
+      .map((fraction) => start + duration * fraction)
+      .map((time) => Math.max(start + 0.1, Math.min(time, end - 0.1)));
+    const measurements = [];
+    for (const peakTime of Array.from(new Set(candidateTimes.map((time) => Number(time.toFixed(3)))))) {
+      measurements.push(await measureSceneAt(sceneRoot, sceneId, start, end, peakTime));
+    }
+    measurements.sort((a, b) => scoreSceneMeasure(b) - scoreSceneMeasure(a));
+    scenes.push(measurements[0]);
   }
 
   return {
@@ -596,8 +673,26 @@ def measure_with_playwright(
     return measured
 
 
-def build_report(measured: Dict[str, Any], viewport: Tuple[int, int]) -> Dict[str, Any]:
+def build_report(measured: Dict[str, Any], viewport: Tuple[int, int], requested_scene_ids: Optional[List[str]]) -> Dict[str, Any]:
     findings: List[Dict[str, Any]] = []
+    measured_scene_ids = {scene.get('scene_id') for scene in measured.get('scenes', [])}
+    missing_scene_ids = [scene_id for scene_id in requested_scene_ids or [] if scene_id not in measured_scene_ids]
+    if not measured.get('scenes'):
+        add_finding(
+            findings,
+            'global',
+            'scene_measurement_failed',
+            'No scene roots were measured from composition/index.html.',
+            {'requested_scene_ids': requested_scene_ids or []},
+        )
+    if missing_scene_ids:
+        add_finding(
+            findings,
+            'global',
+            'scene_measurement_failed',
+            'Requested affected scenes were not found in composition/index.html.',
+            {'missing_scene_ids': missing_scene_ids},
+        )
     for scene in measured.get('scenes', []):
         findings.extend(analyze_scene(scene, viewport))
 
@@ -625,14 +720,15 @@ def main() -> None:
         fail(str(exc), exit_code=2)
 
     try:
+        scene_ids = affected_scene_set(args.affected_scenes)
         measured = measure_with_playwright(
             composition_dir=composition_dir,
             index_path=index_path,
             viewport=viewport,
             chrome_path=args.chrome_path,
-            scene_ids=affected_scene_set(args.affected_scenes),
+            scene_ids=scene_ids,
         )
-        report = build_report(measured, viewport)
+        report = build_report(measured, viewport, scene_ids)
         if args.output:
             output_path = Path(args.output).expanduser().resolve()
             output_path.parent.mkdir(parents=True, exist_ok=True)
