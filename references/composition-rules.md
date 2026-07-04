@@ -38,7 +38,7 @@
 
 #### R5 — Scene identity
 
-`composition/index.html` 中每个 scene 根元素必须同时有稳定的 `data-scene-id`、`data-scene-start`、`data-scene-end`。所有 `<img>` / `<video>` / `background-image` 素材元素必须位于某个 scene 根元素内部。属于同一 continuation group 的相邻 scene 必须在 scene 根元素上标记同一个 `data-continuation-group`（等于 Phase 5.2 的 `continuation_group_id`），并用 1-based `data-continuation-index` 表示 group 内顺序，便于 QA 识别合法连续复用。重渲修复时，未受影响 scene 的 DOM / CSS / 动画和时间区间必须保持不变。
+`composition/index.html` 中每个 scene 根元素必须同时有稳定的 `data-scene-id`、`data-scene-start`、`data-scene-end`。所有 `<img>` / `<video>` / `background-image` 素材元素必须位于某个 scene 根元素内部；使用 CSS `background-image` 承载 catalog 素材时，该元素必须带 `data-material-ref` 或等价 material / media 标记，便于 QA 区分素材背景与装饰 shell。属于同一 continuation group 的相邻 scene 必须在 scene 根元素上标记同一个 `data-continuation-group`（等于 Phase 5.2 的 `continuation_group_id`），并用 1-based `data-continuation-index` 表示 group 内顺序，便于 QA 识别合法连续复用。重渲修复时，未受影响 scene 的 DOM / CSS / 动画和时间区间必须保持不变。
 
 #### R6 — Material uniqueness
 

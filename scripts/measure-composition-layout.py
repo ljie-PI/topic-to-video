@@ -440,13 +440,47 @@ async ({ sceneIds }) => {
     );
   }
 
+  function hasBackgroundImage(el) {
+    return getComputedStyle(el).backgroundImage !== 'none';
+  }
+
+  function hasMaterialMarker(el) {
+    const label = labelOf(el);
+    return Boolean(
+      el.dataset.materialRef ||
+      el.dataset.materialId ||
+      el.getAttribute('data-material-ref') ||
+      el.getAttribute('data-material-id') ||
+      label.includes('material') ||
+      label.includes('media') ||
+      label.includes('asset') ||
+      label.includes('figure') ||
+      label.includes('screenshot')
+    );
+  }
+
+  function hasMaterialBackgroundImage(el) {
+    return getComputedStyle(el).backgroundImage.includes('url(') && hasMaterialMarker(el);
+  }
+
   function isContentElement(el, sceneRoot) {
     if (el === sceneRoot || isSubtitle(el) || !visible(el)) return false;
     const text = textContent(el);
     if (isMedia(el)) return true;
+    if (hasMaterialBackgroundImage(el)) return true;
     if (hasOwnText(el) && text.length > 0) return true;
     if (text.length > 0 && hasVisibleSurface(el)) return true;
     return false;
+  }
+
+  function leafContentElements(root, sceneRoot, pierceBackgroundImage = false) {
+    return Array.from(root.querySelectorAll('*')).filter((el) => {
+      if (!isContentElement(el, sceneRoot)) return false;
+      const hasContentDescendant = Array.from(el.querySelectorAll('*')).some((child) => isContentElement(child, sceneRoot));
+      if (isMedia(el) || hasOwnText(el)) return true;
+      if (hasMaterialBackgroundImage(el)) return !pierceBackgroundImage || !hasContentDescendant;
+      return !hasContentDescendant;
+    });
   }
 
   function unionRect(rects) {
@@ -506,21 +540,21 @@ async ({ sceneIds }) => {
       if (isSubtitle(el) || !visible(el) || isMedia(el)) return false;
       const rect = el.getBoundingClientRect();
       if (rect.width < 180 || rect.height < 120 || rect.width * rect.height < 30000) return false;
-      const children = Array.from(el.children).filter((child) => {
-        if (isSubtitle(child) || !visible(child)) return false;
-        if (isContentElement(child, sceneRoot)) return true;
-        return Array.from(child.querySelectorAll('*')).some((descendant) => isContentElement(descendant, sceneRoot));
-      });
-      return children.length > 0;
+      return leafContentElements(el, sceneRoot, true).length > 0;
     });
     return candidates.map((el) => {
       const container = rectObject(el.getBoundingClientRect());
-      const childRects = Array.from(el.children)
-        .filter((child) => {
-          if (isSubtitle(child) || !visible(child)) return false;
-          if (isContentElement(child, sceneRoot)) return true;
-          return Array.from(child.querySelectorAll('*')).some((descendant) => isContentElement(descendant, sceneRoot));
-        })
+      if (hasMaterialBackgroundImage(el)) {
+        return {
+          selector: selectorFor(el),
+          container,
+          inner_union: container,
+          width_occupancy: 1,
+          height_occupancy: 1,
+          area_occupancy: 1,
+        };
+      }
+      const childRects = leafContentElements(el, sceneRoot, true)
         .map((child) => rectObject(child.getBoundingClientRect()))
         .filter((rect) => hasBox(rect) && rect.area < container.area * 0.98);
       const innerUnion = unionRect(childRects);
@@ -597,7 +631,7 @@ async ({ sceneIds }) => {
     const rects = contentElements.map((el) => rectObject(el.getBoundingClientRect())).filter(hasBox);
     const contentUnion = unionRect(rects);
     const contentArea = contentAreaFor(sceneRoot);
-    const hasMaterial = contentElements.some((el) => ['IMG', 'VIDEO', 'PICTURE', 'CANVAS'].includes(el.tagName));
+    const hasMaterial = contentElements.some((el) => ['IMG', 'VIDEO', 'PICTURE', 'CANVAS'].includes(el.tagName) || hasMaterialBackgroundImage(el));
     return {
       scene_id: sceneId,
       start,
