@@ -51,11 +51,11 @@ Phase 5 包含三个步骤：`Phase 5.1 — 撰写解说脚本` 产出 `narratio
 **步骤：**
 
 1. 把 `narration.txt` 按空行切分为段落，按顺序处理。
-2. 对每个段落，通读其旁白文本，遍历 `material-catalog.json` 中所有图片和视频 clip 的 `semantic_description`、`width` / `height`、`ratio_bucket`、`layout_affordance` 和可选 `focal_region`，对每个候选素材给出 1-10 的匹配分与理由（理由要对应旁白的具体内容，不要泛泛而谈）。
+2. 对每个段落，通读其旁白文本，遍历 `material-catalog.json` 中所有图片和视频 clip 的 `semantic_description`、`width` / `height`、`ratio_bucket`、`layout_affordance` 和可选 `focal_region`，对每个候选素材给出 1-10 的匹配分与理由（理由要对应旁白的具体内容，不要泛泛而谈）。对 `tall` / `ultra-tall` 素材，后续 `layout_role` 应优先围绕 `viewport_reveal` 和已记录的重点区域选择。
 3. **全局唯一分配**：每个素材（图片 / 视频 clip）最多分配给一个段落。按匹配分做全局贪心分配——分数最高的 (段落, 素材) 配对先定，已被占用的素材不再分配给其他段落；每个段落最终最多得到一个主素材。多素材对比 scene 可额外占用对比素材，但必须写入 `material_refs` 并把数组内每个素材都视为已占用。例外：连续同素材合并或相邻 `media_continuation` 可沿用同一素材作为稳定视觉锚点；拆成多个相邻 scene 时，group 起点标注 `continuation_group_id`，后续 continuation scene 同时标注 `continuation_group_id` 和 `continuation_of`。
-4. 为已分配素材选择 `layout_role`。不要因为极端比例就降低语义优先级；但如果素材是 `ultra-wide` / `ultra-tall` / `strip`，或同一 scene 需要多素材对比，必须显式选择 `layout_role` 并写出 `layout_reason`。可选角色：`video_first`、`media_first`、`media_continuation`、`viewport_reveal`、`band`、`detail_callout`、`comparison_pair`、`comparison_sequence`。普通 scene 使用 `material_ref`；同一 scene 内的 `comparison_pair` 或 carousel / 分时 `comparison_sequence` 使用 `material_refs`。
+4. 为已分配素材选择 `layout_role`。极端比例素材或多素材对比 scene 必须写出 `layout_reason`。`tall` / `ultra-tall` 素材优先选择 key-region-aware `viewport_reveal`，并引用 catalog 的 `focal_region`、start / mid / end 关键区域说明或 avoid-region；讲多个局部时可拆成相邻 `media_continuation` scenes。可选角色：`video_first`、`media_first`、`media_continuation`、`viewport_reveal`、`band`、`detail_callout`、`comparison_pair`、`comparison_sequence`。普通 scene 使用 `material_ref`；同一 scene 内的 `comparison_pair` 或 carousel / 分时 `comparison_sequence` 使用 `material_refs`。
 5. 段落在 catalog 中没有可用素材（候选分均较低，或合适素材已被占用且无次优）时，显式标记 `"no_match": true`，**不复用已被占用的素材**，留给纯文字 scene。如果该段只是延续解释上一 scene 的同一主素材，优先标记为 `"layout_role": "media_continuation"` 并沿用该素材作为视觉锚点，而不是普通 `no_match`。
-6. **连续同素材合并 / continuation**：相邻段落分配到同一素材（同一图片，或同一视频的同一 clip）且旁白都在讲该素材时，优先合并为一个 extended scene；merged single scene 只需要多个 `text_beats`，不需要 `continuation_group_id` / `continuation_of`。如果为了句子节奏、局部强调或屏幕文本密度必须拆多个 scene，则输出相邻 `media_continuation` scene：group 起点可保留主布局角色并标注 `continuation_group_id`，但不写 `continuation_of`；后续 continuation scene 使用相同 `continuation_group_id`，并用 `continuation_of` 指向 group 起点的 `scene_index`。continuation scene 必须让主素材稳定显示，不得让图片 / 视频长时间消失后再出现。
+6. **连续同素材合并 / `media_continuation`**：相邻段落分配到同一素材（同一图片，或同一视频的同一 clip）且旁白都在讲该素材时，优先合并为一个 extended scene；merged single scene 只需要多个 `text_beats`，不需要 `continuation_group_id` / `continuation_of`。按句子节奏、局部强调或屏幕文本密度拆分时，输出相邻 `media_continuation` scene：group 起点标注 `continuation_group_id`，但不写 `continuation_of`；后续 scene 使用相同 `continuation_group_id`，并用 `continuation_of` 指向 group 起点的 `scene_index`。`media_continuation` scene 必须让主素材稳定显示，不得让图片 / 视频长时间消失后再出现。
 7. 顺序编号最终 scene（`scene_1`, `scene_2`, ...）并输出 `scene-material-suggestions.json`，结构如下：
 
 ```json
@@ -128,7 +128,7 @@ Phase 5 包含三个步骤：`Phase 5.1 — 撰写解说脚本` 产出 `narratio
 
 #### Phase 5.3 — 屏幕文本块规划
 
-屏幕文本密度取决于已匹配素材的 `layout_role`、尺寸、比例和语义。`media_first` / `video_first` scene 不是无文本，而是主媒体优先、少量文本辅助；如果文本会压缩或遮挡主媒体，应分时出现、降级、外置，或生成相邻 `media_continuation` scene。
+屏幕文本密度取决于已匹配素材的 `layout_role`、尺寸、比例和语义。`media_first` / `video_first` scene 不是无文本，而是主媒体优先、少量文本辅助；如果文本会压缩或遮挡主媒体，应分时出现、降级、外置，或生成相邻 `media_continuation` scene。竖图 / 竖视频在横屏中形成 side panel 时，文本规划不能只给一个短标题导致大留白；要么规划足够的短 callout / data units 填满侧栏，要么减少侧栏并改用 `viewport_reveal` / `detail_callout`。
 
 Phase 5.3 在 Phase 5.2 之后、Phase 6（TTS）之前执行。它不重新匹配素材，也不设计 HyperFrames HTML / CSS / 坐标 / 动画；只把已写入的旁白段落和已匹配素材转成结构化的非字幕屏幕文本建议，供 Phase 8 HyperFrames sub-agent 读取、实现和审计。
 
@@ -267,9 +267,9 @@ Phase 5.3 在 Phase 5.2 之后、Phase 6（TTS）之前执行。它不重新匹�
 20. 已匹配素材是图表 / table / figure 时，优先生成外置信息区和解释 callout，不覆盖素材。
 21. 已匹配素材是视频 clip 时，生成简短标签 / 状态说明，不做过重图示阻挡主体；若 `layout_role = "video_first"`，文本应控制为短标签、关键数字或一句短结论。
 22. `no_match` scene 应至少生成 2-4 个 `visual_text_units`，避免 Phase 8 退化成单个大标题卡。
-23. `layout_role = "media_first"` 时，仍应生成少量文本辅助观众理解图片，通常为 1 个短标题 / 标签 + 0-2 个短 callout 或 data point；不得生成压缩主图的大段文本。
+23. `layout_role = "media_first"` 时，生成 1 个短标题 / 标签 + 0-2 个短 callout 或 data point；不得生成压缩主图的大段文本。横屏竖图 / 竖视频优先建议 key-region-aware `viewport_reveal`，不要用侧栏填充来维持窄竖图完整适配。`media_continuation` 仅用于句子节奏、局部强调或多段解释。
 24. `layout_role = "media_continuation"` 时，文本应承接上一 scene，只刷新解释重点或局部强调；主素材必须在相邻 scene 中保持稳定显示。
-25. `layout_role = "viewport_reveal"` 或带独立文本列的 split 场景，文本列规划 ≥3-4 个 unit 且每个带 detail / value，使文本填满列宽与列高，不只放标题 + 短标签。
+25. `layout_role = "viewport_reveal"` 或带独立文本列的 split 场景，文本列规划 ≥3-4 个 unit 且每个带 detail / value，使文本填满列宽与列高，不只放标题 + 短标签；units 应对应 reveal 的 start / mid / end 关键区域。
 26. 旁白出现“所谓、指的是、定义为、即、名词解释、概念” → `definition`。
 27. 旁白是“问题 → 回答”、FAQ、常见疑问、Q&A → `qa`。
 28. 旁白出现“优点 / 缺点、利弊、该做 / 不该做、推荐 / 避免、do / don't”，针对单一主体的正反两面 → `pros_cons`；多选项多维度对比仍用 `comparison_matrix`。
