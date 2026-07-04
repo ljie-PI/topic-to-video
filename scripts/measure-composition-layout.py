@@ -16,7 +16,6 @@ Output convention:
 
 import argparse
 import json
-import math
 import os
 import re
 import sys
@@ -357,31 +356,75 @@ async ({ sceneIds }) => {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   async function seekTo(seconds) {
-    const targets = [window.__hf, window.__hyperframes, window.hyperframes, window.HyperFrames].filter(Boolean);
-    for (const target of targets) {
-      for (const method of ['seek', 'setTime', 'goToTime']) {
-        if (typeof target[method] === 'function') {
-          try {
-            await target[method](seconds);
-            await sleep(80);
-            return;
-          } catch (_) {}
-        }
-      }
+    const time = Math.max(0, Number(seconds) || 0);
+    const timeMs = time * 1000;
+    let didSeek = false;
+
+    if (window.__layoutQA && typeof window.__layoutQA.seek === 'function') {
+      try {
+        await window.__layoutQA.seek(time);
+        didSeek = true;
+      } catch (_) {}
     }
-    try {
-      window.dispatchEvent(new CustomEvent('hyperframes:seek', { detail: { time: seconds } }));
-      window.dispatchEvent(new CustomEvent('hf:seek', { detail: { time: seconds } }));
-    } catch (_) {}
+
+    const timelines = window.__timelines ? Object.values(window.__timelines).filter(Boolean) : [];
+    for (const timeline of timelines) {
+      try {
+        if (typeof timeline.pause === 'function') timeline.pause();
+        if (typeof timeline.seek === 'function') {
+          timeline.seek(time, false);
+          didSeek = true;
+        } else if (typeof timeline.totalTime === 'function') {
+          timeline.totalTime(time, false);
+          didSeek = true;
+        }
+      } catch (_) {}
+    }
+
+    const animeInstances = Array.isArray(window.__hfAnime) ? window.__hfAnime : [];
+    for (const entry of animeInstances) {
+      const animation = entry && (entry.animation || entry.instance || entry);
+      try {
+        if (typeof animation.pause === 'function') animation.pause();
+        if (typeof animation.seek === 'function') {
+          animation.seek(timeMs);
+          didSeek = true;
+        }
+      } catch (_) {}
+    }
+
+    const lottieInstances = Array.isArray(window.__hfLottie) ? window.__hfLottie : [];
+    for (const entry of lottieInstances) {
+      const animation = entry && (entry.animation || entry.instance || entry.lottie || entry);
+      try {
+        if (typeof animation.pause === 'function') animation.pause();
+        if (typeof animation.stop === 'function') animation.stop();
+        const duration = typeof animation.getDuration === 'function' ? animation.getDuration(false) : 0;
+        const totalFrames = Number(animation.totalFrames || animation.frames || 0);
+        const frame = duration && totalFrames ? Math.max(0, Math.min(totalFrames - 1, (time / duration) * totalFrames)) : timeMs;
+        if (typeof animation.goToAndStop === 'function') {
+          animation.goToAndStop(frame, Boolean(duration && totalFrames));
+          didSeek = true;
+        } else if (typeof animation.seek === 'function') {
+          animation.seek(timeMs);
+          didSeek = true;
+        } else if (typeof animation.setCurrentRawFrameValue === 'function') {
+          animation.setCurrentRawFrameValue(frame);
+          didSeek = true;
+        }
+      } catch (_) {}
+    }
+
     for (const media of Array.from(document.querySelectorAll('video,audio'))) {
       try {
         media.pause();
         if (Number.isFinite(media.duration)) {
-          media.currentTime = Math.max(0, Math.min(seconds, media.duration || seconds));
+          media.currentTime = Math.max(0, Math.min(time, media.duration || time));
         }
+        didSeek = true;
       } catch (_) {}
     }
-    await sleep(120);
+    await sleep(didSeek ? 80 : 120);
   }
 
   function rectObject(rect) {
@@ -438,10 +481,6 @@ async ({ sceneIds }) => {
       parseFloat(style.borderBottomWidth || '0') > 0 ||
       parseFloat(style.borderLeftWidth || '0') > 0
     );
-  }
-
-  function hasBackgroundImage(el) {
-    return getComputedStyle(el).backgroundImage !== 'none';
   }
 
   function hasMaterialMarker(el) {
@@ -572,7 +611,7 @@ async ({ sceneIds }) => {
     }).filter(Boolean);
   }
 
-  function contentAreaFor(sceneRoot) {
+  function contentAreaFor(sceneRoot, subtitleCandidates) {
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     const sceneStyle = getComputedStyle(sceneRoot);
@@ -580,8 +619,8 @@ async ({ sceneIds }) => {
     const paddingRight = parseFloat(sceneStyle.paddingRight || '0') || 0;
     const paddingTop = parseFloat(sceneStyle.paddingTop || '0') || 0;
     const paddingBottom = parseFloat(sceneStyle.paddingBottom || '0') || 0;
-    const subtitleRects = Array.from(document.querySelectorAll('*'))
-      .filter((el) => isSubtitle(el) && visible(el))
+    const subtitleRects = subtitleCandidates
+      .filter((el) => visible(el))
       .map((el) => rectObject(el.getBoundingClientRect()))
       .filter((rect) => rect.top > viewportHeight * 0.45);
     let subtitleSafeHeight;
@@ -624,13 +663,13 @@ async ({ sceneIds }) => {
     };
   }
 
-  async function measureSceneAt(sceneRoot, sceneId, start, end, peakTime) {
+  async function measureSceneAt(sceneRoot, sceneId, start, end, peakTime, subtitleCandidates) {
     await seekTo(peakTime);
 
     const contentElements = Array.from(sceneRoot.querySelectorAll('*')).filter((el) => isContentElement(el, sceneRoot));
     const rects = contentElements.map((el) => rectObject(el.getBoundingClientRect())).filter(hasBox);
     const contentUnion = unionRect(rects);
-    const contentArea = contentAreaFor(sceneRoot);
+    const contentArea = contentAreaFor(sceneRoot, subtitleCandidates);
     const hasMaterial = contentElements.some((el) => ['IMG', 'VIDEO', 'PICTURE', 'CANVAS'].includes(el.tagName) || hasMaterialBackgroundImage(el));
     return {
       scene_id: sceneId,
@@ -662,6 +701,7 @@ async ({ sceneIds }) => {
 
   const sceneRoots = Array.from(document.querySelectorAll('[data-scene-id]'));
   const wanted = sceneIds && sceneIds.length ? new Set(sceneIds) : null;
+  const subtitleCandidates = Array.from(document.querySelectorAll('*')).filter((el) => isSubtitle(el));
   const scenes = [];
 
   for (const sceneRoot of sceneRoots) {
@@ -675,7 +715,7 @@ async ({ sceneIds }) => {
       .map((time) => Math.max(start + 0.1, Math.min(time, end - 0.1))));
     const measurements = [];
     for (const peakTime of Array.from(new Set(candidateTimes.map((time) => Number(time.toFixed(3)))))) {
-      measurements.push(await measureSceneAt(sceneRoot, sceneId, start, end, peakTime));
+      measurements.push(await measureSceneAt(sceneRoot, sceneId, start, end, peakTime, subtitleCandidates));
     }
     measurements.sort((a, b) => scoreSceneMeasure(b) - scoreSceneMeasure(a));
     scenes.push(measurements[0]);
@@ -700,7 +740,7 @@ def measure_with_playwright(
     try:
         from playwright.sync_api import sync_playwright
     except Exception as exc:  # pragma: no cover - depends on runtime env
-        raise RuntimeError('playwright is not installed; run: pip install playwright') from exc
+        raise RuntimeError('Python Playwright package is not installed; run: pip install playwright. The script launches system Chrome; do not run playwright install chromium.') from exc
 
     executable_path = find_chrome(chrome_path)
     if not executable_path:
