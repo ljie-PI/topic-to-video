@@ -38,7 +38,7 @@
 
 #### R5 — Scene identity
 
-`composition/index.html` 中每个 scene 根元素必须同时有稳定的 `data-scene-id`、`data-scene-start`、`data-scene-end`。所有 `<img>` / `<video>` / `background-image` 素材元素必须位于某个 scene 根元素内部。属于同一 continuation group 的相邻 scene 必须在 scene 根元素上标记同一个 `data-continuation-group`（等于 Phase 5.2 的 `continuation_group_id`），并用 1-based `data-continuation-index` 表示 group 内顺序，便于 QA 识别合法连续复用。重渲修复时，未受影响 scene 的 DOM / CSS / 动画和时间区间必须保持不变。
+`composition/index.html` 中每个 scene 根元素必须同时有稳定的 `data-scene-id`、`data-scene-start`、`data-scene-end`。所有 `<img>` / `<video>` / `background-image` 素材元素必须位于某个 scene 根元素内部；使用 CSS `background-image` 承载 catalog 素材时，该元素必须带 `data-material-ref` 或等价 material / media 标记，便于 QA 区分素材背景与装饰 shell。属于同一 continuation group 的相邻 scene 必须在 scene 根元素上标记同一个 `data-continuation-group`（等于 Phase 5.2 的 `continuation_group_id`），并用 1-based `data-continuation-index` 表示 group 内顺序，便于 QA 识别合法连续复用。重渲修复时，未受影响 scene 的 DOM / CSS / 动画和时间区间必须保持不变。
 
 #### R6 — Material uniqueness
 
@@ -188,7 +188,23 @@ Intentional `viewport_reveal` exception:
 
 #### R14 — Style constraints
 
-文字框内文字应垂直 / 水平居中。内容区不得出现 >10% 视口面积的纯空白；字幕安全区不计入空白统计，也不得为填满而把内容元素铺进该带。除全局内容区空白外，还必须检查大型 card / panel / callout / media shell 的内部 container occupancy。普通信息容器占据大面积时，内部子元素 bounding boxes 不得只占很小比例；若故意使用 hero number / quote / title-card 留白，必须在 `composition/DESIGN.md` 记录为 deliberate hero 留白。任意承载内容的区域 / 列（含无边框 flex / grid 列、文本列），内容必须横向 / 纵向填满该区域，或令该区域留白对称分布；不得把内容单边对齐贴住一侧而令对侧或外侧留大块空白。文本 / 数据应使用整区宽度；区域内容确实稀疏时，收窄或重新居中该区域容器使留白对称，不留单边空白。配对区域（媒体列与文本列、左右分栏）的外侧边距必须大致对称，一侧外边距不得明显大于另一侧。如需呼吸空间，用极淡装饰 / 网格 / 角标占位。Moon / 深色技术编辑风默认纯色 + 极淡网格 / 细线 / 低对比结构，禁止 `radial-gradient` spotlight、localized glow、ambient orb、neon halo、发光阴影和用 glow 充当层次感。
+文字框内文字应垂直 / 水平居中。内容区不得出现 >10% 视口面积的纯空白；字幕安全区不计入空白统计，也不得为填满而把内容元素铺进该带。任意承载内容的区域 / 列（含无边框 flex / grid 列、文本列）必须填满该区域，或令留白对称分布；不得单边贴边或外侧留大块空白。文本 / 数据应使用整区宽度；区域内容稀疏时，收窄或重新居中容器。配对区域（媒体列与文本列、左右分栏）的外侧边距必须大致对称。如需呼吸空间，用极淡装饰 / 网格 / 角标占位。Moon / 深色技术编辑风默认纯色 + 极淡网格 / 细线 / 低对比结构，禁止 `radial-gradient` spotlight、localized glow、ambient orb、neon halo、发光阴影和用 glow 充当层次感。
+
+确定性几何检查：
+
+| Check | Threshold | Finding |
+| --- | --- | --- |
+| 无素材横屏 coverage | `union_width / CW >= 0.62` 且 `union_height / CH >= 0.45` | `underfilled_content_area` |
+| 无素材竖向 / 竖屏 coverage | `union_width / CW >= 0.58` 且 `union_height / CH >= 0.58` | `underfilled_content_area` |
+| 有 catalog 素材横屏 coverage | `union_width / CW >= 0.50` 且 `union_height / CH >= 0.38` | `underfilled_content_area` |
+| 有 catalog 素材竖向 / 竖屏 coverage | `union_width / CW >= 0.46` 且 `union_height / CH >= 0.42` | `underfilled_content_area` |
+| 中心聚集 | `union_width < 0.55 * CW`、`union_height < 0.45 * CH`、中心偏移均 `< 0.12` | `center_clustered_layout` |
+| 无素材 gutter | horizontal `<= 0.28 * CW`；vertical `<= 0.24 * CH` | `oversized_gutter` |
+| 有素材 gutter | horizontal `<= 0.32 * CW`；vertical `<= 0.28 * CH` | `oversized_gutter` |
+| card / panel / column occupancy | 横向 `>= 60%`、纵向 `>= 55%`、面积 `>= 35%` | `underfilled_container` |
+| 主文本块 / 卡片 / 节点 gap | `>= max(min(CW, CH) * 0.018, 18px)` | `tight_text_gap` |
+
+只计入可见文本、素材、图形、卡片和 callout；隐藏元素、透明占位、空容器和撑尺寸 wrapper 不计入 union。deliberate hero / quote / title-card 留白必须同时写入 `composition/DESIGN.md`，并在 scene root 标记 `data-layout-exception="hero"`、`"quote"` 或 `"title-card"`；`data-qa-layout-exception` / `data-geometry-exception` 可用同值。该例外只豁免 `underfilled_content_area`、`center_clustered_layout`、`oversized_gutter`、`underfilled_container`。
 
 ### Subtitle rules
 
@@ -205,6 +221,8 @@ Intentional `viewport_reveal` exception:
 #### R17 — Typography, DOM, contrast
 
 同一 scene 内最大 / 最小字号比 <= 3:1；素材 / 文本容器最多 2 层嵌套。正文对比度 >= 4.5:1，大字号标题对比度 >= 3:1。decorative metadata / chrome label 可低至 18-20px，但不得承载主信息；badge / chip / rank label 建议 >=22px（横屏）/ >=24px（竖屏）；body / supporting detail 建议 >=28px（横屏）/ >=30px（竖屏）；callout / card text 建议 >=32px（横屏）/ >=34px（竖屏）；承担 scene 语义锚点的 header / eyebrow 建议 >=28px（横屏）/ >=30px（竖屏）。主标题优先单行；如果必须两行，每行都应保留有意义词组。禁止第二行只有 1-2 个汉字、一个短英文 token 或孤立标点。遇到标题孤行时，必须通过缩短 `display_text`、扩大文本框、微调字号、调整断句、改为 title + subtitle、或分时 reveal 修复。字号微调最多缩小到当前字号的 0.9 倍，且不得低于对应文本类型的字号下限。
+
+无素材 scene 的主信息文字：横屏 >= 36px，竖向 / 竖屏 >= 38px；承担主叙事锚点的标题 / 数字 / 核心结论必须明显大于正文。低于阈值，或文本框宽高明显小于内容区可用尺度时，视为 `undersized_text`。
 
 ### Motion and text-timing rules
 
@@ -225,6 +243,8 @@ Intentional `viewport_reveal` exception:
 #### R21 — Peak-state layout audit
 
 动画前必须检查每个 scene 的 peak state：所有非字幕元素都显示时，元素不得溢出 viewport / 内容区、不得互相遮挡、前景元素不得无约束覆盖 catalog 素材、素材不得 letterbox / pillarbox、内容区纯空白不得超过 10%、构图不得明显失衡；主要元素组在水平 / 垂直方向上的分布必须均衡，视觉重心不得明显偏上、偏下、偏左或偏右；不得用超大空容器或空 media panel 填充画面来规避全局空白检查。`media_first` / `video_first` 主素材不得被标题或信息块不必要地压小；跨比例主素材必须通过 R11 的 `MW` / `MH` 阈值，未通过时必须切换 `viewport_reveal` / `detail_callout` / `media_continuation` / 替换素材；`comparison_pair` 中每个素材必须仍可读。portrait / vertical 中，多元素 / 结构型 unit（`leaderboard`、`data_table`、`chart`、`timeline`、`process_flow`、`architecture_diagram`、`network_graph`、`comparison_matrix`、`pros_cons`、`metric_strip`、`list`、`feature_grid`、`qa`、`code_block`、`terminal_block`、`file_tree`、`state_machine`、`annotated_media`）不得被横向硬排到文本窄列、字号过小、多次换行或内容不可读。失败必须先调整布局尺寸、位置、字号、信息密度或拆 scene，不得靠“暂时隐藏元素”掩盖问题。`viewport_reveal` 还必须检查 start / mid / end，确认关键内容不会永久隐藏。
+
+Phase 8 几何审计按 `references/composition-stage-protocol.md` 执行；命中 `underfilled_content_area`、`center_clustered_layout`、`oversized_gutter`、`undersized_text`、`tight_text_gap` 或 `underfilled_container` 时，peak-state audit 失败。
 
 ## Stage Protocols
 
