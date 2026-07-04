@@ -329,6 +329,7 @@ def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict
         if (
             container['width_occupancy'] < 0.60
             or container['height_occupancy'] < 0.55
+            or container['area_occupancy'] < 0.35
         ):
             add_finding(
                 findings,
@@ -341,8 +342,10 @@ def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict
                     'inner_union': container.get('inner_union'),
                     'width_occupancy': round(container['width_occupancy'], 3),
                     'height_occupancy': round(container['height_occupancy'], 3),
+                    'area_occupancy': round(container['area_occupancy'], 3),
                     'min_width_occupancy': 0.60,
                     'min_height_occupancy': 0.55,
+                    'min_area_occupancy': 0.35,
                 },
             )
 
@@ -503,24 +506,34 @@ async ({ sceneIds }) => {
       if (isSubtitle(el) || !visible(el) || isMedia(el)) return false;
       const rect = el.getBoundingClientRect();
       if (rect.width < 180 || rect.height < 120 || rect.width * rect.height < 30000) return false;
-      if (!hasVisibleSurface(el)) return false;
-      const children = Array.from(el.querySelectorAll('*')).filter((child) => child !== el && isContentElement(child, sceneRoot));
+      const children = Array.from(el.children).filter((child) => {
+        if (isSubtitle(child) || !visible(child)) return false;
+        if (isContentElement(child, sceneRoot)) return true;
+        return Array.from(child.querySelectorAll('*')).some((descendant) => isContentElement(descendant, sceneRoot));
+      });
       return children.length > 0;
     });
     return candidates.map((el) => {
       const container = rectObject(el.getBoundingClientRect());
-      const childRects = Array.from(el.querySelectorAll('*'))
-        .filter((child) => child !== el && isContentElement(child, sceneRoot))
+      const childRects = Array.from(el.children)
+        .filter((child) => {
+          if (isSubtitle(child) || !visible(child)) return false;
+          if (isContentElement(child, sceneRoot)) return true;
+          return Array.from(child.querySelectorAll('*')).some((descendant) => isContentElement(descendant, sceneRoot));
+        })
         .map((child) => rectObject(child.getBoundingClientRect()))
         .filter((rect) => hasBox(rect) && rect.area < container.area * 0.98);
       const innerUnion = unionRect(childRects);
       if (!innerUnion) return null;
+      const majorChildRects = majorRects(childRects);
+      const childArea = majorChildRects.reduce((sum, rect) => sum + Math.min(rect.area, container.area), 0);
       return {
         selector: selectorFor(el),
         container,
         inner_union: innerUnion,
         width_occupancy: innerUnion.width / Math.max(container.width, 1),
         height_occupancy: innerUnion.height / Math.max(container.height, 1),
+        area_occupancy: Math.min(childArea / Math.max(container.area, 1), 1),
       };
     }).filter(Boolean);
   }
@@ -606,6 +619,13 @@ async ({ sceneIds }) => {
     return unionArea + scene.content_element_count * 1000 + textCount * 500;
   }
 
+  function explicitPeakTimes(sceneRoot, start, end) {
+    const raw = sceneRoot.dataset.qaPeakTimes || sceneRoot.dataset.peakTimes || sceneRoot.dataset.qaPeakTime || sceneRoot.dataset.peakTime || '';
+    return raw.split(',')
+      .map((part) => parseFloat(part.trim()))
+      .filter((time) => Number.isFinite(time) && time >= start && time <= end);
+  }
+
   const sceneRoots = Array.from(document.querySelectorAll('[data-scene-id]'));
   const wanted = sceneIds && sceneIds.length ? new Set(sceneIds) : null;
   const scenes = [];
@@ -616,9 +636,9 @@ async ({ sceneIds }) => {
     const start = parseFloat(sceneRoot.dataset.sceneStart || sceneRoot.getAttribute('data-scene-start') || '0') || 0;
     const end = parseFloat(sceneRoot.dataset.sceneEnd || sceneRoot.getAttribute('data-scene-end') || String(start + 1)) || start + 1;
     const duration = Math.max(end - start, 0.2);
-    const candidateTimes = [0.4, 0.6, 0.78]
+    const candidateTimes = explicitPeakTimes(sceneRoot, start, end).concat([0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
       .map((fraction) => start + duration * fraction)
-      .map((time) => Math.max(start + 0.1, Math.min(time, end - 0.1)));
+      .map((time) => Math.max(start + 0.1, Math.min(time, end - 0.1))));
     const measurements = [];
     for (const peakTime of Array.from(new Set(candidateTimes.map((time) => Number(time.toFixed(3)))))) {
       measurements.push(await measureSceneAt(sceneRoot, sceneId, start, end, peakTime));
@@ -697,7 +717,20 @@ def build_report(measured: Dict[str, Any], viewport: Tuple[int, int], requested_
         findings.extend(analyze_scene(scene, viewport))
 
     findings.sort(key=lambda item: (item.get('scene_id', ''), FINDING_ORDER.get(item.get('issue', ''), 99)))
-    affected = sorted({finding['scene_id'] for finding in findings if finding.get('scene_id')})
+    scene_order = [scene.get('scene_id') for scene in measured.get('scenes', []) if scene.get('scene_id')]
+    affected_seen = set()
+    affected: List[str] = []
+    for scene_id in scene_order:
+        if scene_id != 'global' and any(finding.get('scene_id') == scene_id for finding in findings):
+            affected.append(scene_id)
+            affected_seen.add(scene_id)
+    for finding in findings:
+        scene_id = finding.get('scene_id')
+        if scene_id and scene_id != 'global' and scene_id not in affected_seen:
+            affected.append(scene_id)
+            affected_seen.add(scene_id)
+    if any(finding.get('scene_id') == 'global' for finding in findings):
+        affected.append('global')
     return {
         'success': True,
         'verdict': 'fail' if findings else 'pass',
