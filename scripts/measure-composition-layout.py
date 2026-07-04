@@ -201,6 +201,8 @@ def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict
 
     cw, ch = max(content['width'], 1), max(content['height'], 1)
     has_material = bool(scene.get('has_material'))
+    layout_exception = scene.get('layout_exception') or ''
+    allows_whitespace = layout_exception in {'hero', 'quote', 'title-card'}
     thresholds = content_thresholds(viewport[0], viewport[1], has_material)
 
     width_coverage = union['width'] / cw
@@ -225,8 +227,11 @@ def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict
         'min_height_coverage': thresholds['min_height_coverage'],
     }
     if (
-        width_coverage < thresholds['min_width_coverage']
-        or height_coverage < thresholds['min_height_coverage']
+        not allows_whitespace
+        and (
+            width_coverage < thresholds['min_width_coverage']
+            or height_coverage < thresholds['min_height_coverage']
+        )
     ):
         add_finding(
             findings,
@@ -237,7 +242,8 @@ def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict
         )
 
     if (
-        width_coverage < 0.55
+        not allows_whitespace
+        and width_coverage < 0.55
         and height_coverage < 0.45
         and center_offset_x < 0.12
         and center_offset_y < 0.12
@@ -256,7 +262,11 @@ def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict
 
     max_horizontal_gutter = max(left_gutter, right_gutter)
     max_vertical_gutter = max(top_gutter, bottom_gutter)
-    if width_coverage < thresholds['min_width_coverage'] and max_horizontal_gutter > thresholds['max_horizontal_gutter']:
+    if (
+        not allows_whitespace
+        and width_coverage < thresholds['min_width_coverage']
+        and max_horizontal_gutter > thresholds['max_horizontal_gutter']
+    ):
         add_finding(
             findings,
             scene_id,
@@ -269,7 +279,11 @@ def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict
                 'width_coverage': round(width_coverage, 3),
             },
         )
-    if height_coverage < thresholds['min_height_coverage'] and max_vertical_gutter > thresholds['max_vertical_gutter']:
+    if (
+        not allows_whitespace
+        and height_coverage < thresholds['min_height_coverage']
+        and max_vertical_gutter > thresholds['max_vertical_gutter']
+    ):
         add_finding(
             findings,
             scene_id,
@@ -326,9 +340,12 @@ def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict
 
     for container in scene.get('container_metrics') or []:
         if (
-            container['width_occupancy'] < 0.60
+            not allows_whitespace
+            and (
+                container['width_occupancy'] < 0.60
             or container['height_occupancy'] < 0.55
             or container['area_occupancy'] < 0.35
+            )
         ):
             add_finding(
                 findings,
@@ -452,9 +469,14 @@ async ({ sceneIds }) => {
     return label.includes('subtitle') || label.includes('caption') || label.includes('closed-caption') || label.includes('subtitles');
   }
 
-  function visible(el) {
-    const style = getComputedStyle(el);
-    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || 1) < 0.03) return false;
+  function visible(el, boundary = null) {
+    let current = el;
+    while (current && current.nodeType === Node.ELEMENT_NODE) {
+      const style = getComputedStyle(current);
+      if (style.display === 'none' || ['hidden', 'collapse'].includes(style.visibility) || Number(style.opacity || 1) < 0.03) return false;
+      if (current === boundary) break;
+      current = current.parentElement;
+    }
     const rect = el.getBoundingClientRect();
     return hasBox(rect);
   }
@@ -502,8 +524,14 @@ async ({ sceneIds }) => {
     return getComputedStyle(el).backgroundImage.includes('url(') && hasMaterialMarker(el);
   }
 
+  function layoutException(sceneRoot) {
+    const raw = sceneRoot.dataset.layoutException || sceneRoot.dataset.qaLayoutException || sceneRoot.dataset.geometryException || '';
+    const normalized = raw.trim().toLowerCase().replace(/_/g, '-');
+    return ['hero', 'quote', 'title-card'].includes(normalized) ? normalized : '';
+  }
+
   function isContentElement(el, sceneRoot) {
-    if (el === sceneRoot || isSubtitle(el) || !visible(el)) return false;
+    if (el === sceneRoot || isSubtitle(el) || !visible(el, sceneRoot)) return false;
     const text = textContent(el);
     if (isMedia(el)) return true;
     if (hasMaterialBackgroundImage(el)) return true;
@@ -576,7 +604,7 @@ async ({ sceneIds }) => {
 
   function containerMetrics(sceneRoot) {
     const candidates = Array.from(sceneRoot.querySelectorAll('*')).filter((el) => {
-      if (isSubtitle(el) || !visible(el) || isMedia(el)) return false;
+      if (isSubtitle(el) || !visible(el, sceneRoot) || isMedia(el)) return false;
       const rect = el.getBoundingClientRect();
       if (rect.width < 180 || rect.height < 120 || rect.width * rect.height < 30000) return false;
       return leafContentElements(el, sceneRoot, true).length > 0;
@@ -676,6 +704,7 @@ async ({ sceneIds }) => {
       start,
       end,
       peak_time: peakTime,
+      layout_exception: layoutException(sceneRoot),
       has_material: hasMaterial,
       content_area: contentArea,
       content_union: contentUnion,

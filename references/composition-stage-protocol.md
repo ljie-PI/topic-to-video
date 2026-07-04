@@ -77,6 +77,8 @@ python3 scripts/measure-composition-layout.py \
   --output {work_dir}/{topic_name}/composition/layout-geometry-report.json
 ```
 
+即使 Phase 8.3 已通过，Phase 8.6 仍独立运行本检查。
+
 `layout-geometry-report.json` 中 `findings[]` 非空时，把这些 finding 原样合并到最终 `qa-report.json` 的 `layout_geometry_fails`。几何检查失败不跳过后续抽帧 / spot-check；QA 继续收集其它问题，最后统一反馈。
 
 #### Step 1 — 每秒抽帧
@@ -190,14 +192,14 @@ ffmpeg -y -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 | R1-R4 | 读取 handoff 指定输入；只使用本地音频、transcript、subtitle units、catalog 和 fonts | Reference Read Check | Phase 8.5 audio sanity-check；Phase 8.6 narration / material spot-check |
 | R5-R6 | 为每个 scene 写稳定 data 属性；按 `scene-material-suggestions.json`（如存在）分配 `material_ref` / `material_refs`；`media_continuation` group 写 `data-continuation-group` / index | 检查 scene inventory、素材引用、`no_match` 处理、continuation group 是否显式声明且相邻 | 检测素材跨 scene 复用；声明过的 `media_continuation` group 作为合法例外；用 scene data 反查 finding |
 | R7 | authoring 时控制 scene 时长、微 scene、合并 scene 和 text beat 刷新 | `DESIGN.md` 记录时长设计 | 每轮解析 `data-scene-start/end` |
-| R8 | 按 scene 旁白、text beats、`scene-text-plan.json` visual text units、素材尺寸 / 类型 / `layout_role` 选择 layout；多素材 scene 读取 `material_refs`；按 Layout routing reference 的 `visual_role × orientation` routing 选择 role-specific 布局呈现方式 | Scene Visual Audit 覆盖 bounding boxes、内容区使用率、alignment、margin / padding / gap、overlap / overflow、visual text unit 实现状态、跨比例呈现方式、media\\_continuation 稳定性、viewport\\_reveal start/mid/end、portrait / vertical 不硬套 landscape flow/grid/rail 和失败处理；DOM geometry gate 检查内容 union、gutters、gap、container occupancy 和视觉重心 | `layout_geometry_fails` 覆盖 underfilled / center-clustered / oversized-gutter / tight-gap / underfilled-container；spot-check 构图、素材比例、layout\\_role 是否合理、role-specific 布局呈现方式是否匹配输出朝向、cross-aspect 可读性、结构型文本是否退化 |
+| R8 | 按 scene 输入、素材、`layout_role`、`visual_role × orientation` 选择 role-specific layout | Scene Visual Audit；DOM geometry gate 检查 union、gutter、gap、occupancy、视觉重心 | `layout_geometry_fails` + spot-check 检查 layout / orientation / cross-aspect / 结构型文本 |
 | R9-R12 | 用 catalog 尺寸设置普通 wrapper aspect-ratio；素材填满容器且无可见框；仅 `viewport_reveal` 用 scene-ratio reveal viewport + 内层原比例素材；确保素材占主体、清晰完整、media\\_first/video\\_first 最大化可视区域、cross-aspect 素材通过 `MW` / `MH` 阈值或切换 `viewport_reveal` / `detail_callout` / `media_continuation`、scale factor 0.8x-1.5x、video overlay 不遮挡关键区域；元素不越界不重叠 | 扫描错比例容器、错误 object-fit、普通素材 `width + max-height/height`、未标注 reveal 的 overflow clipping、完整适配显示竖图未达阈值仍缩成窄条、素材容器露底；Scene Visual Audit 检查 media dominance、主媒体是否被压小、rendered / source scale factor、`MW / CW`、`MH / CH`、video overlay bounds / focal\\_region 避让、comparison 可读性、bounds、overlap | 抽帧检查裁切、变形、letterbox / pillarbox / 容器露底 / 素材框感、画面清晰度、放大比例、cross-aspect 可读宽高、重叠、越界、视频浮层遮挡和多素材可读性 |
-| R13-R14 | 分栏两列垂直对齐、信息列纵向填满、收尾元素不孤立钉底、稀疏内容增密或重排；按 style hint / design file 实现风格、不使用禁用 glow 模式、大型容器留白必须有明确设计目的 | Scene Visual Audit 检查分栏两列高度差、信息列下部留白带、单卡大留白；扫描 glow / orb / spotlight、内容区大块空白、container occupancy 过低和视觉重心偏移、列 / 区域 occupancy 过低或外侧边距不对称；DOM geometry gate 检查 coverage / gutter / center clustering / container occupancy | `layout_geometry_fails` 覆盖内容区填充不足、元素挤中间、过大 gutter、容器内部过空；spot-check 分栏列高不齐、信息列下半空、pills 孤立钉底、空白、容器过空、元素分布不均、列单边贴边 / 外侧大空白、模板感和深色技术风漂移 |
+| R13-R14 | 分栏均衡；区域填满或对称留白；禁用 glow 模式 | Scene Visual Audit；DOM geometry gate 检查 coverage / gutter / center / occupancy | `layout_geometry_fails` + spot-check 检查填充不足、挤中间、过大 gutter、容器过空、单边空白 |
 | R15-R16 | 布局计算排除字幕安全区；使用单个全局字幕容器和 calibrated subtitle units；横屏单行、竖屏最多两行 | 检查安全区、字幕 CSS、按朝向的最大行数与行高、遮罩宽度、`subtitle-units.json` 来源、切换 timing 和非字幕元素侵入 | 抽帧检查字幕位置、行数、遮罩宽度、遮挡和 timing |
-| R17 | 字号 / 对比度达标、标题无孤行、DOM 嵌套受限 | 检查 typography、font size、line count、orphan line / widow word、contrast；DOM geometry gate 检查主信息字号是否接近下限 | `layout_geometry_fails` 覆盖 undersized text；spot-check 字号、标题孤行、对比度 |
+| R17 | 字号 / 对比度达标、标题无孤行、DOM 嵌套受限 | Typography check；DOM geometry gate 检查主信息字号 | `layout_geometry_fails` 覆盖 undersized text；spot-check 字号 / 孤行 / 对比度 |
 | R18 | 为素材 / 文本 / callout 设计持续动效和转场；`media_continuation` group 内主媒体稳定，只让文本 / callout / 局部强调变化 | 扫描廉价覆盖层动效、缺失转场、`media_continuation` 内主媒体 full-scene fade / wipe / re-enter | 静帧检测和 spot-check 扫描线 / sweep / 图片持续 motion / 普通 scene transition / `media_continuation` 边界稳定性 |
 | R19 | 文本元素绑定完整旁白句子；优先实现 `scene-text-plan.json` 的 primary units；入场有初始态 | 扫描 blanket `immediateRender:false`、text beat 累积和 primary unit 未实现 | 旁白对齐抽样 + spot-check 文本提前 / 累积 / 结构型文本降级 |
-| R20-R21 | 写 scene inventory、layout-role rationale、跨比例呈现方式和 peak-state audit 到 `composition/DESIGN.md` | Scene Layout Inventory 满足 R20；Peak-state / Scene Visual Audit 满足 R21，含 container occupancy ratio、视觉重心偏移、列 / 区域 occupancy；DOM geometry gate 产出可复核指标 | 用 scene data 反查 finding；核对 `DESIGN.md` inventory / audit 完整性；`layout_geometry_fails` 进入 feedback loop |
+| R20-R21 | `composition/DESIGN.md` 记录 scene inventory、layout rationale、peak-state audit | Scene Layout Inventory；Peak-state / Scene Visual Audit；DOM geometry gate | 用 scene data 反查 finding；`layout_geometry_fails` 进入 feedback loop |
 | Customized rules | authoring 时逐条覆盖 handoff rules | `DESIGN.md` 记录每条覆盖方式 | 可见规则进入 spot-check / narration alignment |
 
 新增或调整规则时，同步更新本表。
