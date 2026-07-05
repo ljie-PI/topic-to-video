@@ -57,22 +57,22 @@ authoring 前先通读本索引，逐条对照；每条 MUST / MUST-NOT 的完�
 - **T-MEDIA — media dominance / 缩放**：
   - 有素材 scene，素材占内容区主体，通常 `>= 50%`。
   - 横屏 16:9 / wide 主证据媒体通常达内容区高度 `70-85%`，低于约 `70%` 必须改布局。
+  - 横屏 `<video>` 主媒体必须宽度顶满 `MW >= 0.90 * CW`；仅当 catalog 源尺寸即使放大到 `1.5x` 仍达不到 `0.90 * CW` 时可例外，并记 `composition/DESIGN.md`。横屏宽图 / 截图可用分栏 slab（宽 `>= 0.50 * CW`），不受此宽度要求约束。
   - rendered size 的 scale factor 优先保持原始素材尺寸 `0.8x-1.5x`，超出必须替换素材或调整布局。
   - 多素材并列时，每个素材 `rendered_area / (CW * CH) >= 0.30` 且仍可读。
-- **T-GEO — 确定性几何 gate**：命中任一 finding 时，peak-state audit 失败。
+- **T-GEO — 确定性几何 gate**：命中任一 finding 时，peak-state audit 失败。content coverage 抓"整体内容团太小"，center clustered 抓"内容挤在中间"，interior void 抓"标题在顶 / 内容聚中导致的垂直大断层"（因 union 含顶部标题，coverage 可能虚高，此形态由 interior void 兜底）。
 
   | Check | Threshold | Finding |
   | --- | --- | --- |
-  | 无素材横屏 content coverage | 可见非字幕内容 union 必须 `union_width / CW >= 0.68` 且 `union_height / CH >= 0.55` | `underfilled_content_area` |
-  | 无素材竖屏 content coverage | 可见非字幕内容 union 必须 `union_width / CW >= 0.62` 且 `union_height / CH >= 0.62` | `underfilled_content_area` |
-  | 有 catalog 素材横屏 content coverage | 可见非字幕内容 union 必须 `union_width / CW >= 0.55` 且 `union_height / CH >= 0.50` | `underfilled_content_area` |
-  | 有 catalog 素材竖屏 content coverage | 可见非字幕内容 union 必须 `union_width / CW >= 0.52` 且 `union_height / CH >= 0.50` | `underfilled_content_area` |
-  | 中心聚集 | `union_width < 0.55 * CW`、`union_height < 0.45 * CH`、中心偏移均 `< 0.12` | `center_clustered_layout` |
-  | 无素材 outer gutter | 单侧外部空白 horizontal `<= 0.24 * CW`；vertical `<= 0.22 * CH` | `oversized_gutter` |
-  | 有 catalog 素材 outer gutter | 单侧外部空白 horizontal `<= 0.28 * CW`；vertical `<= 0.24 * CH` | `oversized_gutter` |
-  | card / panel / column occupancy | 容器内部内容占用横向 `>= 60%`、纵向 `>= 55%`、面积 `>= 35%` | `underfilled_container` |
-  | 主文本块 / 卡片 / 节点 gap | 相邻主内容间距 `>= max(min(CW, CH) * 0.018, 18px)` | `tight_text_gap` |
-  | 垂直空白带 | 内部空带 `interior / CH <= 0.16`；单侧边缘空白 `edge / CH <= 0.30` | `uneven_vertical_distribution` |
+  | 无素材 content coverage | 可见非字幕内容 union 必须 `union_width / CW >= 0.75` 且 `union_height / CH >= 0.75` | `underfilled_content_area` |
+  | 有 catalog 素材 content coverage | 可见非字幕内容 union 必须 `union_width / CW >= 0.80` 且 `union_height / CH >= 0.75` | `underfilled_content_area` |
+  | 中心聚集 | `union_width < 0.75 * CW`、`union_height < 0.65 * CH`、中心偏移均 `< 0.15` | `center_clustered_layout` |
+  | 无素材 outer gutter | 单侧外部空白 horizontal `<= 0.20 * CW`；vertical `<= 0.20 * CH` | `oversized_gutter` |
+  | 有 catalog 素材 outer gutter | 单侧外部空白 horizontal `<= 0.15 * CW`；vertical `<= 0.15 * CH` | `oversized_gutter` |
+  | 卡片 / 面板内部填充 | 有可见 surface（border / 底色 / shadow）且非整屏的容器，`height_occupancy >= 0.60` | `underfilled_container` |
+  | 主文本块 / 卡片 / 节点 gap | 相邻主内容间距 `>= max(min(CW, CH) * 0.02, 20px)` | `tight_text_gap` |
+  | 垂直空白带 | 内部空带 `interior / CH <= 0.15`；单侧边缘空白 `edge / CH <= 0.30` | `uneven_vertical_distribution` |
+  | 横屏 video 宽度 | `<video>` 主媒体 `MW / CW >= 0.90`（源尺寸放大 `1.5x` 仍不足时例外） | `undersized_media` |
 
 - **T-FONT — 字号 / 对比度 / 嵌套下限**：
   - 字号比例：同一 scene 内最大 / 最小字号 `<= 3:1`；素材 / 文本容器最多 `2` 层嵌套。
@@ -269,7 +269,7 @@ Intentional `viewport_reveal` exception:
 
 确定性几何检查阈值见 `Shared Thresholds` 的 `T-GEO`。
 
-只计入可见文本、素材、图形、卡片和 callout；隐藏元素、透明占位、空容器和撑尺寸 wrapper 不计入 union。deliberate hero / quote / title-card 留白必须同时写入 `composition/DESIGN.md`，并在 scene root 标记 `data-layout-exception="hero"`、`"quote"` 或 `"title-card"`；`data-qa-layout-exception` / `data-geometry-exception` 可用同值。该例外只豁免 `underfilled_content_area`、`center_clustered_layout`、`oversized_gutter`、`underfilled_container`、`uneven_vertical_distribution`。
+只计入可见文本、素材、图形、卡片和 callout；隐藏元素、透明占位、空容器和撑尺寸 wrapper 不计入 union。deliberate hero / quote / title-card 留白必须同时写入 `composition/DESIGN.md`，并在 scene root 标记 `data-layout-exception="hero"`、`"quote"` 或 `"title-card"`；`data-qa-layout-exception` / `data-geometry-exception` 可用同值。该例外只豁免 `underfilled_content_area`、`center_clustered_layout`、`oversized_gutter`、`underfilled_container`、`uneven_vertical_distribution`、`undersized_media`。
 
 ### Subtitle rules
 
@@ -309,7 +309,7 @@ Intentional `viewport_reveal` exception:
 
 动画前必须检查每个 scene 的 peak state：所有非字幕元素都显示时，元素不得溢出 viewport / 内容区、不得互相遮挡、前景元素不得无约束覆盖 catalog 素材、素材不得 letterbox / pillarbox、内容区纯空白不得超过 10%、构图不得明显失衡；主要元素组在水平 / 垂直方向上的分布必须均衡，视觉重心不得明显偏上、偏下、偏左或偏右；不得用超大空容器或空 media panel 填充画面来规避全局空白检查。`media_first` / `video_first` 主素材不得被标题或信息块不必要地压小；跨比例主素材必须通过 R11 的 `MW` / `MH` 阈值，未通过时必须切换 `viewport_reveal` / `detail_callout` / `media_continuation` / 替换素材；`comparison_pair` 中每个素材必须仍可读。portrait / vertical 中，多元素 / 结构型 unit（`leaderboard`、`data_table`、`chart`、`timeline`、`process_flow`、`architecture_diagram`、`network_graph`、`comparison_matrix`、`pros_cons`、`metric_strip`、`list`、`feature_grid`、`qa`、`code_block`、`terminal_block`、`file_tree`、`state_machine`、`annotated_media`）不得被横向硬排到文本窄列、字号过小、多次换行或内容不可读。失败必须先调整布局尺寸、位置、字号、信息密度或拆 scene，不得靠“暂时隐藏元素”掩盖问题。`viewport_reveal` 还必须检查 start / mid / end，确认关键内容不会永久隐藏。
 
-Phase 8 几何审计按 `references/composition-stage-protocol.md` 执行；命中 `underfilled_content_area`、`center_clustered_layout`、`oversized_gutter`、`undersized_text`、`tight_text_gap`、`underfilled_container` 或 `uneven_vertical_distribution` 时，peak-state audit 失败。
+Phase 8 几何审计按 `references/composition-stage-protocol.md` 执行；命中 `underfilled_content_area`、`center_clustered_layout`、`oversized_gutter`、`undersized_text`、`tight_text_gap`、`underfilled_container`、`uneven_vertical_distribution` 或 `undersized_media` 时，peak-state audit 失败。
 
 ## Stage Protocols
 
