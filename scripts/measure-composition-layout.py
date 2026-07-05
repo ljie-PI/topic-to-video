@@ -49,7 +49,11 @@ FINDING_ORDER = {
     'undersized_text': 4,
     'tight_text_gap': 5,
     'underfilled_container': 6,
+    'uneven_vertical_distribution': 7,
 }
+
+MAX_INTERIOR_VOID_RATIO = 0.16
+MAX_EDGE_VOID_RATIO = 0.30
 
 
 class ArgumentParser(argparse.ArgumentParser):
@@ -338,6 +342,24 @@ def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict
             },
         )
 
+    voids = scene.get('vertical_voids')
+    if not allows_whitespace and voids:
+        interior_ratio = (voids.get('interior') or 0) / ch
+        edge_ratio = max(voids.get('edge_top') or 0, voids.get('edge_bottom') or 0) / ch
+        if interior_ratio > MAX_INTERIOR_VOID_RATIO or edge_ratio > MAX_EDGE_VOID_RATIO:
+            add_finding(
+                findings,
+                scene_id,
+                'uneven_vertical_distribution',
+                'Content leaves a large empty vertical band; vertical fill is under-used or unevenly distributed.',
+                {
+                    'interior_void_ratio': round(interior_ratio, 3),
+                    'max_edge_void_ratio': round(edge_ratio, 3),
+                    'max_interior_ratio': MAX_INTERIOR_VOID_RATIO,
+                    'max_edge_ratio': MAX_EDGE_VOID_RATIO,
+                },
+            )
+
     for container in scene.get('container_metrics') or []:
         if (
             not allows_whitespace
@@ -593,6 +615,34 @@ async ({ sceneIds }) => {
     return Number.isFinite(best) ? best : null;
   }
 
+  function verticalVoids(rects, contentArea) {
+    const top = contentArea.top;
+    const bottom = contentArea.bottom;
+    const intervals = rects
+      .map((r) => [Math.max(r.top, top), Math.min(r.bottom, bottom)])
+      .filter((iv) => iv[1] - iv[0] > 1)
+      .sort((p, q) => p[0] - q[0]);
+    if (!intervals.length) return null;
+    const merged = [intervals[0].slice()];
+    for (let i = 1; i < intervals.length; i += 1) {
+      const last = merged[merged.length - 1];
+      if (intervals[i][0] <= last[1]) {
+        last[1] = Math.max(last[1], intervals[i][1]);
+      } else {
+        merged.push(intervals[i].slice());
+      }
+    }
+    let interior = 0;
+    for (let i = 1; i < merged.length; i += 1) {
+      interior = Math.max(interior, merged[i][0] - merged[i - 1][1]);
+    }
+    return {
+      interior: Math.max(interior, 0),
+      edge_top: Math.max(merged[0][0] - top, 0),
+      edge_bottom: Math.max(bottom - merged[merged.length - 1][1], 0),
+    };
+  }
+
   function selectorFor(el) {
     if (el.id) return `#${el.id}`;
     const classes = typeof el.className === 'string'
@@ -698,6 +748,9 @@ async ({ sceneIds }) => {
     const rects = contentElements.map((el) => rectObject(el.getBoundingClientRect())).filter(hasBox);
     const contentUnion = unionRect(rects);
     const contentArea = contentAreaFor(sceneRoot, subtitleCandidates);
+    const leafRects = leafContentElements(sceneRoot, sceneRoot, true)
+      .map((el) => rectObject(el.getBoundingClientRect()))
+      .filter(hasBox);
     const hasMaterial = contentElements.some((el) => ['IMG', 'VIDEO', 'PICTURE', 'CANVAS'].includes(el.tagName) || hasMaterialBackgroundImage(el));
     return {
       scene_id: sceneId,
@@ -711,6 +764,7 @@ async ({ sceneIds }) => {
       content_element_count: contentElements.length,
       text_metrics: textMetrics(contentElements),
       min_positive_gap: minPositiveGap(rects),
+      vertical_voids: verticalVoids(leafRects, contentArea),
       container_metrics: containerMetrics(sceneRoot),
     };
   }

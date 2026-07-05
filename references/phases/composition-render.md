@@ -51,6 +51,8 @@ Animation / effect skill 选择：
 - Phase 8.3 — Pre-render Self-Audit Rules
 - Phase 8.4 — HTML-to-video Render Rules
 
+render 前必须运行 scripts/measure-composition-layout.py 写 composition/layout-geometry-report.json，verdict 必须为 pass 才能 render。
+
 完成后返回 final.mp4 路径、ffprobe duration 和文件大小。
 ```
 
