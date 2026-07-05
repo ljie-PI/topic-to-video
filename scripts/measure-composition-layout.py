@@ -158,17 +158,17 @@ def content_thresholds(width: float, height: float, has_material: bool) -> Dict[
     is_portrait = height > width
     if has_material:
         return {
-            'min_width_coverage': 0.46 if is_portrait else 0.50,
-            'min_height_coverage': 0.42 if is_portrait else 0.38,
-            'max_horizontal_gutter': 0.32,
-            'max_vertical_gutter': 0.28,
+            'min_width_coverage': 0.52 if is_portrait else 0.55,
+            'min_height_coverage': 0.50,
+            'max_horizontal_gutter': 0.28,
+            'max_vertical_gutter': 0.24,
             'main_text_min': 30 if is_portrait else 28,
         }
     return {
-        'min_width_coverage': 0.58 if is_portrait else 0.62,
-        'min_height_coverage': 0.58 if is_portrait else 0.45,
-        'max_horizontal_gutter': 0.28,
-        'max_vertical_gutter': 0.24,
+        'min_width_coverage': 0.62 if is_portrait else 0.68,
+        'min_height_coverage': 0.62 if is_portrait else 0.55,
+        'max_horizontal_gutter': 0.24,
+        'max_vertical_gutter': 0.22,
         'main_text_min': 38 if is_portrait else 36,
     }
 
@@ -345,8 +345,13 @@ def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict
     voids = scene.get('vertical_voids')
     if not allows_whitespace and voids:
         interior_ratio = (voids.get('interior') or 0) / ch
-        edge_ratio = max(voids.get('edge_top') or 0, voids.get('edge_bottom') or 0) / ch
-        if interior_ratio > MAX_INTERIOR_VOID_RATIO or edge_ratio > MAX_EDGE_VOID_RATIO:
+        edge_top_ratio = (voids.get('edge_top') or 0) / ch
+        edge_bottom_ratio = (voids.get('edge_bottom') or 0) / ch
+        single_sided_edge = (
+            (edge_top_ratio > MAX_EDGE_VOID_RATIO and edge_bottom_ratio <= MAX_EDGE_VOID_RATIO)
+            or (edge_bottom_ratio > MAX_EDGE_VOID_RATIO and edge_top_ratio <= MAX_EDGE_VOID_RATIO)
+        )
+        if interior_ratio > MAX_INTERIOR_VOID_RATIO or single_sided_edge:
             add_finding(
                 findings,
                 scene_id,
@@ -354,7 +359,8 @@ def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict
                 'Content leaves a large empty vertical band; vertical fill is under-used or unevenly distributed.',
                 {
                     'interior_void_ratio': round(interior_ratio, 3),
-                    'max_edge_void_ratio': round(edge_ratio, 3),
+                    'edge_top_ratio': round(edge_top_ratio, 3),
+                    'edge_bottom_ratio': round(edge_bottom_ratio, 3),
                     'max_interior_ratio': MAX_INTERIOR_VOID_RATIO,
                     'max_edge_ratio': MAX_EDGE_VOID_RATIO,
                 },
@@ -748,7 +754,7 @@ async ({ sceneIds }) => {
     const rects = contentElements.map((el) => rectObject(el.getBoundingClientRect())).filter(hasBox);
     const contentUnion = unionRect(rects);
     const contentArea = contentAreaFor(sceneRoot, subtitleCandidates);
-    const leafRects = leafContentElements(sceneRoot, sceneRoot, true)
+    const leafRects = leafContentElements(sceneRoot, sceneRoot, false)
       .map((el) => rectObject(el.getBoundingClientRect()))
       .filter(hasBox);
     const hasMaterial = contentElements.some((el) => ['IMG', 'VIDEO', 'PICTURE', 'CANVAS'].includes(el.tagName) || hasMaterialBackgroundImage(el));
