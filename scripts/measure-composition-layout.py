@@ -49,7 +49,17 @@ FINDING_ORDER = {
     'undersized_text': 4,
     'tight_text_gap': 5,
     'underfilled_container': 6,
+    'uneven_vertical_distribution': 7,
+    'undersized_media': 8,
 }
+
+MAX_INTERIOR_VOID_RATIO = 0.15
+MAX_EDGE_VOID_RATIO = 0.30
+MIN_CONTAINER_HEIGHT_OCCUPANCY = 0.60
+CONTAINER_SHELL_AREA_RATIO = 0.85
+MIN_LANDSCAPE_WIDE_MEDIA_WIDTH = 0.90
+WIDE_MEDIA_MIN_ASPECT = 1.3
+MAX_MEDIA_UPSCALE = 1.5
 
 
 class ArgumentParser(argparse.ArgumentParser):
@@ -154,17 +164,17 @@ def content_thresholds(width: float, height: float, has_material: bool) -> Dict[
     is_portrait = height > width
     if has_material:
         return {
-            'min_width_coverage': 0.46 if is_portrait else 0.50,
-            'min_height_coverage': 0.42 if is_portrait else 0.38,
-            'max_horizontal_gutter': 0.32,
-            'max_vertical_gutter': 0.28,
+            'min_width_coverage': 0.80,
+            'min_height_coverage': 0.75,
+            'max_horizontal_gutter': 0.15,
+            'max_vertical_gutter': 0.15,
             'main_text_min': 30 if is_portrait else 28,
         }
     return {
-        'min_width_coverage': 0.58 if is_portrait else 0.62,
-        'min_height_coverage': 0.58 if is_portrait else 0.45,
-        'max_horizontal_gutter': 0.28,
-        'max_vertical_gutter': 0.24,
+        'min_width_coverage': 0.75,
+        'min_height_coverage': 0.75,
+        'max_horizontal_gutter': 0.20,
+        'max_vertical_gutter': 0.20,
         'main_text_min': 38 if is_portrait else 36,
     }
 
@@ -184,7 +194,53 @@ def add_finding(
     })
 
 
-def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict[str, Any]]:
+def load_video_sources(composition_dir: Path) -> Dict[str, Tuple[int, int]]:
+    """Map video basename -> (width, height) from material-catalog.json if present.
+
+    The catalog lives one level above the composition dir; videos carry source
+    width/height used to exempt genuinely small clips from the width gate.
+    """
+    sources: Dict[str, Tuple[int, int]] = {}
+    candidates = [
+        composition_dir / 'material-catalog.json',
+        composition_dir.parent / 'material-catalog.json',
+        composition_dir.parent.parent / 'material-catalog.json',
+    ]
+    catalog_path = next((p for p in candidates if p.is_file()), None)
+    if not catalog_path:
+        return sources
+    try:
+        data = json.loads(catalog_path.read_text(encoding='utf-8'))
+    except Exception:
+        return sources
+    entries = data.get('entries', []) if isinstance(data, dict) else []
+    for entry in entries:
+        for video in (entry.get('videos', []) if isinstance(entry, dict) else []):
+            if not isinstance(video, dict):
+                continue
+            w, h = video.get('width'), video.get('height')
+            if not w or not h:
+                continue
+            for key in (video.get('clip_path'), video.get('local_path'), video.get('src'), video.get('id')):
+                if key:
+                    sources[os.path.basename(str(key))] = (int(w), int(h))
+    return sources
+
+
+def video_source_width(src: Optional[str], video_sources: Dict[str, Tuple[int, int]]) -> Optional[int]:
+    if not src or not video_sources:
+        return None
+    base = os.path.basename(src.split('?')[0])
+    dims = video_sources.get(base)
+    return dims[0] if dims else None
+
+
+def analyze_scene(
+    scene: Dict[str, Any],
+    viewport: Tuple[int, int],
+    video_sources: Optional[Dict[str, Tuple[int, int]]] = None,
+) -> List[Dict[str, Any]]:
+    video_sources = video_sources or {}
     scene_id = scene['scene_id']
     findings: List[Dict[str, Any]] = []
     content = scene['content_area']
@@ -243,10 +299,10 @@ def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict
 
     if (
         not allows_whitespace
-        and width_coverage < 0.55
-        and height_coverage < 0.45
-        and center_offset_x < 0.12
-        and center_offset_y < 0.12
+        and width_coverage < 0.75
+        and height_coverage < 0.65
+        and center_offset_x < 0.15
+        and center_offset_y < 0.15
     ):
         add_finding(
             findings,
@@ -325,7 +381,7 @@ def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict
         )
 
     min_gap = scene.get('min_positive_gap')
-    gap_floor = max(min(cw, ch) * 0.018, 18)
+    gap_floor = max(min(cw, ch) * 0.02, 20)
     if min_gap is not None and min_gap < gap_floor:
         add_finding(
             findings,
@@ -338,30 +394,75 @@ def analyze_scene(scene: Dict[str, Any], viewport: Tuple[int, int]) -> List[Dict
             },
         )
 
-    for container in scene.get('container_metrics') or []:
-        if (
-            not allows_whitespace
-            and (
-                container['width_occupancy'] < 0.60
-            or container['height_occupancy'] < 0.55
-            or container['area_occupancy'] < 0.35
+    voids = scene.get('vertical_voids')
+    if not allows_whitespace and voids:
+        interior_ratio = (voids.get('interior') or 0) / ch
+        edge_top_ratio = (voids.get('edge_top') or 0) / ch
+        edge_bottom_ratio = (voids.get('edge_bottom') or 0) / ch
+        single_sided_edge = (
+            (edge_top_ratio > MAX_EDGE_VOID_RATIO and edge_bottom_ratio <= MAX_EDGE_VOID_RATIO)
+            or (edge_bottom_ratio > MAX_EDGE_VOID_RATIO and edge_top_ratio <= MAX_EDGE_VOID_RATIO)
+        )
+        if interior_ratio > MAX_INTERIOR_VOID_RATIO or single_sided_edge:
+            add_finding(
+                findings,
+                scene_id,
+                'uneven_vertical_distribution',
+                'Content leaves a large empty vertical band; vertical fill is under-used or unevenly distributed.',
+                {
+                    'interior_void_ratio': round(interior_ratio, 3),
+                    'edge_top_ratio': round(edge_top_ratio, 3),
+                    'edge_bottom_ratio': round(edge_bottom_ratio, 3),
+                    'max_interior_ratio': MAX_INTERIOR_VOID_RATIO,
+                    'max_edge_ratio': MAX_EDGE_VOID_RATIO,
+                },
             )
-        ):
+
+    content_area_px = cw * ch
+    for container in scene.get('container_metrics') or []:
+        if allows_whitespace or not container.get('has_surface'):
+            continue
+        box = container.get('container') or {}
+        if box.get('area', 0) >= CONTAINER_SHELL_AREA_RATIO * content_area_px:
+            continue
+        if container['height_occupancy'] < MIN_CONTAINER_HEIGHT_OCCUPANCY:
             add_finding(
                 findings,
                 scene_id,
                 'underfilled_container',
-                'Nested container has too much empty space between the outer box and inner content.',
+                'Card/panel has too much vertical empty space between its box and inner content.',
                 {
                     'selector': container.get('selector'),
                     'container': container.get('container'),
                     'inner_union': container.get('inner_union'),
-                    'width_occupancy': round(container['width_occupancy'], 3),
                     'height_occupancy': round(container['height_occupancy'], 3),
-                    'area_occupancy': round(container['area_occupancy'], 3),
-                    'min_width_occupancy': 0.60,
-                    'min_height_occupancy': 0.55,
-                    'min_area_occupancy': 0.35,
+                    'min_height_occupancy': MIN_CONTAINER_HEIGHT_OCCUPANCY,
+                },
+            )
+
+    media = scene.get('primary_media')
+    if not allows_whitespace and media and media.get('kind') == 'video' and viewport[0] >= viewport[1]:
+        rendered_w = media.get('rendered_width', 0)
+        rendered_h = media.get('rendered_height', 1)
+        aspect = rendered_w / max(rendered_h, 1)
+        media_width_ratio = rendered_w / cw
+        target_width_px = MIN_LANDSCAPE_WIDE_MEDIA_WIDTH * cw
+        source_w = video_source_width(media.get('src'), video_sources)
+        # exempt only when the source cannot reach 0.9*CW even at the max 1.5x upscale allowed by R11
+        source_too_small = source_w is not None and source_w * MAX_MEDIA_UPSCALE < target_width_px
+        if aspect >= WIDE_MEDIA_MIN_ASPECT and media_width_ratio < MIN_LANDSCAPE_WIDE_MEDIA_WIDTH and not source_too_small:
+            add_finding(
+                findings,
+                scene_id,
+                'undersized_media',
+                'Landscape video does not span enough of the content width.',
+                {
+                    'selector': media.get('selector'),
+                    'rendered_width': round(rendered_w, 1),
+                    'media_width_ratio': round(media_width_ratio, 3),
+                    'aspect_ratio': round(aspect, 2),
+                    'min_width_ratio': MIN_LANDSCAPE_WIDE_MEDIA_WIDTH,
+                    'source_width': source_w,
                 },
             )
 
@@ -593,6 +694,34 @@ async ({ sceneIds }) => {
     return Number.isFinite(best) ? best : null;
   }
 
+  function verticalVoids(rects, contentArea) {
+    const top = contentArea.top;
+    const bottom = contentArea.bottom;
+    const intervals = rects
+      .map((r) => [Math.max(r.top, top), Math.min(r.bottom, bottom)])
+      .filter((iv) => iv[1] - iv[0] > 1)
+      .sort((p, q) => p[0] - q[0]);
+    if (!intervals.length) return null;
+    const merged = [intervals[0].slice()];
+    for (let i = 1; i < intervals.length; i += 1) {
+      const last = merged[merged.length - 1];
+      if (intervals[i][0] <= last[1]) {
+        last[1] = Math.max(last[1], intervals[i][1]);
+      } else {
+        merged.push(intervals[i].slice());
+      }
+    }
+    let interior = 0;
+    for (let i = 1; i < merged.length; i += 1) {
+      interior = Math.max(interior, merged[i][0] - merged[i - 1][1]);
+    }
+    return {
+      interior: Math.max(interior, 0),
+      edge_top: Math.max(merged[0][0] - top, 0),
+      edge_bottom: Math.max(bottom - merged[merged.length - 1][1], 0),
+    };
+  }
+
   function selectorFor(el) {
     if (el.id) return `#${el.id}`;
     const classes = typeof el.className === 'string'
@@ -611,10 +740,12 @@ async ({ sceneIds }) => {
     });
     return candidates.map((el) => {
       const container = rectObject(el.getBoundingClientRect());
+      const has_surface = hasVisibleSurface(el);
       if (hasMaterialBackgroundImage(el)) {
         return {
           selector: selectorFor(el),
           container,
+          has_surface,
           inner_union: container,
           width_occupancy: 1,
           height_occupancy: 1,
@@ -631,12 +762,43 @@ async ({ sceneIds }) => {
       return {
         selector: selectorFor(el),
         container,
+        has_surface,
         inner_union: innerUnion,
         width_occupancy: innerUnion.width / Math.max(container.width, 1),
         height_occupancy: innerUnion.height / Math.max(container.height, 1),
         area_occupancy: Math.min(childArea / Math.max(container.area, 1), 1),
       };
     }).filter(Boolean);
+  }
+
+  function primaryMedia(sceneRoot) {
+    const candidates = [];
+    for (const el of Array.from(sceneRoot.querySelectorAll('*'))) {
+      if (isSubtitle(el) || !visible(el, sceneRoot)) continue;
+      const isMediaEl = ['IMG', 'VIDEO', 'PICTURE', 'CANVAS'].includes(el.tagName);
+      const isMaterialBg = hasMaterialBackgroundImage(el);
+      if (!isMediaEl && !isMaterialBg) continue;
+      const rect = el.getBoundingClientRect();
+      if (!hasBox(rect)) continue;
+      candidates.push({ el, rect });
+    }
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => b.rect.width * b.rect.height - a.rect.width * a.rect.height);
+    const best = candidates[0];
+    const tag = (best.el.tagName || '').toLowerCase();
+    const isVideo = tag === 'video';
+    let src = best.el.getAttribute('src') || '';
+    if (!src && isVideo) {
+      const source = best.el.querySelector('source');
+      if (source) src = source.getAttribute('src') || '';
+    }
+    return {
+      selector: selectorFor(best.el),
+      kind: isVideo ? 'video' : (tag === 'img' || tag === 'picture' ? 'image' : (best.el.tagName ? tag : 'background')),
+      src,
+      rendered_width: best.rect.width,
+      rendered_height: best.rect.height,
+    };
   }
 
   function contentAreaFor(sceneRoot, subtitleCandidates) {
@@ -698,6 +860,9 @@ async ({ sceneIds }) => {
     const rects = contentElements.map((el) => rectObject(el.getBoundingClientRect())).filter(hasBox);
     const contentUnion = unionRect(rects);
     const contentArea = contentAreaFor(sceneRoot, subtitleCandidates);
+    const leafRects = leafContentElements(sceneRoot, sceneRoot, false)
+      .map((el) => rectObject(el.getBoundingClientRect()))
+      .filter(hasBox);
     const hasMaterial = contentElements.some((el) => ['IMG', 'VIDEO', 'PICTURE', 'CANVAS'].includes(el.tagName) || hasMaterialBackgroundImage(el));
     return {
       scene_id: sceneId,
@@ -711,7 +876,9 @@ async ({ sceneIds }) => {
       content_element_count: contentElements.length,
       text_metrics: textMetrics(contentElements),
       min_positive_gap: minPositiveGap(rects),
+      vertical_voids: verticalVoids(leafRects, contentArea),
       container_metrics: containerMetrics(sceneRoot),
+      primary_media: primaryMedia(sceneRoot),
     };
   }
 
@@ -796,7 +963,7 @@ def measure_with_playwright(
     return measured
 
 
-def build_report(measured: Dict[str, Any], viewport: Tuple[int, int], requested_scene_ids: Optional[List[str]]) -> Dict[str, Any]:
+def build_report(measured: Dict[str, Any], viewport: Tuple[int, int], requested_scene_ids: Optional[List[str]], video_sources: Optional[Dict[str, Tuple[int, int]]] = None) -> Dict[str, Any]:
     findings: List[Dict[str, Any]] = []
     measured_scene_ids = {scene.get('scene_id') for scene in measured.get('scenes', [])}
     missing_scene_ids = [scene_id for scene_id in requested_scene_ids or [] if scene_id not in measured_scene_ids]
@@ -817,7 +984,7 @@ def build_report(measured: Dict[str, Any], viewport: Tuple[int, int], requested_
             {'missing_scene_ids': missing_scene_ids},
         )
     for scene in measured.get('scenes', []):
-        findings.extend(analyze_scene(scene, viewport))
+        findings.extend(analyze_scene(scene, viewport, video_sources))
 
     findings.sort(key=lambda item: (item.get('scene_id', ''), FINDING_ORDER.get(item.get('issue', ''), 99)))
     scene_order = [scene.get('scene_id') for scene in measured.get('scenes', []) if scene.get('scene_id')]
@@ -864,7 +1031,8 @@ def main() -> None:
             chrome_path=args.chrome_path,
             scene_ids=scene_ids,
         )
-        report = build_report(measured, viewport, scene_ids)
+        video_sources = load_video_sources(composition_dir)
+        report = build_report(measured, viewport, scene_ids, video_sources)
         if args.output:
             output_path = Path(args.output).expanduser().resolve()
             output_path.parent.mkdir(parents=True, exist_ok=True)

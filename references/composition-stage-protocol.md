@@ -1,6 +1,6 @@
 # Composition Stage Protocol
 
-`references/composition-rules.md` 是硬约束来源。
+`references/composition-rules.md` 是硬约束来源。规则阈值（`T-SUB` / `T-DUR` / `T-REVEAL` / `T-FIT` / `T-MEDIA` / `T-GEO` / `T-FONT` / `T-SAFE` / `T-MOTION`）统一定义在 `references/composition-rules.md` 的 `Shared Thresholds`；本文件引用标签，不重述规则阈值。
 
 ## Stage Protocols
 
@@ -13,8 +13,8 @@
 1. **Source pass**：读取 `composition/index.html`、CSS / JS、`composition-handoff.md`、`references/composition-rules.md`、`references/composition-stage-protocol.md`、`narration.txt`、`material-catalog.json`、`scene-material-suggestions.json`（如存在）、`scene-text-plan.json`（如存在）、`transcribe/transcript.json` 和 `transcribe/subtitle-units.json`，建立 scene inventory，并扫描 forbidden patterns。
 2. **Peak-state pass**：对每个 scene 选择一个或多个 peak-state 时间点（所有非字幕元素应可见、主要 text beat 已出现、退出动画未开始），用 HyperFrames / 浏览器可 seek 的预览能力或等价 DOM inspection 打开 `composition/index.html`，seek 到这些时间点。
 3. **Geometry measurement**：在每个 peak state 读取 scene root、素材、文本、callout、decor、全局字幕容器的 bounding boxes，并计算 viewport、内容区、字幕安全区；对大型容器还要记录内部子元素 union box、container occupancy ratio、主要元素组视觉中心相对内容区中心的偏移；对每个主要内容列 / 区域（含无边框列）记录内容 bounding box、横向 / 纵向 occupancy、左右 / 上下外侧边距，以及配对列 / 分栏之间的外侧边距差；对主媒体记录 source width / height、rendered width / height、内容区 `CW` / `CH`、主素材 `MW` / `MH`、派生比值 `MW / CW`、`MH / CH`、scale factor、占内容区高度比例和面积比例；对主要文本记录 font size、line count 和每行字符 / token 分布。
-4. **Deterministic geometry gate**：运行 `python3 scripts/measure-composition-layout.py {work_dir}/{topic_name}/composition --viewport <WxH>` 或精确复现其指标。命中 `underfilled_content_area`、`center_clustered_layout`、`oversized_gutter`、`undersized_text`、`tight_text_gap`、`underfilled_container` 任一 finding 时，Phase 8.3 失败。
-5. **Rule checks**：用几何数据检查元素溢出、重叠、前景压素材、素材占比、内容区使用率、alignment、margin / padding / gap、素材容器比例 / 露底、字幕安全区侵入和字幕框尺寸；检查素材 aspect ratio 与输出 orientation 是否冲突，若冲突必须记录 `cross_aspect_strategy`: `full_fit` / `viewport_reveal` / `detail_callout` / `media_continuation` / `replace_material`，以及竖向素材列、wide media slab、band、`viewport_reveal`、上下文本区等跨比例呈现方式；若存在 `scene-text-plan.json`，还必须检查 primary visual text unit 是否实现、结构型 role 是否被合理视觉化、文本是否位于素材外置信息区、轻量浮层或分时轮换区，并按 `visual_role` 和输出朝向检查最终布局是否使用对应的按朝向布局呈现方式；portrait / vertical 输出中，多元素 / 结构型 role 不得直接套用横屏 horizontal flow、side rail 或 multi-column grid。对 `media_first` / `video_first` 检查主媒体是否被不必要压小、scale factor 是否在 0.8x-1.5x、主媒体高度 / 面积是否足够；tall / ultra-tall 素材默认必须使用 key-region-aware `viewport_reveal`，且 start / mid / end 可见区域覆盖 catalog 记录的 `focal_region`、关键区域或避开 avoid-region；完整适配显示时，横屏竖图 / 竖视频必须 `MH >= 0.78 * CH` 且 `MW >= 0.40 * CW`，竖屏 / 竖向 tall media 必须 `MW >= 0.70 * CW` 且 `MH >= 0.45 * CH`。不满足时必须改 `viewport_reveal` / `detail_callout` / `media_continuation` / 替换素材；对 `media_continuation` 检查相邻 scene 视觉锚点是否稳定；对 `viewport_reveal` 检查 start / mid / end 可见区域；检查每个主要内容列 / 区域的 occupancy 与外侧边距对称：任一主列内容横向 occupancy < 60% 或纵向 < 55%，或配对列 / 分栏外侧边距明显不对称时，判为 under-utilized，必须重排 / 收窄 / 补内容；hero / quote / title-card 可留白；对标题和主要文本检查是否低于文本类型字号下限、是否存在 orphan line / widow word。
+4. **Deterministic geometry gate**：必须运行 `python3 scripts/measure-composition-layout.py {work_dir}/{topic_name}/composition --viewport <WxH> --output {work_dir}/{topic_name}/composition/layout-geometry-report.json`（阈值见 `T-GEO`）。缺 Chrome / playwright 时停止并报告，不得跳过或手算。命中 `underfilled_content_area`、`center_clustered_layout`、`oversized_gutter`、`undersized_text`、`tight_text_gap`、`underfilled_container`、`uneven_vertical_distribution`、`undersized_media` 任一 finding 时，Phase 8.3 失败。
+5. **Rule checks**：用几何数据检查元素溢出、重叠、前景压素材、素材占比、内容区使用率、alignment、margin / padding / gap、素材容器比例 / 露底、字幕安全区侵入和字幕框尺寸；检查素材 aspect ratio 与输出 orientation 是否冲突，若冲突必须记录 `cross_aspect_strategy`: `full_fit` / `viewport_reveal` / `detail_callout` / `media_continuation` / `replace_material`，以及竖向素材列、wide media slab、band、`viewport_reveal`、上下文本区等跨比例呈现方式；若存在 `scene-text-plan.json`，还必须检查 primary visual text unit 是否实现、结构型 role 是否被合理视觉化、文本是否位于素材外置信息区、轻量浮层或分时轮换区，并按 `visual_role` 和输出朝向检查最终布局是否使用对应的按朝向布局呈现方式；portrait / vertical 输出中，多元素 / 结构型 role 不得直接套用横屏 horizontal flow、side rail 或 multi-column grid。对 `media_first` / `video_first` 检查主媒体是否被不必要压小、scale factor 是否在 `T-MEDIA` 范围、主媒体高度 / 面积是否足够；tall / ultra-tall 素材默认必须使用 key-region-aware `viewport_reveal`，且 start / mid / end 可见区域覆盖 catalog 记录的 `focal_region`、关键区域或避开 avoid-region；完整适配显示必须满足 `T-FIT`。不满足时必须改 `viewport_reveal` / `detail_callout` / `media_continuation` / 替换素材；对 `media_continuation` 检查相邻 scene 视觉锚点是否稳定；对 `viewport_reveal` 检查 start / mid / end 可见区域；检查每个主要内容列 / 区域是否通过 `T-GEO` 的 occupancy 与外侧边距要求，配对列 / 分栏外侧边距不得明显不对称；hero / quote / title-card 留白必须通过 scene data exception 进入脚本；对标题和主要文本检查是否低于文本类型字号下限、是否存在 orphan line / widow word。
 6. **Fix loop**：任一检查失败时，sub-agent 必须修改 layout / CSS / DOM / 动画初始态并重新跑 8.3，不得靠隐藏元素、延后显示或动画错开来掩盖 peak-state layout 问题。
 7. **Audit output**：把每个 scene 的检查摘要、失败项和修复记录写入 `composition/DESIGN.md`；不能只写 “checked” / “pass”。
 
@@ -25,16 +25,16 @@
 3. **Peak-state / Scene Visual Audit**：覆盖每个 scene，满足 R21。记录 viewport / 内容区 / 字幕安全区边界、subtitle safe area 高度、subtitle box 高度、内容区 `CW` / `CH`、主要元素 bounding boxes、overflow / truncation / overlap、foreground-on-material、内容区使用率、素材主体占比；主媒体 source / rendered width / height、`MW` / `MH`、派生比值 `MW / CW`、`MH / CH`、scale factor、内容区高度 / 面积占比；标题 / 文本块 / 素材 / callout alignment、margin / padding / gap、素材容器贴合、字幕安全区占用。素材 scene 另记 `layout_role`、aspect ratio、`ratio_bucket`、`focal_region`、output orientation、`cross_aspect_strategy`、跨比例呈现方式、阈值判断、最终显示尺寸、空白控制、文本信息区位置。大型容器另记 container bbox、内部子元素 union box、container occupancy ratio、主要元素组视觉中心偏移。主要内容列 / 区域另记内容 bbox、横纵 occupancy、外侧边距、配对列外边距差、单边贴边 / 外侧大空白。主要文本另记 font size、line count、每行字符 / token 分布、orphan line / widow word、字号下限。
 4. **Layout Fix Record**：记录每个失败项如何通过 layout 尺寸、位置、字号、信息密度、间距、拆 scene 或素材替换修复；不得只写“已修复”。
 5. **Sentence-level timing plan**：覆盖 R19；多个非素材文本元素不得在 scene start 一次性全亮。若存在 `scene-text-plan.json`，记录每个 `primary` visual text unit 的实现情况；未实现 / 降级的 unit 必须有原因。
-6. **Forbidden pattern scan**：扫描缺失 `transcribe/subtitle-units.json`、字幕直接使用 raw ASR text、生成文本 / 字幕 / DOM 中出现网页链接或“链接放在下面”等链接引导、固定宽字幕框、字幕 `width:100%` / 大 `min-width`、横屏字幕多行 / 竖屏字幕超过两行、字幕脱离安全区、安全区为不会出现的额外行数预留过大空间、前景元素侵入安全区、字幕切换偏离音频 > 0.2 秒、素材错比例容器、错误 `object-fit: cover` 裁切、`object-fit: contain` 暴露容器底色 / letterbox、普通素材 `width + max-height/height`、未标注 `viewport_reveal` 却使用 `overflow:hidden` 裁素材、cross-aspect 完整适配显示未通过 `MW >= k * CW` / `MH >= k * CH` 相对阈值却仍缩成窄条、素材可见框 / 底色 / padding / shadow / glow、catalog 素材跨 scene 复用（`media_continuation` 连续同素材除外）、`no_match` 借用素材、前景覆盖素材关键区域、video overlay 长段落 / 整行遮罩 / 遮挡主体动作或 UI 关键区域、portrait / vertical 输出中多元素 / 结构型 role 直接复用横屏 horizontal flow / side rail / multi-column grid 导致文本窄列、过小字号、多次换行或内容不可读、`radial-gradient` spotlight / ambient orb / localized glow、廉价扫描线 / sweep，以及所有 entrance tween blanket `immediateRender:false`。若使用 `gsap.from()` 做入场动画，应保留默认 immediate render，或用 CSS 初始态兜底。
+6. **Forbidden pattern scan**：扫描缺失 `transcribe/subtitle-units.json`、字幕直接使用 raw ASR text、生成文本 / 字幕 / DOM 中出现网页链接或“链接放在下面”等链接引导、固定宽字幕框、字幕 `width:100%` / 大 `min-width`、字幕超过 `T-SAFE` 最大行数、字幕脱离安全区、安全区为不会出现的额外行数预留过大空间、前景元素侵入安全区、字幕切换偏离音频超过 `T-SUB`、素材错比例容器、错误 `object-fit: cover` 裁切、`object-fit: contain` 暴露容器底色 / letterbox、普通素材 `width + max-height/height`、未标注 `viewport_reveal` 却使用 `overflow:hidden` 裁素材、cross-aspect 完整适配显示未通过 `T-FIT` 却仍缩成窄条、素材可见框 / 底色 / padding / shadow / glow、catalog 素材跨 scene 复用（`media_continuation` 连续同素材除外）、`no_match` 借用素材、前景覆盖素材关键区域、video overlay 长段落 / 整行遮罩 / 遮挡主体动作或 UI 关键区域、portrait / vertical 输出中多元素 / 结构型 role 直接复用横屏 horizontal flow、side rail 或 multi-column grid 导致文本窄列、过小字号、多次换行或内容不可读、`radial-gradient` spotlight / ambient orb / localized glow、廉价扫描线 / sweep，以及所有 entrance tween blanket `immediateRender:false`。若使用 `gsap.from()` 做入场动画，应保留默认 immediate render，或用 CSS 初始态兜底。
 7. **Structured text-plan coverage**：若存在 `scene-text-plan.json`，逐 scene 核对 `visual_text_units`，记录每个 `unit_id` 的实现 / 降级 / 跳过状态、采用的布局呈现方式、以及是否与素材分离；禁止把 `process_flow`、`architecture_diagram`、`network_graph`、`timeline`、`comparison_matrix` 等结构型 unit 简单退化成一整段普通文本，除非 `composition/DESIGN.md` 明确说明受素材尺寸、字幕安全区或 overlap 约束。
 8. **Customized rules coverage**：逐条读取 `composition-handoff.md` 的 `User-derived Customized Rules`，记录每条如何被布局 / 动画 / QA 方案覆盖；冲突按 Scope and Required References 处理。
 
 ### Phase 8.4 — HTML-to-video Render Rules
 
-- render 前必须先通过 Phase 8.3 self-audit。
+- render 前必须先通过 Phase 8.3 self-audit：`composition/layout-geometry-report.json` 存在且 `verdict` 为 `pass`。
 - Phase 8.3 pass 后，必须运行 `hyperframes lint` 和 `hyperframes inspect`，且二者都无错误。
 - render 必须使用 `--workers 1`。
-- 迭代直到 `composition/renders/final.mp4` 存在，且固定产物齐全：`composition/index.html`、`composition/DESIGN.md`、`composition/renders/final.mp4`。
+- 迭代直到 `composition/renders/final.mp4` 存在，且固定产物齐全：`composition/index.html`、`composition/DESIGN.md`、`composition/layout-geometry-report.json`、`composition/renders/final.mp4`。
 
 ### Phase 8.5 — Sanity Check Rules
 
@@ -106,16 +106,16 @@ ffmpeg -y -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 
 抽样 `N = max(5, ceil(total_seconds / 30))` 张帧。重渲轮只从 affected scenes 覆盖帧抽样，`global` 字幕问题除外。每帧用 `scripts/vision-analyze.py` 检查：
 
-1. 图片 / 视频清晰、关键信息完整，放大不超过原始短边 2x。
+1. 图片 / 视频清晰、关键信息完整，scale factor 符合 `T-MEDIA`。
 2. 元素不越界、不截断。
 3. 同时显示的元素不重叠，前景元素不压素材关键区域；`video_first` 半透明文本框不得遮挡主体动作、UI 关键区域、人物脸部或 `focal_region`。
 4. DOM 扁平、颜色对比度达标。
-5. 字号比 <= 3。
+5. 字号比符合 `T-FONT`。
 6. 内容区无 >10% 纯空白。
 7. 字幕安全区无非字幕前景元素侵入。
 8. 素材无 letterbox / pillarbox。
 9. 无扫描线 / sweep / 进度条等廉价动效覆盖层。
-10. 底部字幕位置稳定、水平居中、位于安全区内，文本来自 `transcribe/subtitle-units.json`，切换与音频偏移 <= 0.2 秒。
+10. 底部字幕位置稳定、水平居中、位于安全区内，文本来自 `transcribe/subtitle-units.json`，切换与音频偏移不超过 `T-SUB`。
 11. 横屏字幕单行；竖屏 / 竖向字幕最多两行、无第三行；遮罩 shrink-to-fit，无固定宽度 / 大 `min-width` / 整行遮罩；超出该朝向最大行数时拆分 calibrated units，不靠缩字号或多塞行。
 12. 素材无可见 border / padding / 卡片底 / shadow / glow，且无容器露底 / letterbox。
 13. 有素材 scene 的素材占内容区主体；`media_first` / `video_first` 主素材没有被标题、信息块或固定模板不必要地压小。
@@ -123,9 +123,9 @@ ffmpeg -y -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 15. `viewport_reveal` 的 start / mid / end 必须覆盖 catalog 记录的 `focal_region`、关键区域或避开 avoid-region；没有未标注的 accidental clipping。若 reveal 放大了素材但错过重点区域，仍记为失败。
 16. `media_continuation` 中同一主素材稳定显示，scene 之间没有过长空档或突兀跳变。
 17. layout 不像固定模板硬套，能体现素材横竖 / 方形 / 极端比例、图片 / 视频、输出朝向和 `visual_role` 差异；portrait / vertical 中按 role 检查：流程 / 时间线 / 状态机为纵向节点链，表格 / 图表 / 榜单为分页、分时或主项高亮，列表 / 指标 / 功能项为纵向卡片或最多 2 列，架构 / 网络图为 focus window / primary path；不得横向窄列。
-18. cross-aspect scene 中，横屏里的竖图 / 竖视频不得缩成小邮票或横向拉伸；tall / ultra-tall 素材默认使用 key-region-aware `viewport_reveal`。完整适配显示时，横屏竖图 / 竖视频必须满足 `MH >= 0.78 * CH` 且 `MW >= 0.40 * CW`，竖屏 / 竖向里的 tall media 必须满足 `MW >= 0.70 * CW` 且 `MH >= 0.45 * CH`；竖屏里的横图 / 横视频不得缩成不可读细条或裁掉关键内容；无意义纯空白不得超过 R14 约束，空白应用于信息区、轻量结构、主项高亮、分页 / 分时条目或素材 reveal。
-19. 横屏 `media_first` 中 16:9 / wide image 不得因固定 max-width 只占约半屏高度；若主媒体低于内容区高度约 60%，应放大媒体、减少文本、转 timed callout 或拆 scene。素材 rendered size 的 scale factor 应在 0.8x-1.5x；超出范围时必须作为 finding 或在 `composition/DESIGN.md` 中有明确例外说明。
-20. 顶部 header / eyebrow 不得在承担主信息时过小或贴近 viewport 顶边；大型容器内部不得过空；主要元素在水平 / 垂直方向上不得明显不均；任一内容列 / 区域不得内容单边贴边、外侧留大空白或列内 occupancy 过低；竖图完整适配显示留出的 side panel 必须有信息填充且通过横向 occupancy >= 60%、纵向 occupancy >= 55% 检查。若有大留白，必须属于明确的 hero / quote / title-card 设计。
+18. cross-aspect scene 中，横屏里的竖向素材不得缩成小邮票或横向拉伸；tall / ultra-tall 素材默认使用 key-region-aware `viewport_reveal`。完整适配显示必须满足 `T-FIT`；竖屏里的横图 / 横视频不得缩成不可读细条或裁掉关键内容；无意义纯空白不得超过 R14 约束，空白应用于信息区、轻量结构、主项高亮、分页 / 分时条目或素材 reveal。
+19. 横屏 `media_first` 中 16:9 / wide image 不得因固定 max-width 只占约半屏高度；主媒体高度下限与低于阈值必须改布局的条件见 `T-MEDIA`，应放大媒体、减少文本、转 timed callout 或拆 scene。素材 rendered size 的 scale factor 应在 `T-MEDIA` 范围；超出范围时必须作为 finding 并通过替换素材或调整布局修复。
+20. 顶部 header / eyebrow 不得在承担主信息时过小或贴近 viewport 顶边；大型容器内部不得过空；主要元素在水平 / 垂直方向上不得明显不均；任一内容列 / 区域不得内容单边贴边、外侧留大空白或列内 occupancy 过低；竖向素材完整适配显示留出的 side panel 必须有信息填充且通过 `T-GEO` 的 column occupancy 检查。若有大留白，必须属于明确的 hero / quote / title-card 设计。
 21. 承担主信息的文本不得低于对应文本类型字号下限；标题 / callout 不得出现第二行 1-2 个字、孤立英文 token 或孤立标点的 orphan line / widow word。
 22. 非素材文字没有大段提前出现，也没有 text beat 累积堆满屏幕；标题 / header / eyebrow 与 visual text unit 文本不重复。
 23. 相邻 scene 有明确转场；每个 scene 通过素材动效或多元素随旁白逐个出现等内容驱动变化推进，无整段完全静止无变化的画面。
@@ -193,7 +193,7 @@ ffmpeg -y -i {work_dir}/{topic_name}/composition/renders/final.mp4 \
 | R5-R6 | 为每个 scene 写稳定 data 属性；按 `scene-material-suggestions.json`（如存在）分配 `material_ref` / `material_refs`；`media_continuation` group 写 `data-continuation-group` / index | 检查 scene inventory、素材引用、`no_match` 处理、continuation group 是否显式声明且相邻 | 检测素材跨 scene 复用；声明过的 `media_continuation` group 作为合法例外；用 scene data 反查 finding |
 | R7 | authoring 时控制 scene 时长、微 scene、合并 scene 和 text beat 刷新 | `DESIGN.md` 记录时长设计 | 每轮解析 `data-scene-start/end` |
 | R8 | 按 scene 输入、素材、`layout_role`、`visual_role × orientation` 选择 role-specific layout | Scene Visual Audit；DOM geometry gate 检查 union、gutter、gap、occupancy、视觉重心 | `layout_geometry_fails` + spot-check 检查 layout / orientation / cross-aspect / 结构型文本 |
-| R9-R12 | 用 catalog 尺寸设置普通 wrapper aspect-ratio；素材填满容器且无可见框；仅 `viewport_reveal` 用 scene-ratio reveal viewport + 内层原比例素材；确保素材占主体、清晰完整、media\\_first/video\\_first 最大化可视区域、cross-aspect 素材通过 `MW` / `MH` 阈值或切换 `viewport_reveal` / `detail_callout` / `media_continuation`、scale factor 0.8x-1.5x、video overlay 不遮挡关键区域；元素不越界不重叠 | 扫描错比例容器、错误 object-fit、普通素材 `width + max-height/height`、未标注 reveal 的 overflow clipping、完整适配显示竖图未达阈值仍缩成窄条、素材容器露底；Scene Visual Audit 检查 media dominance、主媒体是否被压小、rendered / source scale factor、`MW / CW`、`MH / CH`、video overlay bounds / focal\\_region 避让、comparison 可读性、bounds、overlap | 抽帧检查裁切、变形、letterbox / pillarbox / 容器露底 / 素材框感、画面清晰度、放大比例、cross-aspect 可读宽高、重叠、越界、视频浮层遮挡和多素材可读性 |
+| R9-R12 | 用 catalog 尺寸设置普通 wrapper aspect-ratio；素材填满容器且无可见框；仅 `viewport_reveal` 用 scene-ratio reveal viewport + 内层原比例素材；确保素材占主体、清晰完整、media\\_first/video\\_first 最大化可视区域、cross-aspect 素材通过 `T-FIT` 或切换 `viewport_reveal` / `detail_callout` / `media_continuation`、scale factor 落在 `T-MEDIA`、video overlay 不遮挡关键区域；元素不越界不重叠 | 扫描错比例容器、错误 object-fit、普通素材 `width + max-height/height`、未标注 reveal 的 overflow clipping、完整适配显示竖图未达 `T-FIT` 仍缩成窄条、素材容器露底；Scene Visual Audit 检查 media dominance、主媒体是否被压小、rendered / source scale factor、`MW / CW`、`MH / CH`、video overlay bounds / focal\\_region 避让、comparison 可读性、bounds、overlap | 抽帧检查裁切、变形、letterbox / pillarbox / 容器露底 / 素材框感、画面清晰度、放大比例、cross-aspect 可读宽高、重叠、越界、视频浮层遮挡和多素材可读性 |
 | R13-R14 | 分栏均衡；区域填满或对称留白；禁用 glow 模式 | Scene Visual Audit；DOM geometry gate 检查 coverage / gutter / center / occupancy | `layout_geometry_fails` + spot-check 检查填充不足、挤中间、过大 gutter、容器过空、单边空白 |
 | R15-R16 | 布局计算排除字幕安全区；使用单个全局字幕容器和 calibrated subtitle units；横屏单行、竖屏最多两行 | 检查安全区、字幕 CSS、按朝向的最大行数与行高、遮罩宽度、`subtitle-units.json` 来源、切换 timing 和非字幕元素侵入 | 抽帧检查字幕位置、行数、遮罩宽度、遮挡和 timing |
 | R17 | 字号 / 对比度达标、标题无孤行、DOM 嵌套受限 | Typography check；DOM geometry gate 检查主信息字号 | `layout_geometry_fails` 覆盖 undersized text；spot-check 字号 / 孤行 / 对比度 |
