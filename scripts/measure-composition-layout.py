@@ -73,7 +73,7 @@ RATIO_TALL_MIN = 0.50
 NEAR_OUTPUT_RATIO_TOL = 0.15
 # T-FIT complete-fit rendered-size thresholds.
 FIT_LANDSCAPE_MIN_MH = 0.78
-FIT_PORTRAIT_MIN_MW = 0.70
+FIT_PORTRAIT_MIN_MW = 0.80
 FIT_PORTRAIT_MIN_MH = 0.45
 # T-REVEAL viewport window ranges (fraction of content area) per output orientation.
 REVEAL_LANDSCAPE_W = (0.50, 0.70)
@@ -574,8 +574,9 @@ def analyze_scene(
         is_vertical = bucket in ('tall', 'ultra-tall')
         strategy = str(scene.get('cross_aspect_strategy') or '').strip().lower()
         layout_role = str(scene.get('layout_role') or '').strip().lower()
-        in_reveal = bool(media.get('in_reveal')) or layout_role == 'viewport_reveal'
-        alt_strategy = strategy in ('viewport_reveal', 'detail_callout', 'media_continuation', 'replace_material')
+        in_reveal = bool(media.get('in_reveal'))
+        declares_reveal = layout_role == 'viewport_reveal' or strategy == 'viewport_reveal'
+        alt_strategy = strategy in ('detail_callout', 'media_continuation', 'replace_material')
         rendered_mw = media.get('rendered_width', 0) or 0
         rendered_mh = media.get('rendered_height', 0) or 0
         is_landscape_output = viewport[0] >= viewport[1]
@@ -593,6 +594,19 @@ def analyze_scene(
                     'selector': media.get('selector'),
                     'ratio_bucket': bucket,
                     'source_aspect_ratio': round(r, 3) if r is not None else None,
+                    'layout_role': layout_role or None,
+                    'cross_aspect_strategy': strategy or None,
+                },
+            )
+
+        if declares_reveal and not in_reveal:
+            add_finding(
+                findings,
+                scene_id,
+                'reveal_window_out_of_bounds',
+                'Scene declares viewport_reveal but the media is not inside a data-reveal-viewport container.',
+                {
+                    'selector': media.get('selector'),
                     'layout_role': layout_role or None,
                     'cross_aspect_strategy': strategy or None,
                 },

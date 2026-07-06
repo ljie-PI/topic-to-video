@@ -1,6 +1,6 @@
 # Composition Stage Protocol
 
-`references/composition-rules.md` 是硬约束来源。规则阈值（`T-SUB` / `T-DUR` / `T-REVEAL` / `T-FIT` / `T-MEDIA` / `T-GEO` / `T-FONT` / `T-SAFE` / `T-MOTION`）统一定义在 `references/composition-rules.md` 的 `Shared Thresholds`；本文件引用标签，不重述规则阈值。
+`references/composition-rules.md` 是硬约束来源。规则阈值统一定义在 `references/composition-rules.md` 的 `Shared Thresholds`：`T-SUB` / `T-DUR` / `T-RATIO` / `T-REVEAL` / `T-FIT` / `T-MEDIA` / `T-GEO` / `T-FONT` / `T-SAFE` / `T-MOTION`。本文件引用标签，不重述规则阈值。
 
 ## Stage Protocols
 

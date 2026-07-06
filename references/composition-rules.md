@@ -50,12 +50,12 @@ authoring 前先通读本索引，逐条对照；每条 MUST / MUST-NOT 的完�
 - **T-DUR — scene 时长**：普通 scene 目标 `5-8 秒`；超过 `8 秒` 必须拆分；避免连续多个 `< 3 秒` 微 scene。
 - **T-RATIO — 素材宽高比分桶**：`r = 源宽 / 源高`，源尺寸取自 `material-catalog.json`。`ultra-wide` / `strip` `r >= 2.4`；`wide` `1.20 <= r < 2.4`；`square-ish` `0.90 <= r < 1.20`；`tall` `0.50 <= r < 0.90`；`ultra-tall` `r < 0.50`。竖向素材 = `tall` + `ultra-tall`，`r < 0.90`。
 - **T-REVEAL — `viewport_reveal` 窗口尺寸**：
-  - 横屏竖向素材 reveal 窗口：宽 `0.5-0.7 * CW`、高 `0.75-0.90 * CH`。
-  - 竖屏竖向素材 reveal 窗口：宽 `0.8-1.0 * CW`、高 `0.5-0.8 * CH`。
+  - 横屏 reveal 窗口：宽 `0.5-0.7 * CW`、高 `0.75-0.90 * CH`。
+  - 竖屏 / 竖向 reveal 窗口：宽 `0.8-1.0 * CW`、高 `0.5-0.8 * CH`。
 - **T-FIT — cross-aspect 完整适配显示 `full_fit`**：
-  - `full_fit` 只用于 `square-ish` 或接近输出比例的素材。接近输出比例指 `|r - r_out| / r_out <= 0.15`；横屏 `r_out ≈ 1.78`，竖向 1080x1440 `r_out ≈ 0.75`，竖屏 1080x1920 `r_out ≈ 0.5625`。
+  - `full_fit` 只用于 `square-ish` 或接近输出比例的素材。接近输出比例：`|r - r_out| / r_out <= 0.15`，`r_out = 输出宽 / 输出高`。
   - `tall` / `ultra-tall` 只有接近输出比例时可 `full_fit`。其他竖向素材 MUST-NOT 缩宽度硬塞，必须改 `viewport_reveal` / `detail_callout` / `media_continuation` / 替换素材。
-  - **达标尺寸**：横屏 `MH >= 0.78 * CH`；竖屏 / 竖向 `MW >= 0.70 * CW` 且 `MH >= 0.45 * CH`。
+  - **达标尺寸**：横屏 `MH >= 0.78 * CH`；竖屏 / 竖向 `MW >= 0.80 * CW` 且 `MH >= 0.45 * CH`。
   - **禁止窄条**：full_fit 后 `MW` 由素材原始比例自然推导，剩余侧向 / 上下空间 MUST 构成通过 `T-GEO` column occupancy 的信息区，不得留裸 gutter，也不得把主素材缩成不可读窄条。
 - **T-MEDIA — media dominance / 缩放**：
   - 有素材 scene，素材占内容区主体，通常 `>= 50%`。
