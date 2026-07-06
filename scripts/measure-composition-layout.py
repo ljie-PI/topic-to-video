@@ -51,6 +51,9 @@ FINDING_ORDER = {
     'underfilled_container': 6,
     'uneven_vertical_distribution': 7,
     'undersized_media': 8,
+    'tall_media_not_revealed': 9,
+    'reveal_window_out_of_bounds': 10,
+    'fit_below_threshold': 11,
 }
 
 MAX_INTERIOR_VOID_RATIO = 0.15
@@ -60,6 +63,24 @@ CONTAINER_SHELL_AREA_RATIO = 0.85
 MIN_LANDSCAPE_WIDE_MEDIA_WIDTH = 0.90
 WIDE_MEDIA_MIN_ASPECT = 1.3
 MAX_MEDIA_UPSCALE = 1.5
+
+# T-RATIO aspect-ratio buckets (r = source width / source height).
+RATIO_ULTRA_WIDE_MIN = 2.4
+RATIO_WIDE_MIN = 1.20
+RATIO_SQUARE_MIN = 0.90
+RATIO_TALL_MIN = 0.50
+# full_fit exception (b): source ratio within this tolerance of the output ratio.
+NEAR_OUTPUT_RATIO_TOL = 0.15
+# T-FIT complete-fit rendered-size thresholds.
+FIT_LANDSCAPE_MIN_MH = 0.78
+FIT_PORTRAIT_MIN_MW = 0.70
+FIT_PORTRAIT_MIN_MH = 0.45
+# T-REVEAL viewport window ranges (fraction of content area) per output orientation.
+REVEAL_LANDSCAPE_W = (0.50, 0.70)
+REVEAL_LANDSCAPE_H = (0.75, 0.90)
+REVEAL_PORTRAIT_W = (0.80, 1.00)
+REVEAL_PORTRAIT_H = (0.50, 0.80)
+REVEAL_TOLERANCE = 0.03
 
 
 class ArgumentParser(argparse.ArgumentParser):
@@ -235,12 +256,92 @@ def video_source_width(src: Optional[str], video_sources: Dict[str, Tuple[int, i
     return dims[0] if dims else None
 
 
+def load_material_sources(composition_dir: Path) -> Dict[str, Tuple[int, int]]:
+    """Map media basename -> (width, height) from material-catalog.json (images + videos).
+
+    Used to classify a rendered media's *source* aspect ratio (T-RATIO bucket)
+    independently of its clipped/rendered box, so authors cannot dodge the gate
+    by mislabeling data-ratio-bucket.
+    """
+    sources: Dict[str, Tuple[int, int]] = {}
+    candidates = [
+        composition_dir / 'material-catalog.json',
+        composition_dir.parent / 'material-catalog.json',
+        composition_dir.parent.parent / 'material-catalog.json',
+    ]
+    catalog_path = next((p for p in candidates if p.is_file()), None)
+    if not catalog_path:
+        return sources
+    try:
+        data = json.loads(catalog_path.read_text(encoding='utf-8'))
+    except Exception:
+        return sources
+    entries = data.get('entries', []) if isinstance(data, dict) else []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        for group in ('images', 'videos'):
+            for item in entry.get(group, []) or []:
+                if not isinstance(item, dict):
+                    continue
+                w, h = item.get('width'), item.get('height')
+                if not w or not h:
+                    continue
+                for key in (item.get('local_path'), item.get('clip_path'), item.get('src'), item.get('id')):
+                    if key:
+                        sources[os.path.basename(str(key))] = (int(w), int(h))
+    return sources
+
+
+def source_dims(src: Optional[str], material_sources: Optional[Dict[str, Tuple[int, int]]]) -> Optional[Tuple[int, int]]:
+    if not src or not material_sources:
+        return None
+    base = os.path.basename(src.split('?')[0])
+    return material_sources.get(base)
+
+
+def classify_ratio_bucket(width: float, height: float) -> Optional[str]:
+    """Classify a source aspect ratio into a T-RATIO bucket."""
+    if not width or not height or height <= 0:
+        return None
+    r = width / height
+    if r >= RATIO_ULTRA_WIDE_MIN:
+        return 'ultra-wide'
+    if r >= RATIO_WIDE_MIN:
+        return 'wide'
+    if r >= RATIO_SQUARE_MIN:
+        return 'square-ish'
+    if r >= RATIO_TALL_MIN:
+        return 'tall'
+    return 'ultra-tall'
+
+
+def bucket_from_attr(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    normalized = str(value).strip().lower().replace('_', '-')
+    valid = {'wide', 'tall', 'ultra-tall', 'square-ish', 'ultra-wide', 'strip'}
+    return normalized if normalized in valid else None
+
+
+def full_fit_allowed(r: Optional[float], viewport: Tuple[int, int]) -> bool:
+    """T-FIT full_fit exception: square-ish, or source ratio near the output ratio."""
+    if r is None:
+        return False
+    if RATIO_SQUARE_MIN <= r < RATIO_WIDE_MIN:
+        return True
+    r_out = viewport[0] / max(viewport[1], 1)
+    return abs(r - r_out) / r_out <= NEAR_OUTPUT_RATIO_TOL
+
+
 def analyze_scene(
     scene: Dict[str, Any],
     viewport: Tuple[int, int],
     video_sources: Optional[Dict[str, Tuple[int, int]]] = None,
+    material_sources: Optional[Dict[str, Tuple[int, int]]] = None,
 ) -> List[Dict[str, Any]]:
     video_sources = video_sources or {}
+    material_sources = material_sources or {}
     scene_id = scene['scene_id']
     findings: List[Dict[str, Any]] = []
     content = scene['content_area']
@@ -465,6 +566,90 @@ def analyze_scene(
                     'source_width': source_w,
                 },
             )
+
+    if not allows_whitespace and media:
+        src_dims = source_dims(media.get('src'), material_sources)
+        r = (src_dims[0] / src_dims[1]) if src_dims and src_dims[1] else None
+        bucket = classify_ratio_bucket(*src_dims) if src_dims else bucket_from_attr(media.get('ratio_bucket'))
+        is_vertical = bucket in ('tall', 'ultra-tall')
+        strategy = str(scene.get('cross_aspect_strategy') or '').strip().lower()
+        layout_role = str(scene.get('layout_role') or '').strip().lower()
+        in_reveal = bool(media.get('in_reveal')) or layout_role == 'viewport_reveal'
+        alt_strategy = strategy in ('viewport_reveal', 'detail_callout', 'media_continuation', 'replace_material')
+        rendered_mw = media.get('rendered_width', 0) or 0
+        rendered_mh = media.get('rendered_height', 0) or 0
+        is_landscape_output = viewport[0] >= viewport[1]
+        fit_eligible = full_fit_allowed(r, viewport)
+
+        # Tall/ultra-tall vertical media must use viewport_reveal (or an allowed
+        # alternate strategy). Plain full-fit is only allowed for square-ish /
+        # near-output-ratio media, which is not tall/ultra-tall.
+        if is_vertical and not in_reveal and not alt_strategy and not fit_eligible:
+            add_finding(
+                findings,
+                scene_id,
+                'tall_media_not_revealed',
+                'Tall/ultra-tall vertical media is shown full-fit but is neither square-ish nor near the output ratio; it must use viewport_reveal.',
+                {
+                    'selector': media.get('selector'),
+                    'ratio_bucket': bucket,
+                    'source_aspect_ratio': round(r, 3) if r is not None else None,
+                    'layout_role': layout_role or None,
+                    'cross_aspect_strategy': strategy or None,
+                },
+            )
+
+        # Cross-aspect full-fit media must meet the T-FIT rendered-size thresholds.
+        doing_full_fit = strategy == 'full_fit' or (
+            is_vertical and not in_reveal and not alt_strategy and fit_eligible
+        )
+        if doing_full_fit and rendered_mh:
+            mh_ratio = rendered_mh / ch
+            mw_ratio = rendered_mw / cw
+            fails_fit = (
+                mh_ratio < FIT_LANDSCAPE_MIN_MH
+                if is_landscape_output
+                else (mw_ratio < FIT_PORTRAIT_MIN_MW or mh_ratio < FIT_PORTRAIT_MIN_MH)
+            )
+            if fails_fit:
+                add_finding(
+                    findings,
+                    scene_id,
+                    'fit_below_threshold',
+                    'Cross-aspect full-fit media is below the T-FIT readable-size threshold.',
+                    {
+                        'selector': media.get('selector'),
+                        'mw_ratio': round(mw_ratio, 3),
+                        'mh_ratio': round(mh_ratio, 3),
+                        'output': 'landscape' if is_landscape_output else 'portrait',
+                    },
+                )
+
+        # viewport_reveal window must fall within T-REVEAL for the output orientation.
+        reveal_box = media.get('reveal_box')
+        if in_reveal and isinstance(reveal_box, dict) and reveal_box.get('width') and reveal_box.get('height'):
+            rw = reveal_box['width'] / cw
+            rh = reveal_box['height'] / ch
+            if is_landscape_output:
+                (wlo, whi), (hlo, hhi) = REVEAL_LANDSCAPE_W, REVEAL_LANDSCAPE_H
+            else:
+                (wlo, whi), (hlo, hhi) = REVEAL_PORTRAIT_W, REVEAL_PORTRAIT_H
+            tol = REVEAL_TOLERANCE
+            if rw < wlo - tol or rw > whi + tol or rh < hlo - tol or rh > hhi + tol:
+                add_finding(
+                    findings,
+                    scene_id,
+                    'reveal_window_out_of_bounds',
+                    'viewport_reveal window size is outside the T-REVEAL range for this output orientation.',
+                    {
+                        'selector': media.get('selector'),
+                        'reveal_width_ratio': round(rw, 3),
+                        'reveal_height_ratio': round(rh, 3),
+                        'expected_width': [wlo, whi],
+                        'expected_height': [hlo, hhi],
+                        'output': 'landscape' if is_landscape_output else 'portrait',
+                    },
+                )
 
     return findings
 
@@ -792,12 +977,23 @@ async ({ sceneIds }) => {
       const source = best.el.querySelector('source');
       if (source) src = source.getAttribute('src') || '';
     }
+    const revealEl = best.el.closest('[data-reveal-viewport],[data-layout-role="viewport_reveal"]');
+    let revealBox = null;
+    if (revealEl) {
+      const revealRect = revealEl.getBoundingClientRect();
+      if (hasBox(revealRect)) revealBox = { width: revealRect.width, height: revealRect.height };
+    }
+    const bucketEl = best.el.closest('[data-ratio-bucket]');
+    const ratioBucket = best.el.getAttribute('data-ratio-bucket') || (bucketEl ? bucketEl.getAttribute('data-ratio-bucket') : '') || '';
     return {
       selector: selectorFor(best.el),
       kind: isVideo ? 'video' : (tag === 'img' || tag === 'picture' ? 'image' : (best.el.tagName ? tag : 'background')),
       src,
       rendered_width: best.rect.width,
       rendered_height: best.rect.height,
+      ratio_bucket: ratioBucket,
+      in_reveal: !!revealEl,
+      reveal_box: revealBox,
     };
   }
 
@@ -870,6 +1066,8 @@ async ({ sceneIds }) => {
       end,
       peak_time: peakTime,
       layout_exception: layoutException(sceneRoot),
+      layout_role: (sceneRoot.getAttribute('data-layout-role') || '').toLowerCase(),
+      cross_aspect_strategy: (sceneRoot.getAttribute('data-cross-aspect-strategy') || '').toLowerCase(),
       has_material: hasMaterial,
       content_area: contentArea,
       content_union: contentUnion,
@@ -963,7 +1161,7 @@ def measure_with_playwright(
     return measured
 
 
-def build_report(measured: Dict[str, Any], viewport: Tuple[int, int], requested_scene_ids: Optional[List[str]], video_sources: Optional[Dict[str, Tuple[int, int]]] = None) -> Dict[str, Any]:
+def build_report(measured: Dict[str, Any], viewport: Tuple[int, int], requested_scene_ids: Optional[List[str]], video_sources: Optional[Dict[str, Tuple[int, int]]] = None, material_sources: Optional[Dict[str, Tuple[int, int]]] = None) -> Dict[str, Any]:
     findings: List[Dict[str, Any]] = []
     measured_scene_ids = {scene.get('scene_id') for scene in measured.get('scenes', [])}
     missing_scene_ids = [scene_id for scene_id in requested_scene_ids or [] if scene_id not in measured_scene_ids]
@@ -984,7 +1182,7 @@ def build_report(measured: Dict[str, Any], viewport: Tuple[int, int], requested_
             {'missing_scene_ids': missing_scene_ids},
         )
     for scene in measured.get('scenes', []):
-        findings.extend(analyze_scene(scene, viewport, video_sources))
+        findings.extend(analyze_scene(scene, viewport, video_sources, material_sources))
 
     findings.sort(key=lambda item: (item.get('scene_id', ''), FINDING_ORDER.get(item.get('issue', ''), 99)))
     scene_order = [scene.get('scene_id') for scene in measured.get('scenes', []) if scene.get('scene_id')]
@@ -1032,7 +1230,8 @@ def main() -> None:
             scene_ids=scene_ids,
         )
         video_sources = load_video_sources(composition_dir)
-        report = build_report(measured, viewport, scene_ids, video_sources)
+        material_sources = load_material_sources(composition_dir)
+        report = build_report(measured, viewport, scene_ids, video_sources, material_sources)
         if args.output:
             output_path = Path(args.output).expanduser().resolve()
             output_path.parent.mkdir(parents=True, exist_ok=True)
