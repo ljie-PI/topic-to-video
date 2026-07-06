@@ -581,15 +581,14 @@ def analyze_scene(
         is_landscape_output = viewport[0] >= viewport[1]
         fit_eligible = full_fit_allowed(r, viewport)
 
-        # Tall/ultra-tall vertical media must use viewport_reveal (or an allowed
-        # alternate strategy). Plain full-fit is only allowed for square-ish /
-        # near-output-ratio media, which is not tall/ultra-tall.
+        # Tall/ultra-tall vertical media must use reveal or another declared
+        # cross-aspect strategy.
         if is_vertical and not in_reveal and not alt_strategy and not fit_eligible:
             add_finding(
                 findings,
                 scene_id,
                 'tall_media_not_revealed',
-                'Tall/ultra-tall vertical media is shown full-fit but is neither square-ish nor near the output ratio; it must use viewport_reveal.',
+                'Tall/ultra-tall vertical media is shown full-fit without a reveal or alternate cross-aspect strategy.',
                 {
                     'selector': media.get('selector'),
                     'ratio_bucket': bucket,
@@ -977,7 +976,7 @@ async ({ sceneIds }) => {
       const source = best.el.querySelector('source');
       if (source) src = source.getAttribute('src') || '';
     }
-    const revealEl = best.el.closest('[data-reveal-viewport],[data-layout-role="viewport_reveal"]');
+    const revealEl = best.el.closest('[data-reveal-viewport]');
     let revealBox = null;
     if (revealEl) {
       const revealRect = revealEl.getBoundingClientRect();
