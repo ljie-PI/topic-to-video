@@ -1,8 +1,6 @@
 ---
-
 name: topic-to-video
 description: 当用户提供一个主题、文章 URL 或文本，并请求做一段有解说的视频（通常 3-10 分钟）时使用。本 skill 拥有上游 pipeline —— 主题调研、可选的视觉素材抓取、素材理解、解说撰写、用本地 Qwen3-TTS 做克隆音色 TTS（DashScope CosyVoice 作 fallback）、用本地 Qwen3-ASR + ForcedAligner 拿词级 ASR 时间戳（DashScope Paraformer 作 fallback）、确定性字体预置，以及一份精简的 HyperFrames composition handoff。HyperFrames composition、scene 设计、HTML/CSS、animation/effect skills、lint/inspect 与渲染都委派给 hyperframes 和 hyperframes-cli；Phase 8 sub-agent 可按需使用 gsap、animejs、waapi、css-animations、lottie、three、typegpu，或用 tailwind 做静态布局 / 样式支持。
-
 ---
 
 # Topic → Video（HyperFrames + Qwen3-TTS 工作流）
