@@ -54,5 +54,9 @@
 
 | 风格 | 参考文件 | 字体 | 适用场景 |
 |------|---------|------|---------|
-| **Rosé Pine Dawn**（默认建议） | `references/design-dawn.md` | Caveat、PatrickHand、MaShanZheng、LongCang | 温暖、手绘风的讲解视频 |
-| **Rosé Pine Moon** | `references/design-moon.md` | NotoSansSC、IBMPlexMono | 深色、严肃的技术 / 编辑向内容 |
+| **Rosé Pine Dawn**（默认建议） | `references/design-dawn.md` | Caveat、PatrickHand、MaShanZheng、NotoSansSC | 温暖、手绘风的讲解视频 |
+| **Rosé Pine Moon** | `references/design-moon.md` | NotoSansSC、IBMPlexMono | 深色、严肃的编辑向内容 |
+| **GitHub** | `references/design-github.md` | NotoSansSC、IBMPlexMono | GitHub trending / repo launch / 开源项目介绍 |
+| **Product Hunt** | `references/design-producthunt.md` | NotoSansSC、IBMPlexMono | Product Hunt 周榜 / SaaS launch / 新产品发布 |
+| **News（新闻洞察）** | `references/design-news.md` | NotoSansSC、IBMPlexMono | 白底 + 品牌紫，可信编辑风的新闻解读 / 时事分析 / 深度报道 |
+| **Tech（技术讲解）** | `references/design-tech.md` | NotoSansSC、IBMPlexMono | 暖奶油 + 纯等宽 + 终端 manpage 感的技术讲解 / CLI / 命令行原理 |
