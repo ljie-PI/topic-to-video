@@ -46,6 +46,8 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前物化这些文件，
 - `references/design-moon.md` —— 深色技术 / 编辑氛围参考
 - `references/design-github.md` —— GitHub trending / repo launch / open source 项目参考
 - `references/design-producthunt.md` —— Product Hunt 周榜 / SaaS launch / 新产品发布参考
+- `references/design-news.md` —— 新闻解读 / 时事分析 / 深度报道 / 媒体洞察参考（白底 + 品牌紫）
+- `references/design-tech.md` —— 技术讲解 / CLI / 终端工具 / 命令行原理参考（暖奶油 + 纯等宽 + 终端 TUI）
 - `references/palettes.md` —— 备选的 mood / palette 路由
 
 若 Required References 未指定 design 文件，这些参考只是 style hint，不是实现规范。若已指定 design 文件，以 design 文件中的具体数值为准；Style Hint 的自由格式描述退为补充说明。

@@ -56,3 +56,5 @@
 |------|---------|------|---------|
 | **Rosé Pine Dawn**（默认建议） | `references/design-dawn.md` | Caveat、PatrickHand、MaShanZheng、LongCang | 温暖、手绘风的讲解视频 |
 | **Rosé Pine Moon** | `references/design-moon.md` | NotoSansSC、IBMPlexMono | 深色、严肃的技术 / 编辑向内容 |
+| **News（新闻洞察）** | `references/design-news.md` | NotoSansSC、IBMPlexMono | 白底 + 品牌紫，可信编辑风的新闻解读 / 时事分析 / 深度报道 |
+| **Tech（终端技术）** | `references/design-tech.md` | NotoSansSC、IBMPlexMono | 暖奶油 + 纯等宽 + 终端 manpage 感的技术讲解 / CLI / 命令行原理 |

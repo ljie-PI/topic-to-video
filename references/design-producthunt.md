@@ -1,7 +1,7 @@
 # Style Hint — Product Hunt × 温暖、产品优先
 
 > Phase 8 style hint。按本文件执行 Product Hunt 产品风、配色、排版、形状和动效约束。
-> 姊妹预设：`references/design-dawn.md`（手绘）、`references/design-moon.md`（深色技术）、`references/design-github.md`（GitHub）。
+> 姊妹预设：`references/design-dawn.md`（手绘）、`references/design-moon.md`（深色技术）、`references/design-github.md`（GitHub）、`references/design-news.md`（新闻洞察）、`references/design-tech.md`（终端技术）。
 
 ## 配色（只用以下颜色）
 
