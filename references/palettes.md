@@ -8,7 +8,7 @@ Mood：温暖、平静、亲密。搭配手绘字体。
 
 ## Rosé Pine Moon Serious（可选 —— 见 `references/design-moon.md`）
 
-Mood：严肃、技术、克制、编辑感。适合 AI、SaaS、编程、商业分析、技术评论，以及用户要求 "moon"、"严肃"、"深色" 或 "技术感" 的场景。
+Mood：严肃、克制、深色、编辑感。**仅在用户明确要求 "moon"、"严肃"、"深色" 或深色编辑风格时使用**；AI / SaaS / 编程 / 技术讲解 等技术主题请改用 Tech 或 GitHub 预设，不由 Moon 自动匹配。
 
 ```
 --bg:        #232136
@@ -98,7 +98,7 @@ Mood：可信、克制、编辑感。白底 + 品牌紫强调。适合新闻解�
 
 字体：`NotoSansSC`（中文标题 / 正文 / 字幕） + `IBMPlexMono`（数字 / 数据 / 来源），复用 Moon 字体；可选拉丁品牌 `IBM Plex Sans`。
 
-## Tech（终端技术讲解 —— 见 `references/design-tech.md`）
+## Tech（技术讲解 —— 见 `references/design-tech.md`）
 
 Mood：终端原生、纯等宽、manpage 感、极简。暖奶油底 + 唯一深色 TUI mockup。适合技术讲解、CLI / 终端工具、开发者内容、源码 · 命令行原理、工程拆解。配色提取自 opencode.ai DESIGN.md。区别于 Moon（深色 rose-pine）与 GitHub（浅色品牌克制）。
 
@@ -118,20 +118,20 @@ Mood：终端原生、纯等宽、manpage 感、极简。暖奶油底 + 唯一�
 --accent-4:  #ff9f0a   /* 琥珀 — 注意 / caution（文字 #995f06） */
 ```
 
-字体：`NotoSansSC`（中文，等宽无 CJK 字形） + `IBMPlexMono`（拉丁 / 代码 / 数据 / ASCII marker），复用 Moon 字体。
+字体：`NotoSansSC`（中文；等宽字体无中文字形，故中文回退到非等宽的 `NotoSansSC`） + `IBMPlexMono`（拉丁 / 代码 / 数据 / ASCII marker），复用 Moon 字体。
 
 ## 如何选择
 
 | 用户说 | 选 |
 |--------|----|
 | "rose pine dawn"、"dawn"、"笔记本"、"小红书"、"温暖"、"手绘"、"ins 风" | Rosé Pine Dawn |
-| "rose pine moon"、"moon"、"严肃"、"深色"、"技术感"、"技术评论"、"AI"、"SaaS"、"编程" | Rosé Pine Moon Serious |
+| "rose pine moon"、"moon"、"严肃"、"深色"、"深色编辑" | Rosé Pine Moon Serious |
 | "新闻"、"时事"、"热点"、"深度报道"、"洞察"、"媒体"、"行业动态" | News |
 | "技术讲解"、"CLI"、"终端"、"命令行"、"开发者"、"源码"、"manpage"、"极简技术" | Tech |
 | "杂志"、"编辑"、"复古"、"质感" | Warm Editorial |
 | "科技"、"未来"、"premium"、"币圈"、"暗黑" 但不是 "moon" | 反问：Rosé Pine Moon Serious 还是 Dark Premium |
 | 没说风格，主题是哲学 / 人文 / 生活 | Rosé Pine Dawn |
-| 没说风格，主题是 AI/SaaS/编程 | 反问：Dawn 温暖讲解、Moon 严肃技术编辑、还是 Tech 终端·manpage |
+| 没说风格，主题是 AI/SaaS/编程 / 技术讲解 | 反问：Tech 终端·manpage 还是 GitHub 品牌克制 |
 | 完全没风格指向 | Rosé Pine Dawn |
 
 ## 按画幅决定 padding

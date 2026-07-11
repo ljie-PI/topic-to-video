@@ -1,7 +1,7 @@
 # Style Hint — GitHub × 编辑、技术、克制
 
 > Phase 8 style hint。按本文件执行 GitHub 编辑技术风、配色、排版、形状和动效约束。
-> 姊妹预设：`references/design-dawn.md`（手绘）、`references/design-moon.md`（深色技术）、`references/design-producthunt.md`（PH 品牌）、`references/design-news.md`（新闻洞察）、`references/design-tech.md`（终端技术）。
+> 姊妹预设：`references/design-dawn.md`（手绘）、`references/design-moon.md`（深色技术）、`references/design-producthunt.md`（PH 品牌）、`references/design-news.md`（新闻洞察）、`references/design-tech.md`（技术讲解）。
 
 ## 配色（只用以下颜色）
 

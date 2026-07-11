@@ -1,7 +1,7 @@
 # Style Hint — Rosé Pine Dawn × Notion 手绘风
 
 > Phase 8 style hint。按本文件执行 mood、配色、排版、形状和动效约束。
-> 姊妹预设：`references/design-moon.md`（深色技术）、`references/design-github.md`（GitHub）、`references/design-producthunt.md`（PH 品牌）、`references/design-news.md`（新闻洞察）、`references/design-tech.md`（终端技术）。
+> 姊妹预设：`references/design-moon.md`（深色技术）、`references/design-github.md`（GitHub）、`references/design-producthunt.md`（PH 品牌）、`references/design-news.md`（新闻洞察）、`references/design-tech.md`（技术讲解）。
 
 ## 配色（只用以下颜色）
 
@@ -100,7 +100,7 @@
 |------|------|------|------|
 | 中文标题 | `MaShanZheng` | 400 | 笔锋感强 |
 | 中文正文 | `MaShanZheng` | 400 | 同字体，字号更小 |
-| 中文字幕 | `NotoSansSC` | 500 | 引自 Moon 黑体，略加重以适应视频可读性 |
+| 中文字幕 | `NotoSansSC` | 400 | 黑体 |
 | 中文装饰强调 | `ZhiMangXing` | 400 | 可选 |
 | 英文 / 数字 —— 强调 | `Caveat` | 700 | 手写马克笔感 |
 | 英文 / 数字 —— 正文 | `PatrickHand` | 400 | 随意手写体 |

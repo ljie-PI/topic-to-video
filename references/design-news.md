@@ -2,7 +2,7 @@
 
 > Phase 8 style hint。按本文件执行「干净可信的新闻编辑风」、配色、排版、形状和动效约束。
 > 配色提取自 Kraken DESIGN.md（白底 + 品牌紫）。
-> 姊妹预设：`references/design-dawn.md`（手绘）、`references/design-moon.md`（深色技术）、`references/design-github.md`（GitHub）、`references/design-producthunt.md`（PH 品牌）、`references/design-tech.md`（终端技术）。
+> 姊妹预设：`references/design-dawn.md`（手绘）、`references/design-moon.md`（深色技术）、`references/design-github.md`（GitHub）、`references/design-producthunt.md`（PH 品牌）、`references/design-tech.md`（技术讲解）。
 
 适用场景：新闻解读、时事分析、热点复盘、深度报道、媒体洞察、行业动态。整体气质是**可信、克制、编辑感**——白底、品牌紫做强调、冷灰承载正文、语义色只表信息角色。
 
