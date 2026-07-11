@@ -38,15 +38,55 @@
 
 > GPU 注意：本地推理用 **fp16**，**不要**装 flash-attn（Turing/sm_75 不支持）。两个多 GB 模型分阶段顺序加载，单卡 11GB 可跑。
 
-## Quick Start
+## 使用方法
 
-```bash
-# 直接告诉主 agent 你想要什么，例如：
-#   "给我做一个 90 秒讲 <主题> 的视频"
-#
-# 输出位于：
-#   {work_dir}/{topic_name}/composition/renders/final.mp4
-```
+### 如何触发
+
+无需记命令，直接用自然语言把需求告诉主 agent 即可，例如：
+
+- “给我做一个 90 秒讲 <某主题> 的视频。”
+- “把这篇文章做成 5 分钟的解说视频：<文章 URL>。”
+- “根据这段文字做一段竖屏讲解视频。”（随后粘贴文本）
+
+### Phase 1 会先和你确认这些输入
+
+主 agent 会一次问一个问题，逐项确认：
+
+| 输入 | 说明 | 默认 |
+|------|------|------|
+| 来源 | 要抓取的 URL、粘贴的文本，或仅一个主题 | — |
+| 方向 | `1920×1080`（横屏）/ `1080×1920`（竖屏）/ `1080×1440`（3:4） | — |
+| 风格 | 从措辞推断，或读取工作区 `style-prompt.md`（见 Visual Styles） | Rosé Pine Dawn |
+| 时长 | 通常 3-10 分钟 | 5 分钟 |
+| 语言 | 解说语言 | 中文 |
+| 视觉素材 | 是否联网搜索图片 / 视频片段来丰富场景 | 是 |
+
+> 也可以在项目工作区放一份 `style-prompt.md`（自由文本），它会覆盖默认风格推断，并作为 style hint 传给下游 composition。
+
+### 工作流（9 个 Phase）
+
+主 agent 自动串联下列 phase；除 Phase 1 的确认外，通常无需人工介入：
+
+| Phase | 做什么 |
+|-------|--------|
+| 1 | 收集输入（主题 / 方向 / 风格 / 时长 / 语言） |
+| 2 | 主题调研（Gemini Deep Research + web search） |
+| 3 | 从 URL 抓取图片 / 视频素材（可跳过） |
+| 4 | 视觉分析 + 建立素材 catalog |
+| 5 | 撰写解说脚本、匹配场景素材、规划屏幕文本块 |
+| 6 | 本地 Qwen3-TTS 克隆音色生成解说音频 |
+| 7 | 本地 Qwen3-ASR 词级时间戳 + 确定性字体预置 |
+| 8 | HyperFrames composition handoff + sub-agent 渲染 |
+| 9 | 混入背景音乐 |
+
+### 输出
+
+- 主产物：`{work_dir}/{topic_name}/composition/renders/final.mp4`
+- 含背景音乐版本（Phase 9 后）：`{work_dir}/{topic_name}/composition/renders/final_with_bgm.mp4`
+
+### 断点续跑（Checkpoint & Resume）
+
+每个 phase 的产物都会落盘。再次对同一 `{topic_name}` 发起请求时，主 agent 会发现已有工作区并询问是从中断处 resume 还是从头开始；也可以说 “redo phase N” 强制重跑某个 phase。
 
 ## Visual Styles
 
