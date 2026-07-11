@@ -7,8 +7,6 @@
    - 主题是 GitHub trending / repo launch / open source 项目介绍 → **GitHub 预设**（`references/design-github.md`）
    - 主题是 Product Hunt 周榜 / SaaS launch / 新产品发布 → **Product Hunt 预设**（`references/design-producthunt.md`）
    - 主题是新闻解读 / 时事分析 / 热点复盘 / 深度报道 / 媒体洞察 / 行业动态 → **News 预设**（`references/design-news.md`，白底 + 品牌紫可信编辑风）
-   - 主题是技术讲解 / CLI / 终端工具 / 开发者内容 / 源码 · 命令行原理 / 工程拆解，且想要终端·manpage 极简风 → **Tech 预设**（`references/design-tech.md`，暖奶油 + 纯等宽 + 终端 TUI）
-   - 用户明确要求 "moon"、"严肃"、"深色" 或深色编辑风格时，使用 Rosé Pine Moon Serious（`references/design-moon.md`）；技术主题不由 Moon 自动匹配，改用 Tech / GitHub。
    - 主题是 AI/SaaS/编程 / 技术讲解，但风格没明说，询问对方想要 Tech 终端·manpage 风还是 GitHub 品牌克制风，或某个品牌预设。两个技术向预设：GitHub（浅色 GitHub 品牌克制）、Tech（暖奶油纯等宽终端）
 4. 时长：通常 3-10 分钟——从用户需求中提取，默认 5 分钟。
 5. 语言：默认中文。若用户想要其他语言要询问确认。

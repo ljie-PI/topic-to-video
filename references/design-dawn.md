@@ -1,7 +1,6 @@
 # Style Hint — Rosé Pine Dawn × Notion 手绘风
 
 > Phase 8 style hint。按本文件执行 mood、配色、排版、形状和动效约束。
-> 姊妹预设：`references/design-moon.md`（深色技术）、`references/design-github.md`（GitHub）、`references/design-producthunt.md`（PH 品牌）、`references/design-news.md`（新闻洞察）、`references/design-tech.md`（技术讲解）。
 
 ## 配色（只用以下颜色）
 

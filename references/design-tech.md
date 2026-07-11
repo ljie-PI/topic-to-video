@@ -2,7 +2,6 @@
 
 > Phase 8 style hint。按本文件执行「终端原生、纯等宽、manpage 感」的技术讲解风、配色、排版、形状和动效约束。
 > 配色提取自 opencode.ai DESIGN.md（暖奶油画布 + 近黑 ink + Apple 语义 ramp）。
-> 姊妹预设：`references/design-dawn.md`（手绘）、`references/design-moon.md`（深色技术）、`references/design-github.md`（GitHub）、`references/design-producthunt.md`（PH 品牌）、`references/design-news.md`（新闻洞察）。
 
 适用场景：技术讲解、CLI / 终端工具、开发者内容、源码 / 命令行原理、工程拆解。与姊妹技术预设的区别：
 - **Moon** 是深色 rose-pine 编辑风；**GitHub** 是浅色 GitHub 品牌克制风；

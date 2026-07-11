@@ -8,7 +8,7 @@ Mood：温暖、平静、亲密。搭配手绘字体。
 
 ## Rosé Pine Moon Serious（可选 —— 见 `references/design-moon.md`）
 
-Mood：严肃、克制、深色、编辑感。**仅在用户明确要求 "moon"、"严肃"、"深色" 或深色编辑风格时使用**；AI / SaaS / 编程 / 技术讲解 等技术主题请改用 Tech 或 GitHub 预设，不由 Moon 自动匹配。
+Mood：严肃、克制、深色、编辑感。
 
 ```
 --bg:        #232136
@@ -131,7 +131,7 @@ Mood：终端原生、纯等宽、manpage 感、极简。暖奶油底 + 唯一�
 | "杂志"、"编辑"、"复古"、"质感" | Warm Editorial |
 | "科技"、"未来"、"premium"、"币圈"、"暗黑" 但不是 "moon" | 反问：Rosé Pine Moon Serious 还是 Dark Premium |
 | 没说风格，主题是哲学 / 人文 / 生活 | Rosé Pine Dawn |
-| 没说风格，主题是 AI/SaaS/编程 / 技术讲解 | 反问：Tech 终端·manpage 还是 GitHub 品牌克制 |
+| 没说风格，主题是 AI/SaaS/编程 / 技术讲解 | Tech |
 | 完全没风格指向 | Rosé Pine Dawn |
 
 ## 按画幅决定 padding
