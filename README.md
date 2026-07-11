@@ -38,16 +38,6 @@
 
 > GPU 注意：本地推理用 **fp16**，**不要**装 flash-attn（Turing/sm_75 不支持）。两个多 GB 模型分阶段顺序加载，单卡 11GB 可跑。
 
-## Quick Start
-
-```bash
-# 直接告诉主 agent 你想要什么，例如：
-#   "给我做一个 90 秒讲 <主题> 的视频"
-#
-# 输出位于：
-#   {work_dir}/{topic_name}/composition/renders/final.mp4
-```
-
 ## 使用方法
 
 ### 如何触发
