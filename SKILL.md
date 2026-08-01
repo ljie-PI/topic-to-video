@@ -48,7 +48,7 @@ description: 当用户提供一个主题、文章 URL 或文本，并请求做�
 
 ### Composition
 
-8. **Composition 委派给 HyperFrames sub-agent。** 主 agent 只写 `composition-handoff.md`，并把固定 rules（`references/composition-rules.md`）/ animation routing（`references/animation-routing.md`）/ stage protocol（`references/composition-stage-protocol.md`）/ design references 物化到项目工作区的 `references/` 下。
+8. **Composition 委派给 HyperFrames sub-agent。** 主 agent 只写 `composition-handoff.md`，并把固定 rules（`references/composition-rules.md`）/ layout routing（`references/layout-routing.md`）/ animation routing（`references/animation-routing.md`）/ stage protocol（`references/composition-stage-protocol.md`）/ design references 物化到项目工作区的 `references/` 下。
    ↳ DO NOT：手写 `composition/index.html`、挑选低层 animation / effect skill，或在本 session 里修 HyperFrames lint；除非用户明确指定，否则由 Phase 8 sub-agent 选择。
 9. **Scene 设计归 HyperFrames。** 切分、素材映射、布局、视觉层级、动画、lint/inspect 与渲染迭代都发生在 Phase 8。
 
