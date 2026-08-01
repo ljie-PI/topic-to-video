@@ -68,6 +68,29 @@
 | Info / success / warning / error | 对应强 token | 对应 soft token | 强 token 作为文字或 icon；状态必须带文字 / 图形，不只靠颜色。 |
 | 图片 / 视频标注 | `ink` / `body` | 素材外部的浅色信息区 | tag、badge、caption、callout 不压在素材关键区域上。 |
 | 字幕 | 高对比 `ink` / 深色背景时 `on-dark` | shrink-to-fit 的稳定遮罩 | 不用低对比 accent 承担字幕。 |
+| 真实产品 shell / sidebar | `body` / `muted` | `canvas` / `sidebar` + `hairline` | 侧栏只比画布略暖，不应抢占内容；仅在展示真实 UI 时复刻。 |
+| 导航行：inactive / hover / selected | `body` / `muted`；hover=`body-strong`；selected=`primary-ink` | 透明；hover=`surface-hover`；selected=`surface-selected` | hover 与 selected 是同一控制的离散状态，不能同时叠加。 |
+| 导航计数 / resize handle | `body` 或 `primary-ink` | 中性 count=`surface-card`；注意 count=`primary-soft-strong` | resize handle 默认透明，hover 用 `primary-soft-strong`，focus 用 `focus-ring`；这些是 UI 细节，不做视频装饰。 |
+| Capture composer / 附件 | `ink` / `body` | `surface-raised + hairline`；附件=`surface-soft`，选中=`primary-soft` | 只在产品 UI scene 使用；周围保持 `canvas`，不在多色底上使用半透明白卡。 |
+| Primary action | `on-primary` | `primary`；hover=`primary-hover`；pressed=`primary-active` | 一个 scene 最多一个 primary action；不与大面积 semantic status 色竞争。 |
+| Secondary / ghost action | secondary=`body-strong`；ghost=`muted` / `primary-ink` | secondary=`surface-raised + hairline-strong`；ghost 透明 / `surface-hover` / `primary-soft` | 用中性表面区分优先级；不要额外引入蓝、绿、红。 |
+| Destructive action | `on-primary` 或 `error` | 即时破坏动作=`error`；需确认动作=中性 secondary 表面 | 红色只用于不可逆风险；不能与普通 primary button 并列作为两个同级主行动。 |
+| Text input / 表单 | `ink`；placeholder=`muted`；error helper=`error` | `surface-raised + hairline-strong`；disabled=`surface-soft` | focus 只用 `focus-ring`；label 在上，placeholder 不替代 label。 |
+| Content card / hover row / selected row | `body` / `ink` | card=`surface-raised + hairline`；row hover=`surface-hover`；selected=`surface-selected` | hover 只改变表面，不上浮；同一内容组优先用间距和 divider，避免连续卡片造成噪声。 |
+| Status badge | local=`body/surface-card`；queued=`warning/warning-soft`；processing=`info/info-soft`；ready=`success/success-soft`；failed=`error/error-soft`；generated=`primary-ink/primary-soft` | 对应 soft surface | 每个 badge 只使用一个状态色和文字；同一行有多个状态时用中性默认 + 一个最重要状态。 |
+| Inline notice / toast | 对应 `info` / `success` / `warning` / `error` 强色 | 对应 soft 色；toast 可用 `surface-raised + hairline + shadow-floating` | notice 表示需读的状态，toast 表示短暂结果；不要在同一 scene 同时铺多个不同色 notice。 |
+| 深色代码 / terminal / media preview | `on-dark` / `on-dark-soft` | `surface-dark`；控件=`surface-dark-elevated`；内嵌区=`surface-dark-soft` | 仅一个局部深色锚点；紫色只用于短 path / 当前行 / marker，不把整块变成霓虹多色终端。 |
+| Modal / screenshot scrim | `on-dark` / `on-dark-soft` | `overlay`，72% opacity | 仅遮罩语义；不能用作不透明正文底或普通 scene 背景。 |
+| 对比图 / 数据图 / 状态图例 | `ink` / `body` / `muted` 为基础；一个 focal series 可用 `primary` | `canvas` / `surface-raised` | 只有数据本身需要时才追加一个 semantic 色；避免 purple、blue、green、amber、red 同时成为等权主系列。 |
+
+### 色彩冲突评估与组合规则
+
+- **基础关系：** `canvas`、三档浅表面和暖灰文字占画面绝大多数面积；`primary` 是唯一常规强调色，因此暖白与薰衣草之间稳定、低冲突。
+- **状态隔离：** `info`、`success`、`warning`、`error` 都只在对应 soft 底或小型 marker 内使用。它们不与 `primary` 争夺同一元素的主强调权，能避免蓝绿黄红与紫色并列造成的杂乱。
+- **单组原则：** 一个 card、callout、chart series、badge 或信息节点最多一个强 accent；允许“`primary` 表当前焦点 + 一个 semantic color 表真实状态”，但两者必须分属不同元素且有清楚标签。
+- **面积控制：** 强色用于文字、细线、图标、数字、短 label 或状态 marker；大面积只使用 `canvas`、`surface-soft`、`surface-card`、`surface-raised`。这能维持轻编辑感并避免色块冲突。
+- **深色局部：** `surface-dark` 与暖白画布的反差已经足够，深色 panel 内以 `on-dark` / `on-dark-soft` 为主；accent 只做一处路径、错误或当前状态，不与多个 semantic 色同屏堆叠。
+- **视频适配：** 连续 scene 可以变换当前 accent 的信息角色，但相邻 scene 应保留暖白画布与文字层级；不要为了每句旁白更换整套强调色。
 
 ### 标题配色与高亮 box
 
