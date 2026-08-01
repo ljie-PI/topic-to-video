@@ -1,6 +1,6 @@
 ---
 name: topic-to-video
-description: 当用户提供一个主题、文章 URL 或文本，并请求做一段有解说的视频（通常 3-10 分钟）时使用。本 skill 拥有上游 pipeline —— 主题调研、可选的视觉素材抓取、素材理解、解说撰写、用本地 Qwen3-TTS 做克隆音色 TTS（DashScope CosyVoice 作 fallback）、用本地 Qwen3-ASR + ForcedAligner 拿词级 ASR 时间戳（DashScope Paraformer 作 fallback）、确定性字体预置，以及一份精简的 HyperFrames composition handoff。HyperFrames composition、scene 设计、HTML/CSS、animation/effect skills、lint/inspect 与渲染都委派给 hyperframes 和 hyperframes-cli；Phase 8 sub-agent 可按需使用 gsap、animejs、waapi、css-animations、lottie、three、typegpu，或用 tailwind 做静态布局 / 样式支持。
+description: 当用户提供一个主题、文章 URL 或文本，并请求做一段有解说的视频（通常 3-10 分钟）时使用。本 skill 拥有上游 pipeline —— 主题调研、可选的视觉素材抓取、素材理解、解说撰写、用本地 Qwen3-TTS 做克隆音色 TTS（DashScope CosyVoice 作 fallback）、用本地 Qwen3-ASR + ForcedAligner 拿词级 ASR 时间戳（DashScope Paraformer 作 fallback）、确定性字体预置，以及一份精简的 HyperFrames composition handoff。HyperFrames composition、scene 设计、HTML/CSS、animation/effect skills、lint/inspect 与渲染都委派给 hyperframes 和 hyperframes-cli；Phase 8 sub-agent 必须通过 hyperframes-animation 的当前索引发现动画能力，按需加载 hyperframes-keyframes，并最后选择 gsap、animejs、waapi、css-animations、lottie、three、typegpu 等 runtime；tailwind 只用于静态布局 / 样式支持。
 ---
 
 # Topic → Video（HyperFrames + Qwen3-TTS 工作流）
@@ -48,7 +48,7 @@ description: 当用户提供一个主题、文章 URL 或文本，并请求做�
 
 ### Composition
 
-8. **Composition 委派给 HyperFrames sub-agent。** 主 agent 只写 `composition-handoff.md`，并把固定 rules（`references/composition-rules.md`）/ stage protocol（`references/composition-stage-protocol.md`）/ design references 物化到项目工作区的 `references/` 下。
+8. **Composition 委派给 HyperFrames sub-agent。** 主 agent 只写 `composition-handoff.md`，并把固定 rules（`references/composition-rules.md`）/ animation routing（`references/animation-routing.md`）/ stage protocol（`references/composition-stage-protocol.md`）/ design references 物化到项目工作区的 `references/` 下。
    ↳ DO NOT：手写 `composition/index.html`、挑选低层 animation / effect skill，或在本 session 里修 HyperFrames lint；除非用户明确指定，否则由 Phase 8 sub-agent 选择。
 9. **Scene 设计归 HyperFrames。** 切分、素材映射、布局、视觉层级、动画、lint/inspect 与渲染迭代都发生在 Phase 8。
 
