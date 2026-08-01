@@ -4,14 +4,14 @@
 
 ## 外部 Skill 优先级
 
-Phase 8 可以按需读取 `hyperframes`、`hyperframes-animation`、`hyperframes-cli` 以及动画 / effect adapter 等外部 skill。若外部 skill 的示例、推荐实践或默认模式与本文件规则冲突，一律以本文件为准。
+Phase 8 必须读取 `hyperframes`、`hyperframes-animation` 与 `hyperframes-cli`；其中 `hyperframes-animation` 先用于 R18 的能力发现。`hyperframes-keyframes` 及 GSAP / Anime.js / WAAPI / CSS / Lottie / Three.js / TypeGPU 等具体 adapter 按选中的机制加载。若外部 skill 的示例、推荐实践或默认模式与本文件规则冲突，一律以本文件为准。
 
 
 ## Scope and Required References
 
 - 本文件是 Phase 8 hard constraints 的权威来源；HyperFrames sub-agent 必须读取工作区本地副本 `references/composition-rules.md`。
-- sub-agent 必须读取 `composition-handoff.md`、`references/composition-rules.md`、`references/composition-stage-protocol.md`，以及 handoff 指定的 `references/design-<theme>.md`（如有）。
-- 如果 `composition-handoff.md`、`references/composition-rules.md`、`references/composition-stage-protocol.md` 或指定 design file 不存在 / 不可读，必须停止并反馈主 agent，不得凭默认审美继续制作。
+- sub-agent 必须读取 `composition-handoff.md`、`references/composition-rules.md`、`references/animation-routing.md`、`references/composition-stage-protocol.md`，以及 handoff 指定的 `references/design-<theme>.md`（如有）。
+- 如果 `composition-handoff.md`、`references/composition-rules.md`、`references/animation-routing.md`、`references/composition-stage-protocol.md` 或指定 design file 不存在 / 不可读，必须停止并反馈主 agent，不得凭默认审美继续制作。
 - `composition-handoff.md` 可以补充 user-derived customized rules，但不得修改或覆盖本文件。
 - 若 customized rule 与本文件冲突，sub-agent 必须以本文件为底线，并在 `composition/DESIGN.md` 记录冲突处理。
 
@@ -40,7 +40,7 @@ authoring 前先通读本索引，逐条对照；每条 MUST / MUST-NOT 的完�
 | R15 | 字幕安全区贴合实际（`T-SAFE`）；内容区按 `viewport - safe area`；前景 MUST-NOT 进安全区 | [R15](#r15--subtitle-safe-area) |
 | R16 | 单个全局字幕容器，底部锚定；横屏单行 / 竖屏最多两行；遮罩 shrink-to-fit，MUST-NOT 固定 `width:100%` | [R16](#r16--global-subtitle) |
 | R17 | 字号 / 对比度 / 嵌套 / 字号下限见 `T-FONT`；主标题 MUST-NOT 出现孤行 widow | [R17](#r17--typography-dom-contrast) |
-| R18 | 动效来自内容；每图持续动效（`T-MOTION`）；相邻 scene 需转场；MUST-NOT 用扫描线 / sweep / 进度条凑动效 | [R18](#r18--motion) |
+| R18 | 动画按语义 → 主体 → role / layout → continuity → effect → runtime 选择；静态素材须有内容驱动变化；相邻 scene 需转场；MUST-NOT 用统一 fade / Ken Burns 或廉价覆盖层凑动效 | [R18](#r18--semantic-animation-motion-and-transitions) |
 | R19 | 多个非素材文本随旁白句子逐个出现，MUST-NOT scene start 全亮；入场需正确初始态 | [R19](#r19--text-timing-and-entrance-state) |
 | R20 | `composition/DESIGN.md` 记录每 scene inventory（见 R20 清单） | [R20](#r20--scene-inventory) |
 | R21 | peak-state audit：无溢出 / 遮挡 / 压素材 / letterbox；构图均衡；结构型 role 竖屏 MUST-NOT 横排 | [R21](#r21--peak-state-layout-audit) |
@@ -93,7 +93,7 @@ authoring 前先通读本索引，逐条对照；每条 MUST / MUST-NOT 的完�
   - 竖向 `1080x1440`：约 `150-220px`；竖屏 `1080x1920`：约 `220-300px`。
   - 字幕容器 `bottom` 为视口高度 `3-5%`（1080p 约 `32-54px`）。
   - 最大行数：横屏每单元最多 `1` 行；竖屏 / 竖向每单元最多 `2` 行（禁止第三行及以上）。
-- **T-MOTION — 动效重复上限**：同一类图片动效不得重复超过 `ceil(total_images / 5)` 次。
+- **T-MOTION — 动效重复上限**：同一类图片主运动不得重复超过 `ceil(total_images / 5)` 次。`total_images` 按 catalog 图片在 scene 中的实际使用次数统计；同一合法 `media_continuation` group 内的重复素材合并计为 1 次。每个图片 scene / continuation group 在 `composition/DESIGN.md` 记录一个规范化 `primary_motion_family`：优先使用 HyperFrames rule / effect id；自定义机制使用稳定 kebab-case 名称。仅修改距离、时长、ease 或方向仍视为同一 family。Phase 8.3 必须按该字段做确定性计数。
 
 ## Rule Definitions
 
@@ -299,9 +299,23 @@ Recommended authoring pattern:
 
 ### Motion and text-timing rules
 
-#### R18 — Motion
+#### R18 — Semantic animation, motion and transitions
 
-有效动效必须来自内容本身，如素材 Ken Burns / 缓移 / 缩放、文字渐入、数据 callout 浮现、多元素随旁白逐个出现或极轻微低对比装饰 drift。每张图片素材都需要持续动效，同类图片动效重复上限见 `T-MOTION`；视频素材视为自带运动，接近静止的视频按图片处理。普通相邻 scene 需要显式转场，避免硬切。`media_continuation` group 内主媒体层必须稳定，不得对主图 / 视频做 full-scene fade、wipe、slide-out、re-enter 或重新加载式入场；只允许文字、callout、局部高亮、`focal_region` emphasis、轻微镜头推进或信息区替换。禁止用横贯 / 纵贯扫描线、扫光、sweep、进度条等覆盖层凑动效。
+动画必须由 scene 的旁白语义、primary subject、信息变化和 scene handoff 驱动，不得只按 `visual_role`、`layout_role` 或 runtime 名称套固定效果。`references/animation-routing.md` 是候选机制和 runtime 的软路由，不是 `visual_role → effect` 的一对一模板；本节是动画选择与质量底线的权威规则。
+
+**Capability discovery。** authoring 前，HyperFrames sub-agent MUST 加载 `/hyperframes-animation` 并读取其 `rules-index.md`、`blueprints-index.md`、`transitions/overview.md`、`transitions/catalog.md` 与 `techniques.md`，以当前安装版本的 skill 索引作为动画能力 source of truth。需要 shared element / FLIP、path、mask、SVG morph/draw、DOM 3D、Three.js / WebGL keyframes 时再加载 `/hyperframes-keyframes`。先确定候选 effect / blueprint，再读取对应 recipe 和实际使用的 adapter；不得为了“丰富”而无目的混用多个 runtime，也不得只凭记忆反复使用 fade / slide / Ken Burns。
+
+**Selection order。** 每个 scene 必须按以下顺序确定动画：完整旁白句子与 `semantic_intent` → `primary_subject` 及要证明的状态变化 → `visual_role` 提供的信息动画候选 → `layout_role`、素材比例、`focal_region`、continuation 状态施加的运动边界 → orientation、density、可读时间和前后 scene continuity → `signature_mechanism` 与少量 supporting mechanisms → 最后选择最小合适 runtime。允许选择 `references/animation-routing.md` 未列出的 mechanism，前提是更清楚地表达 scene 语义，并在 `composition/DESIGN.md` 记录候选、选择和理由。
+
+**Content-driven progression。** 每个 scene 应有一个可辨认的 `signature_mechanism`，并在 scene 时长内通过 staged reveal、camera intent、UI state change、data progression、focal traversal、annotation progression 或其他主体行为持续推进理解。静态图片必须有这种内容驱动的持续视觉行为；单纯 idle drift、breathing、glow pulse 或无目标缓移不能单独满足本规则。视频素材可视为自带运动；接近静止的视频按静态图片处理。同类图片主运动重复上限见 `T-MOTION`。
+
+**Role / layout semantics。** 存在 `visual_role` 时，它只产生候选机制，不强制固定 effect；同一 role 可因旁白动作、素材、orientation 和 scene continuity 使用不同动画。没有 `scene-text-plan.json` / `visual_role` 的合法 scene 以 `semantic_intent`、`primary_subject` 和要证明的状态变化为主，不得为了路由而虚构 role。`layout_role` 约束运动边界：`media_first` / `video_first` 必须保持素材主体地位；`viewport_reveal` 必须沿长轴覆盖 catalog 记录的 start / mid / end、`focal_region` 或避开 avoid-region；`detail_callout` 只允许外置 annotation 与 focal emphasis；`comparison_pair` / `comparison_sequence` 必须保持各素材可读。portrait / vertical 中 animation geometry 必须跟随 R8 的按朝向布局，不得保留横屏 choreography 后靠缩字号 / 缩素材硬塞。
+
+**Continuity and transitions。** 普通相邻 scene 需要显式 transition / motion handoff，避免无设计的硬切；全片应建立稳定的 primary transition vocabulary，只在 topic change、climax 或 outro 使用少量 accent transition，不得每场随机换一种转场。连续相邻 scene 不得无理由重复完全相同的 `entry + information reveal + transition` 组合；声明过的 continuation group 可保持 motion family，但仍须通过文本、callout、局部标注、`focal_region` emphasis 或信息状态变化推进叙事。`media_continuation` group 内主媒体层必须稳定，不得对主图 / 视频做 full-scene fade、wipe、slide-out、re-enter 或重新加载式入场；只允许文字、callout、局部高亮、轻微镜头推进或信息区替换。
+
+**Runtime discipline。** Runtime 是实现选择，不是视觉丰富度指标。GSAP 是 timeline / stagger / SVG / camera choreography 的默认；CSS animations / WAAPI 用于简单有限 keyframes；Anime.js 仅在明确适合或用户要求时使用；Lottie / dotLottie 需要本地动画资产；Three.js / WebGL 用于真实 depth、camera/object、GLTF 或 shader；TypeGPU 用于明确的 WebGPU / WGSL 需求且渲染环境必须支持。所有 runtime 必须符合 HyperFrames 的 seek-safe、同步注册、有限时长和 deterministic contract。handoff 中的 required / preferred runtime 或 effect 只能补充本规则，不能覆盖它；required runtime 与本规则、可用资产或渲染环境不兼容时，sub-agent 必须在 authoring 前停止并把 handoff conflict 反馈给主 agent，不得静默忽略或降级。
+
+**Anti-patterns。** MUST-NOT 把统一 opacity fade、轻微 translate、scale pop 或 Ken Burns 作为所有 scene 的主要动画语言；MUST-NOT 用横贯 / 纵贯扫描线、扫光、sweep、进度条、无语义粒子、持续呼吸或 glow pulse 等覆盖层凑动效；MUST-NOT 为了覆盖更多 skill 而无意义地混用 GSAP、Lottie、Three.js、TypeGPU 等 runtime。
 
 #### R19 — Text timing and entrance state
 
@@ -311,7 +325,7 @@ Recommended authoring pattern:
 
 #### R20 — Scene inventory
 
-`composition/DESIGN.md` 必须记录每个 scene 的 `scene_id`、旁白摘要、`material_ref` / `material_refs`、`layout_role`、素材尺寸 / aspect ratio、`ratio_bucket` / `focal_region`（如有）、text beats、`scene-text-plan.json` 中对应的 `visual_text_units`（如有）、布局呈现方式、peak-state audit 结果，以及每个非素材元素对应的完整旁白句子和出现时间点。对每个已实现的 visual text unit，记录 `unit_id`、`visual_role`、`display_text`、`priority`、来源 text beat、最终 DOM selector、出现 timing、输出朝向、采用的按朝向布局呈现方式；portrait / vertical 时还必须记录为何没有沿用横屏排列，以及过密信息采用的 role-specific 降级方式（纵向节点链、纵向卡片、分页 / 分时主项、focus window、拆 scene）。若某个 `primary` unit 被降级或未实现，必须记录原因。若 scene 存在输出朝向与素材比例冲突，记录 `cross_aspect_strategy`、`CW` / `CH`、`MW` / `MH` 和阈值判断。若使用 `media_continuation`，记录相邻 scene 如何保持同一主素材稳定显示；若使用 `viewport_reveal`，记录 start / mid / end 可见区域和关键内容是否完整出现。
+`composition/DESIGN.md` 必须记录每个 scene 的 `scene_id`、旁白摘要、`material_ref` / `material_refs`、`layout_role`、素材尺寸 / aspect ratio、`ratio_bucket` / `focal_region`（如有）、text beats、`scene-text-plan.json` 中对应的 `visual_text_units`（如有）、布局呈现方式、peak-state audit 结果，以及每个非素材元素对应的完整旁白句子和出现时间点。每个 scene 还必须记录 `semantic_intent`、`primary_subject`、`sustained_motion_route`、`signature_mechanism`、supporting mechanisms、considered / selected effects 或 blueprint、最终 runtime、narration triggers、transition / continuity strategy、proof times，以及未采用主要候选或手动指定 preference 时的理由。图片 scene / continuation group 另记规范化 `primary_motion_family` 供 `T-MOTION` 计数。`proof_times` 使用 composition absolute seconds，至少命名并覆盖 `entry`、一个或多个 `semantic_progression`、`peak` 和 `handoff`；不适用项写明原因，不得只给无语义的等间隔采样点。对每个已实现的 visual text unit，记录 `unit_id`、`visual_role`、`display_text`、`priority`、来源 text beat、最终 DOM selector、出现 timing、输出朝向、采用的按朝向布局呈现方式；portrait / vertical 时还必须记录为何没有沿用横屏排列，以及过密信息采用的 role-specific 降级方式（纵向节点链、纵向卡片、分页 / 分时主项、focus window、拆 scene）。若某个 `primary` unit 被降级或未实现，必须记录原因。若 scene 存在输出朝向与素材比例冲突，记录 `cross_aspect_strategy`、`CW` / `CH`、`MW` / `MH` 和阈值判断。若使用 `media_continuation`，记录相邻 scene 如何保持同一主素材稳定显示；若使用 `viewport_reveal`，记录 start / mid / end 可见区域和关键内容是否完整出现。
 
 #### R21 — Peak-state layout audit
 

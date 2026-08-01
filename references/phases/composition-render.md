@@ -1,6 +1,6 @@
 ### Phase 8 — 委派 HyperFrames Composition + Render
 
-从这一步开始，composition 交由一个使用 `hyperframes` 与 `hyperframes-cli` skills 的 coding sub-agent 负责执行；动画 / 视觉效果可按项目需要使用 `gsap`、`animejs`、`waapi`、`css-animations`、`lottie`、`three` 或 `typegpu` 等 skills。Tailwind 只作为静态布局 / 样式支持，不是 animation/effect adapter。`topic-to-video` 主 agent 只负责准备上游资源、写 `composition-handoff.md`、物化固定 rules / stage protocol / design references、调用 sub-agent，并按 stage protocol 执行 sanity-check / Visual QA / feedback loop。
+从这一步开始，composition 交由一个使用 `hyperframes`、`hyperframes-cli` 与 `hyperframes-animation` skills 的 coding sub-agent 负责执行；需要 FLIP / path / mask / SVG / 3D keyframes 时按需加载 `hyperframes-keyframes`，最终实现可按项目需要使用 `gsap`、`animejs`、`waapi`、`css-animations`、`lottie`、`three` 或 `typegpu` 等 runtime。Tailwind 只作为静态布局 / 样式支持，不是 animation/effect adapter。`topic-to-video` 主 agent 只负责准备上游资源、写 `composition-handoff.md`、物化固定 rules / animation routing / stage protocol / design references、调用 sub-agent，并按 stage protocol 执行 sanity-check / Visual QA / feedback loop。
 
 #### 8.1 — 写 `composition-handoff.md`
 
@@ -9,16 +9,17 @@
 同时把固定 references 复制到项目工作区，供 sub-agent 从磁盘读取本地副本：
 
 - 必需：`references/composition-rules.md` → `{work_dir}/{topic_name}/references/composition-rules.md`
+- 必需：`references/animation-routing.md` → `{work_dir}/{topic_name}/references/animation-routing.md`
 - 必需：`references/composition-stage-protocol.md` → `{work_dir}/{topic_name}/references/composition-stage-protocol.md`
 - 所选 Design：未指定主题时 `references/design-default.md`，否则 `references/design-<theme>.md` → `{work_dir}/{topic_name}/references/`
 
-`composition-handoff.md` 只记录项目变量、实际输入路径、style hint、animation / effect preference、customized rules、conflict notes 和 project-specific overrides；固定输入解释与 layout rules 来自 `references/composition-rules.md`，stage 执行协议来自 `references/composition-stage-protocol.md`，不得复制 / 摘要 / 覆盖。
+`composition-handoff.md` 只记录项目变量、实际输入路径、style hint、animation / effect constraints、customized rules、conflict notes 和 project-specific overrides；固定输入解释与 layout rules 来自 `references/composition-rules.md`，动画候选与 runtime 软路由来自 `references/animation-routing.md`，stage 执行协议来自 `references/composition-stage-protocol.md`，不得复制 / 摘要 / 覆盖。
 
 Legacy fallback：旧项目若只有 `{work_dir}/{topic_name}/composition-brief.md`，主 agent 必须先把它迁移 / 归一化为 `composition-handoff.md`，再调用 sub-agent；sub-agent 仍统一读取 `composition-handoff.md`。
 
 #### 8.2 — 调用一个 coding sub-agent
 
-如果用户 query 指定了 coding agent / 委派目标，优先使用该目标；否则使用当前客户端 / runtime 原生的 sub-agent 或委派工具。prompt 要简短，且应让 sub-agent 自己从磁盘读 `composition-handoff.md`、`references/composition-rules.md`、`references/composition-stage-protocol.md` 和指定的 `references/design-<theme>.md`。
+如果用户 query 指定了 coding agent / 委派目标，优先使用该目标；否则使用当前客户端 / runtime 原生的 sub-agent 或委派工具。prompt 要简短，且应让 sub-agent 自己从磁盘读 `composition-handoff.md`、`references/composition-rules.md`、`references/animation-routing.md`、`references/composition-stage-protocol.md` 和指定的 `references/design-<theme>.md`。
 
 Prompt 示例：
 
@@ -26,6 +27,7 @@ Prompt 示例：
 读取当前工作区的以下文件：
 - composition-handoff.md
 - references/composition-rules.md
+- references/animation-routing.md
 - references/composition-stage-protocol.md
 - handoff 指定的 references/design-<theme>.md（如有）
 
@@ -35,13 +37,16 @@ Prompt 示例：
 composition authoring、HTML/CSS、pre-render self-audit、
 lint/inspect、HTML-to-video render。
 
-Animation / effect skill 选择：
-- 如果 handoff 或用户明确指定 skill，优先使用该 skill；
-- 否则选择最小合适实现：css-animations / waapi 用于简单 DOM motion，gsap 用于 timeline/tween-heavy choreography，animejs 用于 Anime.js-specific 实现；
-- lottie 用于 Lottie / dotLottie 资产，three 用于 Three.js / WebGL scene 或 camera motion，typegpu 用于 WebGPU / WGSL shader / particle / liquid effects；
+Animation / effect 选择：
+- 先执行 `references/composition-rules.md` R18 和 `references/animation-routing.md` 的语义选择流程，不得从 runtime 名称反推动画设计；
+- authoring 前加载 hyperframes-animation，读取 `rules-index.md`、`blueprints-index.md`、`transitions/overview.md`、`transitions/catalog.md`、`techniques.md`，以当前 skill 索引作为能力 source of truth；
+- 涉及 shared element / FLIP、path、mask、SVG morph/draw、DOM 3D、Three.js / WebGL keyframes 时加载 hyperframes-keyframes；
+- 每个 scene 先确定 semantic intent、primary subject、signature mechanism、transcript triggers 与 transition / continuity，再选择最小合适 runtime；
+- handoff 的 requested mechanism / required runtime / asset / forbidden effect 是项目约束；preferred runtime 不是强制。无明确要求时不得由主 agent 代选；required runtime 与 R18、资产或环境不兼容时，在 authoring 前停止并反馈 handoff conflict；
+- GSAP 默认用于 timeline / stagger / SVG / camera choreography；CSS animations / WAAPI 用于简单有限 keyframes；Anime.js 仅在明确适合时使用；Lottie 需要本地 Lottie / dotLottie 资产；Three.js 用于真实 3D / camera / GLTF / shader；TypeGPU 用于明确的 WebGPU / WGSL 需求且环境必须支持；
 - tailwind 只用于静态 layout / style utility，不负责 render-critical motion timing；
-- 只加载实际需要的 skill docs；
-- 在 composition/DESIGN.md 记录选择的 skill(s) 和原因。
+- 确定候选后只加载实际使用的 rule / blueprint / adapter；不得为了覆盖更多 skill 无意义混用 runtime；
+- 在 composition/DESIGN.md 记录每个 scene 的 considered / selected effects、runtime、narration triggers、continuity strategy、proof times 和选择原因。
 
 严格遵守 references/composition-rules.md：
 - Scope and Required References
@@ -54,7 +59,7 @@ Animation / effect skill 选择：
 完成后返回 final.mp4 路径、ffprobe duration 和文件大小。
 ```
 
-如果环境里没有原生 sub-agent 工具，仅当 CLI fallback 能把上面那段 prompt 原样传过去、并让 coding sub-agent 自己去读 `composition-handoff.md`、`references/composition-rules.md`、`references/composition-stage-protocol.md` 与指定的 `references/design-<theme>.md` 时，才可以接受。
+如果环境里没有原生 sub-agent 工具，仅当 CLI fallback 能把上面那段 prompt 原样传过去、并让 coding sub-agent 自己去读 `composition-handoff.md`、`references/composition-rules.md`、`references/animation-routing.md`、`references/composition-stage-protocol.md` 与指定的 `references/design-<theme>.md` 时，才可以接受。
 
 **不要**在主 agent 的会话里驱动 composition authoring 或手工 patch `composition/index.html`。
 
