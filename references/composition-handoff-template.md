@@ -8,7 +8,7 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前物化这些文件，
 
 - Rules：`references/composition-rules.md`（必需；从 skill 的 `references/composition-rules.md` 复制到项目工作区）
 - Stage Protocol：`references/composition-stage-protocol.md`（必需；Phase 8 self-audit / render / Visual QA / feedback loop）
-- Design：`references/design-<theme>.md`（如适用；从 skill 的对应 design 文件复制到项目工作区）
+- Design：`references/design-default.md`（未指定主题时的默认；若已选择其他主题，替换为对应的 `references/design-<theme>.md` 并从 skill 复制到项目工作区）
 
 如果任一必需 reference 不存在，HyperFrames sub-agent 必须停止并反馈主 agent，不得凭默认审美继续制作。
 
@@ -42,15 +42,14 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前物化这些文件，
 
 可选的风格路由参考：
 
+- `references/design-default.md` —— 未指定主题时的默认参考（暖白 + 克制薰衣草编辑风）
 - `references/design-dawn.md` —— 温暖手绘氛围参考
 - `references/design-moon.md` —— 深色技术 / 编辑氛围参考
 - `references/design-github.md` —— GitHub trending / repo launch / open source 项目参考
 - `references/design-producthunt.md` —— Product Hunt 周榜 / SaaS launch / 新产品发布参考
-- `references/design-news.md` —— 新闻解读 / 时事分析 / 深度报道 / 媒体洞察参考（白底 + 品牌紫）
-- `references/design-tech.md` —— 技术讲解 / CLI / 终端工具 / 命令行原理参考（暖奶油 + 纯等宽 + 终端 TUI）
 - `references/palettes.md` —— 备选的 mood / palette 路由
 
-若 Required References 未指定 design 文件，这些参考只是 style hint，不是实现规范。若已指定 design 文件，以 design 文件中的具体数值为准；Style Hint 的自由格式描述退为补充说明。
+未指定主题时，Required References 使用 `references/design-default.md`。若已指定其他 design 文件，以该文件中的具体数值为准；Style Hint 的自由格式描述退为补充说明。
 
 ## Animation / Effect Skill Preference
 

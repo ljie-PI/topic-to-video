@@ -56,7 +56,7 @@
 |------|------|------|
 | 来源 | 要抓取的 URL、粘贴的文本，或仅一个主题 | — |
 | 方向 | `1920×1080`（横屏）/ `1080×1920`（竖屏）/ `1080×1440`（3:4） | — |
-| 风格 | 从措辞推断，或读取工作区 `style-prompt.md`（见 Visual Styles） | Rosé Pine Dawn |
+| 风格 | 从措辞推断，或读取工作区 `style-prompt.md`（见 Visual Styles） | Frag Note Default |
 | 时长 | 通常 3-10 分钟 | 5 分钟 |
 | 语言 | 解说语言 | 中文 |
 | 视觉素材 | 是否联网搜索图片 / 视频片段来丰富场景 | 是 |
@@ -94,9 +94,8 @@
 
 | 风格 | 参考文件 | 字体 | 适用场景 |
 |------|---------|------|---------|
-| **Rosé Pine Dawn**（默认建议） | `references/design-dawn.md` | Caveat、PatrickHand、MaShanZheng、NotoSansSC | 温暖、手绘风的讲解视频 |
+| **Frag Note Default**（默认） | `references/design-default.md` | NotoSansSC、IBMPlexMono | 暖白 + 克制薰衣草的安静编辑风 |
+| **Rosé Pine Dawn** | `references/design-dawn.md` | Caveat、PatrickHand、MaShanZheng、NotoSansSC | 温暖、手绘风的讲解视频 |
 | **Rosé Pine Moon** | `references/design-moon.md` | NotoSansSC、IBMPlexMono | 深色、严肃的编辑向内容 |
 | **GitHub** | `references/design-github.md` | NotoSansSC、IBMPlexMono | GitHub trending / repo launch / 开源项目介绍 |
 | **Product Hunt** | `references/design-producthunt.md` | NotoSansSC、IBMPlexMono | Product Hunt 周榜 / SaaS launch / 新产品发布 |
-| **News（新闻洞察）** | `references/design-news.md` | NotoSansSC、IBMPlexMono | 白底 + 品牌紫，可信编辑风的新闻解读 / 时事分析 / 深度报道 |
-| **Tech（技术讲解）** | `references/design-tech.md` | NotoSansSC、IBMPlexMono | 暖奶油 + 纯等宽 + 终端 manpage 感的技术讲解 / CLI / 命令行原理 |

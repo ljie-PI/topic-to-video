@@ -3,8 +3,8 @@
 #
 # Usage: bash fonts-download.sh [target_dir] [style] [--dry-run]
 #   target_dir defaults to ./fonts
-#   style defaults to dawn
-#   style values: dawn, moon, all
+#   style defaults to default
+#   style values: default, dawn, moon, all
 #
 # Downloads Google Fonts WOFF2 subsets and writes a local CSS file for each style.
 set -Eeuo pipefail
@@ -62,7 +62,7 @@ on_error() {
 trap on_error ERR
 
 TARGET="${1:-fonts}"
-STYLE="${2:-dawn}"
+STYLE="${2:-default}"
 DRY_RUN="${3:-}"
 
 if [[ "$#" -gt 3 ]]; then
@@ -133,6 +133,12 @@ print(f"[fonts] wrote {css_file}", file=sys.stderr)
 PY
 }
 
+download_default() {
+  download_google_fonts \
+    "default" \
+    "https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap"
+}
+
 download_dawn() {
   download_google_fonts \
     "dawn" \
@@ -146,6 +152,9 @@ download_moon() {
 }
 
 case "$STYLE" in
+  default)
+    download_default
+    ;;
   dawn)
     download_dawn
     ;;
@@ -153,11 +162,12 @@ case "$STYLE" in
     download_moon
     ;;
   all)
+    download_default
     download_dawn
     download_moon
     ;;
   *)
-    bad_args "Unknown style '$STYLE'. Expected: dawn, moon, all"
+    bad_args "Unknown style '$STYLE'. Expected: default, dawn, moon, all"
     ;;
 esac
 
