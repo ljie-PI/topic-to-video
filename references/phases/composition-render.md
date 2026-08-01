@@ -10,7 +10,7 @@
 
 - 必需：`references/composition-rules.md` → `{work_dir}/{topic_name}/references/composition-rules.md`
 - 必需：`references/composition-stage-protocol.md` → `{work_dir}/{topic_name}/references/composition-stage-protocol.md`
-- 如 handoff 指定 design route：`references/design-<theme>.md` → `{work_dir}/{topic_name}/references/design-<theme>.md`
+- 所选 Design：未指定主题时 `references/design-default.md`，否则 `references/design-<theme>.md` → `{work_dir}/{topic_name}/references/`
 
 `composition-handoff.md` 只记录项目变量、实际输入路径、style hint、animation / effect preference、customized rules、conflict notes 和 project-specific overrides；固定输入解释与 layout rules 来自 `references/composition-rules.md`，stage 执行协议来自 `references/composition-stage-protocol.md`，不得复制 / 摘要 / 覆盖。
 

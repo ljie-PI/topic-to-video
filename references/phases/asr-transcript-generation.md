@@ -30,8 +30,8 @@ scripts/calibrate-transcript.py \
 如果 `{work_dir}/{topic_name}/fonts/` 已经包含所选风格对应的 `.woff2` 文件与 style CSS，则跳过。
 
 ```bash
-# Dawn 默认手绘风
-bash scripts/fonts-download.sh {work_dir}/{topic_name}/fonts dawn
+# Default 默认明亮编辑风
+bash scripts/fonts-download.sh {work_dir}/{topic_name}/fonts default
 
 # Moon 严肃技术 / 编辑风
 bash scripts/fonts-download.sh {work_dir}/{topic_name}/fonts moon

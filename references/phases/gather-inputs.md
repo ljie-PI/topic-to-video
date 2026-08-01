@@ -3,11 +3,10 @@
 1. 来源：要抓取的 URL、粘贴的文本，或仅一个主题。
 2. 方向：`1920×1080`（横屏）、`1080×1920`（竖屏）或 `1080×1440`（3:4 竖向）。
 3. 风格：从用户措辞推断，或在项目工作区里有 `style-prompt.md` 时读取它。`style-prompt.md` 是一份可选的自由文本备注，其内容会覆盖默认的风格推断，并作为 style hint 写入 Phase 8 的 `composition-handoff.md`。
-   - 默认：Rosé Pine Dawn 手绘风（`references/design-dawn.md`）
+   - 默认：Frag Note 安静明亮编辑风（`references/design-default.md`）
    - 主题是 GitHub trending / repo launch / open source 项目介绍 → **GitHub 预设**（`references/design-github.md`）
    - 主题是 Product Hunt 周榜 / SaaS launch / 新产品发布 → **Product Hunt 预设**（`references/design-producthunt.md`）
-   - 主题是新闻解读 / 时事分析 / 热点复盘 / 深度报道 / 媒体洞察 / 行业动态 → **News 预设**（`references/design-news.md`，白底 + 品牌紫可信编辑风）
-   - 主题是 AI/SaaS/编程 / 技术讲解，但风格没明说，询问对方想要 Tech 终端·manpage 风还是 GitHub 品牌克制风，或某个品牌预设。两个技术向预设：GitHub（浅色 GitHub 品牌克制）、Tech（暖奶油纯等宽终端）
+   - 用户明确要求手绘、深色编辑或品牌主题时，再选择对应预设；未指定时保持默认主题。
 4. 时长：通常 3-10 分钟——从用户需求中提取，默认 5 分钟。
 5. 语言：默认中文。若用户想要其他语言要询问确认。
 6. 询问是否需要搜索视觉素材（图片/视频片段）来丰富场景。默认：是。
