@@ -2,6 +2,11 @@
 
 本文件记录 Phase 8 HyperFrames composition 的固定规则。项目变量、实际输入路径、style hint 和用户定制约束来自 `composition-handoff.md`。
 
+## 外部 Skill 优先级
+
+Phase 8 可以按需读取 `hyperframes`、`hyperframes-animation`、`hyperframes-cli` 以及动画 / effect adapter 等外部 skill。若外部 skill 的示例、推荐实践或默认模式与本文件规则冲突，一律以本文件为准。
+
+
 ## Scope and Required References
 
 - 本文件是 Phase 8 hard constraints 的权威来源；HyperFrames sub-agent 必须读取工作区本地副本 `references/composition-rules.md`。
@@ -300,7 +305,7 @@ Recommended authoring pattern:
 
 #### R19 — Text timing and entrance state
 
-多个非素材文本元素必须按完整旁白句子逐个出现，禁止 scene start 一次性全亮。多元素 `visual_role` 内部的条目 / 节点 / 行 / 标注也必须随对应旁白逐个出现，不在 unit 首次出现时一次性全亮。scene title / header / eyebrow 与 `visual_text_units[].display_text` / `supporting_points` 不得重复同一句或同一短语；重复时删除标题、改成上位标签，或改写 unit 文本。文本元素服务于哪一句，就在该句开始前短暂提前显示，保证旁白读到该句时相关文本已可见。若 `scene-text-plan.json` 存在，`priority: "primary"` 的 `visual_text_units` 必须优先实现；`secondary` / `decorative` 可因安全布局降级，但必须在 `composition/DESIGN.md` 记录。旧 text beat 需要淡出或降级，不能永久累积。入场动画必须有正确初始态，避免元素在 tween 前闪现。
+多个非素材文本元素必须按完整旁白句子逐个出现，禁止 scene start 一次性全亮。多元素 `visual_role` 内部的条目 / 节点 / 行 / 标注也必须随对应旁白逐个出现，不在 unit 首次出现时一次性全亮。scene title / header / eyebrow 与 `visual_text_units[].display_text` / `supporting_points` 不得重复同一句或同一短语；重复时删除标题、改成上位标签，或改写 unit 文本。文本元素服务于哪一句，就在该句开始前短暂提前显示，保证旁白读到该句时相关文本已可见；若对应句靠近 scene 结尾、可见时间过短，可适度提前到同一语义段的铺垫处。若 `scene-text-plan.json` 存在，`priority: "primary"` 的 `visual_text_units` 必须优先实现；`secondary` / `decorative` 可因安全布局降级，但必须在 `composition/DESIGN.md` 记录。旧 text beat 需要淡出或降级，不能永久累积。入场动画必须有正确初始态，避免元素在 tween 前闪现。
 
 ### Authoring record and audit rules
 
