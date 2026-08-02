@@ -26,15 +26,15 @@
 
 只有缺失上游 `layout_role` 时才运行本节；顺序是 continuation metadata → material count / readability → single-material affordance / kind。命中前一项后不再用后项覆盖。
 
-推导前先做输入冲突检查：`no_match: true` 与 `material_ref` / 非空 `material_refs` 并存时，停止并反馈 handoff conflict；continuation metadata 只出现一部分、指向非相邻 scene、material 与 group 起点不同或未满足 R5–R6 时，同样停止，不得靠 fallback 修复。
+推导前先做输入冲突检查：若 `scene-material-suggestions.json` 存在，`no_match: true` 与 `material_ref` / 非空 `material_refs` 并存，或某 scene 同时缺少素材 assignment 与显式 `no_match: true`，均是 malformed handoff，必须停止；若整个 suggestions 文件缺失，只有 `composition-handoff.md` 或其它权威输入明确记录该 scene 没有可用 catalog material 时才能推导 `no_match`，否则同样停止。continuation metadata 只出现一部分、指向非相邻 scene、material 与 group 起点不同或未满足 R5–R6 时，也不得靠 fallback 修复。
 
 | Priority | Inferred `layout_role` | Trigger | Semantic meaning | Guard |
 | --- | --- | --- | --- | --- |
 | 1 | `media_continuation` | 完整合法的 `continuation_group_id` / `continuation_of` 等 metadata 已存在，但后续 scene 只缺 `layout_role` 字段。 | 同一证据继续讲解，保持视觉锚点，只更新解释层。 | 仅补全漏标 role；没有 continuation metadata 的跨 scene 复用是 R6 违规，必须停止，不得推导。 |
-| 2 | `no_match` | 没有 `material_ref`，且 `material_refs` 缺失或为空；或上游明确 `no_match: true` 且没有素材 assignment。 | 本 scene 由 typography、data、flow、diagram 等信息结构承担叙事。 | 不得借用其他 scene 的 catalog 素材；与素材 assignment 并存即冲突。 |
+| 2 | `no_match` | 上游显式 `no_match: true` 且没有素材 assignment；或整个 suggestions 文件缺失，并有 handoff / 权威输入明确证明该 scene 没有可用 catalog material。 | 本 scene 由 typography、data、flow、diagram 等信息结构承担叙事。 | suggestions 文件存在时，素材字段和 `no_match` 都缺失是 malformed handoff；不得借用其他 scene 的 catalog 素材。 |
 | 3 | `comparison_sequence` | 三个及以上素材；或恰好两个素材但并列 / 上下同屏无法满足 R11 可读性。 | 多个证据按时间逐个 / 分组比较。 | 不默认三等分或小宫格；必要时分时或拆 scene。 |
 | 4 | `comparison_pair` | 恰好两个需要同等比较的素材，且两者同屏能满足 R11。 | 两个对象并排或上下形成可读对照。 | 一旦实测不可读，改为 `comparison_sequence`，而不是压小。 |
-| 5 | `detail_callout` | 单素材；旁白明确解释局部细节，且 catalog `focal_region` / avoid-region 或可验证的关键区域支持该焦点。 | 保留来源素材，以局部窗口与外置 callout 解释一个重点。 | 不能凭作者临时 marker 推导；不得裁掉 catalog source figure 的必要结构。 |
+| 5 | `detail_callout` | 单素材；旁白明确解释局部细节，且 catalog `focal_region` / avoid-region 或可验证的关键区域支持该焦点。 | 保留来源素材，以局部窗口与外置 callout 解释一个重点。 | 不能凭作者临时 marker 推导；单帧局部窗口不得造成 accidental clipping，聚合 sequence 不得永久遗漏 catalog source figure 的必要结构。 |
 | 6 | `band` | 单个 ultra-wide / strip 素材可在内容区内形成满足 R11 / `T-MEDIA` 的足够高信息带。 | 让长条素材以可读横带成为主体。 | 不能成为细线；不可读时继续评估 `viewport_reveal` / 分时 / 拆 scene。 |
 | 7 | `viewport_reveal` | 单素材满足 R10 reveal eligibility，且 traversal / focal-window 本身是 scene 的主要 presentation。 | 通过窗口沿长轴或重点区域阅读极端比例素材。 | `full_fit` 必须未通过 `T-FIT`，或存在 catalog focal-window 证据；marker 不能自证 eligibility。 |
 | 8 | `video_first` | 单个主视频，且没有命中更高优先级的 specialized presentation。 | 视频行为 / 时间变化是主证据，文本只作短解释。 | 近静止视频在 motion 上按图片处理，但 layout 仍可保持 video-first。 |
@@ -85,7 +85,7 @@ orientation = landscape
 | tall / ultra-tall | 按 `T-FIT` 判定；不达标时 key-region-aware `viewport_reveal`，不得缩成窄条。 | 按 `T-FIT` 判定；其余宽度驱动 reveal，沿长轴覆盖重点。 |
 | ultra-wide / strip | 使用足够高的 `band` 或横向 reveal。 | 横向 reveal、分时或拆 scene；不得完整缩成细条。 |
 | square-ish / UI screenshot | 居中或偏侧主体 + 外置信息块；必要时只实现 primary unit。 | 上下分区或居中主体 + 短 callout；过密时分时。 |
-| catalog 论文 figure / table / chart 素材 | 保留来源图形、轴线、图例、caption、关键曲线 / rows；外置解释 1–3 个结论。 | figure slab / reveal + 一次一个外置 callout；reveal 必须遍历所有必要结构，必要时拆 scene；不得裁切、抽取或重画为“只保留 primary rows / points”的新图。 |
+| catalog 论文 figure / table / chart 素材 | 保留来源图形、轴线、图例、caption、关键曲线 / rows；外置解释 1–3 个结论。 | figure slab / reveal + 一次一个外置 callout；单个 reveal frame 只要求当前窗口清晰且无 accidental clipping，start / mid / end 或 proof sequence 必须聚合遍历所有必要结构；不得永久遗漏、抽取或重画为“只保留 primary rows / points”的新图。 |
 | structured `data_table` / `chart` visual unit（不是 catalog source graphic） | small / medium 可 table / chart + highlights；large 分页、摘要或拆 scene。 | 可保留 primary rows / columns / points，使用行卡、分页、分时或拆 scene；table 转 chart 仍须满足 `Input alignment` 第 6 条。 |
 | 视频 clip | 视频主体优先；只用短 label、状态或时间点 callout。 | media slab 或安全近全幅背景；复杂结构信息拆到相邻 scene。 |
 

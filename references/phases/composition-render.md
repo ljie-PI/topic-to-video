@@ -52,7 +52,7 @@ Animation / effect 选择：
 
 严格遵守 references/composition-rules.md：
 - Scope and Required References
-先建立 scene inventory，再按 references/layout-routing.md 的 authority / fallback definitions / input alignment / resolution order / global density and degradation 解析 role；读取当前 scene 命中的 material、layout role、orientation、visual role（如有）以及最终 presentation / `cross_aspect_strategy` sections。按 `material × layout_role × visual_role × orientation` 选择最终 layout presentation；缺失 role 用声明的 fallback，推导前先拒绝 `no_match` / 素材 assignment 冲突和不完整 continuation metadata，不得虚构 visual role 或随意改写上游 role。catalog source figure / table / chart 必须保留来源结构；只有 structured `data_table` / `chart` visual unit 可只保留 primary rows / columns / points。portrait / vertical 中不得把 landscape horizontal flow / side rail / multi-column grid 直接套到结构型 unit。
+先建立 scene inventory，再按 references/layout-routing.md 的 authority / fallback definitions / input alignment / resolution order / global density and degradation 解析 role；读取当前 scene 命中的 material、layout role、orientation、visual role（如有）以及最终 presentation / `cross_aspect_strategy` sections。按 `material × layout_role × visual_role × orientation` 选择最终 layout presentation；缺失 role 用声明的 fallback；`scene-material-suggestions.json` 存在时，scene 缺少素材 assignment 且未显式 `no_match: true`，或 `no_match` 与素材 assignment 并存，均须停止；整个 suggestions 文件缺失时，inferred `no_match` 必须有 handoff / 权威输入证据；同时拒绝不完整 continuation metadata，不得虚构 visual role 或随意改写上游 role。catalog source figure / table / chart 必须保留来源结构；只有 structured `data_table` / `chart` visual unit 可只保留 primary rows / columns / points。portrait / vertical 中不得把 landscape horizontal flow / side rail / multi-column grid 直接套到结构型 unit。
 
 严格遵守 references/composition-stage-protocol.md：
 - Phase 8.3 — Pre-render Self-Audit Rules
