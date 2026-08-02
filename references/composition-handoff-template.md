@@ -1,12 +1,13 @@
 # Composition Handoff — <TOPIC>
 
-本文件位于项目工作区根目录。它记录本项目变量、输入路径、style hint、用户定制约束和冲突说明；固定规则来自工作区本地副本 `references/composition-rules.md`，动画软路由来自 `references/animation-routing.md`，stage / QA 协议来自 `references/composition-stage-protocol.md`。
+本文件位于项目工作区根目录。它记录本项目变量、输入路径、style hint、用户定制约束和冲突说明；固定规则来自工作区本地副本 `references/composition-rules.md`，布局软路由来自 `references/layout-routing.md`，动画软路由来自 `references/animation-routing.md`，stage / QA 协议来自 `references/composition-stage-protocol.md`。
 
 ## Required References
 
 Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前物化这些文件，并在本节写入实际相对路径。
 
 - Rules：`references/composition-rules.md`（必需；从 skill 的 `references/composition-rules.md` 复制到项目工作区）
+- Layout Routing：`references/layout-routing.md`（必需；role 来源 / fallback / 冲突处理和最终 layout presentation 软路由）
 - Animation Routing：`references/animation-routing.md`（必需；`visual_role` / `layout_role` 动画候选与 runtime 软路由）
 - Stage Protocol：`references/composition-stage-protocol.md`（必需；Phase 8 self-audit / render / Visual QA / feedback loop）
 - Design：`references/design-default.md`（未指定主题时的默认；若已选择其他主题，替换为对应的 `references/design-<theme>.md` 并从 skill 复制到项目工作区）
@@ -33,7 +34,7 @@ Phase 8 主 agent 必须在调用 HyperFrames sub-agent 前物化这些文件，
 - 屏幕文本块规划：`scene-text-plan.json`（如存在）
 - 已预置字体：`fonts/`
 
-输入文件的语义解释、`scene-text-plan.json` routing、layout-aware 字段读取和 `visual_role × orientation` 规则以 `references/composition-rules.md` 为准；动画候选机制与 runtime 选择参考 `references/animation-routing.md`；Phase 8.3-8.7 的执行、检查、QA 和反馈循环以 `references/composition-stage-protocol.md` 为准。
+输入文件的语义解释与 layout hard constraints 以 `references/composition-rules.md` 为准；role 来源、缺失 fallback、冲突处理和 `material × layout_role × visual_role × orientation` 到最终 presentation 的选择参考 `references/layout-routing.md`；动画候选机制与 runtime 选择参考 `references/animation-routing.md`；Phase 8.3-8.7 的执行、检查、QA 和反馈循环以 `references/composition-stage-protocol.md` 为准。
 
 ## Style Hint
 
