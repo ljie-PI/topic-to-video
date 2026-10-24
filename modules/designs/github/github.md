@@ -2,7 +2,7 @@
 
 一张冷灰色的棉纸，上面是低饱和的 GitHub 配色：灰、蓝、绿，不加阴影，用 2px 细线和卡片分层。看起来像一张安静、干净的技术页面。
 
-这份文档只规定外观，任何类型的视频都能用。GitHub 专属的内容（Octocat 标志、语言色点、仓库卡片、Star 按钮、贡献图配色等）不在这里，在 `templates/github/GUIDE.md`。
+这份文档只规定外观，任何类型的视频都能用。GitHub 专属的内容（Octocat 标志、语言色点、仓库卡片、Star 按钮、贡献图配色等）不在这里，在 `templates/github/github.md`。
 
 背景贴图在 `designs/github/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体不放在仓库里，用 skill 根目录的 `scripts/fonts-download.sh <工程>/assets/fonts github` 下载，得到 Noto Sans（英文和数字）、Noto Sans SC（中文）、Noto Sans Mono（代码、文件名）三种可变字重（100–900）的 WOFF2 和一份 `rose-pine-github-fonts.css`。
 
@@ -29,7 +29,7 @@
 
 ### 1.2 主题变量值（默认：纸本 paper）
 
-变量的含义见 `designs/GUIDE.md`。
+变量的含义见 `designs/designs.md`。
 
 | 变量 | 色值 |
 |---|---|

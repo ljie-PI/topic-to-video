@@ -11,7 +11,7 @@
 | `components/jay/jay.html` | 组件本体（HyperFrames 子合成） |
 | `components/jay/images/jay-base.png` | 基础图层：身体、头、五官、键盘上的左手、笔记本和杯子，以及所有动作的来源。2048×2048，透明背景 |
 | `components/jay/images/jay-wave.png` | 挥手部件：只取抬起的右手。和 `jay-base.png` 同一构图、同一尺寸，像素对齐 |
-| `scripts/make-envelope.mjs` | 从配音生成嘴型数据（见下文） |
+| `components/jay/make-envelope.mjs` | 从配音生成嘴型数据（见下文） |
 
 两张图的切割坐标都写死在 `jay.html` 里。**不能换成别的图**，也不能重新裁切或缩放这两张图；调色可以，只要尺寸和位置不变。
 
@@ -44,7 +44,7 @@ window.VIDEO = { jay: {
   typing:   [[19.85, 20.75]],
   glances:  [[1.467, 1.0, "U"], [3.167, 1.0, "L"]],
   envelopeFps: 30,
-  envelope: [ /* node scripts/make-envelope.mjs 配音.wav */ ],
+  envelope: [ /* node components/jay/make-envelope.mjs 配音.wav */ ],
 } };
 ```
 
@@ -149,7 +149,7 @@ jay: {
 用配音生成，需要 ffmpeg：
 
 ```
-node scripts/make-envelope.mjs 配音.wav > envelope.json
+node components/jay/make-envelope.mjs 配音.wav > envelope.json
 ```
 
 - 输出是一个数组，每秒 30 个值，0–100。

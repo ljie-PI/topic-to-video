@@ -1,6 +1,6 @@
 # 模板：github/project-cover（项目封面）
 
-属于 GitHub 热榜这一类视频（见 `templates/github/GUIDE.md`）。
+属于 GitHub 热榜这一类视频（见 `templates/github/github.md`）。
 
 一个上榜项目的封面，用来开始讲一个项目。
 
@@ -54,7 +54,7 @@
 | `stars` | 0 | star 数（数字），滚动的目标值 |
 | `starsPrefix` | `"+"` | 数字前缀 |
 | `starsLabel` | `"本周新增 star"` | 数字后面的说明 |
-| `lang`, `langColor` | — | 语言名和色点（色值见 `templates/github/GUIDE.md` 的语言色表） |
+| `lang`, `langColor` | — | 语言名和色点（色值见 `templates/github/github.md` 的语言色表） |
 | `logo` | `""` | logo 图片路径。留空时显示仓库名首字母卡片 |
 | `starred` | `"on"` | 设为 `"off"` 时，Star 按钮不变成 Starred |
 | `nameAt` | 0.55 | 第一拍：名字出现（场景秒）。默认值刚好在贡献图转场退去时 |
@@ -73,7 +73,7 @@
 
 ## 和其他模块的配合
 
-- **转场**：在 `window.VIDEO.cuts` 里加一项，`at` 等于这个封面的 `data-start`；卡片按 `templates/github/GUIDE.md` 里的对应关系，用同一个项目的信息填。
+- **转场**：在 `window.VIDEO.cuts` 里加一项，`at` 等于这个封面的 `data-start`；卡片按 `templates/github/github.md` 里的对应关系，用同一个项目的信息填。
 - **导航栏**：在 `window.VIDEO.tabs` 里加一项，`at` 也等于 `data-start`。
 - **人物动作**（视频秒）：
   - `data-start + starsAt` 时做 `["eureka", 2700]`，数字一出来就惊喜，头顶冒“!”；

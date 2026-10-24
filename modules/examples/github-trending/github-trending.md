@@ -1,6 +1,6 @@
 # 示例：GitHub 本周热榜（0–27.2 秒）
 
-一个完整的 HyperFrames 工程，按 `templates/github/GUIDE.md` 的组装方法拼成（路径相对 `modules/` 目录）。可以整个复制出去，作为新视频的起点。
+一个完整的 HyperFrames 工程，按 `templates/github/github.md` 的组装方法拼成（路径相对 `modules/` 目录）。可以整个复制出去，作为新视频的起点。
 
 | 来源 | 在这个工程里的样子 |
 |---|---|
@@ -36,7 +36,7 @@ README 截图是占位的单帧，比面板高不了多少，所以滚动幅度�
 
 ```
 bash ../../../scripts/fonts-download.sh assets/fonts github   # 下载主题字体（skill 根目录的脚本），只需一次
-node tools/build-data.mjs                       # 重新生成数据；复制到别处后用 MAKE_ENVELOPE=<skill>/modules/scripts/make-envelope.mjs 指定嘴型工具
+node tools/build-data.mjs                       # 重新生成数据；复制到别处后用 MAKE_ENVELOPE=<skill>/modules/components/jay/make-envelope.mjs 指定嘴型工具
 export HYPERFRAMES_BROWSER_PATH="<本机 Chrome 路径>"   # 只在 HyperFrames 自带的浏览器无法启动时需要
 npx hyperframes check
 npx hyperframes preview
