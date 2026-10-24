@@ -2,25 +2,19 @@
 
 本文件聚焦 `topic-to-video` 的上游问题：调研、抓取、TTS、ASR、确定性资源以及 handoff contract。`SKILL.md` 只保留必须常驻上下文的核心护栏；这里记录具体症状、原因和恢复方式。HyperFrames composition、CSS、animation/effect skills、lint、inspect 与渲染实现的坑请去看 `hyperframes`、`hyperframes-cli` 以及对应 skill（如 `gsap`、`animejs`、`waapi`、`css-animations`、`lottie`、`three`、`typegpu`）。Tailwind 属于静态 layout / style utility，不负责 render-critical motion timing。
 
-## 1. 中文场景下避免使用 Whisper / HyperFrames Transcribe
+## 1. 中文场景下避免使用 HyperFrames Transcribe
 
-本工作流中，不要用 Whisper 或 `npx hyperframes transcribe` 处理中文解说。历史 run 多次遇到模型下载失败和 UTF-8 输出乱码。
+本工作流中，不要用 `npx hyperframes transcribe` 处理中文解说。历史 run 多次遇到模型下载失败和 UTF-8 输出乱码。
 
-修复：用 `scripts/transcribe.py`。默认走**本地 Qwen3-ASR + Qwen3-ForcedAligner**（`ASR_BACKEND=qwen3`），返回干净的词级时间戳（CJK 按字、Latin 按词），自动识别语言，无需 ffprobe 探测 sample rate / format。云端 fallback 用 `ASR_BACKEND=dashscope`，走 DashScope 非实时 `paraformer-v2`（HTTP REST 异步任务）。
+修复：用 `scripts/transcribe.py`。后端由环境变量选择，参数和依赖见 `scripts/transcribe.py --help`。脚本输出带词级时间戳的句子列表（transcript schema 见 Phase 7 的接口契约）。
 
-模型路径可用 `QWEN3_ASR_MODEL` / `QWEN3_ALIGNER_MODEL` 指向本地目录（缺省自动从 HF 下载）。注意输出是**扁平 token 流**，脚本按句末标点（`。！？!?…`）重新切句，再以"保留字符"匹配把 token 归入各句，因此 transcript 文本里的标点来自句子级文本、word 级 token 不含标点。
+如果所有已配置的后端都不可用，问用户要一份外部 transcript，而不是悄悄切换到 HyperFrames 的 transcribe。
 
-如果本地 GPU 和 DashScope 都不可用，问用户要一份外部 transcript，而不是悄悄切换到 HyperFrames 的 transcribe。
+## 1b. ASR 的数字归一化（ITN）
 
-## 1b. 本地 ASR 的数字归一化（ITN）
+transcript 里的数字可能是中文或阿拉伯写法（取决于后端与开关），下游对齐会把两者视为等价，不做假设。数字归一化的行为、依赖与开关见 `scripts/transcribe.py --help`。
 
-云端 paraformer-v2 默认把口语中文数字转成阿拉伯写法（`一万六千二百八十八→16288`、`三点一→3.1`），本地 Qwen3-ASR 原始输出是逐字中文。为对齐这一行为，`transcribe.py` 的 qwen3 backend 默认开 ITN（`ASR_ITN=1`），用独立包 `wetext`（`pip install wetext`）做逆文本归一化；`ASR_ITN=0` 可关闭、保留逐字中文。`wetext` 缺失时自动跳过 ITN、保留逐字中文，不报错。
-
-实现要点 / 坑：
-- 先按日历单位（`年月日时分秒`）切块再分别 ITN，避免 wetext 把 `二零二六年六月` 重排成 `2026/06`，从而保持云端风格 `2026年6月` 并避免合并边界 artifact。
-- 用 `difflib` 把被合并的数字字符的词级时间戳合并成一个阿拉伯数字 token（begin=首字、end=末字），不丢任何 word。
-- `wetext` 缺失或单句异常时自动回退逐字中文，不中断。
-- 注意：开 ITN 后 transcript 用阿拉伯数字，而 `narration.txt` 多用中文数字；做文本对比 / CER 评测时应对两侧都做同样 ITN 归一化，否则数字格式差异会让分数虚高。
+做文本对比 / CER 评测时应对两侧都做同样归一化，否则数字格式差异会让分数虚高。
 
 ## 2. 不要编辑 TTS 脚本源码
 
@@ -34,19 +28,17 @@ python3 scripts/voice-clone.py \
   --output-dir {work_dir}/{topic_name}/voice_clone
 ```
 
-默认走**本地 Qwen3-TTS 克隆**（`TTS_BACKEND=qwen3tts`），用 `--reference-wav` / `TTS_REF_WAV`（旧别名 `VOXCPM_REF_WAV` 仍兼容）指定要克隆的音色。云端 fallback 用 `TTS_BACKEND=dashscope`，通过 `--voice` 或 `COSYVOICE_VOICE_ID` 设置 CosyVoice 音色。
+后端由环境变量选择，参考音色、参数和依赖见 `scripts/voice-clone.py --help`。
 
-## 2b. Qwen3-TTS 声音克隆需要参考音频的 transcript
+## 2b. 参考音频需要 transcript
 
-Qwen3-TTS 的 voice clone 除了参考 WAV 还需要它对应的逐字稿（`ref_text`）。`voice-clone.py` 的解析顺序：`--reference-text` / `TTS_REF_TEXT`（内联字符串或 `.txt` 路径）→ 参考 WAV 同名 `<ref>.txt` 缓存 → 首次用 Qwen3-ASR 自动转写并写回 `<ref>.txt`。
+声音克隆除了参考 WAV 还需要它对应的逐字稿。解析顺序、缓存位置与自动转写行为见 `scripts/voice-clone.py --help`。
 
-坑：自动转写会先加载 Qwen3-ASR（多 GB），脚本在转写完成后显式 `del model + torch.cuda.empty_cache()` 再加载 Qwen3-TTS，避免单卡（如 11GB）同时驻留两个模型导致 OOM。第一次跑某个参考音频会慢一点（多一次 ASR 加载），之后命中 `<ref>.txt` 缓存。参考音频以 `(waveform, sr)` 元组（soundfile 读取）传入，避开对外部 SoX 二进制的依赖。
+坑（长 narration 内存不足）：合成较长 narration 时可能在高负载机器上 OOM。`voice-clone.py` 已做缓解；仍失败时可把 narration 分段合成再用 ffmpeg 拼接，或切到其他后端。
 
-坑（长 narration OOM）：在 11GB 卡上合成较长 narration 时，TTS 的 KV cache 可能在末尾 OOM（`CUDA out of memory ... try expandable_segments`）。`voice-clone.py` 已用 `os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')` 缓解碎片化。仍 OOM 时可把 narration 分段合成再用 ffmpeg 拼接，或切到云端 fallback。
+## 2c. 硬件精度注意事项
 
-## 2c. Turing GPU（如 RTX 2080 Ti）：用 fp16，不要装 flash-attn
-
-本地 Qwen3-TTS / Qwen3-ASR 在 Turing（sm_75）上：脚本统一用 `torch.float16`（**不要** bf16——Turing 无原生 bf16，会很慢），并且**不要**装 flash-attn（Turing 不支持，库不带它也能跑，启动时会有一条 "flash-attn is not installed" 提示，可忽略）。两个多 GB 模型分阶段顺序加载，单卡 11GB 足够。
+后端特定的硬件精度选择（如低精度推理、避免不支持的 kernel）见 `scripts/voice-clone.py --help` 与 `scripts/transcribe.py --help`。
 
 ## 3. 全角中文冒号可能引入 TTS 停顿
 
@@ -118,8 +110,7 @@ scripts/merge-paper-manifest.py \
 
 常见修复：
 - `playwright` import 出错：`pip install playwright`
-- 本地 TTS/ASR import 出错（`qwen_tts` / `qwen_asr` / `torch`）：在 venv 里 `pip install qwen-tts qwen-asr wetext` 并安装匹配 CUDA 的 `torch`
-- `dashscope` import 出错（仅云端 fallback 需要）：在 venv 里安装 DashScope SDK
+- TTS / ASR 后端依赖 import 出错：按 `scripts/voice-clone.py --help` / `scripts/transcribe.py --help` 安装对应后端的包
 - `mineru` 缺失：`pip install "mineru[pipeline]"`
 
 ## 12. Paper mode 不要跳过主论文解析

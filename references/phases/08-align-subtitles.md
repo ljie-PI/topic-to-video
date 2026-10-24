@@ -30,7 +30,7 @@ scripts/transcribe.py \
   {work_dir}/{topic_name}/transcribe/transcript.json
 ```
 
-默认走**本地 Qwen3-ASR + ForcedAligner**，输出词级时间戳并默认开启数字归一化（中文数字→阿拉伯）。云端 fallback：`ASR_BACKEND=dashscope` + `DASHSCOPE_API_KEY`。后端、模型路径、ITN 开关等细节见 `scripts/transcribe.py --help`。
+后端由环境变量选择，参数和依赖见 `scripts/transcribe.py --help`。transcript schema（句子列表，每句含 `begin` / `end` / `text` 和词级 `words`，毫秒）是固定契约，见 Phase 7 的「TTS / ASR 接口契约」。
 
 随后生成 transcript-first 的字幕单元：
 
