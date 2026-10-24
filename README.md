@@ -16,8 +16,8 @@
 | 本地 TTS 参考音频 | `TTS_REF_WAV` 指向要克隆的音色 WAV——本地 TTS 必需（旧别名 `VOXCPM_REF_WAV` 仍兼容） |
 | `DASHSCOPE_API_KEY` | 仅在用云端 fallback（`TTS_BACKEND`/`ASR_BACKEND=dashscope`）时需要 |
 | `VLM_*`（可选） | 同时设 `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` 即可启用显式视觉模型；未设置时 `vision-analyze.py` 会回退到 agent 自己的 `view` 工具 |
-| sub-agent 支持（Phase 8） | 优先使用当前客户端原生的 sub-agent / 委派工具。仅当用一句短 prompt 让 agent 自己读 `composition-handoff.md`、工作区本地 `references/composition-rules.md`、`references/layout-routing.md`、`references/animation-routing.md` 与 `references/composition-stage-protocol.md` 时，CLI fallback 才可接受 |
-| `hyperframes` + `hyperframes-cli` + `hyperframes-animation` skills（Phase 8） | 由 composition sub-agent 加载；`hyperframes-animation` 的当前索引用于必需的动画能力发现，涉及 FLIP / path / mask / SVG / 3D keyframes 时按需加载 `hyperframes-keyframes`。sub-agent 的 HyperFrames CLI 间接依赖 Node.js；主 agent 自身不写 `composition/index.html`。文档：https://hyperframes.heygen.com/quickstart |
+| sub-agent 支持（Phase 9 composition） | 优先使用当前客户端原生的 sub-agent / 委派工具。仅当用一句短 prompt 让 agent 自己读 `composition-handoff.md`、工作区本地 `references/composition-rules.md`、`references/layout-routing.md`、`references/animation-routing.md` 与 `references/composition-stage-protocol.md` 时，CLI fallback 才可接受 |
+| `hyperframes` + `hyperframes-cli` + `hyperframes-animation` skills（Phase 9 composition） | 由 composition sub-agent 加载；`hyperframes-animation` 的当前索引用于必需的动画能力发现，涉及 FLIP / path / mask / SVG / 3D keyframes 时按需加载 `hyperframes-keyframes`。sub-agent 的 HyperFrames CLI 间接依赖 Node.js；主 agent 自身不写 `composition/index.html`。文档：https://hyperframes.heygen.com/quickstart |
 
 ## 本地 TTS / ASR（默认，可切云端）
 
@@ -63,30 +63,41 @@
 
 > 也可以在项目工作区放一份 `style-prompt.md`（自由文本），它会覆盖默认风格推断，并作为 style hint 传给下游 composition。
 
-### 工作流（9 个 Phase）
+### 工作流（状态脚本驱动的 10 个 phase）
 
-主 agent 自动串联下列 phase；除 Phase 1 的确认外，通常无需人工介入：
+主 agent 每次运行 `scripts/pipeline-status.py <workspace>`，只读它指出的那一份 phase 文档并执行，如此循环直到全部完成。论文模式（`input_mode = "paper"`）会多出一个 Phase 2（解析论文）；`fetch_materials = false` 时 Phase 4 / 5 跳过。
 
 | Phase | 做什么 |
 |-------|--------|
-| 1 | 收集输入（主题 / 方向 / 风格 / 时长 / 语言） |
-| 2 | 主题调研（Gemini Deep Research + web search） |
-| 3 | 从 URL 抓取图片 / 视频素材（可跳过） |
-| 4 | 视觉分析 + 建立素材 catalog |
-| 5 | 撰写解说脚本、匹配场景素材、规划屏幕文本块 |
-| 6 | 本地 Qwen3-TTS 克隆音色生成解说音频 |
-| 7 | 本地 Qwen3-ASR 词级时间戳 + 确定性字体预置 |
-| 8 | HyperFrames composition handoff + sub-agent 渲染 |
-| 9 | 混入背景音乐 |
+| 1 | 收集输入（落盘 `inputs.json`） |
+| 2 | 解析论文（仅论文模式） |
+| 3 | 主题调研（落盘 `research-brief.md`） |
+| 4 | 从 URL 抓取图片 / 视频素材（可跳过） |
+| 5 | 视觉分析 + 建立素材 catalog |
+| 6 | 撰写解说脚本、匹配场景素材、规划屏幕文本块 |
+| 7 | 本地 Qwen3-TTS 克隆音色生成解说音频 |
+| 8 | 本地 Qwen3-ASR 词级时间戳 + 字幕单元 + 字体预置 |
+| 9 | HyperFrames composition handoff + sub-agent 渲染 |
+| 10 | 混入背景音乐 |
 
 ### 输出
 
 - 主产物：`{work_dir}/{topic_name}/composition/renders/final.mp4`
-- 含背景音乐版本（Phase 9 后）：`{work_dir}/{topic_name}/composition/renders/final_with_bgm.mp4`
+- 含背景音乐版本（Phase 10 后）：`{work_dir}/{topic_name}/composition/renders/final_with_bgm.mp4`
 
 ### 断点续跑（Checkpoint & Resume）
 
-每个 phase 的产物都会落盘。再次对同一 `{topic_name}` 发起请求时，主 agent 会发现已有工作区并询问是从中断处 resume 还是从头开始；也可以说 “redo phase N” 强制重跑某个 phase。
+每个 phase 的产物都会落盘。续跑入口是唯一的：`python3 scripts/pipeline-status.py {work_dir}/{topic_name}` 输出已完成的 phase、下一个 phase、要读的文档以及缺失 / 损坏的产物；某个产物被删掉或写坏时，脚本自动回退到对应 phase。也可以说 “redo phase N” 强制重跑某个 phase。
+
+## 开发
+
+测试只走脚本的命令行 seam（stdout 一个 JSON + 退出码 0 / 1 / 2），不断内部函数。运行方式：
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest
+```
 
 ## Visual Styles
 

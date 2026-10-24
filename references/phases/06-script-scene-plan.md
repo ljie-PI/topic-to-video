@@ -1,10 +1,28 @@
-### Phase 5 — 生成解说脚本、匹配场景素材并规划屏幕文本块
+# Phase 6 — 脚本与场景规划（委派给 coding agent）
 
-Phase 5 包含三个步骤：`Phase 5.1 — 撰写解说脚本` 产出 `narration.txt`；`Phase 5.2 — 场景-素材匹配建议` 基于脚本和 `material-catalog.json` 产出 `scene-material-suggestions.json`；`Phase 5.3 — 屏幕文本块规划` 基于已匹配素材产出 `scene-text-plan.json`。
+本 phase 包含三个步骤：`Phase 6.1 — 撰写解说脚本` 产出 `narration.txt`；`Phase 6.2 — 场景-素材匹配建议` 基于脚本和 `material-catalog.json` 产出 `scene-material-suggestions.json`；`Phase 6.3 — 屏幕文本块规划` 基于已匹配素材产出 `scene-text-plan.json`。
 
-#### Phase 5.1 — 撰写解说脚本
+## 输入
 
-**输入：** Phase 2 的研究 brief + Phase 4 的 `material-catalog.json` + 用户偏好的切入角度与时长。某段自然依赖某个具体视觉素材时，在正文里顺带提到对应的 catalog slug 或资源。**不要**在这里设计 HyperFrames 的 scene、卡片、时间轴或 `info_units`；scene 切分和视觉结构归 Phase 8 的 HyperFrames sub-agent。
+Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（若 `fetch_materials = false` 则没有 catalog，按"无素材"路径写纯旁白）+ 用户偏好的切入角度与时长。
+
+## 输出
+
+`narration.txt`（非空）+ `scene-material-suggestions.json`（非空列表）+ `scene-text-plan.json`（非空列表，每个 scene 有 `visual_text_units`）。
+
+## 完成判据
+
+三个产物都通过状态脚本的校验（存在、非空、JSON 可解析）；字数与目标时长的偏差在 ±15% 以内；场景规划覆盖 `narration.txt` 的全部段落；素材引用都存在于 catalog 中。校验通过后，把旁白和场景摘要交给用户确认，再进入 TTS。
+
+## 下一步
+
+Phase 7（TTS）：只对 `narration.txt` 配音。
+
+---
+
+## Phase 6.1 — 撰写解说脚本
+
+**输入：** Phase 3 的研究 brief（`research-brief.md`）+ Phase 5 的 `material-catalog.json` + 用户偏好的切入角度与时长。某段自然依赖某个具体视觉素材时，在正文里顺带提到对应的 catalog slug 或资源。**不要**在这里设计 HyperFrames 的 scene、卡片、时间轴或 `info_units`；scene 切分和视觉结构归 Phase 9 的 HyperFrames sub-agent。
 
 目标：
 
@@ -42,9 +60,9 @@ Phase 5 包含三个步骤：`Phase 5.1 — 撰写解说脚本` 产出 `narratio
 
 存到 `narration.txt`。
 
-#### Phase 5.2 — 场景-素材匹配建议
+## Phase 6.2 — 场景-素材匹配建议
 
-`narration.txt` 写入后，在进入 Phase 6（TTS）之前，主 agent inline 完成此步骤（无需 sub-agent）。
+`narration.txt` 写入后，在进入 Phase 7（TTS）之前，主 agent inline 完成此步骤（无需 sub-agent）。
 
 **输入：** `narration.txt` + `material-catalog.json`
 
@@ -119,18 +137,18 @@ Phase 5 包含三个步骤：`Phase 5.1 — 撰写解说脚本` 产出 `narratio
 **约束：**
 
 - 每个素材（图片 / 视频 clip）最多用于一个 scene，不复用；`material_refs` 中每个素材都算已占用。连续同素材合并或相邻 `media_continuation` 是例外。merged single scene 不需要 continuation 字段；拆成相邻 scene 时，group 起点只需要 `continuation_group_id`，后续 continuation scene 的 `continuation_of` 指向 group 起点的 `scene_index`，并保持视觉连续。
-- `no_match` 的 scene 不强行填素材；Phase 5.3 会为它规划更高密度的纯排版信息图 / 文本块，Phase 8 再据此实现。
-- `layout_role` 是 Phase 8 的布局决策输入，不是固定模板。`media_first` / `video_first` 仍可有少量文本配合；`viewport_reveal` 必须保留关键区域可见；同一 scene 内的 `comparison_pair` 必须用 2 个 `material_refs`，`comparison_sequence` 只用于同一 scene 内的 carousel / 分时多素材展示，必须用 2 个以上 `material_refs`。若对比内容拆成多个 scene，拆出的每个 scene 使用自己的真实主角色（如 `media_first` / `video_first` / `viewport_reveal` / `detail_callout`），不标为 `comparison_sequence`，并在 `layout_reason` 说明它属于同一对比序列。若同时保留 `material_ref`，它必须等于 `material_refs[0]`。
+- `no_match` 的 scene 不强行填素材；Phase 6.3 会为它规划更高密度的纯排版信息图 / 文本块，Phase 9 再据此实现。
+- `layout_role` 是 Phase 9 的布局决策输入，不是固定模板。`media_first` / `video_first` 仍可有少量文本配合；`viewport_reveal` 必须保留关键区域可见；同一 scene 内的 `comparison_pair` 必须用 2 个 `material_refs`，`comparison_sequence` 只用于同一 scene 内的 carousel / 分时多素材展示，必须用 2 个以上 `material_refs`。若对比内容拆成多个 scene，拆出的每个 scene 使用自己的真实主角色（如 `media_first` / `video_first` / `viewport_reveal` / `detail_callout`），不标为 `comparison_sequence`，并在 `layout_reason` 说明它属于同一对比序列。若同时保留 `material_ref`，它必须等于 `material_refs[0]`。
 - `media_continuation` 允许相邻 scene 沿用同一素材作为稳定视觉锚点，只刷新解释文本、局部强调或 `focal_region`；不得把它当作素材复用违规。它主要用于论文 figure、技术架构图、UI 截图、流程图等需要围绕同一图讲多个点的场景。
 - 合并 scene 中素材展示可超 8s，但 `text_beats` 仍按原每 5-8s 节奏刷新。
 
 输出到 `scene-material-suggestions.json`（与 `narration.txt` 同级）。
 
-#### Phase 5.3 — 屏幕文本块规划
+## Phase 6.3 — 屏幕文本块规划
 
 屏幕文本密度取决于已匹配素材的 `layout_role`、尺寸、比例和语义。`media_first` / `video_first` scene 不是无文本，而是主媒体优先、少量文本辅助；如果文本会压缩或遮挡主媒体，应分时出现、降级、外置，或生成相邻 `media_continuation` scene。竖图 / 竖视频在横屏中形成 side panel 时，文本规划不能只给一个短标题导致大留白；要么规划足够的短 callout / data units 填满侧栏，要么减少侧栏并改用 `viewport_reveal` / `detail_callout`。
 
-Phase 5.3 在 Phase 5.2 之后、Phase 6（TTS）之前执行。它不重新匹配素材，也不设计 HyperFrames HTML / CSS / 坐标 / 动画；只把已写入的旁白段落和已匹配素材转成结构化的非字幕屏幕文本建议，供 Phase 8 HyperFrames sub-agent 读取、实现和审计。
+Phase 6.3 在 Phase 6.2 之后、Phase 7（TTS）之前执行。它不重新匹配素材，也不设计 HyperFrames HTML / CSS / 坐标 / 动画；只把已写入的旁白段落和已匹配素材转成结构化的非字幕屏幕文本建议，供 Phase 9 HyperFrames sub-agent 读取、实现和审计。
 
 **输入：**
 
@@ -142,10 +160,10 @@ Phase 5.3 在 Phase 5.2 之后、Phase 6（TTS）之前执行。它不重新匹�
 
 **目标：**
 
-1. 让每个 scene 都有清晰的屏幕信息意图，而不是只靠 Phase 8 从旁白临场猜。
+1. 让每个 scene 都有清晰的屏幕信息意图，而不是只靠 Phase 9 从旁白临场猜。
 2. 让 `no_match` scene 主动变成纯排版信息图，而不是退化成单个大标题卡。
 3. 让有素材 scene 生成素材外置的解释文本、callout、data block 或标签，避免遮挡 catalog 素材。
-4. 给 Phase 8 提供可记录、可 QA 的 `visual_text_units`，但不越权规定最终 layout。
+4. 给 Phase 9 提供可记录、可 QA 的 `visual_text_units`，但不越权规定最终 layout。
 
 **`scene-text-plan.json` schema：**
 
@@ -185,8 +203,8 @@ Phase 5.3 在 Phase 5.2 之后、Phase 6（TTS）之前执行。它不重新匹�
 | 字段 | 作用 |
 | --- | --- |
 | `scene_index` | 对齐 `scene-material-suggestions.json` 的 scene |
-| `material_ref` / `material_refs` / `no_match` | 透传 Phase 5.2 结果，沿用 `scene-material-suggestions.json` 的字段名；`material_refs` 只用于多素材对比，`material_ref` 保持为 primary / 单素材入口 |
-| `layout_role` | 透传 Phase 5.2 的布局角色：`video_first` / `media_first` / `media_continuation` / `viewport_reveal` / `band` / `detail_callout` / `comparison_pair` / `comparison_sequence`；用于控制文本密度和素材展示策略 |
+| `material_ref` / `material_refs` / `no_match` | 透传 Phase 6.2 结果，沿用 `scene-material-suggestions.json` 的字段名；`material_refs` 只用于多素材对比，`material_ref` 保持为 primary / 单素材入口 |
+| `layout_role` | 透传 Phase 6.2 的布局角色：`video_first` / `media_first` / `media_continuation` / `viewport_reveal` / `band` / `detail_callout` / `comparison_pair` / `comparison_sequence`；用于控制文本密度和素材展示策略 |
 | `scene_intent` | 这场景屏幕信息要帮助观众理解什么 |
 | `density_hint` | `low` / `medium` / `high`，影响非字幕信息元素数量 |
 | `visual_text_units[]` | 每个建议出现的文本块 / callout / data block / 图示信息单元 |
@@ -196,18 +214,18 @@ Phase 5.3 在 Phase 5.2 之后、Phase 6（TTS）之前执行。它不重新匹�
 | `display_text` | 面向屏幕的短文本，不等同于 TTS 旁白原文 |
 | `supporting_points` | 列表项、流程节点、架构组件、关系节点或数据字段 |
 | `priority` | `primary` / `secondary` / `decorative` |
-| `timing_hint` | 与旁白句子的相对出现关系；最终秒级 timing 由 Phase 8 结合 ASR 决定 |
+| `timing_hint` | 与旁白句子的相对出现关系；最终秒级 timing 由 Phase 9 结合 ASR 决定 |
 
 生成的屏幕文字不要显示原始网页链接；需要标来源时用“官方文档”“GitHub”、产品名、repo 名或论文名，URL 只保留在 metadata / catalog 中。
 
 **Role alignment contract：**
 
-- `layout_role` 是 scene / 素材展示策略，来源是 Phase 5.2 的 `scene-material-suggestions.json`；Phase 5.3 只透传，不重新决定。
+- `layout_role` 是 scene / 素材展示策略，来源是 Phase 6.2 的 `scene-material-suggestions.json`；Phase 6.3 只透传，不重新决定。
 - `visual_role` 是单个 `visual_text_units[]` 的信息形态。
 - `domain_hint` 只说明内容领域，不参与素材占比或安全区计算。
 - `template_hint` 是弱语义提示，不是模板 ID；与 `visual_role`、数据 shape 或输出朝向冲突时忽略。
-- Phase 5.3 负责把大表是否拆成多个 `chart` units 规划清楚；Phase 8 只实现已有 `data_table` / `chart` units，只在有 `data_table` / numeric 数据时使用 chart，否则不凭空发明 chart。
-- Phase 8 必须先按 `scene_index` join Phase 5.2 和 Phase 5.3，再组合读取 `layout_role`、素材比例、输出朝向、`visual_text_units[]` 和 density / shape，决定最终布局呈现方式。
+- Phase 6.3 负责把大表是否拆成多个 `chart` units 规划清楚；Phase 9 只实现已有 `data_table` / `chart` units，只在有 `data_table` / numeric 数据时使用 chart，否则不凭空发明 chart。
+- Phase 9 必须先按 `scene_index` join Phase 6.2 和 Phase 6.3，再组合读取 `layout_role`、素材比例、输出朝向、`visual_text_units[]` 和 density / shape，决定最终布局呈现方式。
 
 **通用 `visual_role`：**
 
@@ -266,7 +284,7 @@ Phase 5.3 在 Phase 5.2 之后、Phase 6（TTS）之前执行。它不重新匹�
 19. 旁白是关键判断、风险、反常识、结论 → `callout`。
 20. 已匹配素材是图表 / table / figure 时，优先生成外置信息区和解释 callout，不覆盖素材。
 21. 已匹配素材是视频 clip 时，生成简短标签 / 状态说明，不做过重图示阻挡主体；若 `layout_role = "video_first"`，文本应控制为短标签、关键数字或一句短结论。
-22. `no_match` scene 应至少生成 2-4 个 `visual_text_units`，避免 Phase 8 退化成单个大标题卡。
+22. `no_match` scene 应至少生成 2-4 个 `visual_text_units`，避免 Phase 9 退化成单个大标题卡。
 23. `layout_role = "media_first"` 时，生成 1 个短标题 / 标签 + 0-2 个短 callout 或 data point；不得生成压缩主图的大段文本。横屏竖图 / 竖视频优先建议 key-region-aware `viewport_reveal`，不要用侧栏填充来维持窄竖图完整适配。`media_continuation` 仅用于句子节奏、局部强调或多段解释。
 24. `layout_role = "media_continuation"` 时，文本应承接上一 scene，只刷新解释重点或局部强调；主素材必须在相邻 scene 中保持稳定显示。
 25. `layout_role = "viewport_reveal"` 或带独立文本列的 split 场景，文本列规划 ≥3-4 个 unit 且每个带 detail / value，使文本填满列宽与列高，不只放标题 + 短标签；units 应对应 reveal 的 start / mid / end 关键区域。
@@ -339,4 +357,4 @@ Product Hunt 产品介绍：
 
 - 有素材 scene：1 个 primary unit + 1-2 个 secondary units。
 - `no_match` scene：2-4 个 units，其中至少 1 个多元素 / 结构型 role（`leaderboard` / `data_table` / `chart` / `timeline` / `process_flow` / `architecture_diagram` / `network_graph` / `comparison_matrix` / `pros_cons` / `metric_strip` / `list` / `feature_grid` / `qa` / `code_block` / `terminal_block` / `file_tree` / `state_machine` / `annotated_media`）。
-- 密集技术 scene：允许 4-6 个 units，但 Phase 8 可为了安全布局降级 secondary / decorative units。
+- 密集技术 scene：允许 4-6 个 units，但 Phase 9 可为了安全布局降级 secondary / decorative units。

@@ -1,8 +1,26 @@
-### Phase 8 — 委派 HyperFrames Composition + Render
+# Phase 9 — composition（委派给 coding agent）
+
+## 输入
+
+`transcribe/subtitle-units.json` + `transcribe/transcript.json`（时间轴）+ `material-catalog.json` + `scene-material-suggestions.json` + `scene-text-plan.json` + `fonts/`（Phase 8 预置）+ 主 agent 写的 `composition-handoff.md` 与物化到工作区 `references/` 的固定参考文档。
+
+## 输出
+
+`composition/renders/final.mp4` + `composition/DESIGN.md` + `composition/qa-report.json` / `qa-history.md`。
+
+## 完成判据
+
+`composition/renders/final.mp4` 存在且非空；sanity check 与 Visual QA 按 stage protocol 完成且无未处理 finding。
+
+## 下一步
+
+Phase 10（检查与混音）：在成片上混入 BGM 得到最终交付文件。
+
+---
 
 从这一步开始，composition 交由一个使用 `hyperframes`、`hyperframes-cli` 与 `hyperframes-animation` skills 的 coding sub-agent 负责执行；需要 FLIP / path / mask / SVG / 3D keyframes 时按需加载 `hyperframes-keyframes`，最终实现可按项目需要使用 `gsap`、`animejs`、`waapi`、`css-animations`、`lottie`、`three` 或 `typegpu` 等 runtime。Tailwind 只作为静态布局 / 样式支持，不是 animation/effect adapter。`topic-to-video` 主 agent 只负责准备上游资源、写 `composition-handoff.md`、物化固定 rules / layout routing / animation routing / stage protocol / design references、调用 sub-agent，并按 stage protocol 执行 sanity-check / Visual QA / feedback loop。
 
-#### 8.1 — 写 `composition-handoff.md`
+#### 9.1 — 写 `composition-handoff.md`
 
 从 `references/composition-handoff-template.md` 出发，写出 `{work_dir}/{topic_name}/composition-handoff.md`，填入项目 metadata、实际输入路径、来自 Phase 1 的 style hint，以及从用户输入 / follow-up feedback / `style-prompt.md` 提取的 `User-derived Customized Rules`。Customized rules 必须可执行，不能只写抽象审美词。
 
@@ -18,7 +36,7 @@
 
 Legacy fallback：旧项目若只有 `{work_dir}/{topic_name}/composition-brief.md`，主 agent 必须先把它迁移 / 归一化为 `composition-handoff.md`，再调用 sub-agent；sub-agent 仍统一读取 `composition-handoff.md`。
 
-#### 8.2 — 调用一个 coding sub-agent
+#### 9.2 — 调用一个 coding sub-agent
 
 如果用户 query 指定了 coding agent / 委派目标，优先使用该目标；否则使用当前客户端 / runtime 原生的 sub-agent 或委派工具。prompt 要简短，且应让 sub-agent 自己从磁盘读 `composition-handoff.md`、`references/composition-rules.md`、`references/layout-routing.md`、`references/animation-routing.md`、`references/composition-stage-protocol.md` 和指定的 `references/design-<theme>.md`。
 
@@ -65,24 +83,24 @@ Animation / effect 选择：
 
 **不要**在主 agent 的会话里驱动 composition authoring 或手工 patch `composition/index.html`。
 
-#### 8.3 — Pre-render self-audit
+#### 9.3 — Pre-render self-audit
 
 由 sub-agent 在首次 HTML-to-video render 前执行。要求见 `references/composition-stage-protocol.md` 的 **Phase 8.3 — Pre-render Self-Audit Rules**；结果必须写入 `composition/DESIGN.md`。
 
-#### 8.4 — HTML-to-video render
+#### 9.4 — HTML-to-video render
 
 按 `references/composition-stage-protocol.md` 的 **Phase 8.4 — HTML-to-video Render Rules** 执行。
 
-#### 8.5 — Sanity check
+#### 9.5 — Sanity check
 
 sub-agent 返回后，主 agent 按 `references/composition-stage-protocol.md` 的 **Phase 8.5 — Sanity Check Rules** 验证 `composition/renders/final.mp4`。如果有异常，把症状反馈给 HyperFrames sub-agent；主 agent 不手工 patch HTML。
 
-#### 8.6 — Post-render Visual QA
+#### 9.6 — Post-render Visual QA
 
 sanity-check 通过后，主 agent 按 `references/composition-stage-protocol.md` 的 **Phase 8.6 — Post-Render Visual QA Rules** 对 final.mp4 跑视觉 QA，并生成 `composition/qa-report.json` / `composition/qa-history.md`。
 
-#### 8.7 — QA feedback loop
+#### 9.7 — QA feedback loop
 
-按 `references/composition-stage-protocol.md` 的 **Phase 8.7 — QA Feedback Loop** 决定进入 Phase 9、反馈 sub-agent 限定范围重渲，或触发止损交还用户。
+按 `references/composition-stage-protocol.md` 的 **Phase 8.7 — QA Feedback Loop** 决定进入 Phase 10、反馈 sub-agent 限定范围重渲，或触发止损交还用户。
 
 规则与 QA 覆盖关系见 `references/composition-stage-protocol.md` 的 **Rule Coverage Matrix**。

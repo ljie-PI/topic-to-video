@@ -1,6 +1,22 @@
-### Phase 6 — 生成 TTS
+# Phase 7 — 生成 TTS
 
-如果 `{work_dir}/{topic_name}/voice_clone/narration.mp3` 已存在、且 ffprobe 显示其 duration 非零且合法，则跳过。
+## 输入
+
+Phase 6 产出的 `narration.txt`（朗读稿）+ 参考音色（`TTS_REF_WAV`，本地克隆模式）。
+
+## 输出
+
+`voice_clone/narration.mp3`（配音音频）。
+
+## 完成判据
+
+`voice_clone/narration.mp3` 存在且非空（ffprobe duration 非零且合法）。
+
+## 下一步
+
+Phase 8（对齐与字幕）：对配音跑 ASR 拿词级时间戳。
+
+---
 
 直接使用 `scripts/voice-clone.py`。**不要**把脚本复制一份，也**不要**把解说文本粘进 Python 源码。
 

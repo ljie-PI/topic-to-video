@@ -1,4 +1,22 @@
-### Phase 9 — 混入 BGM（背景音乐）
+# Phase 10 — 混入 BGM（检查与混音）
+
+## 输入
+
+Phase 9 产出的 `composition/renders/final.mp4`（已过 sanity check / Visual QA）。
+
+## 输出
+
+`composition/renders/final_with_bgm.mp4`（解说 + 低音量背景乐的最终成片）。
+
+## 完成判据
+
+`final_with_bgm.mp4` 存在且非空；解说音量不变，BGM 按默认线性增益 `0.03` 垫在底下。
+
+## 下一步
+
+无——这是最后一个 phase。把成片交给用户过目。
+
+---
 
 sub-agent 渲染出来的成品做完 sanity check 后，在解说之上叠一条低音量的背景音乐。解说音量不变；BGM 的默认线性增益是 `0.03`，垫在底下。
 

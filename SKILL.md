@@ -1,6 +1,6 @@
 ---
 name: topic-to-video
-description: 当用户提供一个主题、文章 URL 或文本，并请求做一段有解说的视频（通常 3-10 分钟）时使用。本 skill 拥有上游 pipeline —— 主题调研、可选的视觉素材抓取、素材理解、解说撰写、用本地 Qwen3-TTS 做克隆音色 TTS（DashScope CosyVoice 作 fallback）、用本地 Qwen3-ASR + ForcedAligner 拿词级 ASR 时间戳（DashScope Paraformer 作 fallback）、确定性字体预置，以及一份精简的 HyperFrames composition handoff。HyperFrames composition、scene 设计、HTML/CSS、animation/effect skills、lint/inspect 与渲染都委派给 hyperframes 和 hyperframes-cli；Phase 8 sub-agent 必须通过 hyperframes-animation 的当前索引发现动画能力，按需加载 hyperframes-keyframes，并最后选择 gsap、animejs、waapi、css-animations、lottie、three、typegpu 等 runtime；tailwind 只用于静态布局 / 样式支持。
+description: 当用户提供一个主题、文章 URL 或文本，并请求做一段有解说的视频（通常 3-10 分钟）时使用。本 skill 拥有上游 pipeline —— 主题调研、可选的视觉素材抓取、素材理解、解说撰写、用本地 Qwen3-TTS 做克隆音色 TTS（DashScope CosyVoice 作 fallback）、用本地 Qwen3-ASR + ForcedAligner 拿词级 ASR 时间戳（DashScope Paraformer 作 fallback）、确定性字体预置，以及一份精简的 HyperFrames composition handoff。HyperFrames composition、scene 设计、HTML/CSS、animation/effect skills、lint/inspect 与渲染都委派给 hyperframes 和 hyperframes-cli；Phase 9 sub-agent 必须通过 hyperframes-animation 的当前索引发现动画能力，按需加载 hyperframes-keyframes，并最后选择 gsap、animejs、waapi、css-animations、lottie、three、typegpu 等 runtime；tailwind 只用于静态布局 / 样式支持。
 ---
 
 # Topic → Video（HyperFrames + Qwen3-TTS 工作流）
@@ -15,7 +15,18 @@ description: 当用户提供一个主题、文章 URL 或文本，并请求做�
 - **Qwen3-ASR + ForcedAligner**（本地 GPU）拿词级 ASR 时间戳；DashScope Paraformer 作云端 fallback
 - 一份可配置的 style hint，交给下游 HyperFrames sub-agent
 
-**输出：** `{work_dir}/{topic_name}/composition/renders/final.mp4`，可直接发布（由 Phase 8 coding sub-agent 产出）。
+**输出：** `{work_dir}/{topic_name}/composition/renders/final.mp4`，可直接发布（由 Phase 9 coding sub-agent 产出）；Phase 10 混入 BGM 后得到 `final_with_bgm.mp4`。
+
+## 工作流：一个循环
+
+**禁止预读其他 phase 文档。** 每次只读 `pipeline-status` 指出的那一份 phase 文档；除此之外不要打开 `references/phases/` 下的任何其他文件。
+
+1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`（工作区目录省略时默认为当前目录）。它输出一个 JSON：已完成的 phase、下一个 phase、要读的文档、缺失 / 损坏的产物。
+2. 只读它指出的那一份 phase 文档（`next_phase.doc`）。
+3. 按该文档执行；文档头部的「输入 / 输出 / 完成判据 / 下一步」是自包含的，不需要查其他 phase 文档。
+4. 回到第 1 步，直到脚本报告 `next_phase` 为 `null`（全部完成）。
+
+续跑与回退都由状态脚本驱动：某个 phase 的产物被删掉或写坏时，脚本会自动回退到那个 phase。用户说 "redo phase N" 时，删掉对应产物再跑状态脚本即可。不要自己扫描工作区猜进度，也不要把 Scratchpad 当进度记录——`inputs.json` 和各 phase 产物才是唯一状态。
 
 ## 核心护栏
 
@@ -23,9 +34,9 @@ description: 当用户提供一个主题、文章 URL 或文本，并请求做�
 
 ### 研究与脚本
 
-0. **写之前先调研。** Phase 2 是强制的。每个论断都通过 Gemini Deep Research + `web_search` 落地。
-   ↳ DO NOT：调研之前写脚本；没有明确条件就跳过 Gemini；用户给了 PDF 还跳过 Phase 2a；用训练数据描述一篇论文。
-1. **素材 catalog / vision 分析在 Phase 4，不是 Phase 5。** Phase 5 只引用 catalog 写脚本、匹配场景素材并规划屏幕文本块。
+0. **写之前先调研。** Phase 3 是强制的。每个论断都通过 Gemini Deep Research + `web_search` 落地。
+   ↳ DO NOT：调研之前写脚本；没有明确条件就跳过 Gemini；用户给了 PDF 还跳过 Phase 2；用训练数据描述一篇论文。
+1. **素材 catalog / vision 分析在 Phase 5，不是 Phase 6。** Phase 6 只引用 catalog 写脚本、匹配场景素材并规划屏幕文本块。
    ↳ DO NOT：catalog 还没建就写解说或场景-素材匹配；跳过 vision-analyze。
 
 ### TTS / ASR
@@ -36,21 +47,21 @@ description: 当用户提供一个主题、文章 URL 或文本，并请求做�
 
 ### 字体与文本
 
-4. **预先 stage 确定性的 WOFF2 字体。** 用 `scripts/fonts-download.sh` 下载，然后让 Phase 8 handoff 指向 `fonts/`。
+4. **预先 stage 确定性的 WOFF2 字体。** 用 `scripts/fonts-download.sh` 下载，然后让 Phase 9 handoff 指向 `fonts/`。
    ↳ DO NOT：让主 agent 处理 composition 的字体 CSS。
-5. **字体实现归 HyperFrames。** Phase 8 sub-agent 使用本地字体，并按 `hyperframes` skill 中的排版规则处理。
+5. **字体实现归 HyperFrames。** Phase 9 sub-agent 使用本地字体，并按 `hyperframes` skill 中的排版规则处理。
 
 ### 素材
 
-6. **每个资源都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。**视频材料一律剥音轨**：catalog 阶段 `ffmpeg -an` 输出；Phase 8 HTML 嵌入时 `<video>` 标签必须带 `muted playsinline` 兜底。
+6. **每个资源都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。**视频材料一律剥音轨**：catalog 阶段 `ffmpeg -an` 输出；Phase 9 HTML 嵌入时 `<video>` 标签必须带 `muted playsinline` 兜底。
    ↳ DO NOT：嵌入整段原视频；切片段时不带 `-an`；`<video>` 漏 `muted`。
-7. **素材搜索是可选但推荐的。** 用户说"skip materials"或自带全部视觉时跳过。
+7. **素材搜索是可选但推荐的。** `inputs.json` 里 `fetch_materials = false` 或用户自带全部视觉时跳过（Phase 4 / 5 一起跳过）。
 
 ### Composition
 
 8. **Composition 委派给 HyperFrames sub-agent。** 主 agent 只写 `composition-handoff.md`，并把固定 rules（`references/composition-rules.md`）/ layout routing（`references/layout-routing.md`）/ animation routing（`references/animation-routing.md`）/ stage protocol（`references/composition-stage-protocol.md`）/ design references 物化到项目工作区的 `references/` 下。
-   ↳ DO NOT：手写 `composition/index.html`、挑选低层 animation / effect skill，或在本 session 里修 HyperFrames lint；除非用户明确指定，否则由 Phase 8 sub-agent 选择。
-9. **Scene 设计归 HyperFrames。** 切分、素材映射、布局、视觉层级、动画、lint/inspect 与渲染迭代都发生在 Phase 8。
+   ↳ DO NOT：手写 `composition/index.html`、挑选低层 animation / effect skill，或在本 session 里修 HyperFrames lint；除非用户明确指定，否则由 Phase 9 sub-agent 选择。
+9. **Scene 设计归 HyperFrames。** 切分、素材映射、布局、视觉层级、动画、lint/inspect 与渲染迭代都发生在 Phase 9。
 
 ### 环境与工具
 
@@ -58,58 +69,17 @@ description: 当用户提供一个主题、文章 URL 或文本，并请求做�
 11. **Chrome over CDP。** 共享 profile 位于 `{work_dir}/chrome_profile/`。
 12. **视频下载顺序执行。** yt-dlp 并行时会被限速。
 
-## Checkpoint 与恢复
-
-跑任何工具之前，检查其输出是否已存在。已存在则跳过并复用。
-
-| Phase | 已存在则跳过 |
-| --- | --- |
-| 2 | `gemini_deep_research.md` |
-| 2a | `harvest_page/main-paper/metadata.json` |
-| 2c | `harvest_page/related-*/metadata.json` |
-| 3 | `harvest_page/manifest.json` 且 `entries[]` 非空 |
-| 3.b | `harvest_page/<slug>/videos/` 下视频存在 且 `download_required: false` |
-| 4 | `extract_frames/<slug>/<video>/` 有 ≥1 张 JPEG；或 `material-catalog.json` 含 `selected_clips` |
-| 5.1 | `narration.txt`（非空） |
-| 5.2 | `scene-material-suggestions.json`（非空） |
-| 5.3 | `scene-text-plan.json`（非空，且每个 scene 有 `visual_text_units`） |
-| 6 | `voice_clone/narration.mp3` |
-| 7a | `transcribe/transcript.json` 和 `transcribe/subtitle-units.json` |
-| 7b | `fonts/` 至少含 1 个 `.woff2` 和对应的 style CSS |
-| 8 | `composition/renders/final.mp4` |
-| 9 | `composition/renders/final_with_bgm.mp4` |
-
-工作区发现发生在 Phase 1：检查 `{work_dir}/{topic_name}/` 是否存在，扫描其中的输出，问用户是 resume 还是从头开始。如果文件存在但损坏（0 字节、JSON 截断），删掉重跑。用户可以用"redo phase N"强制重跑。
-
 ## 输出约定
 
-所有脚本都把 JSON 输出到 stdout，人类可读 log 输出到 stderr，并使用以下退出码：`0`=成功，`1`=运行时错误，`2`=参数非法。
-
-**工作区布局：** 输出位于 `{work_dir}/{topic_name}/`，包含标准子目录：
-`harvest_page/`、`extract_frames/`、`vision_analyze/`（含 `topic-context.txt`）、`material-catalog.json`、`scene-material-suggestions.json`、`scene-text-plan.json`、`voice_clone/`、`transcribe/`（含 `transcript.json`、`subtitle-units.json`）、`fonts/`、`composition/`、`references/`、`narration.txt`、`composition-handoff.md`。
+所有脚本都把 JSON 输出到 stdout，人类可读 log 输出到 stderr，并使用以下退出码：`0`=成功，`1`=运行时错误，`2`=参数非法。`scripts/pipeline-status.py` 遵循同一约定，它的 JSON 额外携带 `completed_phases` / `next_phase` / `missing_products` / `corrupt_products` ——它是整个流程唯一的续跑入口，取代了过去的人工 checkpoint 表。
 
 共享 Chrome profile：`{work_dir}/chrome_profile/` —— **不要**删除。
-
-## 工作流（9 个 Phase）
-
-执行每个 phase 之前，先读它对应的文档。
-
-| Phase | 文档 | 内容 |
-| --- | --- | --- |
-| 1 | `references/phases/gather-inputs.md` | 收集输入（主题、方向、风格、时长） |
-| 2 | `references/phases/research.md` | 主题调研（Gemini Deep Research + web search） |
-| 3 | `references/phases/material-harvest.md` | 从 URL 抓取图片 / 视频 |
-| 4 | `references/phases/material-selection.md` | 视觉分析 + 素材 catalog |
-| 5 | `references/phases/narration-script.md` | 生成解说脚本、匹配场景素材并规划屏幕文本块（5.1 撰写解说脚本；5.2 场景-素材匹配建议；5.3 屏幕文本块规划） |
-| 6 | `references/phases/tts-generation.md` | 生成克隆音色的 TTS 配音（后端见 `scripts/voice-clone.py --help`） |
-| 7 | `references/phases/asr-transcript-generation.md` | ASR + 字体预置 |
-| 8 | `references/phases/composition-render.md` | HyperFrames handoff + sub-agent 渲染 |
-| 9 | `references/phases/bgm-mix.md` | 混入背景音乐 |
 
 ## 工具与依赖
 
 | 脚本 | 用途 | 依赖 |
 | --- | --- | --- |
+| `pipeline-status.py` | 扫描工作区，输出已完成 / 下一个 phase、要读的文档、缺失或损坏的产物 | — |
 | `fonts-download.sh` | 确定性 WOFF2 字体下载 + 本地 CSS | — |
 | `voice-clone.py` | TTS（默认本地 Qwen3-TTS 克隆；`TTS_BACKEND=dashscope` 切 CosyVoice） | 本地：GPU + `TTS_REF_WAV`；fallback：`DASHSCOPE_API_KEY` |
 | `transcribe.py` | ASR（默认本地 Qwen3-ASR + ForcedAligner，`ASR_BACKEND=dashscope` 切 `paraformer-v2`） | 本地：GPU；fallback：`DASHSCOPE_API_KEY` |
