@@ -86,7 +86,7 @@
 - **配音**：
   - 字幕的逐句时间就取自配音；
   - 每个项目的 `cue`，以及封面的 `nameAt`、`taglineAt`、`starsAt`，都取配音里对应那句话的开始时间；
-  - 嘴型数据用 `scripts/make-envelope.mjs` 从配音生成。
+  - 嘴型数据用 `components/jay/make-envelope.mjs` 从配音生成。
 
 ## 5. 人物怎么演（写在 `VIDEO.jay`，时间是视频秒）
 

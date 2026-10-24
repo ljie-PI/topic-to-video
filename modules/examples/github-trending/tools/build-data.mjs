@@ -1,7 +1,7 @@
 // Builds data/video-data.js for this example: tabs, captions, tile-wipe cuts, the trending scene and Jay's acting script.
 // usage (from this folder): node tools/build-data.mjs
 // Sources inside this project: the narration cues (data/narration.json) and the voice track (assets/audio/narration.m4a),
-// whose loudness becomes Jay's mouth through the skill's modules/scripts/make-envelope.mjs (override with MAKE_ENVELOPE=<path>).
+// whose loudness becomes Jay's mouth through the skill's modules/components/jay/make-envelope.mjs (override with MAKE_ENVELOPE=<path>).
 import { readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
@@ -13,7 +13,7 @@ const captions = (narration.cues || narration)
   .filter((c) => c.start < END)
   .map((c) => ({ start: c.start, end: Math.min(c.end, END), text: c.text }));
 
-const envelope = JSON.parse(execFileSync("node", [process.env.MAKE_ENVELOPE || "../../scripts/make-envelope.mjs", "assets/audio/narration.m4a"], { maxBuffer: 1 << 26 }).toString())
+const envelope = JSON.parse(execFileSync("node", [process.env.MAKE_ENVELOPE || "../../components/jay/make-envelope.mjs", "assets/audio/narration.m4a"], { maxBuffer: 1 << 26 }).toString())
   .slice(0, Math.ceil(END * FPS) + 1);
 
 const repos = [
@@ -24,7 +24,7 @@ const repos = [
   { rank: 5, owner: "K-Dense-AI", repo: "scientific-agent-skills", desc: "为智能体提供科研流程规范", stars: "3,170", readme: "assets/readme/sciskills.png", cue: 16.667 },
 ];
 
-// Jay, per templates/github/GUIDE.md section 5 (video seconds; the trending scene starts at 0)
+// Jay, per templates/github/github.md section 5 (video seconds; the trending scene starts at 0)
 const COVER_AT = 20.7, STARS_AT = 4.3, TAGLINE_AT = 2.4;
 const glances = [];
 for (const r of repos) {

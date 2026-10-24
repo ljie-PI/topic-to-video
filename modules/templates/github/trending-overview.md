@@ -1,6 +1,6 @@
 # 模板：github/trending-overview（Trending 榜单总览）
 
-属于 GitHub 热榜这一类视频（见 `templates/github/GUIDE.md`）。
+属于 GitHub 热榜这一类视频（见 `templates/github/github.md`）。
 
 一个场景，逐个介绍 GitHub Trending 榜单里的项目。
 
