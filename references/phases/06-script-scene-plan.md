@@ -26,19 +26,7 @@ Phase 7（TTS）：只对 `narration.txt` 配音。
 
 目标：
 
-**Paper mode 解说结构**（当 `input_mode = "paper"`）：
-
-解说沿用论文自身的逻辑流，而非通用的主题结构：
-
-1. Hook —— 这篇论文为什么重要 / 它要解决什么问题
-2. Background —— 先前的工作和 SOTA（来自 Deep Research）
-3. Key insight / approach（来自论文摘要 + 引言，引用论文中的 figure）
-4. Method walkthrough（用 `material_ref` 引用论文 figure）
-5. Results（用 `material_ref` 引用论文 table / chart）
-6. Impact 与后续工作（来自 Deep Research）
-7. Takeaway / CTA
-
-论文 figure（`source_type: "paper_pdf"` 条目）是**首选**素材。从 web 抓取的资源作为补充 B-roll。叙述中合适时自然引用图号 / 表号：`"如表一所示..."`。
+**Paper mode 解说结构**（当 `input_mode = "paper"`）：见 `references/phases/02-paper-parse.md` 的「论文模式解说结构」——论文模式的旁白结构、figure / table 引用规则都在那里，本文档不再重复。
 
 - 只使用**研究 brief 中的事实**——每个数字、人名、日期和引文都要可追溯。
 - 在有用的地方引用收集到的素材，并为每个 scene 标注推荐的视觉资源。

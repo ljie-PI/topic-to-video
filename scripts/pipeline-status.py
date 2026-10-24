@@ -23,12 +23,17 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 TOOL_NAME = 'pipeline-status'
 
 SKILL_ROOT = Path(__file__).resolve().parent.parent
+
+STATUS_OK = 'ok'
+STATUS_MISSING = 'missing'
+STATUS_CORRUPT = 'corrupt'
 
 INPUTS_REQUIRED_FIELDS = [
     'source',
@@ -45,7 +50,29 @@ INPUTS_REQUIRED_FIELDS = [
 ]
 
 PAPER_MODES = {'paper'}
-VALID_INPUT_MODES = {'standard', 'topic', 'article', 'text', 'paper'}
+
+
+@dataclass
+class CheckResult:
+    """Structured outcome of one product check.
+
+    status is one of STATUS_OK / STATUS_MISSING / STATUS_CORRUPT; detail
+    carries a human-readable reason and is only meaningful when the status
+    is not ok.
+    """
+
+    status: str
+    detail: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.status == STATUS_OK
+
+
+OK = CheckResult(STATUS_OK)
+
+# Every product checker has the same signature: (workspace, relpath) -> CheckResult.
+Checker = Callable[[Path, str], CheckResult]
 
 
 class JsonArgumentParser(argparse.ArgumentParser):
@@ -78,60 +105,106 @@ def parse_args() -> argparse.Namespace:
 
 # --- product checkers ----------------------------------------------------------
 #
-# Each checker receives the workspace root and returns None when the product is
-# valid, or a human-readable reason string when it is missing or corrupt.
+# Each checker receives the workspace root plus the product's workspace-relative
+# path, and returns a CheckResult. There is one signature for all checkers; the
+# dispatcher holds no special cases.
 
 
-def check_file(path: Path) -> str | None:
+def check_file_product(ws: Path, relpath: str) -> CheckResult:
+    path = ws / relpath
     if not path.exists():
-        return 'missing'
+        return CheckResult(STATUS_MISSING)
     if not path.is_file():
-        return 'not a regular file'
+        return CheckResult(STATUS_CORRUPT, 'not a regular file')
     if path.stat().st_size == 0:
-        return 'empty file'
-    return None
+        return CheckResult(STATUS_CORRUPT, 'empty file')
+    return OK
 
 
-def check_json(path: Path) -> tuple[str | None, Any]:
-    reason = check_file(path)
-    if reason is not None:
-        return reason, None
+def read_json_product(ws: Path, relpath: str) -> tuple[CheckResult, Any]:
+    """Shared helper: file checks + JSON parse. Returns (result, data)."""
+    result = check_file_product(ws, relpath)
+    if not result.ok:
+        return result, None
     try:
-        return None, json.loads(path.read_text(encoding='utf-8'))
+        data = json.loads((ws / relpath).read_text(encoding='utf-8'))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return f'invalid JSON: {exc}', None
+        return CheckResult(STATUS_CORRUPT, f'invalid JSON: {exc}'), None
+    return OK, data
 
 
-def rel(ws: Path, path: Path) -> str:
-    return path.relative_to(ws).as_posix()
+def read_nonempty_text(ws: Path, relpath: str) -> tuple[CheckResult, str | None]:
+    """Shared helper for text products: file must exist and have content."""
+    result = check_file_product(ws, relpath)
+    if not result.ok:
+        return result, None
+    text = (ws / relpath).read_text(encoding='utf-8', errors='replace')
+    if not text.strip():
+        return CheckResult(STATUS_CORRUPT, 'file has no content'), None
+    return OK, text
 
 
-def check_inputs(ws: Path) -> tuple[str | None, dict[str, Any] | None]:
-    reason, data = check_json(ws / 'inputs.json')
-    if reason is not None:
-        return reason, None
+def check_text_product(ws: Path, relpath: str) -> CheckResult:
+    result, _ = read_nonempty_text(ws, relpath)
+    return result
+
+
+def check_json_list_product(ws: Path, relpath: str) -> CheckResult:
+    result, data = read_json_product(ws, relpath)
+    if not result.ok:
+        return result
+    if not isinstance(data, list) or not data:
+        return CheckResult(STATUS_CORRUPT, 'JSON root is not a non-empty list')
+    return OK
+
+
+def check_dict_entries_product(ws: Path, relpath: str) -> CheckResult:
+    """For JSON objects that must carry a non-empty `entries` list
+    (harvest manifest, material catalog)."""
+    result, data = read_json_product(ws, relpath)
+    if not result.ok:
+        return result
     if not isinstance(data, dict):
-        return 'JSON root is not an object', None
-    missing = [field for field in INPUTS_REQUIRED_FIELDS if field not in data]
-    if missing:
-        return f'missing required fields: {", ".join(missing)}', None
+        return CheckResult(STATUS_CORRUPT, 'JSON root is not an object')
+    entries = data.get('entries')
+    if not isinstance(entries, list) or not entries:
+        return CheckResult(STATUS_CORRUPT, 'entries is not a non-empty list')
+    return OK
+
+
+def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
+    """Validate inputs.json and return (result, parsed inputs)."""
+    result, data = read_json_product(ws, 'inputs.json')
+    if not result.ok:
+        return result, None
+    if not isinstance(data, dict):
+        return CheckResult(STATUS_CORRUPT, 'JSON root is not an object'), None
+    missing_fields = [field for field in INPUTS_REQUIRED_FIELDS if field not in data]
+    if missing_fields:
+        return CheckResult(
+            STATUS_CORRUPT, f'missing required fields: {", ".join(missing_fields)}'
+        ), None
     if not isinstance(data['fetch_materials'], bool):
-        return 'field fetch_materials is not a boolean', None
-    return None, data
+        return CheckResult(STATUS_CORRUPT, 'field fetch_materials is not a boolean'), None
+    return OK, data
 
 
-def check_paper_metadata(ws: Path) -> str | None:
-    path = ws / 'harvest_page' / 'main-paper' / 'metadata.json'
-    reason, data = check_json(path)
-    if reason is not None:
-        return reason
+def check_inputs_product(ws: Path, relpath: str) -> CheckResult:
+    result, _ = load_inputs(ws)
+    return result
+
+
+def check_paper_metadata(ws: Path, relpath: str) -> CheckResult:
+    result, data = read_json_product(ws, relpath)
+    if not result.ok:
+        return result
     if not isinstance(data, dict):
-        return 'JSON root is not an object'
+        return CheckResult(STATUS_CORRUPT, 'JSON root is not an object')
     if data.get('source_type') != 'paper_pdf':
-        return 'field source_type is not "paper_pdf"'
+        return CheckResult(STATUS_CORRUPT, 'field source_type is not "paper_pdf"')
     paper_metadata = data.get('paper_metadata')
     if not isinstance(paper_metadata, dict):
-        return 'missing paper_metadata'
+        return CheckResult(STATUS_CORRUPT, 'missing paper_metadata')
     # full_markdown_path is written as an absolute machine-local path by
     # parse-pdf.py; workspaces move between machines, so only require the
     # key to be present with a string or null value.
@@ -139,111 +212,43 @@ def check_paper_metadata(ws: Path) -> str | None:
         isinstance(paper_metadata['full_markdown_path'], str)
         or paper_metadata['full_markdown_path'] is None
     ):
-        return 'missing paper_metadata.full_markdown_path'
-    return None
+        return CheckResult(STATUS_CORRUPT, 'missing paper_metadata.full_markdown_path')
+    return OK
 
 
-def check_research_brief(ws: Path) -> str | None:
-    path = ws / 'research-brief.md'
-    reason = check_file(path)
-    if reason is not None:
-        return reason
-    if not path.read_text(encoding='utf-8', errors='replace').strip():
-        return 'file has no content'
-    return None
-
-
-def check_harvest_manifest(ws: Path) -> str | None:
-    reason, data = check_json(ws / 'harvest_page' / 'manifest.json')
-    if reason is not None:
-        return reason
-    if not isinstance(data, dict):
-        return 'JSON root is not an object'
-    entries = data.get('entries')
-    if not isinstance(entries, list) or not entries:
-        return 'entries is not a non-empty list'
-    return None
-
-
-def check_material_catalog(ws: Path) -> str | None:
-    reason, data = check_json(ws / 'material-catalog.json')
-    if reason is not None:
-        return reason
-    if not isinstance(data, dict):
-        return 'JSON root is not an object'
-    entries = data.get('entries')
-    if not isinstance(entries, list) or not entries:
-        return 'entries is not a non-empty list'
-    return None
-
-
-def check_narration(ws: Path) -> str | None:
-    path = ws / 'narration.txt'
-    reason = check_file(path)
-    if reason is not None:
-        return reason
-    if not path.read_text(encoding='utf-8', errors='replace').strip():
-        return 'file has no content'
-    return None
-
-
-def check_json_list(path: Path, label: str) -> str | None:
-    reason, data = check_json(path)
-    if reason is not None:
-        return reason
+def check_transcript(ws: Path, relpath: str) -> CheckResult:
+    result, data = read_json_product(ws, relpath)
+    if not result.ok:
+        return result
     if not isinstance(data, list) or not data:
-        return f'{label} is not a non-empty list'
-    return None
-
-
-def check_scene_suggestions(ws: Path) -> str | None:
-    return check_json_list(ws / 'scene-material-suggestions.json', 'JSON root')
-
-
-def check_scene_text_plan(ws: Path) -> str | None:
-    return check_json_list(ws / 'scene-text-plan.json', 'JSON root')
-
-
-def check_transcript(ws: Path) -> str | None:
-    path = ws / 'transcribe' / 'transcript.json'
-    reason, data = check_json(path)
-    if reason is not None:
-        return reason
-    if not isinstance(data, list) or not data:
-        return 'transcript is not a non-empty sentence list'
+        return CheckResult(STATUS_CORRUPT, 'transcript is not a non-empty sentence list')
     for index, sentence in enumerate(data):
         if not isinstance(sentence, dict):
-            return f'sentence {index} is not an object'
+            return CheckResult(STATUS_CORRUPT, f'sentence {index} is not an object')
         missing = [
             field
             for field in ('begin', 'end', 'text', 'words')
             if field not in sentence
         ]
         if missing:
-            return f'sentence {index} missing fields: {", ".join(missing)}'
+            return CheckResult(
+                STATUS_CORRUPT, f'sentence {index} missing fields: {", ".join(missing)}'
+            )
         if not isinstance(sentence['words'], list):
-            return f'sentence {index} words is not a list'
-    return None
+            return CheckResult(STATUS_CORRUPT, f'sentence {index} words is not a list')
+    return OK
 
 
-def check_subtitle_units(ws: Path) -> str | None:
-    reason, data = check_json(ws / 'transcribe' / 'subtitle-units.json')
-    if reason is not None:
-        return reason
+def check_subtitle_units(ws: Path, relpath: str) -> CheckResult:
+    result, data = read_json_product(ws, relpath)
+    if not result.ok:
+        return result
     if not isinstance(data, dict):
-        return 'JSON root is not an object'
+        return CheckResult(STATUS_CORRUPT, 'JSON root is not an object')
     units = data.get('units')
     if not isinstance(units, list) or not units:
-        return 'units is not a non-empty list'
-    return None
-
-
-def check_final_mp4(ws: Path) -> str | None:
-    return check_file(ws / 'composition' / 'renders' / 'final.mp4')
-
-
-def check_final_with_bgm(ws: Path) -> str | None:
-    return check_file(ws / 'composition' / 'renders' / 'final_with_bgm.mp4')
+        return CheckResult(STATUS_CORRUPT, 'units is not a non-empty list')
+    return OK
 
 
 # --- phase definitions ---------------------------------------------------------
@@ -254,7 +259,7 @@ PHASES: list[dict[str, Any]] = [
         'id': '1-gather-inputs',
         'title': '收集输入',
         'doc': 'references/phases/01-gather-inputs.md',
-        'products': {'inputs.json': check_inputs},
+        'products': {'inputs.json': check_inputs_product},
     },
     {
         'id': '2-paper-parse',
@@ -267,37 +272,37 @@ PHASES: list[dict[str, Any]] = [
         'id': '3-research',
         'title': '主题调研',
         'doc': 'references/phases/03-research.md',
-        'products': {'research-brief.md': check_research_brief},
+        'products': {'research-brief.md': check_text_product},
     },
     {
         'id': '4-material-harvest',
         'title': '素材抓取（可选）',
         'doc': 'references/phases/04-material-harvest.md',
         'conditional': 'fetch',
-        'products': {'harvest_page/manifest.json': check_harvest_manifest},
+        'products': {'harvest_page/manifest.json': check_dict_entries_product},
     },
     {
         'id': '5-material-catalog',
         'title': '素材 catalog',
         'doc': 'references/phases/05-material-catalog.md',
         'conditional': 'fetch',
-        'products': {'material-catalog.json': check_material_catalog},
+        'products': {'material-catalog.json': check_dict_entries_product},
     },
     {
         'id': '6-script-scene-plan',
         'title': '脚本与场景规划（委派）',
         'doc': 'references/phases/06-script-scene-plan.md',
         'products': {
-            'narration.txt': check_narration,
-            'scene-material-suggestions.json': check_scene_suggestions,
-            'scene-text-plan.json': check_scene_text_plan,
+            'narration.txt': check_text_product,
+            'scene-material-suggestions.json': check_json_list_product,
+            'scene-text-plan.json': check_json_list_product,
         },
     },
     {
         'id': '7-tts',
         'title': 'TTS 配音',
         'doc': 'references/phases/07-tts.md',
-        'products': {'voice_clone/narration.mp3': check_file},
+        'products': {'voice_clone/narration.mp3': check_file_product},
     },
     {
         'id': '8-align-subtitles',
@@ -312,13 +317,13 @@ PHASES: list[dict[str, Any]] = [
         'id': '9-composition',
         'title': 'composition（委派）',
         'doc': 'references/phases/09-composition.md',
-        'products': {'composition/renders/final.mp4': check_final_mp4},
+        'products': {'composition/renders/final.mp4': check_file_product},
     },
     {
         'id': '10-check-mix',
         'title': '检查与混音',
         'doc': 'references/phases/10-check-mix.md',
-        'products': {'composition/renders/final_with_bgm.mp4': check_final_with_bgm},
+        'products': {'composition/renders/final_with_bgm.mp4': check_file_product},
     },
 ]
 
@@ -338,22 +343,19 @@ def phase_applies(phase: dict[str, Any], inputs: dict[str, Any] | None) -> bool:
     return True
 
 
-def validate_phase(ws: Path, phase: dict[str, Any]) -> dict[str, str]:
-    problems: dict[str, str] = {}
+def validate_phase(ws: Path, phase: dict[str, Any]) -> dict[str, CheckResult]:
+    """Run every product checker of a phase; returns {relpath: CheckResult}
+    for the products that failed."""
+    problems: dict[str, CheckResult] = {}
     for relpath, checker in phase['products'].items():
-        if checker is check_file:
-            reason = checker(ws / relpath)
-        elif checker is check_inputs:
-            reason, _ = checker(ws)
-        else:
-            reason = checker(ws)
-        if reason is not None:
-            problems[relpath] = reason
+        result = checker(ws, relpath)
+        if not result.ok:
+            problems[relpath] = result
     return problems
 
 
 def scan_workspace(ws: Path) -> dict[str, Any]:
-    inputs_reason, inputs = check_inputs(ws)
+    _, inputs = load_inputs(ws)
 
     completed: list[str] = []
     skipped: list[str] = []
@@ -369,8 +371,8 @@ def scan_workspace(ws: Path) -> dict[str, Any]:
         if not problems:
             completed.append(phase['id'])
             continue
-        for relpath, reason in problems.items():
-            if reason == 'missing':
+        for relpath, result in problems.items():
+            if result.status == STATUS_MISSING:
                 missing.append(relpath)
             else:
                 corrupt.append(relpath)
@@ -379,7 +381,7 @@ def scan_workspace(ws: Path) -> dict[str, Any]:
                 'id': phase['id'],
                 'title': phase['title'],
                 'doc': phase['doc'],
-                'problems': problems,
+                'problems': {relpath: result.detail for relpath, result in problems.items()},
             }
 
     return {

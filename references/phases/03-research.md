@@ -20,30 +20,12 @@ Phase 4（素材抓取，若 `fetch_materials = true`）或 Phase 6（脚本与�
 
 **永远不要单凭自己的训练数据写脚本。** 每一个论断都要扎根在新鲜、可引用的来源上。
 
-#### Paper mode 变体
-
-当 `input_mode = "paper"`，把标准研究 prompt 替换为基于解析论文的版本：
-
-```
-"Background research for the paper '{title}':
-Abstract: {abstract}
-
-Research:
-1. What problem does this paper address? What was SOTA before it?
-2. Key related works and how they compare
-3. Citations and impact since publication
-4. Subsequent developments building on this work
-5. Community criticisms or limitations
-6. Real-world applications
-7. arXiv URLs of the most important related papers (供 Phase 2 解析相关论文)"
-```
-
-论文自身的 markdown 是**主要**内容来源。Deep Research 提供上下文——背景、影响、相关工作对比。本 phase 的其余部分（用 `web_search` 补漏、合成研究 brief）按常规流程进行。
-
 **流程：**
 
 1. **如果用户给了 URL** → 先 `web_fetch` 它。读完整内容。这是整个视频的脊椎。
 2. **跑 Gemini Deep Research。** 这是主要的研究主干。
+   - 论文模式（`input_mode = "paper"`）时，用 Phase 2 文档里基于解析论文的 prompt 替换下面的标准 prompt。
+
    ```bash
    scripts/gemini-deep-research.py \
      --prompt "Comprehensive overview of [topic]: history, key developments, notable figures, technical details, latest news" \

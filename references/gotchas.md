@@ -79,11 +79,11 @@ Chrome 启动时会复用位于 `{work_dir}/chrome_profile/` 的共享 profile�
 
 YouTube/Bilibili 经 yt-dlp 并行下载时容易被限速。
 
-修复：顺序遍历 `manifest.pending_downloads[]`。如果下载因地区封锁、年龄限制、410 或限速失败，保留 `download_required: true`；Phase 5 会忽略尚未解决的 clip。
+修复：顺序遍历 `manifest.pending_downloads[]`（Phase 4.b 的步骤）。如果下载因地区封锁、年龄限制、410 或限速失败，保留 `download_required: true`；Phase 5（素材 catalog）会忽略尚未解决的 clip。
 
 ## 8. 将视频下载结果应用到 manifest
 
-下载视频本身还不够。Phase 5 会读 `manifest.json` 和每个 slug 的 `metadata.json`。
+下载视频本身还不够。Phase 4 会把下载结果应用到 `manifest.json` 和每个 slug 的 `metadata.json`，Phase 5（素材 catalog）会读这份 manifest——跳过这一步，catalog 就看不到本地文件路径。
 
 修复：每次 `video-download.py` 成功后，应用结果：
 
