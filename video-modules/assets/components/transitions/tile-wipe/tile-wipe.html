@@ -1,0 +1,160 @@
+<template>
+  <!--
+    Tile wipe — a transition between scenes (docs: references/components/transitions/tile-wipe.md). Square tiles light up outward from a point,
+    cover the frame at the cut, optionally show a card for what comes next, then drain back to the point.
+    No content of its own: cuts and cards are passed in; colours and font come from the design theme's tokens
+    (--c-tile0…4, --c-card, --c-border, --c-ink, --c-ink2, --c-focus, --c-positive, --font-sans).
+    Mount once, full length: data-composition-id="tile-wipe", data-start="0", z-index above scenes, below the chrome.
+    Host variables: originX, originY, cardX, cardY, top, bottom (px), data (key in window.VIDEO, default "cuts").
+    Data: window.VIDEO.cuts = [{ at, label, title, emphasis, meta: [{ dot, strong, text }] }]; "at" is the cut in video seconds.
+  -->
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      font-family: var(--font-sans);
+      color: var(--c-ink);
+      pointer-events: none;
+    }
+    /* the page behind the tiles, so the gaps never show the cut */
+    #tw-plate { position: absolute; left: 0; width: 1920px; background: var(--c-card); }
+    #tw-tiles { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+    #tw-tiles i { position: absolute; width: 48px; height: 48px; border-radius: 9px; opacity: 0; }
+
+    #root .tw-card {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      gap: 40px;
+      padding: 34px 52px 38px 44px;
+      background: var(--c-card);
+      border: 2px solid var(--c-border);
+      border-radius: 16px;
+      white-space: nowrap;
+      opacity: 0;
+    }
+    #root .tw-card .lb { font-size: 150px; font-weight: 700; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+    #root .tw-card .col { padding-left: 40px; border-left: 2px solid var(--c-border); }
+    #root .tw-card .ti { font-size: 48px; font-weight: 400; color: var(--c-focus); }
+    #root .tw-card .ti b { font-weight: 700; }
+    #root .tw-card .meta { display: flex; align-items: center; gap: 28px; margin-top: 16px; font-size: 28px; color: var(--c-ink2); }
+    #root .tw-card .meta i { display: inline-block; width: 18px; height: 18px; border-radius: 50%; margin-right: 10px; vertical-align: -1px; }
+    #root .tw-card .meta b { margin-right: 8px; font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--c-positive); }
+  </style>
+  <div id="root" data-composition-id="tile-wipe" data-width="1920" data-height="1080">
+    <div id="tw-plate"></div>
+    <div id="tw-tiles" data-layout-ignore></div>
+  </div>
+  <script>
+    (() => {
+      const tl = gsap.timeline({ paused: true });
+      const V = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+      const C = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+      const num = (v, d) => (v !== "" && v != null && Number.isFinite(Number(v)) ? Number(v) : d);
+      // defaults are the presenter layout: tiles between the two 72 px bars, spreading from the character's laptop
+      const OX = num(V.originX, 1504), OY = num(V.originY, 968);
+      const CX = num(V.cardX, 240), CY = num(V.cardY, 410);
+      const TOP = num(V.top, 72), BOTTOM = num(V.bottom, 1080), SPEED = 6500;
+      const PITCH = 56, CELL = 48, COLS = Math.ceil(1920 / PITCH), X0 = Math.round((1920 - COLS * PITCH) / 2) + (PITCH - CELL) / 2;
+      const ROWS = Math.ceil((BOTTOM - TOP) / PITCH), Y0 = TOP + (PITCH - CELL) / 2;
+      const PALETTE = [0, 1, 2, 3, 4].map((i) => C(`--c-tile${i}`));
+      const root = document.getElementById("tw-plate").parentElement;
+      const plate = document.getElementById("tw-plate");
+      plate.style.top = TOP + "px";
+      plate.style.height = BOTTOM - TOP + "px";
+      const disc = (r) => `circle(${r}px at ${OX}px ${OY - TOP}px)`;
+      plate.style.clipPath = disc(0);
+
+      // tiles: denser near the origin; seeded so every render is the same
+      let seed = 1018;
+      const rand = () => {
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+      const host = document.getElementById("tw-tiles");
+      const tiles = [], dist = [], jit = [];
+      let far = 0;
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const x = X0 + c * PITCH, y = Y0 + r * PITCH;
+          const d = Math.hypot(x + CELL / 2 - OX, y + CELL / 2 - OY);
+          far = Math.max(far, d);
+          const score = rand() * 0.85 + (1 - d / 1800) * 0.45;
+          const lvl = score < 0.3 ? 0 : score < 0.52 ? 1 : score < 0.72 ? 2 : score < 0.88 ? 3 : 4;
+          const el = document.createElement("i");
+          el.style.left = x + "px";
+          el.style.top = y + "px";
+          el.style.background = PALETTE[lvl];
+          host.appendChild(el);
+          tiles.push(el);
+          dist.push(d);
+          jit.push(rand());
+        }
+      }
+      const R = far + 60;
+
+      // a card: big label | title + emphasis, then a meta line of { dot, strong, text } parts
+      const makeCard = (cut, i) => {
+        const card = document.createElement("div");
+        card.className = "tw-card";
+        card.id = `tw-card${i + 1}`;
+        card.style.left = CX + "px";
+        card.style.top = CY + "px";
+        const lb = document.createElement("div");
+        lb.className = "lb";
+        lb.textContent = cut.label;
+        card.appendChild(lb);
+        if (cut.title || cut.emphasis || (cut.meta && cut.meta.length)) {
+          const col = document.createElement("div");
+          col.className = "col";
+          const ti = document.createElement("div");
+          ti.className = "ti";
+          ti.append(cut.title || "");
+          if (cut.emphasis) { const b = document.createElement("b"); b.textContent = cut.emphasis; ti.append(b); }
+          col.appendChild(ti);
+          if (cut.meta && cut.meta.length) {
+            const meta = document.createElement("div");
+            meta.className = "meta";
+            for (const m of cut.meta) {
+              const s = document.createElement("span");
+              if (m.dot) { const d = document.createElement("i"); d.style.background = m.dot; s.appendChild(d); }
+              if (m.strong) { const b = document.createElement("b"); b.textContent = m.strong; s.appendChild(b); }
+              if (m.text) s.append(m.text);
+              meta.appendChild(s);
+            }
+            col.appendChild(meta);
+          }
+          card.appendChild(col);
+        }
+        root.appendChild(card);
+        return card;
+      };
+
+      const cuts = ((window.VIDEO && window.VIDEO[V.data || "cuts"]) || []).slice().sort((a, b) => a.at - b.at);
+      cuts.forEach((cut, i) => {
+        // covered at the cut, open again 0.55 s after it
+        const s = cut.at - 0.45, e = s + 1.0;
+        tl.fromTo(tiles, { opacity: 0, scale: 0.2 }, {
+          opacity: 1, scale: 1, duration: 0.12, ease: "power2.out",
+          stagger: (k) => dist[k] / SPEED + jit[k] * 0.04,
+        }, s);
+        tl.fromTo(plate, { clipPath: disc(0) }, { clipPath: disc(R), duration: R / SPEED, ease: "none" }, s + 0.16);
+        if (cut.label) {
+          const card = makeCard(cut, i);
+          tl.fromTo(card, { opacity: 0, scale: 0.94 }, { opacity: 1, scale: 1, duration: 0.25, ease: "power2.out" }, s + 0.42);
+          tl.to(card, { opacity: 0, scale: 0.97, duration: 0.15, ease: "power2.in" }, e - 0.1);
+        }
+        // the tiles drain back toward the origin
+        tl.to(plate, { clipPath: disc(0), duration: R / SPEED, ease: "none" }, e);
+        tl.to(tiles, {
+          opacity: 0, scale: 0.2, duration: 0.12, ease: "power2.in",
+          stagger: (k) => (far - dist[k]) / SPEED + jit[k] * 0.03,
+        }, e);
+      });
+
+      window.__timelines["tile-wipe"] = tl;
+    })();
+  </script>
+</template>
