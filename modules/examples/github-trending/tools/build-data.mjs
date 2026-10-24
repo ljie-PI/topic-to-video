@@ -1,7 +1,7 @@
 // Builds data/video-data.js for this example: tabs, captions, tile-wipe cuts, the trending scene and Jay's acting script.
 // usage (from this folder): node tools/build-data.mjs
 // Sources inside this project: the narration cues (data/narration.json) and the voice track (assets/audio/narration.m4a),
-// whose loudness becomes Jay's mouth through the skill's scripts/make-envelope.mjs (override with MAKE_ENVELOPE=<path>).
+// whose loudness becomes Jay's mouth through the skill's modules/scripts/make-envelope.mjs (override with MAKE_ENVELOPE=<path>).
 import { readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 

@@ -3,3 +3,6 @@
 .thumbnails/
 renders/
 node_modules/
+
+# fonts fetched by scripts/fonts-download.sh; regenerate, don't commit
+assets/fonts/
