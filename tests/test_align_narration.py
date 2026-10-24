@@ -20,6 +20,9 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'align-narration.py'
 MAKE_NARRATION = REPO_ROOT / 'scripts' / 'make-narration.py'
+LAYOUTS = REPO_ROOT / 'modules' / 'layouts'
+PRESENTER_LAYOUT = LAYOUTS / 'presenter.json'
+PORTRAIT_LAYOUT = LAYOUTS / 'portrait.json'
 
 
 def write_json(path: Path, payload) -> None:
@@ -49,6 +52,7 @@ def make_workspace(
     width: int = 1200,
     font_size: int = 42,
     max_lines: int = 1,
+    layout: Path | None = None,
     scene_plan=None,
 ):
     """Build a fixture workspace and run align-narration on it.
@@ -79,10 +83,15 @@ def make_workspace(
         '--script', str(tmp_path / 'script.txt'),
         '--units-output', str(tmp_path / 'transcribe' / 'subtitle-units.json'),
         '--timeline-output', str(tmp_path / 'transcribe' / 'timeline.json'),
-        '--width', str(width),
-        '--font-size', str(font_size),
-        '--max-lines', str(max_lines),
     ]
+    if layout is not None:
+        args += ['--layout', str(layout)]
+    else:
+        args += [
+            '--width', str(width),
+            '--font-size', str(font_size),
+            '--max-lines', str(max_lines),
+        ]
     if scene_plan is not None:
         write_json(tmp_path / 'scene-plan.json', scene_plan)
         args += ['--scene-plan', str(tmp_path / 'scene-plan.json')]
@@ -490,6 +499,7 @@ def test_missing_input_file_exits_1(tmp_path: Path):
         '--script', str(tmp_path / 'script.txt'),
         '--units-output', str(tmp_path / 'units.json'),
         '--timeline-output', str(tmp_path / 'timeline.json'),
+        '--width', '1200', '--font-size', '42', '--max-lines', '1',
     )
     assert proc.returncode == 1
     result = json.loads(proc.stdout)
@@ -517,7 +527,119 @@ def test_transcript_without_word_timestamps_exit_1(tmp_path: Path):
         '--script', str(tmp_path / 'script.txt'),
         '--units-output', str(tmp_path / 'units.json'),
         '--timeline-output', str(tmp_path / 'timeline.json'),
+        '--width', '1200', '--font-size', '42', '--max-lines', '1',
     )
     assert proc.returncode == 1
     result = json.loads(proc.stdout)
+    assert result['success'] is False
+
+
+# --- layout region definitions --------------------------------------------------
+
+
+def layout_cap(layout_path: Path) -> tuple[int, int]:
+    """(cap in CJK units, max_lines) recomputed from the layout JSON itself."""
+    caption = json.loads(layout_path.read_text(encoding='utf-8'))['caption']
+    cap = int(caption['width_px'] / caption['font_size_px']) * caption['max_lines']
+    return cap, caption['max_lines']
+
+
+def test_presenter_layout_caps_every_unit(tmp_path: Path):
+    # presenter.json: 1166px / 36px / 1 line. Every unit must fit the display
+    # width cap recomputed from the JSON, never a hardcoded number.
+    cap, max_lines = layout_cap(PRESENTER_LAYOUT)
+    proc, result, units_data, _ = make_workspace(
+        tmp_path, REGRESSION_SCRIPT, {}, REGRESSION_TRANSCRIPT,
+        layout=PRESENTER_LAYOUT,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert cap == int(1166 / 36) * 1
+    assert max_lines == 1
+    for text in unit_texts(units_data):
+        assert display_width(text) <= cap
+
+
+def test_portrait_layout_allows_two_lines(tmp_path: Path):
+    # 27 display units: one 22-unit line (940/42) cannot hold the sentence,
+    # two lines (cap 44) keep it in a single unit.
+    script_text = '今天天气真的很不错非常适合出门散步晒太阳感受春天的气息。'  # 27 units
+    transcript = [
+        {
+            'begin': 0,
+            'end': 3000,
+            'text': script_text,
+            'words': [{'text': script_text.rstrip('。'), 'begin': 0, 'end': 3000}],
+        }
+    ]
+    cap, max_lines = layout_cap(PORTRAIT_LAYOUT)
+    assert max_lines == 2
+    one_line_cap = cap // max_lines
+    assert one_line_cap < display_width(script_text.rstrip('。')) <= cap
+
+    proc, _, units_data, _ = make_workspace(
+        tmp_path, script_text, {}, transcript, layout=PORTRAIT_LAYOUT,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert unit_texts(units_data) == [script_text.rstrip('。').rstrip('，')]
+
+
+def test_layout_flag_wins_over_explicit_flags(tmp_path: Path):
+    # --layout wins: the explicit one-line flags would force a split, the
+    # portrait layout (2 lines) keeps the sentence in one unit.
+    script_text = '今天天气真的很不错非常适合出门散步晒太阳感受春天的气息。'  # 27 units
+    transcript = [
+        {
+            'begin': 0,
+            'end': 3000,
+            'text': script_text,
+            'words': [{'text': script_text.rstrip('。'), 'begin': 0, 'end': 3000}],
+        }
+    ]
+    write_text(tmp_path / 'script.txt', script_text)
+    write_json(tmp_path / 'tts-lexicon.json', {})
+    write_json(tmp_path / 'transcribe' / 'transcript.json', transcript)
+    mn = subprocess.run(
+        [sys.executable, str(MAKE_NARRATION),
+         '--script', str(tmp_path / 'script.txt'),
+         '--lexicon', str(tmp_path / 'tts-lexicon.json'),
+         '--output-dir', str(tmp_path)],
+        capture_output=True, text=True,
+    )
+    assert mn.returncode == 0, mn.stderr
+    proc = run_cli(
+        '--transcript', str(tmp_path / 'transcribe' / 'transcript.json'),
+        '--narration', str(tmp_path / 'narration.txt'),
+        '--offsets', str(tmp_path / 'narration-offsets.json'),
+        '--script', str(tmp_path / 'script.txt'),
+        '--units-output', str(tmp_path / 'units.json'),
+        '--timeline-output', str(tmp_path / 'timeline.json'),
+        '--layout', str(PORTRAIT_LAYOUT),
+        '--width', '100', '--font-size', '42', '--max-lines', '1',
+    )
+    assert proc.returncode == 0, proc.stderr
+    units_data = json.loads((tmp_path / 'units.json').read_text(encoding='utf-8'))
+    assert len(units_data['units']) == 1
+
+
+def test_caption_spec_required_without_layout(tmp_path: Path):
+    # neither --layout nor the explicit width flags: invalid arguments.
+    proc = run_cli(
+        '--transcript', 'x.json',
+        '--narration', 'n.txt',
+        '--offsets', 'o.json',
+        '--script', 's.txt',
+    )
+    assert proc.returncode == 2
+    result = json.loads(proc.stdout)
+    assert result['success'] is False
+
+
+def test_layout_file_without_caption_spec_exits_1(tmp_path: Path):
+    bad_layout = tmp_path / 'bad-layout.json'
+    write_json(bad_layout, {'layout': 'broken', 'canvas': {'width': 1, 'height': 1}})
+    proc, result, _, _ = make_workspace(
+        tmp_path, REGRESSION_SCRIPT, {}, REGRESSION_TRANSCRIPT,
+        layout=bad_layout,
+    )
+    assert proc.returncode == 1
     assert result['success'] is False
