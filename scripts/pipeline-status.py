@@ -216,6 +216,22 @@ def check_paper_metadata(ws: Path, relpath: str) -> CheckResult:
     return OK
 
 
+def check_lexicon_product(ws: Path, relpath: str) -> CheckResult:
+    """tts-lexicon.json: a non-empty JSON object mapping display forms to
+    reading forms (both non-empty strings)."""
+    result, data = read_json_product(ws, relpath)
+    if not result.ok:
+        return result
+    if not isinstance(data, dict) or not data:
+        return CheckResult(STATUS_CORRUPT, 'JSON root is not a non-empty object')
+    for key, value in data.items():
+        if not isinstance(key, str) or not isinstance(value, str) or not key or not value:
+            return CheckResult(
+                STATUS_CORRUPT, f'lexicon entries must be non-empty strings, got {key!r}: {value!r}'
+            )
+    return OK
+
+
 def check_transcript(ws: Path, relpath: str) -> CheckResult:
     result, data = read_json_product(ws, relpath)
     if not result.ok:
@@ -293,6 +309,8 @@ PHASES: list[dict[str, Any]] = [
         'title': '脚本与场景规划（委派）',
         'doc': 'references/phases/06-script-scene-plan.md',
         'products': {
+            'script.txt': check_text_product,
+            'tts-lexicon.json': check_lexicon_product,
             'narration.txt': check_text_product,
             'scene-material-suggestions.json': check_json_list_product,
             'scene-text-plan.json': check_json_list_product,
