@@ -1,0 +1,189 @@
+<!doctype html>
+<!--
+  Example: a GitHub weekly trending video (0–27.2 s) built from the video-modules skill (paths relative to the skill root):
+  design     references/designs/github.md            theme tokens, @font-face and ground below
+  layout     references/layouts/presenter.md         the region numbers every host uses
+  components assets/components/                      nav-bar, caption-bar, transitions/tile-wipe, jay
+  template   references/templates/github/README.md   GitHub tokens (contribution-green tiles), brand mark,
+                                                     scenes trending-overview and project-cover
+  data       data/video-data.js                      window.VIDEO, built by tools/build-data.mjs
+-->
+<html lang="zh-CN" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="data/video-data.js"></script>
+    <style>
+      @font-face {
+        font-family: "Noto Sans SC";
+        src: url("assets/fonts/NotoSansSC-VF.ttf") format("truetype");
+        font-weight: 100 900;
+      }
+      @font-face {
+        font-family: "Noto Sans";
+        src: url("assets/fonts/NotoSans-VF.ttf") format("truetype");
+        font-weight: 100 900;
+        font-stretch: 62.5% 100%;
+      }
+      @font-face {
+        font-family: "Noto Sans Mono";
+        src: url("assets/fonts/NotoSansMono-VF.ttf") format("truetype");
+        font-weight: 100 900;
+        font-stretch: 62.5% 100%;
+      }
+      /* references/designs/github.md — theme tokens (paper) */
+      :root {
+        --c-canvas: #f2f4f6;
+        --c-card: #fbfcfd;
+        --c-surface: #f3f5f7;
+        --c-border: #d3d9df;
+        --c-ink: #22272e;
+        --c-ink2: #57606a;
+        --c-muted: #818a94;
+        --c-focus: #2f6aa8;
+        --c-focus-tint: #e6eef7;
+        --c-positive: #337a4c;
+        --c-positive-solid: #3d8757;
+        --c-positive-tint: #e4f0e8;
+        --c-positive-text: #24563a;
+        --c-highlight: #c9a645;
+        --c-done: #6f5bb5;
+        --c-chrome: #262b31;
+        --c-chrome-ink: #f6f8fa;
+        --c-chrome-muted: #9aa3ad;
+        --c-chrome-active: #e08a73;
+        --c-tile0: #e4e8ec;
+        --c-tile1: #c9d6e3;
+        --c-tile2: #9db4cc;
+        --c-tile3: #6f92b5;
+        --c-tile4: #2f6aa8;
+        --ground: url("assets/textures/paper.jpg") 0 0 / 1920px 1080px, #f2f4f6;
+        --font-sans: "Noto Sans", "Noto Sans SC", sans-serif;
+        --font-mono: "Noto Sans Mono", "Noto Sans SC", monospace;
+      }
+      /* references/templates/github — the tile wipe is the contribution graph */
+      :root {
+        --c-tile0: #e4e8ec;
+        --c-tile1: #c3dfca;
+        --c-tile2: #92c4a0;
+        --c-tile3: #5f9f75;
+        --c-tile4: #33744c;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--c-canvas);
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: var(--font-sans);
+        color: var(--c-ink);
+      }
+      #ground {
+        position: absolute;
+        inset: 0;
+        background: var(--ground);
+      }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-a9rr" id="root" data-composition-id="main" data-start="0" data-duration="27.2" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-yd2p" id="ground" data-layout-ignore></div>
+
+      <!-- scenes from the github template (z 2) -->
+      <div data-hf-id="hf-vjeq"
+        id="trending-overview"
+        data-composition-id="trending-overview"
+        data-composition-src="compositions/trending-overview.html"
+        data-start="0"
+        data-duration="20.7"
+        data-track-index="1"
+        data-track-kind="graphics"
+        data-width="1920"
+        data-height="1080"
+        style="z-index: 2"
+      ></div>
+      <div data-hf-id="hf-52ai"
+        id="project-cover"
+        data-composition-id="project-cover"
+        data-composition-src="compositions/project-cover.html"
+        data-start="20.7"
+        data-duration="6.5"
+        data-track-index="1"
+        data-track-kind="graphics"
+        data-width="1920"
+        data-height="1080"
+        data-variable-values='{"rank":1,"owner":"storytold","repo":"artcraft","tagline":"可控图像视频创作工具","stars":20267,"lang":"Rust","langColor":"#dea584","logo":"assets/logos/artcraft.png","nameAt":0.55,"taglineAt":2.4,"starsAt":4.3,"exitAt":0}'
+        style="z-index: 2"
+      ></div>
+
+      <!-- transition (z 10), chrome (z 15–16), character (z 20): components, all full length from 0 -->
+      <div data-hf-id="hf-1mfu"
+        id="tile-wipe"
+        data-composition-id="tile-wipe"
+        data-composition-src="compositions/tile-wipe.html"
+        data-start="0"
+        data-duration="27.2"
+        data-track-index="7"
+        data-track-kind="graphics"
+        data-width="1920"
+        data-height="1080"
+        style="z-index: 10"
+      ></div>
+      <div data-hf-id="hf-0ro0"
+        id="nav-bar"
+        data-composition-id="nav-bar"
+        data-composition-src="compositions/nav-bar.html"
+        data-start="0"
+        data-duration="27.2"
+        data-track-index="8"
+        data-track-kind="graphics"
+        data-width="1920"
+        data-height="1080"
+        data-variable-values='{"logo":"assets/brand/github-mark-white.svg","path":"github / trending"}'
+        style="z-index: 15"
+      ></div>
+      <div data-hf-id="hf-ihb1"
+        id="caption-bar"
+        data-composition-id="caption-bar"
+        data-composition-src="compositions/caption-bar.html"
+        data-start="0"
+        data-duration="27.2"
+        data-track-index="6"
+        data-track-kind="captions"
+        data-width="1920"
+        data-height="1080"
+        style="z-index: 16"
+      ></div>
+      <div data-hf-id="hf-h8sq"
+        id="jay"
+        data-composition-id="jay"
+        data-composition-src="compositions/jay.html"
+        data-start="0"
+        data-duration="27.2"
+        data-track-index="9"
+        data-track-kind="graphics"
+        data-width="1920"
+        data-height="1080"
+        data-variable-values='{"x":1294,"y":642,"size":420}'
+        style="z-index: 20"
+      ></div>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>
