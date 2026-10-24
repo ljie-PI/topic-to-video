@@ -79,11 +79,11 @@ Chrome 启动时会复用位于 `{work_dir}/chrome_profile/` 的共享 profile�
 
 YouTube/Bilibili 经 yt-dlp 并行下载时容易被限速。
 
-修复：顺序遍历 `manifest.pending_downloads[]`。如果下载因地区封锁、年龄限制、410 或限速失败，保留 `download_required: true`；Phase 4 会忽略尚未解决的 clip。
+修复：顺序遍历 `manifest.pending_downloads[]`（Phase 4.b 的步骤）。如果下载因地区封锁、年龄限制、410 或限速失败，保留 `download_required: true`；Phase 5（素材 catalog）会忽略尚未解决的 clip。
 
 ## 8. 将视频下载结果应用到 manifest
 
-下载视频本身还不够。Phase 4 会读 `manifest.json` 和每个 slug 的 `metadata.json`。
+下载视频本身还不够。Phase 4 会把下载结果应用到 `manifest.json` 和每个 slug 的 `metadata.json`，Phase 5（素材 catalog）会读这份 manifest——跳过这一步，catalog 就看不到本地文件路径。
 
 修复：每次 `video-download.py` 成功后，应用结果：
 
@@ -130,9 +130,9 @@ scripts/merge-paper-manifest.py \
 
 ## 13. catalog 未建立前不要写脚本或匹配素材
 
-Phase 5 只能引用 Phase 4 产出的 `material-catalog.json`。如果 catalog 还没建，脚本会凭空安排素材，后续 handoff 也无法追溯资源来源。
+Phase 6 只能引用 Phase 5 产出的 `material-catalog.json`。如果 catalog 还没建，脚本会凭空安排素材，后续 handoff 也无法追溯资源来源。
 
-修复：先完成 vision analyze 和 catalog 生成。用户明确跳过素材时，仍要在 Phase 5/8 中按“无素材”路径处理，不要伪造 `material_ref`。
+修复：先完成 vision analyze 和 catalog 生成。用户明确跳过素材时，仍要在 Phase 6/9 中按“无素材”路径处理，不要伪造 `material_ref`。
 
 ## 14. `harvest-pages.py` 返回 0 张图
 
@@ -154,7 +154,7 @@ Phase 5 只能引用 Phase 4 产出的 `material-catalog.json`。如果 catalog 
 
 ## 17. 主 agent 不手写 composition HTML
 
-主 agent 只负责生成 `composition-handoff.md` 并物化固定 references。`composition/index.html`、场景布局、动画、lint/inspect 修复和渲染迭代都属于 Phase 8 HyperFrames coding sub-agent。
+主 agent 只负责生成 `composition-handoff.md` 并物化固定 references。`composition/index.html`、场景布局、动画、lint/inspect 修复和渲染迭代都属于 Phase 9 HyperFrames coding sub-agent。
 
 修复：如果发现主 agent 已开始手写 HTML，停下并改为补全 handoff、rules 和素材引用；让 HyperFrames sub-agent 接管 composition。
 
