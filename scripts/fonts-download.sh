@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Download deterministic local WOFF2 fonts for topic-to-video styles.
+# Download deterministic local WOFF2 fonts for topic-to-video themes.
 #
-# Usage: bash fonts-download.sh [target_dir] [style] [--dry-run]
+# Usage: bash fonts-download.sh [target_dir] [--theme <theme_dir|theme_name> | style] [--dry-run]
 #   target_dir defaults to ./fonts
-#   style defaults to default
-#   style values: default, dawn, moon, github, all
+#   --theme reads a theme's fonts.json manifest (e.g. modules/designs/dawn or dawn)
+#   style (legacy) values: default, dawn, moon, github, producthunt, all
 #
-# Downloads Google Fonts WOFF2 subsets and writes a local CSS file for each style.
+# Theme manifests live in modules/designs/<theme>/fonts.json; a manifest lists
+# the Google Fonts css2 families, the local CSS filename and the rename flag.
+# The legacy named styles are aliases for the matching theme manifests.
 set -Eeuo pipefail
 
 log() {
@@ -61,27 +63,113 @@ on_error() {
 }
 trap on_error ERR
 
-TARGET="${1:-fonts}"
-STYLE="${2:-default}"
-DRY_RUN="${3:-}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODULES_DESIGNS="$SCRIPT_DIR/../modules/designs"
+LEGACY_STYLES="default dawn moon github producthunt"
 
-if [[ "$#" -gt 3 ]]; then
-  bad_args "Usage: bash fonts-download.sh [target_dir] [style] [--dry-run]"
+TARGET=""
+THEME=""
+STYLE=""
+DRY_RUN=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run)
+      DRY_RUN="--dry-run"
+      shift
+      ;;
+    --theme)
+      [[ $# -ge 2 ]] || bad_args "--theme requires a theme dir or theme name"
+      THEME="$2"
+      shift 2
+      ;;
+    default|dawn|moon|github|producthunt|all)
+      STYLE="$1"
+      shift
+      ;;
+    *)
+      if [[ -z "$TARGET" ]]; then
+        TARGET="$1"
+      else
+        bad_args "Usage: bash fonts-download.sh [target_dir] [--theme <theme_dir|theme_name> | style] [--dry-run]"
+      fi
+      shift
+      ;;
+  esac
+done
+
+TARGET="${TARGET:-fonts}"
+
+if [[ -n "$THEME" && -n "$STYLE" ]]; then
+  bad_args "pass either --theme or a named style, not both"
 fi
-
-if [[ "$DRY_RUN" != "" && "$DRY_RUN" != "--dry-run" ]]; then
-  bad_args "Usage: bash fonts-download.sh [target_dir] [style] [--dry-run]"
+if [[ -z "$THEME" && -z "$STYLE" ]]; then
+  STYLE="default"
 fi
 
 mkdir -p "$TARGET"
 
+# Resolve a theme dir / theme name / fonts.json path to a manifest file.
+resolve_manifest() {
+  local spec="$1"
+  local dir=""
+  if [[ -f "$spec" ]]; then
+    echo "$spec"
+    return
+  fi
+  if [[ -d "$spec" ]]; then
+    dir="$spec"
+  elif [[ -d "$MODULES_DESIGNS/$spec" ]]; then
+    dir="$MODULES_DESIGNS/$spec"
+  else
+    runtime_error "unknown theme '$spec' (no fonts.json; not a dir under $MODULES_DESIGNS)"
+  fi
+  if [[ ! -f "$dir/fonts.json" ]]; then
+    runtime_error "theme dir '$dir' has no fonts.json"
+  fi
+  echo "$dir/fonts.json"
+}
+
+# Read a manifest and download its families. Manifest fields:
+#   css_filename   local CSS file written into the target dir
+#   rename         true -> short family aliases (NotoSansSC, ...); false -> keep
+#   css2_families  list of Google Fonts css2 family specs
+download_manifest() {
+  local manifest="$1"
+  python3 - "$manifest" "$TARGET" "$DRY_RUN" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+css_url = "https://fonts.googleapis.com/css2?family=" + "&family=".join(
+    manifest["css2_families"]
+) + "&display=swap"
+print(manifest["css_filename"])
+print(css_url)
+print("rename" if manifest.get("rename") else "keep")
+PY
+}
+
+download_theme() {
+  local manifest="$1"
+  local style_name
+  style_name="$(basename "$(dirname "$manifest")")"
+  local fields
+  fields="$(download_manifest "$manifest")"
+  local css_file css_url rename_families
+  css_file="$(sed -n '1p' <<<"$fields")"
+  css_url="$(sed -n '2p' <<<"$fields")"
+  rename_families="$(sed -n '3p' <<<"$fields")"
+  download_google_fonts "$style_name" "$css_url" "$rename_families" "$css_file"
+}
+
 download_google_fonts() {
   local style_name="$1"
   local css_url="$2"
-  # Short family aliases (NotoSansSC, ...) are what the design-*.md styles
-  # reference; modules/designs themes use the Google family names as-is.
   local rename_families="${3:-rename}"
-  local css_file="$TARGET/rose-pine-${style_name}-fonts.css"
+  local css_file="$TARGET/${4:-rose-pine-${style_name}-fonts.css}"
 
   if [[ "$DRY_RUN" == "--dry-run" ]]; then
     log "dry-run ${style_name} css: $css_url"
@@ -153,54 +241,21 @@ print(f"[fonts] wrote {css_file}", file=sys.stderr)
 PY
 }
 
-download_default() {
-  download_google_fonts \
-    "default" \
-    "https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap"
-}
-
-download_dawn() {
-  download_google_fonts \
-    "dawn" \
-    "https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Long+Cang&family=Zhi+Mang+Xing&family=Caveat:wght@700&family=Patrick+Hand&display=swap"
-}
-
-download_moon() {
-  download_google_fonts \
-    "moon" \
-    "https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap"
-}
-
-download_github() {
-  download_google_fonts \
-    "github" \
-    "https://fonts.googleapis.com/css2?family=Noto+Sans:wdth,wght@62.5..100,100..900&family=Noto+Sans+SC:wght@100..900&family=Noto+Sans+Mono:wdth,wght@62.5..100,100..900&display=swap" \
-    "keep"
-}
-
-case "$STYLE" in
-  default)
-    download_default
-    ;;
-  dawn)
-    download_dawn
-    ;;
-  moon)
-    download_moon
-    ;;
-  github)
-    download_github
-    ;;
-  all)
-    download_default
-    download_dawn
-    download_moon
-    download_github
-    ;;
-  *)
-    bad_args "Unknown style '$STYLE'. Expected: default, dawn, moon, github, all"
-    ;;
-esac
+if [[ -n "$THEME" ]]; then
+  manifest="$(resolve_manifest "$THEME")"
+  download_theme "$manifest"
+else
+  case "$STYLE" in
+    all)
+      for name in $LEGACY_STYLES; do
+        download_theme "$MODULES_DESIGNS/$name/fonts.json"
+      done
+      ;;
+    *)
+      download_theme "$MODULES_DESIGNS/$STYLE/fonts.json"
+      ;;
+  esac
+fi
 
 set --
 while IFS= read -r file; do

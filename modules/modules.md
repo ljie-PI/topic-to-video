@@ -16,8 +16,12 @@
 ```
 modules.md                                 本文档：入口、组装流程、约定
 designs/
-  designs.md                              主题变量约定（每个主题都定义同一套 --c-* / --font-*）
-  github/github.md, textures/             主题：纸本（冷灰棉纸 + 低饱和 GitHub 色）；paper.jpg、slate.jpg、grain.png
+  designs.md                              主题变量约定（token 契约：--c-* 颜色 / --font-* / --motion-* / 字号下限）、字体清单格式、备选配色
+  default/default.md, fonts.json          主题：Frag Note 暖白 + 克制薰衣草（纯 token）
+  dawn/dawn.md, fonts.json                主题：Rosé Pine Dawn 暖奶油 + 手绘（纯 token）
+  moon/moon.md, fonts.json                主题：Rosé Pine Moon 深色技术编辑（纯 token）
+  github/github.md, fonts.json, textures/ 主题：纸本（冷灰棉纸 + 低饱和 GitHub 色）；paper.jpg、slate.jpg、grain.png
+  producthunt/producthunt.md, fonts.json  主题：Product Hunt 产品风（纯 token）
 layouts/
   presenter.md                            布局：讲解模式（人物右下角主持，主 / 副展示区，上下界面条）
 components/
@@ -37,7 +41,7 @@ examples/
   jay-actions/                            人物动作演示：15 个动作加打字和瞥视逐个演一遍（59.9 秒）
 ```
 
-主题字体不放在仓库里，用 skill 根目录的 `scripts/fonts-download.sh` 下载，例如 `bash scripts/fonts-download.sh <视频工程>/assets/fonts github`。
+主题字体不放在仓库里，按主题的 `fonts.json` 清单用 skill 根目录的 `scripts/fonts-download.sh` 下载，例如 `bash scripts/fonts-download.sh <视频工程>/assets/fonts --theme modules/designs/github`（旧的具名风格 `github` 等价）。
 
 ## 读哪份文档
 
@@ -114,7 +118,7 @@ window.VIDEO = {
 
 ## 扩展约定
 
-- **新主题**：按 `designs/designs.md` 定义全部变量。文档和资源都放 `designs/<名>/`，文档名 `<名>.md`；字体在 skill 根目录的 `scripts/fonts-download.sh` 里加一个同名风格。
+- **新主题**：按 `designs/designs.md` 定义全部变量（颜色 + 字体 + 运动 token + 字号下限），并写一份 `fonts.json` 字体清单。文档和清单都放 `designs/<名>/`，文档名 `<名>.md`。
 - **新布局**：写清每个区域的坐标、尺寸、层级，以及哪个组件填哪个区域。放 `layouts/<名>.md`。
 - **新组件**：
   - 不带内容，只读主题变量，位置默认按某个布局；

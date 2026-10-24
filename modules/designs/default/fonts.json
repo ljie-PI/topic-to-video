@@ -1,0 +1,8 @@
+{
+  "css_filename": "rose-pine-default-fonts.css",
+  "rename": true,
+  "css2_families": [
+    "Noto+Sans+SC:wght@400;500;700",
+    "IBM+Plex+Mono:wght@400;600"
+  ]
+}

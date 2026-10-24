@@ -30,7 +30,7 @@ Phase 10（检查与混音）：在成片上混入 BGM 得到最终交付文件�
 - 必需：`references/layout-routing.md` → `{work_dir}/{topic_name}/references/layout-routing.md`
 - 必需：`references/animation-routing.md` → `{work_dir}/{topic_name}/references/animation-routing.md`
 - 必需：`references/composition-stage-protocol.md` → `{work_dir}/{topic_name}/references/composition-stage-protocol.md`
-- 所选 Design：未指定主题时 `references/design-default.md`，否则 `references/design-<theme>.md` → `{work_dir}/{topic_name}/references/`
+- 所选 Design：`modules/designs/<theme>/<theme>.md`（`default` / `dawn` / `moon` / `github` / `producthunt`；token 契约见 `modules/designs/designs.md`）→ `{work_dir}/{topic_name}/references/`
 
 `composition-handoff.md` 只记录项目变量、实际输入路径、style hint、animation / effect constraints、customized rules、conflict notes 和 project-specific overrides；固定输入解释与 layout hard rules 来自 `references/composition-rules.md`，layout presentation 软路由来自 `references/layout-routing.md`，动画候选与 runtime 软路由来自 `references/animation-routing.md`，stage 执行协议来自 `references/composition-stage-protocol.md`，不得复制 / 摘要 / 覆盖。
 
@@ -38,7 +38,7 @@ Legacy fallback：旧项目若只有 `{work_dir}/{topic_name}/composition-brief.
 
 #### 9.2 — 调用一个 coding sub-agent
 
-如果用户 query 指定了 coding agent / 委派目标，优先使用该目标；否则使用当前客户端 / runtime 原生的 sub-agent 或委派工具。prompt 要简短，且应让 sub-agent 自己从磁盘读 `composition-handoff.md`、`references/composition-rules.md`、`references/layout-routing.md`、`references/animation-routing.md`、`references/composition-stage-protocol.md` 和指定的 `references/design-<theme>.md`。
+如果用户 query 指定了 coding agent / 委派目标，优先使用该目标；否则使用当前客户端 / runtime 原生的 sub-agent 或委派工具。prompt 要简短，且应让 sub-agent 自己从磁盘读 `composition-handoff.md`、`references/composition-rules.md`、`references/layout-routing.md`、`references/animation-routing.md`、`references/composition-stage-protocol.md` 和指定的 `modules/designs/<theme>/<theme>.md`。
 
 Prompt 示例：
 
@@ -49,7 +49,7 @@ Prompt 示例：
 - references/layout-routing.md
 - references/animation-routing.md
 - references/composition-stage-protocol.md
-- handoff 指定的 references/design-<theme>.md（如有）
+- handoff 指定的 references/design-<theme>.md（现为 modules/designs/<theme>/<theme>.md，如有）
 
 如果必需文件缺失，停止并反馈主 agent。
 
@@ -79,7 +79,7 @@ Animation / effect 选择：
 完成后返回 final.mp4 路径、ffprobe duration 和文件大小。
 ```
 
-如果环境里没有原生 sub-agent 工具，仅当 CLI fallback 能把上面那段 prompt 原样传过去、并让 coding sub-agent 自己去读 `composition-handoff.md`、`references/composition-rules.md`、`references/layout-routing.md`、`references/animation-routing.md`、`references/composition-stage-protocol.md` 与指定的 `references/design-<theme>.md` 时，才可以接受。
+如果环境里没有原生 sub-agent 工具，仅当 CLI fallback 能把上面那段 prompt 原样传过去、并让 coding sub-agent 自己去读 `composition-handoff.md`、`references/composition-rules.md`、`references/layout-routing.md`、`references/animation-routing.md`、`references/composition-stage-protocol.md` 与指定的 `modules/designs/<theme>/<theme>.md` 时，才可以接受。
 
 **不要**在主 agent 的会话里驱动 composition authoring 或手工 patch `composition/index.html`。
 

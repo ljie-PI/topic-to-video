@@ -16,7 +16,7 @@
 | `language` | 解说语言，默认中文 |
 | `orientation` | `landscape`（横屏 1920×1080）/ `portrait`（竖屏 1080×1920）/ `portrait-3:4`（1080×1440） |
 | `template` | 所选模板，未选为 `null` |
-| `design` | 所选 design（如 `default` / `github` / `producthunt` / `moon` / `dawn`） |
+| `design` | 所选 design：`default` / `dawn` / `moon` / `github` / `producthunt`，对应 `modules/designs/<design>/<design>.md` |
 | `layout` | 所选 layout，未选为 `null` |
 | `coding_agent` | 委派目标，默认 `claude-code` |
 | `fetch_materials` | 是否联网抓取视觉素材（布尔） |
@@ -37,10 +37,12 @@
 1. 来源：要抓取的 URL、粘贴的文本，或仅一个主题。
 2. 朝向：`1920×1080`（横屏）、`1080×1920`（竖屏）或 `1080×1440`（3:4 竖向）。
 3. 风格：从用户措辞推断，或在项目工作区里有 `style-prompt.md` 时读取它。`style-prompt.md` 是一份可选的自由文本备注，其内容会覆盖默认的风格推断，并作为 style hint 传给下游 composition。
-   - 默认：Frag Note 安静明亮编辑风（`references/design-default.md`）
-   - 主题是 GitHub trending / repo launch / open source 项目介绍 → **GitHub 预设**（`references/design-github.md`）
-   - 主题是 Product Hunt 周榜 / SaaS launch / 新产品发布 → **Product Hunt 预设**（`references/design-producthunt.md`）
-   - 用户明确要求手绘、深色编辑或品牌主题时，再选择对应预设；未指定时保持默认主题。
+   - 五个主题都在 `modules/designs/` 里（契约见 `modules/designs/designs.md`）：
+   - 默认：`default`——Frag Note 安静明亮编辑风（`modules/designs/default/default.md`）
+   - 主题是 GitHub trending / repo launch / open source 项目介绍，或选了 github 模板 → **github**（`modules/designs/github/github.md`）
+   - 主题是 Product Hunt 周榜 / SaaS launch / 新产品发布 → **producthunt**（`modules/designs/producthunt/producthunt.md`）
+   - 用户明确要求手绘 → **dawn**（`modules/designs/dawn/dawn.md`）；要求深色编辑 → **moon**（`modules/designs/moon/moon.md`）
+   - 未指定时保持默认主题。
 4. 时长：通常 3-10 分钟——从用户需求中提取，默认 5 分钟。
 5. 语言：默认中文。若用户想要其他语言要询问确认。
 6. 询问是否需要搜索视觉素材（图片/视频片段）来丰富场景。默认：是。

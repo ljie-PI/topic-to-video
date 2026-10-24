@@ -42,6 +42,9 @@
 | `--c-muted` | `#818A94` |
 | `--c-focus` | `#2F6AA8` |
 | `--c-focus-tint` | `#E6EEF7` |
+| `--c-info` | `#0969DA`（Primer Blue） |
+| `--c-warning` | `#BE7D00`（Primer Attention） |
+| `--c-danger` | `#CF2230`（Primer Danger） |
 | `--c-positive` | `#337A4C` |
 | `--c-positive-solid` | `#3D8757` |
 | `--c-positive-tint` | `#E4F0E8` |
@@ -72,17 +75,52 @@
   - 文字 `ink #1F2A25`，`ink2 #4F5E57`；焦点 `focus #2A6B88`；指标 `positive #2D7646`；
   - 界面条 `chrome #2C3A34`，当前项标记 `chrome-active #F0B56A`；
   - 方格从 `#E3E9E4` 到 `#2A6B88`。
+- **primer-white（Primer 白底）**：GitHub 官网式的纯白画布变体，见 1.6。
 - **aurora（柔光）**：
   - 底色 `#F7F8FA`，背景是四团柔和色晕加 `grain.png` 颗粒（见 1.5）；
   - 颜色保持原饱和度：`focus #0969DA`，`positive #08872B`，`chrome #25292E`，`chrome-active #FD8C73`。
 
-### 1.5 变量代码（复制到视频 `index.html` 的 `:root`）
+### 1.6 变体：primer-white（Primer 白底）
+
+以 paper 变量为基础，覆盖成 GitHub 官网的纯白底高饱和配色。组件和模板都不用改：
+
+| 变量 | 覆盖值 |
+|---|---|
+| `--c-canvas` | `#FFFFFF` |
+| `--c-card` | `#FFFFFF` |
+| `--c-surface` | `#F6F8FA` |
+| `--c-border` | `#D1D9E0` |
+| `--c-ink` | `#1F2328` |
+| `--c-ink2` | `#59636E` |
+| `--c-muted` | `#8C959F` |
+| `--c-focus` | `#0969DA` |
+| `--c-focus-tint` | `#DDF4FF` |
+| `--c-info` | `#0969DA` |
+| `--c-warning` | `#BE7D00` |
+| `--c-danger` | `#CF2230` |
+| `--c-positive` | `#08872B` |
+| `--c-positive-solid` | `#1F883D` |
+| `--c-positive-tint` | `#DAFBE1` |
+| `--c-positive-text` | `#0A5128` |
+| `--c-highlight` | `#BE7D00` |
+| `--c-done` | `#8534F3` |
+| `--c-chrome` | `#25292E` |
+| `--c-chrome-ink` | `#FFFFFF` |
+| `--c-chrome-muted` | `#8C959F` |
+| `--c-chrome-active` | `#FD8C73` |
+| `--c-tile0`–`--c-tile4` | `#EFEFEF` `#D1D9E0` `#96A3B3` `#5A8FC7` `#0969DA` |
+| `--ground` | `#FFFFFF`（可叠 `#EFEFEF` 极淡背景网格） |
+
+primer-white 上允许用极淡背景网格（`#EFEFEF` 横竖 2px 线、约 72px 间距、opacity 0.35–0.45，放背景层）；语义正文优先用 Primer callout 三件套（info `#DDF4FF` / `#0969DA` / `#0A3069`，success `#DAFBE1` / `#1F883D` / `#0A5128`，attention `#FFF8C5` / `#BE7D00` / `#7D4E00`，danger `#FFEBE9` / `#CF2230` / `#A40E26`，done `#FBEFFF` / `#8534F3` / `#512A97`）。Octocat 标志、语言色点、repo 卡片、Star 按钮这些 GitHub 专属元素在 `templates/github/`。
+
+### 1.7 变量代码（复制到视频 `index.html` 的 `:root`）
 
 ```css
 :root {
   --c-canvas: #f2f4f6;  --c-card: #fbfcfd;  --c-surface: #f3f5f7;  --c-border: #d3d9df;
   --c-ink: #22272e;     --c-ink2: #57606a;  --c-muted: #818a94;
   --c-focus: #2f6aa8;   --c-focus-tint: #e6eef7;
+  --c-info: #0969da;    --c-warning: #be7d00;  --c-danger: #cf2230;
   --c-positive: #337a4c;  --c-positive-solid: #3d8757;  --c-positive-tint: #e4f0e8;  --c-positive-text: #24563a;
   --c-highlight: #c9a645; --c-done: #6f5bb5;
   --c-chrome: #262b31;  --c-chrome-ink: #f6f8fa;  --c-chrome-muted: #9aa3ad;  --c-chrome-active: #e08a73;
@@ -90,8 +128,13 @@
   --ground: url("assets/textures/paper.jpg") 0 0 / 1920px 1080px, #f2f4f6;
   --font-sans: "Noto Sans", "Noto Sans SC", sans-serif;
   --font-mono: "Noto Sans Mono", "Noto Sans SC", monospace;
+  --motion-enter-duration: 0.45s;
+  --motion-easing: power2.out;
+  --motion-list-interval: 0.1s;
 }
 ```
+
+字体清单在 `fonts.json`，下载：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/github`，得到 Noto Sans（英文和数字）、Noto Sans SC（中文）、Noto Sans Mono（代码、文件名）三种可变字重（100–900）的 WOFF2 和一份 `rose-pine-github-fonts.css`。
 
 字体在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/rose-pine-github-fonts.css">` 引入，CSS 里的字体名就是上面变量用的 `Noto Sans` / `Noto Sans SC` / `Noto Sans Mono`。
 
@@ -182,7 +225,9 @@ aurora 变体的 `--ground`：
 
 ## 7. 动效
 
-- 入场：0.35–0.5 秒，`power2.out`，向上位移 16–24px 加淡入。不做旋转，不做大幅弹跳缩放。
+节奏由运动 token 定：`--motion-enter-duration: 0.45s`、`--motion-easing: power2.out`、`--motion-list-interval: 0.1s`。
+
+- 入场：0.35–0.5 秒（token 取 0.45s），`power2.out`，向上位移 16–24px 加淡入。不做旋转，不做大幅弹跳缩放。
 - 列表入场：每行间隔 0.1 秒，像信息流一样逐行出现。
 - 文字揭示：从左到右裁切擦出，0.55 秒。
 - 退场：0.25–0.3 秒，`power2.in`，向上 18px 淡出，元素之间错开 0.04 秒。
@@ -209,3 +254,23 @@ aurora 变体的 `--ground`：
 - 不要在纸纹上再叠网格、点阵、方格底纹。
 - 不要使用 Noto 家族以外的字体。
 - 不要把裸的强调色当作小号正文颜色。
+
+---
+
+> ## 「待迁 patterns」：按 visual_role 覆盖颜色
+>
+> 以下段落来自旧版 GitHub style hint 的「`visual_role` 色彩覆盖」，等 patterns 文档建好后会迁到对应 pattern 的「用色」小节，届时此处删除。
+>
+> | `visual_role` | 配色方式 |
+> |---|---|
+> | `title` / `product_card` / `section_divider` | Primary 标题 + Blue / Success / Done eyebrow；repo path 可用 Blue hover 或 mono Primary。 |
+> | `leaderboard` / `big_number` / `data_block` / `metric_strip` | 数字 Primary / mono；star / growth 用 Success；rank / link 用 Blue；warning metric 用 Attention callout。 |
+> | `data_table` / `chart` | 表格正文 Primary / Secondary；highlight cell 用 callout tint；series 用 Blue / Success / Attention / Danger / Done / Teal。 |
+> | `timeline` / `process_flow` / `state_machine` | 当前步骤 Blue；成功节点 Success；失败节点 Danger；完成节点 Done；连接线 `#D1D9E0` + 语义色 marker。 |
+> | `architecture_diagram` / `network_graph` | 模块边线 Blue / Teal；dependency 用 Teal；completed path Done；risk edge Danger。 |
+> | `comparison_matrix` / `pros_cons` | 正向 Success，风险 Danger，注意 Attention；正文使用 Primary / Secondary；不要给整列饱和色底。 |
+> | `list` / `feature_grid` | item label Primary；bullet / icon 按语义用 Blue / Success / Attention / Danger；detail 用 Secondary。 |
+> | `callout` / `definition` / `qa` | 必须优先使用 Primer callout 三件套；definition 用 Info；QA 的 Q 用 Blue，A 用 Primary / Success。 |
+> | `code_block` / `terminal_block` / `file_tree` | panel 用 `#F6F8FA` 或 terminal 黑；path / command 用 mono；success output Success，error output Danger，hint Blue。 |
+> | `annotated_media` | 标注外置；pin / border 用 Blue / Attention / Danger；解释文字用 callout text 或 Primary。 |
+> | `quote` | quote 正文 Primary；source Secondary / Teal；引用卡可用 Info 或 Done callout tint。 |
