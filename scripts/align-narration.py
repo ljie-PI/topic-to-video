@@ -362,15 +362,22 @@ def paragraph_spans(text: str) -> list[tuple[int, int]]:
 # --- alignment -------------------------------------------------------------------
 
 
+def interpolate_timing(word: Word, offset: int, count: int) -> tuple[int, int]:
+    """Interpolate the time span of character ``offset`` within a ``count``-character token."""
+    duration = word.end - word.begin
+    begin = word.begin + round(duration * offset / count)
+    end = word.begin + round(duration * (offset + 1) / count)
+    return begin, end
+
+
 def build_display_atoms(
     script_text: str,
     narration_map: list[int],
     to_script: Callable[[int], int],
-    n_start: int,
-    n_end: int,
-    a_start: int,
-    a_end: int,
-    asr_times: list[tuple[int, int]],
+    narr_start: int,
+    narr_end: int,
+    asr_start: int,
+    asr_norm_times: list[tuple[int, int]],
     paragraph: int,
 ) -> list[Atom]:
     """Turn one aligned (per-paragraph) equal block into display-draft atoms.
@@ -380,16 +387,16 @@ def build_display_atoms(
     keeps English words spaced and numerals in display form). Unaligned
     display characters borrow the timing of the nearest aligned character.
     """
-    display_start = to_script(narration_map[n_start])
-    display_end = to_script(narration_map[n_end - 1]) + 1
+    display_start = to_script(narration_map[narr_start])
+    display_end = to_script(narration_map[narr_end - 1]) + 1
     # swallow sentence-final punctuation right after the last aligned char
     while display_end < len(script_text) and script_text[display_end] in SENTENCE_FINAL_CHARS:
         display_end += 1
     display = script_text[display_start:display_end]
-    aligned_count = n_end - n_start
+    aligned_count = narr_end - narr_start
     aligned_of: list[int | None] = [None] * len(display)
     for offset in range(aligned_count):
-        position = to_script(narration_map[n_start + offset]) - display_start
+        position = to_script(narration_map[narr_start + offset]) - display_start
         if 0 <= position < len(display):
             aligned_of[position] = offset
     aligned_of_direct = list(aligned_of)
@@ -407,7 +414,7 @@ def build_display_atoms(
         offset = aligned_of[position]
         if offset is None:  # display text the offsets table does not cover
             continue
-        begin_ms, end_ms = asr_times[a_start + offset]
+        begin_ms, end_ms = asr_norm_times[asr_start + offset]
         atoms.append(Atom(text=char, begin_ms=begin_ms, end_ms=end_ms,
                           fallback=False, paragraph=paragraph,
                           borrowed=aligned_of_direct[position] is None))
@@ -431,18 +438,15 @@ def build_atoms(
     narration_norm, narration_map = normalize_with_map(narration_text)
 
     asr_chars: list[str] = []
-    asr_times: list[tuple[int, int]] = []
-    asr_word_spans: list[tuple[int, int]] = []
+    asr_norm_times: list[tuple[int, int]] = []
+    word_span_starts: list[int] = []
     for word in words:
         word_norm, _ = normalize_with_map(word.text)
-        span_start = len(asr_chars)
+        word_span_starts.append(len(asr_chars))
         count = max(1, len(word_norm))
-        for offset in range(count):
-            begin = word.begin + round((word.end - word.begin) * offset / count)
-            end = word.begin + round((word.end - word.begin) * (offset + 1) / count)
-            asr_chars.append(word_norm[offset])
-            asr_times.append((begin, end))
-        asr_word_spans.append((span_start, len(asr_chars)))
+        for offset, char in enumerate(word_norm):
+            asr_chars.append(char)
+            asr_norm_times.append(interpolate_timing(word, offset, count))
     asr_norm = ''.join(asr_chars)
 
     span_starts = [span[0] for span in spans]
@@ -451,47 +455,66 @@ def build_atoms(
         index = bisect.bisect_right(span_starts, narration_char_index) - 1
         return index + 1  # 1-based
 
+    def words_touching(asr_start: int, asr_end: int) -> list[int]:
+        """Word indices whose normalized-char spans overlap [asr_start, asr_end)."""
+        first = max(0, bisect.bisect_right(word_span_starts, asr_start) - 1)
+        return [
+            index
+            for index in range(first, len(words))
+            if word_span_starts[index] < asr_end
+        ]
+
+    def atoms_from_equal_run(narr_start: int, narr_end: int, asr_start: int, asr_end: int) -> list[Atom]:
+        # an equal run may span paragraph breaks (newlines normalize away);
+        # process it in per-paragraph sub-runs
+        run_atoms: list[Atom] = []
+        offset = 0
+        while offset < narr_end - narr_start:
+            paragraph = paragraph_of(narration_map[narr_start + offset])
+            sub_end = offset + 1
+            while sub_end < narr_end - narr_start and paragraph_of(narration_map[narr_start + sub_end]) == paragraph:
+                sub_end += 1
+            run_atoms.extend(
+                build_display_atoms(
+                    script_text, narration_map, to_script,
+                    narr_start + offset, narr_start + sub_end, asr_start + offset,
+                    asr_norm_times, paragraph,
+                )
+            )
+            offset = sub_end
+        return run_atoms
+
+    def atoms_from_transcript_only(asr_start: int, asr_end: int, atoms_so_far: list[Atom]) -> list[Atom]:
+        # ASR text with no narration counterpart: keep it, flag fallback.
+        paragraph = atoms_so_far[-1].paragraph if atoms_so_far else 1
+        block_atoms: list[Atom] = []
+        for word_index in words_touching(asr_start, asr_end):
+            word = words[word_index]
+            count = max(1, len(word.text))
+            for offset, char in enumerate(word.text):
+                begin, end = interpolate_timing(word, offset, count)
+                block_atoms.append(Atom(text=char, begin_ms=begin, end_ms=end,
+                                        fallback=True, paragraph=paragraph))
+        return block_atoms
+
+    def record_dropped_narration(narr_start: int, narr_end: int) -> None:
+        dropped_start = narration_map[narr_start]
+        dropped_end = narration_map[narr_end - 1] + 1
+        dropped = narration_text[dropped_start:dropped_end].strip()
+        if dropped:
+            warning = f'narration text has no audio and was dropped: {dropped[:40]}'
+            warnings.append(warning)
+            log(f'warning: {warning}')
+
     atoms: list[Atom] = []
     matcher = difflib.SequenceMatcher(None, narration_norm, asr_norm, autojunk=False)
-    for tag, n1, n2, a1, a2 in matcher.get_opcodes():
+    for tag, narr_start, narr_end, asr_start, asr_end in matcher.get_opcodes():
         if tag == 'equal':
-            # an equal run may span paragraph breaks (newlines normalize away);
-            # process it in per-paragraph sub-runs
-            offset = 0
-            while offset < n2 - n1:
-                paragraph = paragraph_of(narration_map[n1 + offset])
-                sub_end = offset + 1
-                while sub_end < n2 - n1 and paragraph_of(narration_map[n1 + sub_end]) == paragraph:
-                    sub_end += 1
-                atoms.extend(
-                    build_display_atoms(
-                        script_text, narration_map, to_script,
-                        n1 + offset, n1 + sub_end, a1 + offset, a1 + sub_end,
-                        asr_times, paragraph,
-                    )
-                )
-                offset = sub_end
+            atoms.extend(atoms_from_equal_run(narr_start, narr_end, asr_start, asr_end))
         elif tag in ('replace', 'insert'):
-            # ASR text with no narration counterpart: keep it, flag fallback.
-            paragraph = atoms[-1].paragraph if atoms else 1
-            for word_index, (span_start, span_end) in enumerate(asr_word_spans):
-                if span_end <= a1 or span_start >= a2:
-                    continue
-                word = words[word_index]
-                count = max(1, len(word.text))
-                for offset, char in enumerate(word.text):
-                    begin = word.begin + round((word.end - word.begin) * offset / count)
-                    end = word.begin + round((word.end - word.begin) * (offset + 1) / count)
-                    atoms.append(Atom(text=char, begin_ms=begin, end_ms=end,
-                                      fallback=True, paragraph=paragraph))
-        elif tag == 'delete':
-            dropped_start = narration_map[n1]
-            dropped_end = narration_map[n2 - 1] + 1
-            dropped = narration_text[dropped_start:dropped_end].strip()
-            if dropped:
-                warning = f'narration text has no audio and was dropped: {dropped[:40]}'
-                warnings.append(warning)
-                log(f'warning: {warning}')
+            atoms.extend(atoms_from_transcript_only(asr_start, asr_end, atoms))
+        else:  # delete
+            record_dropped_narration(narr_start, narr_end)
 
     return atoms
 
@@ -696,40 +719,30 @@ def locate_cues(
 # --- main --------------------------------------------------------------------------
 
 
-def align(args: argparse.Namespace) -> dict[str, Any]:
-    narration_text = read_text(args.narration)
-    if not narration_text.strip():
-        raise ValueError('narration text is empty')
-    script_text = read_text(args.script)
-    if not script_text.strip():
-        raise ValueError('display draft (script) is empty')
-    words = load_transcript(args.transcript)
-    offsets, to_script = load_offsets(args.offsets)
-    if offsets.get('narration_length') not in (None, len(narration_text)):
-        raise ValueError('offsets narration_length does not match narration.txt')
-    if offsets.get('script_length') not in (None, len(script_text)):
-        raise ValueError('offsets script_length does not match script.txt')
-
-    spans = paragraph_spans(narration_text)
-    if not spans:
-        raise ValueError('narration has no paragraphs')
-
-    warnings: list[str] = []
-    atoms = build_atoms(script_text, narration_text, to_script, words, spans, warnings)
-
-    cap = int(args.width / args.font_size) * args.max_lines
-    log(f'paragraphs={len(spans)} asr_words={len(words)} atoms={len(atoms)} cap={cap}')
-
+def group_atoms_by_paragraph(atoms: list[Atom]) -> dict[int, list[Atom]]:
     atoms_by_paragraph: dict[int, list[Atom]] = {}
     for atom in atoms:
         atoms_by_paragraph.setdefault(atom.paragraph, []).append(atom)
+    return atoms_by_paragraph
 
+
+def paragraphs_in_order(
+    atoms_by_paragraph: dict[int, list[Atom]],
+) -> list[tuple[int, list[Atom]]]:
+    return [(paragraph, atoms_by_paragraph[paragraph]) for paragraph in sorted(atoms_by_paragraph)]
+
+
+def build_units(
+    atoms_by_paragraph: dict[int, list[Atom]],
+    cap: float,
+    warnings: list[str],
+) -> tuple[list[dict[str, Any]], int, int]:
+    """Segment atoms into subtitle units; returns (units, fallback_units, merged_units)."""
     units: list[dict[str, Any]] = []
     fallback_units = 0
     merged_total = 0
     previous_end = -1
-    for paragraph in sorted(atoms_by_paragraph):
-        paragraph_atoms = atoms_by_paragraph[paragraph]
+    for paragraph, paragraph_atoms in paragraphs_in_order(atoms_by_paragraph):
         segments: list[list[Atom]] = []
         for sentence in split_into_sentences(paragraph_atoms):
             segments.extend(split_sentence(sentence, cap, warnings))
@@ -761,27 +774,65 @@ def align(args: argparse.Namespace) -> dict[str, Any]:
                     'paragraph': paragraph,
                 }
             )
+    return units, fallback_units, merged_total
 
-    if not units:
-        raise ValueError('alignment produced no subtitle units')
 
-    paragraphs = []
-    for paragraph in sorted(atoms_by_paragraph):
-        paragraph_atoms = atoms_by_paragraph[paragraph]
+def build_timeline(
+    atoms_by_paragraph: dict[int, list[Atom]],
+    span_count: int,
+    warnings: list[str],
+) -> tuple[list[dict[str, Any]], float]:
+    """Per-paragraph begin/end seconds plus total duration."""
+    paragraphs: list[dict[str, Any]] = []
+    total_ms = 0
+    for paragraph, paragraph_atoms in paragraphs_in_order(atoms_by_paragraph):
+        paragraph_begin = min(atom.begin_ms for atom in paragraph_atoms)
+        paragraph_end = max(atom.end_ms for atom in paragraph_atoms)
+        total_ms = max(total_ms, paragraph_end)
         paragraphs.append(
             {
                 'index': paragraph,
-                'begin_s': round(min(atom.begin_ms for atom in paragraph_atoms) / 1000, 3),
-                'end_s': round(max(atom.end_ms for atom in paragraph_atoms) / 1000, 3),
+                'begin_s': round(paragraph_begin / 1000, 3),
+                'end_s': round(paragraph_end / 1000, 3),
             }
         )
-    for paragraph_index in range(1, len(spans) + 1):
+    for paragraph_index in range(1, span_count + 1):
         if paragraph_index not in atoms_by_paragraph:
             warning = f'paragraph {paragraph_index} has no aligned audio; missing from timeline'
             warnings.append(warning)
             log(f'warning: {warning}')
+    return paragraphs, round(total_ms / 1000, 3)
 
-    total_s = round(max(atom.end_ms for atom in atoms) / 1000, 3)
+
+def align(args: argparse.Namespace) -> dict[str, Any]:
+    narration_text = read_text(args.narration)
+    if not narration_text.strip():
+        raise ValueError('narration text is empty')
+    script_text = read_text(args.script)
+    if not script_text.strip():
+        raise ValueError('display draft (script) is empty')
+    words = load_transcript(args.transcript)
+    offsets, to_script = load_offsets(args.offsets)
+    if offsets.get('narration_length') not in (None, len(narration_text)):
+        raise ValueError('offsets narration_length does not match narration.txt')
+    if offsets.get('script_length') not in (None, len(script_text)):
+        raise ValueError('offsets script_length does not match script.txt')
+
+    spans = paragraph_spans(narration_text)
+    if not spans:
+        raise ValueError('narration has no paragraphs')
+
+    warnings: list[str] = []
+    atoms = build_atoms(script_text, narration_text, to_script, words, spans, warnings)
+
+    cap = int(args.width / args.font_size) * args.max_lines
+    log(f'paragraphs={len(spans)} asr_words={len(words)} atoms={len(atoms)} cap={cap}')
+
+    atoms_by_paragraph = group_atoms_by_paragraph(atoms)
+    units, fallback_units, merged_total = build_units(atoms_by_paragraph, cap, warnings)
+    if not units:
+        raise ValueError('alignment produced no subtitle units')
+    paragraphs, total_s = build_timeline(atoms_by_paragraph, len(spans), warnings)
 
     cues: list[dict[str, Any]] = []
     if args.scene_plan:
