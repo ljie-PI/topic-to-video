@@ -16,19 +16,19 @@
 ```
 modules.md                                 本文档：入口、组装流程、约定
 designs/
-  designs.md                            主题变量约定（每个主题都定义同一套 --c-* / --font-*）
+  designs.md                              主题变量约定（每个主题都定义同一套 --c-* / --font-*）
   github/github.md, textures/             主题：纸本（冷灰棉纸 + 低饱和 GitHub 色）；paper.jpg、slate.jpg、grain.png
 layouts/
   presenter.md                            布局：讲解模式（人物右下角主持，主 / 副展示区，上下界面条）
 components/
-  components.md                         组件总览和共同约定
+  components.md                           组件总览和共同约定
   jay/jay.md, jay.html, images/           人物动作：组件和两张姿势图
   nav-bar/nav-bar.md, nav-bar.html        顶部界面条
   caption-bar/caption-bar.md, caption-bar.html   底部字幕条
   transitions/tile-wipe/tile-wipe.md, tile-wipe.html   方格转场
 templates/
-  templates.md                          模板总览
-  github/github.md                         GitHub 热榜视频：组装方法、专属配色和元素、人物演法
+  templates.md                            模板总览
+  github/github.md                        GitHub 热榜视频：组装方法、专属配色和元素、人物演法
   github/trending-overview.md, .html      场景：榜单总览
   github/project-cover.md, .html          场景：项目封面
   github/brand/                           github-mark-white.svg
