@@ -140,6 +140,29 @@ def test_overlapping_numeric_entries_use_longest_match_first(tmp_path: Path):
     assert narration == '到 二零二六年为止。\n'
 
 
+def test_equal_length_overlap_uses_display_form_tie_break(tmp_path: Path):
+    # "12" and "23" have equal display length and overlap in "123".  Two
+    # distinct same-length keys can never both match at the SAME position
+    # (equal-length prefix match implies identical forms), so the documented
+    # tie-break (display-form string order) must make the result independent
+    # of the order entries appear in the lexicon file: at position 0 only
+    # "12" matches, and both file orders must give byte-identical outputs.
+    lexicon_forward = {'12': '一二', '23': '二三'}
+    lexicon_reversed = {'23': '二三', '12': '一二'}
+
+    script_text = '版本 123 发布。\n'
+    result_fwd = run_success(tmp_path / 'fwd', script_text=script_text, lexicon=lexicon_forward)
+    result_rev = run_success(tmp_path / 'rev', script_text=script_text, lexicon=lexicon_reversed)
+
+    narration = Path(result_fwd['narration_path']).read_text(encoding='utf-8')
+    assert narration == '版本 一二3 发布。\n'
+    narration_rev = Path(result_rev['narration_path']).read_text(encoding='utf-8')
+    assert narration_rev == narration
+    offsets_fwd = json.loads(Path(result_fwd['offsets_path']).read_text(encoding='utf-8'))
+    offsets_rev = json.loads(Path(result_rev['offsets_path']).read_text(encoding='utf-8'))
+    assert offsets_fwd == offsets_rev
+
+
 # --- offset table -----------------------------------------------------------
 
 
@@ -239,7 +262,6 @@ def test_invalid_lexicon_exits_1(tmp_path: Path):
 
 
 def test_empty_script_exits_1(tmp_path: Path):
-    result = None
     script_path = tmp_path / 'script.txt'
     write_text(script_path, '')
     lexicon_path = tmp_path / 'tts-lexicon.json'

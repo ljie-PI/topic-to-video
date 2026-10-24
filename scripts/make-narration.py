@@ -33,9 +33,9 @@ Usage:
     --lexicon {work_dir}/{topic_name}/tts-lexicon.json \
     --output-dir {work_dir}/{topic_name}/
 
-  # custom output paths (defaults below):
-  --narration-out PATH   (default <output-dir>/narration.txt)
-  --offsets-out PATH     (default <output-dir>/narration-offsets.json)
+  Outputs (paths derived from --output-dir):
+    <output-dir>/narration.txt          the TTS narration draft
+    <output-dir>/narration-offsets.json the offset table
 
 Output convention:
   stdout : single JSON object
@@ -81,10 +81,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--script', required=True, help='Path to the display draft (script.txt).')
     p.add_argument('--lexicon', required=True, help='Path to the TTS lexicon (tts-lexicon.json).')
     p.add_argument('--output-dir', required=True, help='Directory for narration.txt and narration-offsets.json.')
-    p.add_argument('--narration-out', default=None,
-                   help='Narration output path (default <output-dir>/narration.txt).')
-    p.add_argument('--offsets-out', default=None,
-                   help='Offset table output path (default <output-dir>/narration-offsets.json).')
     return p.parse_args()
 
 
@@ -102,8 +98,8 @@ def load_lexicon(path: Path) -> dict[str, str]:
     for key, value in data.items():
         if not isinstance(key, str) or not isinstance(value, str):
             fail(f'lexicon entries must be strings, got {key!r}: {value!r}')
-        if not key:
-            fail('lexicon contains an empty display form')
+        if not key or not value:
+            fail(f'lexicon entries must be non-empty strings, got {key!r}: {value!r}')
         lexicon[key] = value
     return lexicon
 
@@ -143,7 +139,7 @@ def render(script_text: str, lexicon: dict[str, str]) -> tuple[str, list[dict[st
     while i < n:
         hit: tuple[str, str] | None = None
         for display, reading in matches:
-            if display and script_text.startswith(display, i):
+            if script_text.startswith(display, i):
                 hit = (display, reading)
                 break
         if hit is not None:
@@ -176,10 +172,8 @@ def main() -> None:
     lexicon_path = Path(args.lexicon).expanduser()
     output_dir = Path(args.output_dir).expanduser()
     output_dir.mkdir(parents=True, exist_ok=True)
-    narration_path = Path(args.narration_out).expanduser() if args.narration_out \
-        else output_dir / 'narration.txt'
-    offsets_path = Path(args.offsets_out).expanduser() if args.offsets_out \
-        else output_dir / 'narration-offsets.json'
+    narration_path = output_dir / 'narration.txt'
+    offsets_path = output_dir / 'narration-offsets.json'
 
     if not script_path.is_file():
         fail(f'script file not found: {script_path}')

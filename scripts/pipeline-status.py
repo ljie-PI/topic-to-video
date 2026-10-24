@@ -225,7 +225,7 @@ def check_lexicon_product(ws: Path, relpath: str) -> CheckResult:
     if not isinstance(data, dict) or not data:
         return CheckResult(STATUS_CORRUPT, 'JSON root is not a non-empty object')
     for key, value in data.items():
-        if not isinstance(key, str) or not isinstance(value, str) or not key:
+        if not isinstance(key, str) or not isinstance(value, str) or not key or not value:
             return CheckResult(
                 STATUS_CORRUPT, f'lexicon entries must be non-empty strings, got {key!r}: {value!r}'
             )

@@ -488,10 +488,13 @@ def run(args: argparse.Namespace) -> None:
             return
 
         # Track the session URL once the prompt has been submitted, so every
-        # subsequent failure JSON can carry it for resuming.
-        session: Dict[str, Any] = {'session_url': None}
+        # subsequent failure JSON can carry it for resuming.  A resumed run
+        # (--page-url) seeds it directly: steps <= 6 are skipped, so without
+        # the seed a second timeout would lose the URL entirely.
+        session: Dict[str, Any] = {'session_url': args.page_url}
 
-        def fail_s(message: str, exit_code: int = 1, failed_step: Optional[int] = None) -> None:
+        def fail_with_session(message: str, exit_code: int = 1,
+                              failed_step: Optional[int] = None) -> None:
             extra = {'session_url': session['session_url']} if session['session_url'] else None
             fail(message, exit_code, failed_step, extra=extra)
 
@@ -511,14 +514,14 @@ def run(args: argparse.Namespace) -> None:
                 page.goto(nav_url, wait_until='domcontentloaded', timeout=30000)
                 page.wait_for_timeout(2000)
             except Exception as e:
-                fail_s(f'Step 2 failed: navigation error: {e}', failed_step=2)
+                fail_with_session(f'Step 2 failed: navigation error: {e}', failed_step=2)
         elif args.page_url:
             log('Step 2: Navigating to provided page URL...')
             try:
                 page.goto(args.page_url, wait_until='domcontentloaded', timeout=30000)
                 page.wait_for_timeout(2000)
             except Exception as e:
-                fail_s(f'Step 2 failed: navigation error: {e}', failed_step=2)
+                fail_with_session(f'Step 2 failed: navigation error: {e}', failed_step=2)
 
         # Step 3: Verify login
         if start <= 3:
@@ -526,7 +529,7 @@ def run(args: argparse.Namespace) -> None:
             try:
                 page.wait_for_selector(f'xpath={SEL["input_box"]}', timeout=30000)
             except Exception:
-                fail_s('Step 3 failed: Not logged in to Gemini. Please log in manually first.', failed_step=3)
+                fail_with_session('Step 3 failed: Not logged in to Gemini. Please log in manually first.', failed_step=3)
 
         # Step 4: Activate Deep Research mode
         if start <= 4:
@@ -537,7 +540,7 @@ def run(args: argparse.Namespace) -> None:
                 page.locator(f'xpath={SEL["deep_research_item"]}').first.click()
                 page.wait_for_timeout(1500)
             except Exception as e:
-                fail_s(f'Step 4 failed: could not activate Deep Research: {e}', failed_step=4)
+                fail_with_session(f'Step 4 failed: could not activate Deep Research: {e}', failed_step=4)
 
         # Step 5: Type the research prompt
         if start <= 5:
@@ -551,7 +554,7 @@ def run(args: argparse.Namespace) -> None:
                 )
                 page.wait_for_timeout(500)
             except Exception as e:
-                fail_s(f'Step 5 failed: could not type prompt: {e}', failed_step=5)
+                fail_with_session(f'Step 5 failed: could not type prompt: {e}', failed_step=5)
 
         # Step 6: Submit
         if start <= 6:
@@ -560,7 +563,7 @@ def run(args: argparse.Namespace) -> None:
                 page.locator(f'xpath={SEL["send_button"]}').click()
                 page.wait_for_timeout(1000)
             except Exception as e:
-                fail_s(f'Step 6 failed: could not submit: {e}', failed_step=6)
+                fail_with_session(f'Step 6 failed: could not submit: {e}', failed_step=6)
 
             # IMMEDIATELY persist the session URL: from here on, a timeout or
             # interruption can be resumed from step 9 with this URL.
@@ -587,11 +590,11 @@ def run(args: argparse.Namespace) -> None:
                         break
                     page.wait_for_timeout(2000)
                 else:
-                    fail_s('Step 7 failed: research plan did not appear within 120s.', failed_step=7)
+                    fail_with_session('Step 7 failed: research plan did not appear within 120s.', failed_step=7)
             except SystemExit:
                 raise
             except Exception as e:
-                fail_s(f'Step 7 failed: error waiting for plan: {e}', failed_step=7)
+                fail_with_session(f'Step 7 failed: error waiting for plan: {e}', failed_step=7)
 
         # Step 8: Confirm the research plan
         if start <= 8:
@@ -600,7 +603,7 @@ def run(args: argparse.Namespace) -> None:
                 page.locator(f'xpath={SEL["confirm_button"]}').click()
                 page.wait_for_timeout(2000)
             except Exception as e:
-                fail_s(f'Step 8 failed: could not confirm plan: {e}', failed_step=8)
+                fail_with_session(f'Step 8 failed: could not confirm plan: {e}', failed_step=8)
 
         # Step 9: Wait for research completion
         if start <= 9:
@@ -631,11 +634,11 @@ def run(args: argparse.Namespace) -> None:
                         prev_text_len = text_len
                     page.wait_for_timeout(5000)
                 else:
-                    fail_s(f'Step 9 failed: research did not complete within {args.timeout}s.', failed_step=9)
+                    fail_with_session(f'Step 9 failed: research did not complete within {args.timeout}s.', failed_step=9)
             except SystemExit:
                 raise
             except Exception as e:
-                fail_s(f'Step 9 failed: error waiting for completion: {e}', failed_step=9)
+                fail_with_session(f'Step 9 failed: error waiting for completion: {e}', failed_step=9)
 
         # Step 10: Extract report and sources
         log('Step 10: Extracting report and sources...')
@@ -668,7 +671,7 @@ def run(args: argparse.Namespace) -> None:
         except SystemExit:
             raise
         except Exception as e:
-            fail_s(f'Step 10 failed: could not extract report: {e}', failed_step=10)
+            fail_with_session(f'Step 10 failed: could not extract report: {e}', failed_step=10)
 
 
 # ---------------------------------------------------------------------------
