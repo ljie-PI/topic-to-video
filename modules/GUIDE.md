@@ -14,22 +14,21 @@
 ## 目录
 
 ```
-README.md                                 给人看的简介
 GUIDE.md                                  本文档：入口、组装流程、约定
 designs/
-  README.md                               主题变量约定（每个主题都定义同一套 --c-* / --font-*）
+  GUIDE.md                                主题变量约定（每个主题都定义同一套 --c-* / --font-*）
   github/github.md, textures/             主题：纸本（冷灰棉纸 + 低饱和 GitHub 色）；paper.jpg、slate.jpg、grain.png
 layouts/
   presenter.md                            布局：讲解模式（人物右下角主持，主 / 副展示区，上下界面条）
 components/
-  README.md                               组件总览和共同约定
+  GUIDE.md                                组件总览和共同约定
   jay/jay.md, jay.html, images/           人物动作：组件和两张姿势图
   nav-bar/nav-bar.md, nav-bar.html        顶部界面条
   caption-bar/caption-bar.md, caption-bar.html   底部字幕条
   transitions/tile-wipe/tile-wipe.md, tile-wipe.html   方格转场
 templates/
-  README.md                               模板总览
-  github/README.md                        GitHub 热榜视频：组装方法、专属配色和元素、人物演法
+  GUIDE.md                                模板总览
+  github/GUIDE.md                         GitHub 热榜视频：组装方法、专属配色和元素、人物演法
   github/trending-overview.md, .html      场景：榜单总览
   github/project-cover.md, .html          场景：项目封面
   github/brand/                           github-mark-white.svg
@@ -46,8 +45,8 @@ scripts/
 
 | 要做的事 | 先读 |
 |---|---|
-| 做一类已有模板的视频（如 GitHub 热榜） | `templates/<类型>/README.md`，再看它用到的场景和组件文档 |
-| 选外观 / 新建主题 | `designs/README.md`，再看具体主题 |
+| 做一类已有模板的视频（如 GitHub 热榜） | `templates/<类型>/GUIDE.md`，再看它用到的场景和组件文档 |
+| 选外观 / 新建主题 | `designs/GUIDE.md`，再看具体主题 |
 | 安排版面、确定区域坐标 | `layouts/presenter.md` |
 | 挂某个组件、写它的数据 | `components/<组件>/<组件>.md` |
 | 让人物做动作、配嘴型 | `components/jay/jay.md`；每个动作的样子见 `examples/jay-actions/` |
@@ -72,7 +71,7 @@ scripts/
    - 用 skill 根目录的 `scripts/fonts-download.sh <工程>/assets/fonts <主题>` 下载字体，并在 `index.html` 的 `<head>` 里引入它生成的 CSS；
    - 把主题文档里的变量代码放进 `index.html` 的 `:root`；
    - 根节点放一个铺满全屏的 `#ground`，背景用 `var(--ground)`。
-3. **模板**：按 `templates/<类型>/README.md`：
+3. **模板**：按 `templates/<类型>/GUIDE.md`：
    - 在主题变量之后加上模板的专属变量；
    - 复制模板资源（如 `templates/github/brand/` → 工程 `assets/brand/`）；
    - 选用它的场景。
@@ -117,11 +116,11 @@ window.VIDEO = {
 
 ## 扩展约定
 
-- **新主题**：按 `designs/README.md` 定义全部变量。文档和资源都放 `designs/<名>/`，文档名 `<名>.md`；字体在 skill 根目录的 `scripts/fonts-download.sh` 里加一个同名风格。
+- **新主题**：按 `designs/GUIDE.md` 定义全部变量。文档和资源都放 `designs/<名>/`，文档名 `<名>.md`；字体在 skill 根目录的 `scripts/fonts-download.sh` 里加一个同名风格。
 - **新布局**：写清每个区域的坐标、尺寸、层级，以及哪个组件填哪个区域。放 `layouts/<名>.md`。
 - **新组件**：
   - 不带内容，只读主题变量，位置默认按某个布局；
   - 文档和代码都放 `components/<名>/`：`<名>.md` 加 `<名>.html`；
   - 转场放 `transitions/` 子目录。
-- **新模板**：一类视频一个目录。`templates/<类型>/README.md` 写组装方法；每个场景一份 `<场景>.md` 加同目录的 `<场景>.html`。
+- **新模板**：一类视频一个目录。`templates/<类型>/GUIDE.md` 写组装方法；每个场景一份 `<场景>.md` 加同目录的 `<场景>.html`。
 - **所有 HTML** 都是 HyperFrames 子合成（`<template>` 包裹，根元素 `#root` 带固定的 `data-composition-id`，注册同名时间线），动画只由时间决定。

@@ -24,7 +24,7 @@ const repos = [
   { rank: 5, owner: "K-Dense-AI", repo: "scientific-agent-skills", desc: "为智能体提供科研流程规范", stars: "3,170", readme: "assets/readme/sciskills.png", cue: 16.667 },
 ];
 
-// Jay, per templates/github/README.md section 5 (video seconds; the trending scene starts at 0)
+// Jay, per templates/github/GUIDE.md section 5 (video seconds; the trending scene starts at 0)
 const COVER_AT = 20.7, STARS_AT = 4.3, TAGLINE_AT = 2.4;
 const glances = [];
 for (const r of repos) {

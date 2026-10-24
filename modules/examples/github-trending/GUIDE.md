@@ -1,6 +1,6 @@
 # 示例：GitHub 本周热榜（0–27.2 秒）
 
-一个完整的 HyperFrames 工程，按 `templates/github/README.md` 的组装方法拼成（路径相对 `modules/` 目录）。可以整个复制出去，作为新视频的起点。
+一个完整的 HyperFrames 工程，按 `templates/github/GUIDE.md` 的组装方法拼成（路径相对 `modules/` 目录）。可以整个复制出去，作为新视频的起点。
 
 | 来源 | 在这个工程里的样子 |
 |---|---|
