@@ -2,15 +2,15 @@
 
 ## 输入
 
-Phase 7 产出的 `voice_clone/narration.mp3` + 显示稿 `narration.txt`（字幕纠错来源）。
+Phase 7 产出的 `voice_clone/narration.mp3` + Phase 6 产出的 `script.txt`（显示稿）、`narration.txt`（朗读稿）、`narration-offsets.json`（偏移表）、可选的 `scene-plan.json`。
 
 ## 输出
 
-`transcribe/transcript.json`（词级时间戳的句子列表）+ `transcribe/subtitle-units.json`（字幕单元）+ `fonts/`（按所选 design 预置的 WOFF2 字体与 CSS，供 Phase 9 composition 使用）。
+`transcribe/transcript.json`（词级时间戳的句子列表）+ `transcribe/subtitle-units.json`（字幕单元）+ `transcribe/timeline.json`（段落 / cue 时间轴）+ `fonts/`（按所选 design 预置的 WOFF2 字体与 CSS，供 Phase 9 composition 使用）。
 
 ## 完成判据
 
-`transcript.json` 存在、非空、JSON 可解析，是句子列表且每句含 `begin` / `end` / `text` / `words`；`subtitle-units.json` 存在且 `units` 非空；`fonts/` 含所选 design 的 `.woff2` 与 style CSS。
+`transcript.json` 存在、非空、JSON 可解析，是句子列表且每句含 `begin` / `end` / `text` / `words`；`subtitle-units.json` 存在且 `units` 非空；`timeline.json` 存在且 `paragraphs` 非空；`fonts/` 含所选 design 的 `.woff2` 与 style CSS。
 
 ## 下一步
 
@@ -20,9 +20,9 @@ Phase 9（composition，委派）：sub-agent 用字幕单元、时间轴、素�
 
 本阶段为下游的 HyperFrames sub-agent 准备时间轴与字体输入。`topic-to-video` 主 agent **不**负责设计 scene、写 `info_units`、把素材映射到布局，或者生成 HyperFrames 的 HTML。
 
-#### 8.1 — 生成并校准 ASR transcript
+#### 8.1 — ASR transcript
 
-如果 `{work_dir}/{topic_name}/transcribe/transcript.json` 已存在、且是包含至少一句话和词级时间戳的合法 JSON，并且 `{work_dir}/{topic_name}/transcribe/subtitle-units.json` 已存在且可读取，则跳过。
+如果 `{work_dir}/{topic_name}/transcribe/transcript.json` 已存在、且是包含至少一句话和词级时间戳的合法 JSON，并且 `subtitle-units.json` 与 `timeline.json` 都已存在且可读取，则跳过。
 
 ```bash
 scripts/transcribe.py \
@@ -30,20 +30,33 @@ scripts/transcribe.py \
   {work_dir}/{topic_name}/transcribe/transcript.json
 ```
 
-默认走**本地 Qwen3-ASR + ForcedAligner**，输出词级时间戳并默认开启数字归一化（中文数字→阿拉伯）。云端 fallback：`ASR_BACKEND=dashscope` + `DASHSCOPE_API_KEY`。后端、模型路径、ITN 开关等细节见 `scripts/transcribe.py --help`。
+后端由环境变量选择，参数和依赖见 `scripts/transcribe.py --help`。transcript schema 是固定契约（见 Phase 7 的「TTS / ASR 接口契约」）：句子列表，每句含 `begin` / `end` / `text` 和词级 `words`，毫秒。token 带不带标点、带不带空格，数字用中文还是阿拉伯写法，下游都不做假设。
 
-随后生成 transcript-first 的字幕单元：
+#### 8.2 — 对齐并生成字幕单元与时间轴
 
 ```bash
-scripts/calibrate-transcript.py \
-  --narration {work_dir}/{topic_name}/narration.txt \
+python3 scripts/align-narration.py \
   --transcript {work_dir}/{topic_name}/transcribe/transcript.json \
-  --output {work_dir}/{topic_name}/transcribe/subtitle-units.json
+  --narration {work_dir}/{topic_name}/narration.txt \
+  --offsets {work_dir}/{topic_name}/narration-offsets.json \
+  --script {work_dir}/{topic_name}/script.txt \
+  --units-output {work_dir}/{topic_name}/transcribe/subtitle-units.json \
+  --timeline-output {work_dir}/{topic_name}/transcribe/timeline.json \
+  --width <字幕区宽度px> --font-size <字号px> --max-lines <最大行数>
 ```
 
-校准规则：字幕单元和 timing 以 `transcribe/transcript.json` 为准；`narration.txt` 只作为纠错来源，用于高置信度匹配时修正 Latin words / 产品名 / 模型名拼写。匹配以中文内容为主，CJK 字符权重大于 Latin，并把中文数字和阿拉伯数字视作可匹配形式（如 transcript 的 `13432` 可匹配 narration 的 `一万三千四百三十二`）。找不到对应 narration 句子时，保留 transcript 文本并在 `subtitle-units.json` 中标记 `transcript_fallback`，不要阻塞流程。若 `narration.txt` 在 TTS 后被改过，必须重新生成 TTS + ASR + subtitle units。
+字幕宽度参数暂时由参数传入（后续改由所选 layout 的字幕规格提供；竖屏允许 2 行）。如果存在带 `cues` 的 `scene-plan.json`，追加 `--scene-plan {work_dir}/{topic_name}/scene-plan.json`，cue 的秒数会写进 `timeline.json`；没有场景规划时 `timeline.json` 只含段落起止。
 
-#### 8.2 — 预置字体
+对齐规则：字幕文本以显示稿 `script.txt` 为准，ASR 只提供时间。脚本先把 ASR token 和朗读稿归一化（标点 / 空格 / 大小写不敏感，中文数字与阿拉伯数字等价）再做字符级对齐，然后通过偏移表映射回显示稿，品牌名和数字按显示形式出现。ASR 听到而朗读稿没有的内容保留 ASR 文本，并在该字幕单元上标记 `fallback: true`；TTS 漏读的内容没有音频可依，会被丢弃并在 stderr / summary 里警告。分段先按句末标点切，超宽时在逗号、分号、顿号、冒号、破折号处断开，不在英文单词或数字内部断开，过短尾段均衡重切，不足 0.6 秒的单元并入相邻单元。详见 `scripts/align-narration.py --help`。
+
+产物：
+
+- `transcribe/subtitle-units.json`：`units` 列表，每项含 `text` / `begin_s` / `end_s`（及 `begin_ms` / `end_ms` / `fallback` / `paragraph`）。
+- `transcribe/timeline.json`：`total_s`、每个段落的 `begin_s` / `end_s`；传入场景规划时另有 `cues`（每个 cue 的秒数）。
+
+若 `narration.txt` 在 TTS 后被改过，必须重新生成 TTS + ASR + 字幕产物（偏移表与音频都失效）。
+
+#### 8.3 — 预置字体
 
 如果 `{work_dir}/{topic_name}/fonts/` 已经包含所选风格对应的 `.woff2` 文件与 style CSS，则跳过。
 
@@ -59,7 +72,3 @@ bash scripts/fonts-download.sh {work_dir}/{topic_name}/fonts all
 ```
 
 预置字体属于上游职责——这样能为 HyperFrames sub-agent 提供确定性的本地字体资源，避免不小心 fallback 到系统字体。
-
-#### 可选 —— scene-anchor 辅助工具
-
-`scripts/scene-anchor.py` 仍然作为一个可选的确定性辅助工具保留，给已经有一份 scene 配置、想把 scene 起点对齐到 ASR 文本的 agent 使用。它不再是主 agent 的必经阶段。Scene 切分、素材映射、视觉提示时间，以及 `composition/index.html` 的生成全部归 Phase 9 的 HyperFrames sub-agent。

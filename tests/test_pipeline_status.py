@@ -69,6 +69,12 @@ TRANSCRIPT = [
 
 SUBTITLE_UNITS = {'units': [{'text': '大家好', 'begin_s': 0.0, 'end_s': 2.5}]}
 
+TIMELINE = {
+    'version': 1,
+    'total_s': 2.5,
+    'paragraphs': [{'index': 1, 'begin_s': 0.0, 'end_s': 2.5}],
+}
+
 
 def write_json(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -144,6 +150,7 @@ def complete_through_align(ws: Path, **inputs_overrides) -> None:
     complete_through_tts(ws, **inputs_overrides)
     write_json(ws / 'transcribe' / 'transcript.json', TRANSCRIPT)
     write_json(ws / 'transcribe' / 'subtitle-units.json', SUBTITLE_UNITS)
+    write_json(ws / 'transcribe' / 'timeline.json', TIMELINE)
 
 
 def complete_through_composition(ws: Path, **inputs_overrides) -> None:
@@ -273,6 +280,46 @@ def test_deleted_product_falls_back(tmp_path: Path):
     result = parse_result(proc)
     assert result['next_phase']['id'] == '7-tts'
     assert 'voice_clone/narration.mp3' in result['missing_products']
+
+
+# --- phase 8 products: transcript + subtitle units + timeline --------------------
+
+
+def test_missing_timeline_falls_back_to_phase_8(tmp_path: Path):
+    complete_through_align(tmp_path)
+    (tmp_path / 'transcribe' / 'timeline.json').unlink()
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '8-align-subtitles'
+    assert 'transcribe/timeline.json' in result['missing_products']
+    assert '8-align-subtitles' not in result['completed_phases']
+
+
+def test_corrupt_timeline_falls_back_to_phase_8(tmp_path: Path):
+    complete_through_align(tmp_path)
+    write_json(tmp_path / 'transcribe' / 'timeline.json', {'paragraphs': []})
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '8-align-subtitles'
+    assert 'transcribe/timeline.json' in result['corrupt_products']
+
+
+def test_truncated_timeline_json_falls_back_to_phase_8(tmp_path: Path):
+    complete_through_align(tmp_path)
+    write_text(tmp_path / 'transcribe' / 'timeline.json', '{"paragraphs": [')  # 截断 JSON
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '8-align-subtitles'
+    assert 'transcribe/timeline.json' in result['corrupt_products']
+
+
+def test_corrupt_subtitle_units_falls_back_to_phase_8(tmp_path: Path):
+    complete_through_align(tmp_path)
+    write_json(tmp_path / 'transcribe' / 'subtitle-units.json', {'units': []})
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '8-align-subtitles'
+    assert 'transcribe/subtitle-units.json' in result['corrupt_products']
 
 
 def test_truncated_json_falls_back(tmp_path: Path):

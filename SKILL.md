@@ -3,7 +3,7 @@ name: topic-to-video
 description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、一段粘贴的文本，并请求做成一段有解说的视频（通常 3-10 分钟，横屏或竖屏）时使用。
 ---
 
-# Topic → Video（HyperFrames + Qwen3-TTS 工作流）
+# Topic → Video 工作流
 
 ## 本 skill 产出什么
 
@@ -11,8 +11,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 - **Web 调研** 在写脚本之前获取准确的内容
 - **HyperFrames** 用于下游 HTML composition + 渲染（delegated）
-- **Qwen3-TTS**（本地 GPU，Apache-2.0）实现克隆音色 TTS —— 默认中文；DashScope CosyVoice 作云端 fallback
-- **Qwen3-ASR + ForcedAligner**（本地 GPU）拿词级 ASR 时间戳；DashScope Paraformer 作云端 fallback
+- **TTS / ASR** 生成配音并拿回词级时间戳；后端由环境变量选择，参数和依赖见两个脚本的 `--help`
 - 一份可配置的 style hint，交给下游 HyperFrames sub-agent
 
 **输出：** `{work_dir}/{topic_name}/composition/renders/final.mp4`，可直接发布（由 Phase 9 coding sub-agent 产出）；Phase 10 混入 BGM 后得到 `final_with_bgm.mp4`。
@@ -41,9 +40,9 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 ### TTS / ASR
 
-2. **TTS = 本地 Qwen3-TTS 克隆音色（默认）。** 用参考 WAV + 其 transcript 克隆（`TTS_REF_WAV` 指定音色）。DashScope CosyVoice 作 fallback（`TTS_BACKEND=dashscope`）。**绝不**使用 `npx hyperframes tts`。
-3. **ASR = 本地 Qwen3-ASR + ForcedAligner（默认）。** 返回词级（CJK 按字 / Latin 按词）时间戳，自动识别语言，无需 ffprobe 探测。默认开 ITN（中文数字→阿拉伯，如 `三点一→3.1`、`2026年6月`；`ASR_ITN=0` 关）。DashScope 非实时 `paraformer-v2` 作 fallback（`ASR_BACKEND=dashscope`）。
-   ↳ DO NOT：用 Whisper / `npx hyperframes transcribe`；在 Turing GPU 上用 bf16 或装 flash-attn（用 fp16）。
+2. **TTS 后端由环境变量选择。** 配音脚本、参考音色、参数和依赖见 `scripts/voice-clone.py --help`。**绝不**使用 `npx hyperframes tts`。
+3. **ASR 后端由环境变量选择。** transcript 必须带词级时间戳（schema 见 Phase 7 / 8 文档的接口契约）。后端、参数和依赖见 `scripts/transcribe.py --help`。
+   ↳ DO NOT：用 `npx hyperframes transcribe`；接受没有词级时间戳的 transcript。
 
 ### 字体与文本
 
@@ -81,10 +80,9 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 | --- | --- | --- |
 | `pipeline-status.py` | 扫描工作区，输出已完成 / 下一个 phase、要读的文档、缺失或损坏的产物 | — |
 | `fonts-download.sh` | 确定性 WOFF2 字体下载 + 本地 CSS | — |
-| `voice-clone.py` | TTS（默认本地 Qwen3-TTS 克隆；`TTS_BACKEND=dashscope` 切 CosyVoice） | 本地：GPU + `TTS_REF_WAV`；fallback：`DASHSCOPE_API_KEY` |
-| `transcribe.py` | ASR（默认本地 Qwen3-ASR + ForcedAligner，`ASR_BACKEND=dashscope` 切 `paraformer-v2`） | 本地：GPU；fallback：`DASHSCOPE_API_KEY` |
-| `calibrate-transcript.py` | 基于 transcript timing 生成单行字幕单元，并用 narration 修正 Latin words | — |
-| `scene-anchor.py` | 可选辅助：把预先设计好的 scene 锚定到 ASR 词流 | — |
+| `voice-clone.py` | TTS：把 `narration.txt` 合成 `voice_clone/narration.mp3`；后端由环境变量选择 | 见 `--help` |
+| `transcribe.py` | ASR：输出带词级时间戳的 transcript；后端由环境变量选择 | 见 `--help` |
+| `align-narration.py` | 把 ASR 时间对齐回显示稿，生成字幕单元（subtitle-units.json）与时间轴（timeline.json） | — |
 | `extract-frames.py` | ffmpeg 抽帧 | `ffmpeg` |
 | `subtitle-parse.py` | SRT/VTT 解析 + 关键词过滤 | — |
 | `vision-analyze.py` | VLM 分析（或委派回 agent 的 `view`） | `VLM_*`（可选） |
@@ -99,6 +97,4 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 **系统依赖：** `ffmpeg`、`playwright`（`pip install playwright`，**不要**执行 `playwright install chromium`）、系统 Chrome（自动检测）、`yt-dlp`、带 venv 的 `python3`。
 
-**Python 包（装到 venv 里）：** 本地推理用 `torch`（CUDA 构建）、`qwen-tts`（Qwen3-TTS）、`qwen-asr`（Qwen3-ASR + ForcedAligner）、`wetext`（ASR 的 ITN 中文数字归一化）、`soundfile`；云端 fallback 用 `dashscope`（CosyVoice TTS + Paraformer ASR），以及所有辅助脚本 import 的依赖。本地模型默认从 HF id 自动下载，也可用 `QWEN3TTS_MODEL` / `QWEN3_ASR_MODEL` / `QWEN3_ALIGNER_MODEL` 指向本地目录。注意 `qwen-tts` 与 `qwen-asr` 对 `transformers` 的精确 pin 略有差异（4.57.3 vs 4.57.6），同装时 `pip check` 会告警，但实测两者在任一版本下都能正常运行，可忽略该告警。`wetext` 是独立包（`pip install wetext`）；缺失时 ASR 会自动跳过 ITN、保留逐字中文。
-
-**GPU 注意（Turing，如 RTX 2080 Ti）：** 本地 TTS/ASR 用 fp16，**不要**装 flash-attn（Turing sm_75 不支持）。Qwen3-TTS 与 Qwen3-ASR 多 GB 模型分阶段顺序加载，单卡 11GB 可跑。
+**Python 包（装到 venv 里）：** 各后端自己的参数与依赖（Python 包、环境变量、硬件要求）只写在两个脚本自己的说明里：`scripts/voice-clone.py --help` 与 `scripts/transcribe.py --help`。此外是所有辅助脚本 import 的依赖。

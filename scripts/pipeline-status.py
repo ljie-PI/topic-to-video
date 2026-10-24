@@ -267,6 +267,31 @@ def check_subtitle_units(ws: Path, relpath: str) -> CheckResult:
     return OK
 
 
+def check_timeline(ws: Path, relpath: str) -> CheckResult:
+    """timeline.json: {total_s, paragraphs: [{index, begin_s, end_s}]}; cues optional."""
+    result, data = read_json_product(ws, relpath)
+    if not result.ok:
+        return result
+    if not isinstance(data, dict):
+        return CheckResult(STATUS_CORRUPT, 'JSON root is not an object')
+    paragraphs = data.get('paragraphs')
+    if not isinstance(paragraphs, list) or not paragraphs:
+        return CheckResult(STATUS_CORRUPT, 'paragraphs is not a non-empty list')
+    for index, paragraph in enumerate(paragraphs):
+        if not isinstance(paragraph, dict):
+            return CheckResult(STATUS_CORRUPT, f'paragraph {index} is not an object')
+        missing = [
+            field
+            for field in ('index', 'begin_s', 'end_s')
+            if not isinstance(paragraph.get(field), (int, float))
+        ]
+        if missing:
+            return CheckResult(
+                STATUS_CORRUPT, f'paragraph {index} missing numeric fields: {", ".join(missing)}'
+            )
+    return OK
+
+
 # --- phase definitions ---------------------------------------------------------
 
 # Each product maps its workspace-relative path to a checker.
@@ -329,6 +354,7 @@ PHASES: list[dict[str, Any]] = [
         'products': {
             'transcribe/transcript.json': check_transcript,
             'transcribe/subtitle-units.json': check_subtitle_units,
+            'transcribe/timeline.json': check_timeline,
         },
     },
     {
