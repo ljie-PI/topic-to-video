@@ -101,7 +101,7 @@ description: 当用户提供一个主题、文章 URL 或文本，并请求做�
 | 3 | `references/phases/material-harvest.md` | 从 URL 抓取图片 / 视频 |
 | 4 | `references/phases/material-selection.md` | 视觉分析 + 素材 catalog |
 | 5 | `references/phases/narration-script.md` | 生成解说脚本、匹配场景素材并规划屏幕文本块（5.1 撰写解说脚本；5.2 场景-素材匹配建议；5.3 屏幕文本块规划） |
-| 6 | `references/phases/tts-generation.md` | 用 CosyVoice 生成 TTS 音频 |
+| 6 | `references/phases/tts-generation.md` | 生成克隆音色的 TTS 配音（后端见 `scripts/voice-clone.py --help`） |
 | 7 | `references/phases/asr-transcript-generation.md` | ASR + 字体预置 |
 | 8 | `references/phases/composition-render.md` | HyperFrames handoff + sub-agent 渲染 |
 | 9 | `references/phases/bgm-mix.md` | 混入背景音乐 |

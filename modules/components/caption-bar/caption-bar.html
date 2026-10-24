@@ -1,0 +1,93 @@
+<template>
+  <!--
+    Caption bar — the bottom chrome of the presenter layout: a bar with one subtitle line (docs: components/caption-bar/caption-bar.md).
+    No content of its own: the lines are passed in when the video is assembled; colours and font come from the design
+    theme's tokens (--c-chrome, --c-chrome-ink, --font-sans).
+    Mount once, full length: data-composition-id="caption-bar", data-start="0".
+    Host variables: x, width, y, height, fontSize (px), bar ("on" | "off"), data (key in window.VIDEO, default "captions").
+    Data: window.VIDEO.captions = [{ start, end, text }] in video seconds.
+  -->
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      font-family: var(--font-sans);
+      pointer-events: none;
+    }
+    #cb-bar {
+      position: absolute;
+      left: 0;
+      top: 1008px;
+      width: 1920px;
+      height: 72px;
+      background: var(--c-chrome);
+    }
+    #root .cb-line {
+      position: absolute;
+      left: 96px;
+      top: 1008px;
+      width: 1166px;
+      height: 72px;
+      display: flex;
+      align-items: center;
+      overflow: visible;
+      opacity: 0;
+    }
+    #root .cb-line span {
+      font-size: 36px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0.02em;
+      color: var(--c-chrome-ink);
+      white-space: nowrap;
+    }
+  </style>
+  <div id="root" data-composition-id="caption-bar" data-width="1920" data-height="1080">
+    <div id="cb-bar"></div>
+  </div>
+  <script>
+    (() => {
+      const tl = gsap.timeline({ paused: true });
+      const V = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+      const num = (v, d) => (v !== "" && v != null && Number.isFinite(Number(v)) ? Number(v) : d);
+      // position defaults are the presenter layout's caption region
+      const X = num(V.x, 96), WIDTH = num(V.width, 1166), Y = num(V.y, 1008), H = num(V.height, 72), FS = num(V.fontSize, 36);
+      const bar = document.getElementById("cb-bar");
+      const root = bar.parentElement;
+      bar.style.top = Y + "px";
+      bar.style.height = H + "px";
+      if (V.bar === "off") bar.remove();
+
+      const cues = ((window.VIDEO && window.VIDEO[V.data || "captions"]) || []).slice().sort((a, b) => a.start - b.start);
+      const ctx = document.createElement("canvas").getContext("2d");
+      const family = getComputedStyle(root).fontFamily;
+      cues.forEach((c, i) => {
+        const line = document.createElement("div");
+        line.className = "cb-line";
+        line.id = `cb-${i + 1}`;
+        Object.assign(line.style, { left: X + "px", top: Y + "px", width: WIDTH + "px", height: H + "px" });
+        const span = document.createElement("span");
+        span.textContent = c.text;
+        span.style.fontSize = FS + "px";
+        line.appendChild(span);
+        root.appendChild(line);
+
+        // a line wider than the box shrinks to fit, never below 28px
+        ctx.font = `500 ${FS}px ${family}`;
+        const w = ctx.measureText(c.text).width * 1.02;
+        if (w > WIDTH) span.style.fontSize = Math.max(28, Math.floor((FS * WIDTH) / w)) + "px";
+
+        // one line at a time: open at the cue (not before 0.15 s), close 0.1 s after it or at the next cue
+        const start = Math.max(c.start, 0.15);
+        const next = cues[i + 1] ? cues[i + 1].start : c.end + 0.1;
+        const end = Math.max(start + 0.3, Math.min(c.end + 0.1, next));
+        tl.fromTo(line, { opacity: 0 }, { opacity: 1, duration: 0.01 }, start);
+        tl.fromTo(span, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, start);
+        tl.to(span, { opacity: 0, duration: 0.12, ease: "power2.in" }, end - 0.12);
+        tl.set(line, { opacity: 0 }, end);
+      });
+
+      window.__timelines["caption-bar"] = tl;
+    })();
+  </script>
+</template>
