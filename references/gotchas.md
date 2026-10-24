@@ -137,11 +137,11 @@ Phase 6 只能引用 Phase 5 产出的 `material-catalog.json`。如果 catalog 
 
 修复：设置 `VLM_API_KEY` / `VLM_BASE_URL` / `VLM_MODEL` 后重跑；如果没有 VLM，用 `view` 工具检查图片并手写分析结果。
 
-## 16. `WARN: anchor not found for X`
+## 16. `WARN: cue not found for scene X`
 
-字幕或 scene timing 锚点找不到，通常是大小写、标点、ASR 断句或 TTS 文本与 transcript 不一致。
+场景规划的 cue 锚点在对齐后的文本里找不到，通常是大小写、标点、TTS 文本与 transcript 不一致。
 
-修复：从实际 `transcribe/transcript.json` 文本中挑 anchor，避免凭 `narration.txt` 原文硬配。
+修复：从实际 `transcribe/transcript.json` / 显示稿文本中挑 cue，避免凭 `narration.txt` 原文硬配。
 
 ## 17. 主 agent 不手写 composition HTML
 
@@ -151,6 +151,6 @@ Phase 6 只能引用 Phase 5 产出的 `material-catalog.json`。如果 catalog 
 
 ## 18. 字幕文本不要直接照搬未校准 ASR
 
-ASR 的时间戳最接近音频，但文本可能把 Latin words、产品名或模型名识别错。最终字幕应来自 `transcribe/subtitle-units.json`：以 `transcribe/transcript.json` 的句子 / 词时间为底，用 `narration.txt` 中匹配到的原句修正 Latin 拼写。匹配时中文内容权重更高，并把中文数字和阿拉伯数字归一化后比较，避免 `13432` 和 `一万三千四百三十二` 这类表达匹配失败。
+ASR 的时间戳最接近音频，但文本可能把 Latin words、产品名或模型名识别错，也可能把词粘在一起或在词中间断句。最终字幕应来自 `transcribe/subtitle-units.json`：以显示稿为文本来源，ASR 只提供时间；低置信区段保留 ASR 文本并标记 `fallback`。
 
-修复：重跑 `scripts/calibrate-transcript.py`。如果 `narration.txt` 在 TTS 后改过，先重新生成 TTS 和 ASR；如果找不到对应 narration 句子，保留 transcript 文本并在 subtitle units 里标记 `transcript_fallback`。
+修复：重跑 `scripts/align-narration.py`。如果 `narration.txt` 在 TTS 后改过，先重新生成 TTS 和 ASR；TTS 漏读的内容没有音频可依，会被丢弃并在 summary 里警告。

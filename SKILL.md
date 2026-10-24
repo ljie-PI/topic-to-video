@@ -82,8 +82,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 | `fonts-download.sh` | 确定性 WOFF2 字体下载 + 本地 CSS | — |
 | `voice-clone.py` | TTS：把 `narration.txt` 合成 `voice_clone/narration.mp3`；后端由环境变量选择 | 见 `--help` |
 | `transcribe.py` | ASR：输出带词级时间戳的 transcript；后端由环境变量选择 | 见 `--help` |
-| `calibrate-transcript.py` | 基于 transcript timing 生成单行字幕单元，并用 narration 修正 Latin words | — |
-| `scene-anchor.py` | 可选辅助：把预先设计好的 scene 锚定到 ASR 词流 | — |
+| `align-narration.py` | 把 ASR 时间对齐回显示稿，生成字幕单元（subtitle-units.json）与时间轴（timeline.json） | — |
 | `extract-frames.py` | ffmpeg 抽帧 | `ffmpeg` |
 | `subtitle-parse.py` | SRT/VTT 解析 + 关键词过滤 | — |
 | `vision-analyze.py` | VLM 分析（或委派回 agent 的 `view`） | `VLM_*`（可选） |
