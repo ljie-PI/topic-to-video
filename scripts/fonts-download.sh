@@ -4,7 +4,7 @@
 # Usage: bash fonts-download.sh [target_dir] [style] [--dry-run]
 #   target_dir defaults to ./fonts
 #   style defaults to default
-#   style values: default, dawn, moon, all
+#   style values: default, dawn, moon, github, all
 #
 # Downloads Google Fonts WOFF2 subsets and writes a local CSS file for each style.
 set -Eeuo pipefail
@@ -78,6 +78,9 @@ mkdir -p "$TARGET"
 download_google_fonts() {
   local style_name="$1"
   local css_url="$2"
+  # Short family aliases (NotoSansSC, ...) are what the design-*.md styles
+  # reference; modules/designs themes use the Google family names as-is.
+  local rename_families="${3:-rename}"
   local css_file="$TARGET/rose-pine-${style_name}-fonts.css"
 
   if [[ "$DRY_RUN" == "--dry-run" ]]; then
@@ -86,24 +89,40 @@ download_google_fonts() {
     return
   fi
 
-  python3 - "$style_name" "$css_url" "$css_file" <<'PY'
+  python3 - "$style_name" "$css_url" "$css_file" "$rename_families" <<'PY'
 import hashlib
 import re
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
 style_name = sys.argv[1]
 css_url = sys.argv[2]
 css_file = Path(sys.argv[3])
+rename_families = sys.argv[4] == "rename"
 target_dir = css_file.parent
-headers = {"User-Agent": "Mozilla/5.0"}
+# A modern browser UA makes Google Fonts serve real WOFF2 (unicode-range
+# subsets, variable axes kept); a bare UA gets static TrueType per instance.
+headers = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    )
+}
 
 
-def fetch(url: str) -> bytes:
+def fetch(url: str, attempts: int = 3) -> bytes:
     request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request, timeout=60) as response:
-        return response.read()
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                return response.read()
+        except OSError as exc:
+            if attempt == attempts:
+                raise
+            print(f"[fonts] retry {attempt}/{attempts - 1} after {exc}", file=sys.stderr)
+            time.sleep(2 * attempt)
 
 
 css = fetch(css_url).decode("utf-8")
@@ -122,12 +141,13 @@ for index, url in enumerate(urls):
         destination.write_bytes(fetch(url))
     css = css.replace(url, filename)
 
-css = css.replace("'Noto Sans SC'", "'NotoSansSC'")
-css = css.replace("'IBM Plex Mono'", "'IBMPlexMono'")
-css = css.replace("'Ma Shan Zheng'", "'MaShanZheng'")
-css = css.replace("'Long Cang'", "'LongCang'")
-css = css.replace("'Zhi Mang Xing'", "'ZhiMangXing'")
-css = css.replace("'Patrick Hand'", "'PatrickHand'")
+if rename_families:
+    css = css.replace("'Noto Sans SC'", "'NotoSansSC'")
+    css = css.replace("'IBM Plex Mono'", "'IBMPlexMono'")
+    css = css.replace("'Ma Shan Zheng'", "'MaShanZheng'")
+    css = css.replace("'Long Cang'", "'LongCang'")
+    css = css.replace("'Zhi Mang Xing'", "'ZhiMangXing'")
+    css = css.replace("'Patrick Hand'", "'PatrickHand'")
 css_file.write_text(css, encoding="utf-8")
 print(f"[fonts] wrote {css_file}", file=sys.stderr)
 PY
@@ -151,6 +171,13 @@ download_moon() {
     "https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap"
 }
 
+download_github() {
+  download_google_fonts \
+    "github" \
+    "https://fonts.googleapis.com/css2?family=Noto+Sans:wdth,wght@62.5..100,100..900&family=Noto+Sans+SC:wght@100..900&family=Noto+Sans+Mono:wdth,wght@62.5..100,100..900&display=swap" \
+    "keep"
+}
+
 case "$STYLE" in
   default)
     download_default
@@ -161,13 +188,17 @@ case "$STYLE" in
   moon)
     download_moon
     ;;
+  github)
+    download_github
+    ;;
   all)
     download_default
     download_dawn
     download_moon
+    download_github
     ;;
   *)
-    bad_args "Unknown style '$STYLE'. Expected: default, dawn, moon, all"
+    bad_args "Unknown style '$STYLE'. Expected: default, dawn, moon, github, all"
     ;;
 esac
 

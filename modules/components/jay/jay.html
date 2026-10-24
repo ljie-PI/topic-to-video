@@ -1,0 +1,1046 @@
+<template>
+  <!--
+    Jay — character component (docs: components/jay/jay.md).
+    Mount once, full length: data-start="0", data-duration = the video's length.
+    Host variables (data-variable-values): x, y, size (px), fxScale, data (key in window.VIDEO, default "jay").
+    Acting script: window.VIDEO.jay = { acts, thoughts, typing, glances, envelope, envelopeFps, seed } (jay.md).
+    Needs: assets/jay/jay-base.png, assets/jay/jay-wave.png. Colours and font come from the design theme's tokens
+    (--c-ink, --c-card, --c-border, --c-focus, --font-sans); the character's own art colours stay as drawn.
+  -->
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    /* placement comes from the x / y / size variables; these defaults are the presenter layout's character slot */
+    #jay-stage {
+      position: absolute;
+      left: 1294px;
+      top: 642px;
+      width: 420px;
+      height: 420px;
+    }
+    #jay-stage > canvas,
+    #jay-stage > svg {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+    #jay-thought-text {
+      font-family: var(--font-sans);
+      font-weight: 800;
+      font-size: 64px;
+      fill: var(--c-ink);
+    }
+  </style>
+  <div id="root" data-composition-id="jay" data-width="1920" data-height="1080">
+    <div id="jay-stage" data-layout-allow-overflow data-layout-ignore>
+      <svg id="jay-shadow" viewBox="0 0 2048 2048" aria-hidden="true">
+        <ellipse cx="560" cy="1900" rx="500" ry="16" style="fill: var(--c-ink)" opacity=".08" />
+        <ellipse cx="1765" cy="1954" rx="160" ry="12" style="fill: var(--c-ink)" opacity=".12" />
+      </svg>
+      <canvas id="jay-gl" width="1200" height="1200" role="img" aria-label="Jay：戴眼镜、穿黑色连帽衫的主持人"></canvas>
+      <svg id="jay-fx" viewBox="0 0 2048 2048" aria-hidden="true">
+        <g id="jay-steam" fill="none" style="stroke: var(--c-border)" stroke-width="12" stroke-linecap="round">
+          <path d="M1712 1592 c-18 -25 18 -50 0 -75 c-18 -25 18 -50 0 -75" />
+          <path d="M1764 1582 c-18 -25 18 -50 0 -75 c-18 -25 18 -50 0 -75" />
+          <path d="M1816 1592 c-18 -25 18 -50 0 -75 c-18 -25 18 -50 0 -75" />
+        </g>
+        <!-- motion lines beside the waving hand; moved with the hand in renderAt -->
+        <g id="jay-wavelines" fill="none" style="stroke: var(--c-ink)" stroke-width="10" stroke-linecap="round" opacity="0">
+          <path d="M228 574 Q170 612 150 700" />
+          <path d="M230 634 Q196 660 184 728" />
+        </g>
+        <g id="jay-bubble" transform="translate(684 404) scale(1.7) translate(-684 -404)">
+          <g id="jay-thought" opacity="0" style="stroke: var(--c-ink)" stroke-linejoin="round">
+            <circle cx="684" cy="404" r="13" style="fill: var(--c-card)" stroke-width="7" />
+            <circle cx="636" cy="346" r="22" style="fill: var(--c-card)" stroke-width="7" />
+            <path style="fill: var(--c-card)" stroke-width="8" d="M260 230 A60 60 0 0 1 300 130 A80 80 0 0 1 430 90 A80 80 0 0 1 560 100 A70 70 0 0 1 650 190 A60 60 0 0 1 620 290 A70 70 0 0 1 510 320 A80 80 0 0 1 370 320 A75 75 0 0 1 260 230 Z" />
+            <text id="jay-thought-text" x="455" y="230" stroke="none" text-anchor="middle"></text>
+          </g>
+        </g>
+        <g id="jay-bang" opacity="0">
+          <path fill="none" style="stroke: var(--c-ink)" stroke-width="9" stroke-linecap="round" d="M1490 170 L1462 140 M1500 250 L1458 252 M1650 160 L1680 128 M1660 250 L1700 256" />
+          <circle cx="1580" cy="220" r="72" style="fill: var(--c-focus); stroke: var(--c-ink)" stroke-width="9" />
+          <path style="fill: var(--c-card)" d="M1590 166 L1622 166 L1592 238 L1560 238 Z" />
+          <circle cx="1568" cy="264" r="16" style="fill: var(--c-card)" />
+        </g>
+        <!-- overhead effects; each sits around its own anchor and is placed and scaled in renderAt -->
+        <g id="jay-qmark" opacity="0">
+          <circle cx="1580" cy="220" r="72" style="fill: var(--c-card); stroke: var(--c-ink)" stroke-width="9" />
+          <text x="1580" y="262" text-anchor="middle" style="fill: var(--c-focus); font-family: var(--font-sans); font-weight: 800; font-size: 120px">?</text>
+        </g>
+        <g id="jay-bulb" opacity="0">
+          <g id="jay-bulb-rays" fill="none" style="stroke: var(--c-ink)" stroke-width="9" stroke-linecap="round">
+            <path d="M1580 98 L1580 70 M1490 136 L1468 116 M1670 136 L1692 116 M1456 214 L1426 214 M1704 214 L1734 214" />
+          </g>
+          <circle cx="1580" cy="208" r="66" style="fill: var(--c-highlight); stroke: var(--c-ink)" stroke-width="9" />
+          <path d="M1556 214 q12 -28 24 0 q12 28 24 0" fill="none" style="stroke: var(--c-ink)" stroke-width="6" stroke-linecap="round" />
+          <rect x="1552" y="270" width="56" height="42" rx="9" style="fill: var(--c-card); stroke: var(--c-ink)" stroke-width="8" />
+        </g>
+      </svg>
+    </div>
+  </div>
+  <script>
+    (() => {
+      "use strict";
+      const $ = (id) => document.getElementById(id);
+
+      // ================================================================
+      // Inputs. Placement and effect scale come from the host's
+      // data-variable-values; the performance comes from the acting script in
+      // window.VIDEO.jay. Times in the script are seconds of the video: mount
+      // Jay at data-start="0".
+      // ================================================================
+      const V = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+      const stage = $("jay-stage");
+      const host = stage.closest("[data-composition-src]");
+      const num = (v, d) => (Number.isFinite(Number(v)) && v !== "" && v != null ? Number(v) : d);
+      const SIZE = num(V.size, 420), FX = num(V.fxScale, 1);
+      stage.style.left = num(V.x, 1294) + "px";
+      stage.style.top = num(V.y, 642) + "px";
+      stage.style.width = stage.style.height = SIZE + "px";
+      $("jay-bubble").setAttribute("transform", `translate(684 404) scale(${1.7 * FX}) translate(-684 -404)`);
+
+      let DUR = num(host && host.getAttribute("data-duration"), 60);
+      let ENV = [], ENV_FPS = 30, ACTS = [], THOUGHTS = [], TYPING = [], GLANCES = [], SEED = 20261018;
+      // glance targets: L left, R right, U up, D down at the laptop
+      // eyes (ex, ey) travel up to ~12 units inside the eye; turn and pitch move the face; hx/hy move the head;
+      // lid lowers the eyelids (looking down), brow lifts the brows (looking up)
+      const LOOK = {
+        L: { ex: -12, ey: 1, turn: -0.85, pitch: 0.05, hx: -6, rot: -2.5 },
+        R: { ex: 12, ey: 1, turn: 0.85, pitch: 0.05, hx: 6, rot: 2.5 },
+        U: { ex: -2, ey: -8.5, turn: -0.15, pitch: -1.2, hy: -8, brow: 5 },
+        D: { ex: -7, ey: 7.5, turn: -0.4, pitch: 1.1, hy: 10, lid: 0.35, brow: -2 },
+      };
+      // the acting script: window.VIDEO[data] (data defaults to "jay"), set by the video's video-data.js
+      function loadScript() {
+        const S = (window.VIDEO && window.VIDEO[V.data || "jay"]) || window.JAY_SCRIPT || {};
+        if (S.duration) DUR = S.duration;
+        ENV = S.envelope || [];
+        ENV_FPS = S.envelopeFps || 30;
+        ACTS = (S.acts || []).filter((x) => ACTION_FNS[x[1]]).sort((p, q) => p[0] - q[0]);
+        THOUGHTS = (S.thoughts || []).slice().sort((p, q) => p[0] - q[0]);
+        TYPING = S.typing || [];
+        GLANCES = S.glances || [];
+        if (S.seed) SEED = S.seed;
+      }
+
+      function mulberry32(a) {
+        return () => {
+          a |= 0; a = (a + 0x6d2b79f5) | 0;
+          let t = Math.imul(a ^ (a >>> 15), 1 | a);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+      const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+      const mix = (a, b, k) => a + (b - a) * k;
+      const smooth = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+      const bump = (k, a, b) => (k <= a || k >= b) ? 0 : Math.sin(Math.PI * (k - a) / (b - a));
+      const easeOutBack = (x) => { const c = 1.9; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+      const rotate = (x, y, cx, cy, deg) => {
+        const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), dx = x - cx, dy = y - cy;
+        return [cx + dx * c - dy * s, cy + dx * s + dy * c];
+      };
+
+      // ================================================================
+      // Outlines traced from jay-base.png (2048×2048). Same cut as puppet.html.
+      // ================================================================
+      const G = {
+        jaw: "M803 556 Q815 640 836 705 C850 770 880 860 940 915 C975 950 1010 985 1060 992 C1120 995 1180 950 1250 902 C1300 862 1335 805 1347 750",
+        head: "M640 0 L1570 0 L1570 700 L1470 700 L1445 735 L1390 755 L1388 815 L1352 815 L1347 750 C1335 805 1300 862 1250 902 C1180 950 1120 995 1060 992 C1010 985 975 950 940 915 C880 860 850 770 836 705 L815 712 L770 690 L735 640 L640 640 Z",
+        lensL: "M812 570 L955 566 Q985 566 983 595 L972 665 Q968 690 942 691 L838 694 Q812 694 808 668 L790 598 Q784 570 812 570 Z",
+        lensR: "M1076 542 L1220 538 Q1247 537 1246 565 L1244 650 Q1243 676 1216 677 L1092 679 Q1066 680 1063 654 L1052 570 Q1049 543 1076 542 Z",
+        bridge: "M980 573 Q1015 556 1053 553",
+        eyeL: "M852 612 C868 590 898 578 935 582 C952 586 962 598 966 606 C940 622 890 630 852 612 Z",
+        lidL: "M849 615 C865 590 899 576 935 579 C953 583 964 595 969 606",
+        lidR: "M1089 589 C1106 565 1140 552 1172 553 C1197 555 1213 568 1226 584",
+        eyeR: "M1092 586 C1110 566 1140 556 1170 557 C1195 559 1212 571 1222 583 C1200 600 1160 610 1125 607 C1108 604 1097 596 1092 586 Z",
+        browL: "M812 548 C822 528 845 512 875 509 C905 507 935 513 955 525 C966 532 972 542 970 552 C955 542 935 536 905 533 C870 530 840 536 812 548 Z",
+        browR: "M1050 534 C1065 510 1100 490 1140 484 C1180 479 1215 488 1243 506 C1215 499 1180 497 1145 502 C1110 508 1080 520 1056 538 Z",
+        mouthLower: "M940 838 L955 833 C990 839 1040 837 1080 829 C1105 824 1125 822 1140 817 L1162 812 L1166 830 L1104 866 L1094 896 L998 899 L986 874 L940 850 Z",
+        arm: "M955 1712 L1000 1688 L1058 1658 L1102 1646 L1152 1662 L1240 1702 L1278 1714 C1292 1697 1320 1692 1360 1692 C1420 1687 1480 1672 1540 1652 C1580 1640 1620 1624 1660 1614 C1740 1612 1840 1614 1905 1622 L1958 1640 L1962 1760 L1960 1916 L1700 1918 L1330 1915 L1330 1866 L1322 1860 L1265 1858 L1200 1857 L1100 1856 L1020 1856 L990 1848 L958 1838 Z",
+        armTopHidden: "M1650 1622 C1740 1620 1840 1622 1905 1630",
+        lid: "M40 1246 L822 1250 Q852 1251 858 1280 L992 1876 Q996 1900 970 1900 L180 1878 Q155 1877 150 1852 L18 1276 Q12 1246 40 1246 Z",
+        mug: "M1615 1632 L1912 1632 L1896 1922 Q1894 1950 1862 1952 L1664 1953 Q1632 1952 1630 1924 Z",
+        handle: "M1905 1672 C1960 1660 2006 1695 2005 1770 C2004 1842 1960 1878 1898 1880 L1900 1842 C1944 1840 1968 1815 1968 1770 C1968 1726 1946 1704 1906 1710 Z",
+        deck: "M978 1846 L1306 1854 Q1321 1856 1318 1870 L1314 1882 Q1310 1891 1295 1892 L996 1904 Z",
+        deckTop: "M984 1850 L1304 1858 L1301 1867 L990 1870 Z",
+        // right forearm and hand raised in jay-wave.png; leaves out its motion lines and the torso
+        armR: "M291 490 L683 490 L683 849 L588 1013 L575 1127 L575 1238 L229 1238 L229 980 L206 817 L211 706 L291 555 Z",
+      };
+      const R = {
+        head: { x: 640, y: 0, w: 930, h: 1022 },
+        feats: { x: 796, y: 464, w: 476, h: 444 },
+        eyeL: { x: 826, y: 556, w: 166, h: 86 },
+        eyeR: { x: 1070, y: 530, w: 180, h: 96 },
+        browL: { x: 798, y: 494, w: 190, h: 74 },
+        browR: { x: 1036, y: 466, w: 222, h: 84 },
+        mouth: { x: 928, y: 800, w: 246, h: 108 },
+        lens: { x: 774, y: 526, w: 492, h: 182 },
+        happy: { x: 840, y: 540, w: 400, h: 90 },
+        arm: { x: 930, y: 1584, w: 1040, h: 340 },
+        front: { x: 0, y: 1230, w: 2036, h: 744 },
+        armR: { x: 196, y: 480, w: 500, h: 830 },
+      };
+      const EYE = {
+        L: { cx: 910, cy: 604, rx: 62, ry: 24, yb: 625 },
+        R: { cx: 1157, cy: 583, rx: 70, ry: 26, yb: 608 },
+      };
+      const ELBOW = [1915, 1790], WRIST = [1320, 1790], ELBOW_KEEP = 1880;
+      // the waving arm: elbow hidden behind the lid; lowered, the arm slides ARM_DROP down out of sight
+      const ELBOW_R = [420, 1560], WRIST_R = [457, 1045], ARM_DROP = 780, LID_BOTTOM = 1880;
+      const FINGERS = [[985, 1725], [995, 1795], [1040, 1848]];
+      const MOUTH_DEPTH = 48, MOUTH_L = 958, MOUTH_R = 1142;
+      // the mouth corners; grin lifts them up and a little outward, carrying the lips and cheeks around them
+      const CORNERS = [[955, 828, -1], [1142, 811, 1]], GRIN_UP = 18, GRIN_OUT = 6, GRIN_R = 40;
+      const LIP = [[955, 826, 990, 832, 1040, 830, 1080, 822], [1080, 822, 1105, 817, 1125, 815, 1140, 810]];
+      const lipPts = [];
+      for (const s of LIP) for (let i = 0; i <= 20; i++) {
+        const t = i / 20, u = 1 - t;
+        lipPts.push([u * u * u * s[0] + 3 * u * u * t * s[2] + 3 * u * t * t * s[4] + t * t * t * s[6],
+                     u * u * u * s[1] + 3 * u * u * t * s[3] + 3 * u * t * t * s[5] + t * t * t * s[7]]);
+      }
+      function lipY(x) {
+        if (x <= lipPts[0][0]) return lipPts[0][1];
+        for (let i = 0; i < lipPts.length - 1; i++) {
+          const a = lipPts[i], b = lipPts[i + 1];
+          if (x <= b[0]) return mix(a[1], b[1], (x - a[0]) / (b[0] - a[0] || 1));
+        }
+        return lipPts[lipPts.length - 1][1];
+      }
+      const mouthProfile = (x) => Math.pow(Math.sin(Math.PI * clamp((x - MOUTH_L) / (MOUTH_R - MOUTH_L), 0, 1)), 0.8);
+
+      // ================================================================
+      // Canvas helpers: masks, cutting, hole filling
+      // ================================================================
+      function makeCanvas(w, h) {
+        const c = document.createElement("canvas");
+        c.width = w; c.height = h;
+        return c;
+      }
+      const ctx2d = (c) => c.getContext("2d", { willReadFrequently: true });
+      function mask(r, draw, feather = 0) {
+        const c = makeCanvas(r.w, r.h), x = ctx2d(c);
+        x.translate(-r.x, -r.y);
+        x.fillStyle = x.strokeStyle = "#fff";
+        x.lineCap = x.lineJoin = "round";
+        draw(x);
+        if (!feather) return c;
+        const f = makeCanvas(r.w, r.h), fx = ctx2d(f);
+        fx.filter = `blur(${feather}px)`;
+        fx.drawImage(c, 0, 0);
+        return f;
+      }
+      const fillPath = (x, d) => x.fill(new Path2D(d));
+      const strokePath = (x, d, w) => { x.lineWidth = w; x.stroke(new Path2D(d)); };
+      function eraseFrames(x, w = 16) {
+        x.save();
+        x.globalCompositeOperation = "destination-out";
+        strokePath(x, G.lensL, w);
+        strokePath(x, G.lensR, w);
+        strokePath(x, G.bridge, w);
+        x.restore();
+      }
+      function cut(src, r, m) {
+        const c = makeCanvas(r.w, r.h), x = ctx2d(c);
+        x.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+        x.globalCompositeOperation = "destination-in";
+        x.drawImage(m, 0, 0);
+        return c;
+      }
+      function fillHole(canvas, r, hole, known) {
+        const x = ctx2d(canvas);
+        const img = x.getImageData(r.x, r.y, r.w, r.h), d = img.data;
+        const hd = ctx2d(hole).getImageData(0, 0, r.w, r.h).data;
+        const n = r.w * r.h;
+        const col = new Float32Array(n * 4), wt = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+          const a = d[i * 4 + 3] / 255;
+          if (hd[i * 4 + 3] < 10 && (!known || known(d[i * 4], d[i * 4 + 1], d[i * 4 + 2], d[i * 4 + 3]))) {
+            wt[i] = 1;
+            col[i * 4] = d[i * 4] * a; col[i * 4 + 1] = d[i * 4 + 1] * a; col[i * 4 + 2] = d[i * 4 + 2] * a; col[i * 4 + 3] = a;
+          }
+        }
+        const filled = pushPull(col, wt, r.w, r.h);
+        for (let i = 0; i < n; i++) {
+          const h = hd[i * 4 + 3] / 255;
+          if (h <= 0) continue;
+          const a0 = d[i * 4 + 3] / 255;
+          const a = a0 * (1 - h) + filled[i * 4 + 3] * h;
+          for (let c = 0; c < 3; c++) {
+            const p = d[i * 4 + c] * a0 * (1 - h) + filled[i * 4 + c] * h;
+            d[i * 4 + c] = a > 0.001 ? clamp(p / a, 0, 255) : 0;
+          }
+          d[i * 4 + 3] = a * 255;
+        }
+        x.putImageData(img, r.x, r.y);
+      }
+      function pushPull(col, wt, w, h) {
+        const levels = [{ w, h, col, wt }];
+        while (w > 1 || h > 1) {
+          const L = levels[levels.length - 1];
+          const nw = Math.max(1, (w + 1) >> 1), nh = Math.max(1, (h + 1) >> 1);
+          const nc = new Float32Array(nw * nh * 4), nwt = new Float32Array(nw * nh);
+          for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) {
+            let s = 0, r = 0, g = 0, b = 0, a = 0;
+            for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+              const xx = 2 * x + dx, yy = 2 * y + dy;
+              if (xx >= w || yy >= h) continue;
+              const k = yy * w + xx, q = L.wt[k];
+              if (!q) continue;
+              s += q; r += L.col[k * 4] * q; g += L.col[k * 4 + 1] * q; b += L.col[k * 4 + 2] * q; a += L.col[k * 4 + 3] * q;
+            }
+            const k = y * nw + x;
+            if (s > 0) { nc[k * 4] = r / s; nc[k * 4 + 1] = g / s; nc[k * 4 + 2] = b / s; nc[k * 4 + 3] = a / s; nwt[k] = Math.min(1, s); }
+          }
+          levels.push({ w: nw, h: nh, col: nc, wt: nwt });
+          w = nw; h = nh;
+        }
+        for (let l = levels.length - 2; l >= 0; l--) {
+          const F = levels[l], C = levels[l + 1];
+          for (let y = 0; y < F.h; y++) for (let x = 0; x < F.w; x++) {
+            const k = y * F.w + x, q = F.wt[k];
+            if (q >= 1) continue;
+            const cx = clamp((x + 0.5) / 2 - 0.5, 0, C.w - 1), cy = clamp((y + 0.5) / 2 - 0.5, 0, C.h - 1);
+            const x0 = Math.floor(cx), y0 = Math.floor(cy), x1 = Math.min(C.w - 1, x0 + 1), y1 = Math.min(C.h - 1, y0 + 1);
+            const fx = cx - x0, fy = cy - y0;
+            for (let c = 0; c < 4; c++) {
+              const v = mix(mix(C.col[(y0 * C.w + x0) * 4 + c], C.col[(y0 * C.w + x1) * 4 + c], fx),
+                            mix(C.col[(y1 * C.w + x0) * 4 + c], C.col[(y1 * C.w + x1) * 4 + c], fx), fy);
+              F.col[k * 4 + c] = F.col[k * 4 + c] * q + v * (1 - q);
+            }
+            F.wt[k] = 1;
+          }
+        }
+        return levels[0].col;
+      }
+      const notDark = (r, g, b) => 0.3 * r + 0.59 * g + 0.11 * b > 120;
+      function darkestColor(x, cx, cy, r) {
+        const d = x.getImageData(cx - r, cy - r, 2 * r + 1, 2 * r + 1).data;
+        let best = 0;
+        for (let i = 4; i < d.length; i += 4) if (d[i + 3] > 200 && d[i] + d[i + 1] + d[i + 2] < d[best] + d[best + 1] + d[best + 2]) best = i;
+        return `rgb(${d[best]},${d[best + 1]},${d[best + 2]})`;
+      }
+      function sampleColor(x, cx, cy, r) {
+        const d = x.getImageData(cx - r, cy - r, 2 * r + 1, 2 * r + 1).data;
+        let Rr = 0, Gc = 0, B = 0, n = 0;
+        for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200) { Rr += d[i]; Gc += d[i + 1]; B += d[i + 2]; n++; }
+        return `rgb(${(Rr / n) | 0},${(Gc / n) | 0},${(B / n) | 0})`;
+      }
+
+      // ================================================================
+      // Layer build: cut the picture apart and fill what each moving part hid
+      // ================================================================
+      async function buildLayers() {
+        const img = new Image();
+        img.src = "assets/jay/jay-base.png";
+        await img.decode();
+        const S = 2048;
+        const src = makeCanvas(S, S), sx = ctx2d(src);
+        sx.drawImage(img, 0, 0, S, S);
+
+        const ink = darkestColor(sx, 1102, 1655, 4);
+        const hoodie = sampleColor(sx, 1210, 1640, 6);
+        const sleeve = sampleColor(sx, 1500, 1790, 8);
+        const deckTop = sampleColor(sx, 1150, 1861, 2);
+        const deckFront = sampleColor(sx, 1150, 1882, 3);
+
+        const mHead = mask(R.head, (x) => { fillPath(x, G.head); strokePath(x, G.jaw, 28); }, 1);
+        const mEyeL = mask(R.eyeL, (x) => { fillPath(x, G.eyeL); strokePath(x, G.eyeL, 18); strokePath(x, G.lidL, 26); x.beginPath(); x.arc(842, 617, 10, 0, 7); x.fill(); eraseFrames(x); }, 1.5);
+        const mEyeR = mask(R.eyeR, (x) => { fillPath(x, G.eyeR); strokePath(x, G.eyeR, 18); strokePath(x, G.lidR, 26); x.beginPath(); x.arc(1232, 589, 10, 0, 7); x.fill(); eraseFrames(x); }, 1.5);
+        const mBrowL = mask(R.browL, (x) => { fillPath(x, G.browL); strokePath(x, G.browL, 12); eraseFrames(x); }, 1.5);
+        const mBrowR = mask(R.browR, (x) => { fillPath(x, G.browR); strokePath(x, G.browR, 12); eraseFrames(x); }, 1.5);
+        const mMouth = mask(R.mouth, (x) => fillPath(x, G.mouthLower), 2.5);
+        const mArm = mask(R.arm, (x) => fillPath(x, G.arm), 1);
+        const drawLid = (x) => { fillPath(x, G.lid); strokePath(x, G.lid, 16); };
+        const drawMug = (x) => {
+          fillPath(x, G.mug); strokePath(x, G.mug, 15);
+          x.beginPath(); x.ellipse(1763, 1632, 150, 19, 0, 0, 7); x.fill(); x.lineWidth = 13; x.stroke();
+          fillPath(x, G.handle); strokePath(x, G.handle, 14);
+        };
+        const mFront = mask(R.front, (x) => { drawLid(x); drawMug(x); }, 0.8);
+        const front = cut(src, R.front, mFront);
+
+        const arm = cut(src, R.arm, mArm);
+        {
+          const x = ctx2d(arm);
+          x.save();
+          x.translate(-R.arm.x, -R.arm.y);
+          x.globalCompositeOperation = "destination-out";
+          x.fillStyle = x.strokeStyle = "#fff";
+          x.lineJoin = "round";
+          drawLid(x); drawMug(x);
+          x.restore();
+          const hidden = makeCanvas(R.arm.w, R.arm.h), hx = ctx2d(hidden);
+          hx.translate(-R.arm.x, -R.arm.y);
+          hx.fillStyle = sleeve; fillPath(hx, G.arm);
+          const edge = hx.createLinearGradient(1650, 0, 1880, 0);
+          edge.addColorStop(0, ink); edge.addColorStop(0.35, ink); edge.addColorStop(0.8, sleeve);
+          hx.strokeStyle = edge; hx.lineCap = "round"; strokePath(hx, G.armTopHidden, 11);
+          hx.setTransform(1, 0, 0, 1, 0, 0);
+          hx.globalCompositeOperation = "destination-in";
+          hx.drawImage(mArm, 0, 0);
+          x.globalCompositeOperation = "destination-over";
+          x.drawImage(hidden, 0, 0);
+          x.globalCompositeOperation = "source-over";
+          const strip = { x: 0, y: 1830 - R.arm.y, w: 1335 - R.arm.x, h: 40 };
+          const sd = x.getImageData(strip.x, strip.y, strip.w, strip.h);
+          for (let i = 0; i < sd.data.length; i += 4) {
+            const r = sd.data[i], g = sd.data[i + 1], b = sd.data[i + 2];
+            if (r + g + b > 420 && Math.max(r, g, b) - Math.min(r, g, b) < 40) sd.data[i + 3] = 0;
+          }
+          x.putImageData(sd, strip.x, strip.y);
+          const fade = x.createLinearGradient(ELBOW_KEEP - 40 - R.arm.x, 0, ELBOW_KEEP + 50 - R.arm.x, 0);
+          fade.addColorStop(0, "#fff"); fade.addColorStop(1, "rgba(255,255,255,0)");
+          x.globalCompositeOperation = "destination-in";
+          x.fillStyle = fade; x.fillRect(0, 0, R.arm.w, R.arm.h);
+          x.globalCompositeOperation = "source-over";
+          const tips = { x: 0, y: 80, w: 110, h: 300 };
+          const tipHole = mask({ x: R.arm.x + tips.x, y: R.arm.y + tips.y, w: tips.w, h: tips.h }, (m) => {
+            drawLid(m);
+            m.globalCompositeOperation = "destination-in";
+            fillPath(m, G.arm);
+          });
+          fillHole(arm, tips, tipHole);
+        }
+
+        const body = makeCanvas(S, S), bx = ctx2d(body);
+        bx.drawImage(src, 0, 0);
+        bx.save();
+        bx.clip(new Path2D(G.arm));
+        bx.beginPath(); bx.rect(R.arm.x, R.arm.y, ELBOW_KEEP - R.arm.x, R.arm.h); bx.clip();
+        bx.clearRect(R.arm.x, R.arm.y, R.arm.w, R.arm.h);
+        bx.fillStyle = hoodie;
+        bx.fillRect(R.arm.x, R.arm.y, R.arm.w, 1908 - R.arm.y);
+        bx.fillStyle = deckFront; fillPath(bx, G.deck);
+        bx.fillStyle = deckTop; fillPath(bx, G.deckTop);
+        bx.strokeStyle = ink; bx.lineJoin = bx.lineCap = "round";
+        strokePath(bx, G.deck, 10);
+        strokePath(bx, "M1296 1908 L1990 1909", 11);
+        bx.restore();
+        const liftOut = (m, r, near) => {
+          const solid = makeCanvas(r.w, r.h), sx2 = ctx2d(solid);
+          sx2.drawImage(m, 0, 0);
+          sx2.globalCompositeOperation = "destination-in";
+          sx2.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+          const grown = makeCanvas(r.w, r.h), gx = ctx2d(grown);
+          for (let a = 0; a < 8; a++) gx.drawImage(solid, Math.round(3 * Math.cos(a * Math.PI / 4)), Math.round(3 * Math.sin(a * Math.PI / 4)));
+          gx.drawImage(solid, 0, 0);
+          if (near) {
+            gx.globalCompositeOperation = "destination-in";
+            gx.drawImage(mask(r, near, 4), 0, 0);
+          }
+          bx.save();
+          bx.globalCompositeOperation = "destination-out";
+          bx.drawImage(m, r.x, r.y);
+          bx.restore();
+          fillHole(body, r, grown);
+        };
+        liftOut(mHead, R.head, (x) => strokePath(x, G.jaw, 90));
+        liftOut(mFront, R.front);
+
+        const wimg = new Image();
+        wimg.src = "assets/jay/jay-wave.png";
+        await wimg.decode();
+        const wsrc = makeCanvas(S, S);
+        ctx2d(wsrc).drawImage(wimg, 0, 0, S, S);
+        const armR = cut(wsrc, R.armR, mask(R.armR, (x) => fillPath(x, G.armR), 1));
+        {
+          // the cut stops just above the lid; repeat the sleeve's last rows downward so no gap shows
+          const y0 = 1226 - R.armR.y, strip = makeCanvas(R.armR.w, 8);
+          ctx2d(strip).drawImage(armR, 0, y0, R.armR.w, 8, 0, 0, R.armR.w, 8);
+          const ax = ctx2d(armR);
+          ax.globalCompositeOperation = "source-over"; // cut() leaves the context in destination-in
+          ax.drawImage(strip, 0, 0, R.armR.w, 8, 0, y0 + 8, R.armR.w, R.armR.h - y0 - 8);
+        }
+
+        const head = cut(src, R.head, mHead);
+        const mFeat = mask(R.feats, (x) => {
+          for (const [m, r] of [[mEyeL, R.eyeL], [mEyeR, R.eyeR], [mBrowL, R.browL], [mBrowR, R.browR], [mMouth, R.mouth]]) x.drawImage(m, r.x, r.y);
+        });
+        fillHole(head, { x: R.feats.x - R.head.x, y: R.feats.y - R.head.y, w: R.feats.w, h: R.feats.h }, mFeat, notDark);
+
+        const layers = {
+          body, head, arm, armR, front,
+          eyeL: cut(src, R.eyeL, mEyeL), eyeR: cut(src, R.eyeR, mEyeR),
+          browL: cut(src, R.browL, mBrowL), browR: cut(src, R.browR, mBrowR),
+          mouth: cut(src, R.mouth, mMouth),
+          lens: mask(R.lens, (x) => { fillPath(x, G.lensL); fillPath(x, G.lensR); }),
+        };
+        layers.inside = (() => {
+          const c = makeCanvas(256, 96), x = ctx2d(c);
+          x.fillStyle = "#4a1a21"; x.fillRect(0, 0, 256, 96);
+          x.fillStyle = "#f6f0ee";
+          x.beginPath(); x.moveTo(14, 0); x.lineTo(242, 0); x.quadraticCurveTo(128, 46, 14, 0); x.fill();
+          x.fillStyle = "#b4505a";
+          x.beginPath(); x.ellipse(128, 104, 82, 42, 0, 0, 7); x.fill();
+          return c;
+        })();
+        layers.happyL = mask(R.happy, (x) => { x.strokeStyle = ink; strokePath(x, "M860 618 Q908 584 960 610", 8); });
+        layers.happyR = mask(R.happy, (x) => { x.strokeStyle = ink; strokePath(x, "M1096 592 Q1158 556 1224 586", 8); });
+        layers.blush = (() => {
+          const c = makeCanvas(128, 64), x = ctx2d(c);
+          const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+          g.addColorStop(0, "rgba(242,133,122,.9)"); g.addColorStop(1, "rgba(242,133,122,0)");
+          x.setTransform(2, 0, 0, 1, 0, 0);
+          x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+          return c;
+        })();
+        return layers;
+      }
+
+      // ================================================================
+      // WebGL: textured meshes whose vertices are moved on the CPU
+      // ================================================================
+      function createRenderer(canvas) {
+        const attrs = { premultipliedAlpha: true, alpha: true, antialias: true, preserveDrawingBuffer: true };
+        const gl = canvas.getContext("webgl2", attrs) || canvas.getContext("webgl", attrs);
+        if (!gl) throw new Error("WebGL unavailable");
+        const gl2 = typeof WebGL2RenderingContext !== "undefined" && gl instanceof WebGL2RenderingContext;
+        const sh = (type, src) => {
+          const s = gl.createShader(type);
+          gl.shaderSource(s, src); gl.compileShader(s);
+          if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+          return s;
+        };
+        const prog = gl.createProgram();
+        gl.attachShader(prog, sh(gl.VERTEX_SHADER, `
+          attribute vec2 aPos; attribute vec2 aUV; varying vec2 vUV;
+          void main() {
+            vUV = aUV;
+            vec2 p = aPos / 2048.0;
+            gl_Position = vec4(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0, 0.0, 1.0);
+          }`));
+        gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `
+          precision mediump float;
+          varying vec2 vUV; uniform sampler2D uTex; uniform float uAlpha; uniform vec3 uGlint;
+          void main() {
+            vec4 c = texture2D(uTex, vUV) * uAlpha;
+            if (uGlint.z > 0.0) {
+              float b = 1.0 - smoothstep(0.0, uGlint.y, abs(vUV.x + vUV.y * 0.55 - uGlint.x));
+              c = vec4(c.a * b * uGlint.z);
+            }
+            gl_FragColor = c;
+          }`));
+        gl.linkProgram(prog);
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+        gl.useProgram(prog);
+        const aPos = gl.getAttribLocation(prog, "aPos"), aUV = gl.getAttribLocation(prog, "aUV");
+        const uAlpha = gl.getUniformLocation(prog, "uAlpha"), uGlint = gl.getUniformLocation(prog, "uGlint");
+        gl.enableVertexAttribArray(aPos);
+        gl.enableVertexAttribArray(aUV);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+
+        function texture(source, r) {
+          const t = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, t);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          if (gl2) {
+            gl.generateMipmap(gl.TEXTURE_2D);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+          } else {
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          }
+          return { t, x: r.x, y: r.y, w: r.w, h: r.h };
+        }
+        function mesh(tex, r, nx, ny) {
+          const nv = (nx + 1) * (ny + 1), rest = new Float32Array(nv * 2), uv = new Float32Array(nv * 2);
+          for (let j = 0, k = 0; j <= ny; j++) for (let i = 0; i <= nx; i++, k++) {
+            const x = r.x + r.w * i / nx, y = r.y + r.h * j / ny;
+            rest[k * 2] = x; rest[k * 2 + 1] = y;
+            uv[k * 2] = (x - tex.x) / tex.w; uv[k * 2 + 1] = (y - tex.y) / tex.h;
+          }
+          const idx = new Uint16Array(nx * ny * 6);
+          for (let j = 0, k = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+            const a = j * (nx + 1) + i, b = a + 1, c = a + nx + 1, d = c + 1;
+            idx.set([a, b, c, b, d, c], k); k += 6;
+          }
+          const buf = (target, data, usage) => { const b = gl.createBuffer(); gl.bindBuffer(target, b); gl.bufferData(target, data, usage); return b; };
+          return {
+            tex, rest, nv, count: idx.length, pos: new Float32Array(nv * 2),
+            uvBuf: buf(gl.ARRAY_BUFFER, uv, gl.STATIC_DRAW),
+            posBuf: buf(gl.ARRAY_BUFFER, rest, gl.DYNAMIC_DRAW),
+            idxBuf: buf(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW),
+          };
+        }
+        function draw(m, deform, alpha = 1, glint, clipBelow) {
+          if (alpha <= 0.003) return;
+          if (clipBelow) {
+            gl.enable(gl.SCISSOR_TEST);
+            const k = canvas.height / 2048;
+            gl.scissor(0, Math.round((2048 - clipBelow) * k), canvas.width, canvas.height);
+          }
+          const { rest, pos } = m;
+          for (let k = 0; k < m.nv; k++) {
+            const p = deform(rest[k * 2], rest[k * 2 + 1]);
+            pos[k * 2] = p[0]; pos[k * 2 + 1] = p[1];
+          }
+          gl.bindBuffer(gl.ARRAY_BUFFER, m.posBuf);
+          gl.bufferData(gl.ARRAY_BUFFER, pos, gl.DYNAMIC_DRAW);
+          gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+          gl.bindBuffer(gl.ARRAY_BUFFER, m.uvBuf);
+          gl.vertexAttribPointer(aUV, 2, gl.FLOAT, false, 0, 0);
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.idxBuf);
+          gl.bindTexture(gl.TEXTURE_2D, m.tex.t);
+          gl.uniform1f(uAlpha, alpha);
+          gl.uniform3f(uGlint, glint ? glint[0] : 0, glint ? glint[1] : 0, glint ? glint[2] : 0);
+          gl.drawElements(gl.TRIANGLES, m.count, gl.UNSIGNED_SHORT, 0);
+          if (clipBelow) gl.disable(gl.SCISSOR_TEST);
+        }
+        function begin() {
+          gl.viewport(0, 0, canvas.width, canvas.height);
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+        }
+        function finish() { gl.finish(); }
+        return { texture, mesh, draw, begin, finish };
+      }
+
+      // ================================================================
+      // Simulation, run once at load: the puppet's pose chase at 60 steps a
+      // second, recorded so that any frame is a lookup by time.
+      // ================================================================
+      const STEP = 1 / 60;
+      const PKEYS = ["rot", "hx", "hy", "turn", "pitch", "ex", "ey", "blinkL", "blinkR", "happy", "wide", "browL", "browR", "open", "typing", "blush", "think", "fore", "hand", "armUp", "armSwing", "handSwing", "lid", "zoom", "grin"];
+      const XKEYS = ["press0", "press1", "press2", "bump", "bang", "trot", "qm", "bulb"];
+      const FX_KEYS = XKEYS.slice(6);
+      const NF = PKEYS.length + XKEYS.length;
+      const RATE = { blinkL: 42, blinkR: 42, open: 24, happy: 14, think: 6, hand: 10, armUp: 11, armSwing: 26, handSwing: 26, lid: 12, zoom: 8, grin: 10, default: 7 };
+      const glintEvents = [];
+      let track = null, NSTEP = 0;
+
+      // shared shapes: e = fade in and out over the action, pop = an effect that springs in and fades at the end
+      const ease = (k, a = 0.12, b = 0.85) => smooth(0, a, k) * (1 - smooth(b, 1, k));
+      const pop = (k) => (k < 0.12 ? easeOutBack(k / 0.12) : k > 0.85 ? 1 - (k - 0.85) / 0.15 : 1);
+      const tiltFace = (e, T) => {
+        T.typing = 0; T.rot = 7 * e; T.hx = 6 * e; T.turn = 0.15 * e;
+        T.browR = 12 * e; T.browL = 1 * e; T.wide = 0.5 * e; T.ex = 2 * e; T.ey = -2 * e;
+      };
+      const smileFace = (e, T) => {
+        T.typing = 0.08; T.grin = e; T.rot = 2 * e; T.browL = T.browR = 3 * e;
+      };
+
+      const ACTION_FNS = {
+        think(k, T, t) {
+          T.typing = 0; T.ex = 7; T.ey = -5; T.turn = 0.4; T.pitch = -0.5; T.rot = 4;
+          T.browR = 10; T.browL = 0;
+          T.think = k < 0.88 ? 1 : 0;
+          T.hx = Math.sin(t * 1.4) * 3;
+        },
+        eureka(k, T, t, fx) {
+          T.typing = 0; T.ex = 0; T.ey = -1; T.turn = 0; T.pitch = -0.2; T.rot = 0;
+          T.wide = k < 0.55 ? 1 : 0.2;
+          T.browL = T.browR = k < 0.6 ? 14 : 5;
+          T.open = k < 0.32 ? 0.6 : 0.06;
+          T.hy = -16 * bump(k, 0, 0.45);
+          fx.bang = k < 0.12 ? easeOutBack(k / 0.12) : k > 0.85 ? 1 - (k - 0.85) / 0.15 : 1;
+        },
+        laugh(k, T, t) {
+          T.typing = 0; T.grin = ease(k, 0.1, 0.9);
+          T.open = 0.5 + 0.2 * Math.abs(Math.sin(t * 17));
+          T.rot = Math.sin(t * 15) * 1.8; T.hy = -Math.abs(Math.sin(t * 15)) * 6;
+          T.browL = T.browR = 5; T.turn = 0; T.pitch = -0.15;
+        },
+        nod(k, T) {
+          const n = Math.sin(k * Math.PI * 4) * bump(k, 0, 1);
+          T.typing = 0.1; T.ex = 0; T.ey = 2 + n * 2; T.turn = 0;
+          T.pitch = n * 0.9; T.hy = n * 14; T.browL = T.browR = 2;
+        },
+        wave(k, T, t) {
+          // right hand comes up from behind the laptop, waves from the elbow with the hand lagging, goes back down
+          const up = smooth(0, 0.12, k) * (1 - smooth(0.86, 1, k));
+          const swing = smooth(0.1, 0.24, k) * (1 - smooth(0.74, 0.88, k));
+          const ph = t * Math.PI * 2 * 1.9;
+          T.typing = 0; T.ex = 0; T.ey = 0; T.turn = 0; T.pitch = 0; T.rot = 1.5 * up;
+          T.armUp = up;
+          T.armSwing = swing * 7 * Math.sin(ph);
+          T.handSwing = swing * 11 * Math.sin(ph - 0.7);
+          T.browL = T.browR = 6 * up; T.open = Math.max(T.open, 0.12 * up); T.grin = 0.6 * up;
+        },
+
+        // ---- parameter-only actions
+        shake(k, T) {
+          // no: head turns side to side three times, brows down
+          const sh = Math.sin(k * Math.PI * 6) * bump(k, 0, 1), e = ease(k);
+          T.typing = 0; T.turn = sh * 0.75; T.ex = sh * 3; T.rot = sh * 1.5; T.browL = T.browR = -3 * e;
+        },
+        tilt(k, T) {
+          // curious: head tilts, one brow up, eyes a little wider
+          tiltFace(ease(k, 0.2, 0.8), T);
+        },
+        startle(k, T) {
+          // surprised, without the "!": head pulls back, eyes wide, mouth opens
+          const e = k < 0.15 ? easeOutBack(k / 0.15) : 1 - smooth(0.6, 1, k);
+          T.typing = 0; T.hy = -10 * e; T.pitch = -0.35 * e; T.zoom = -0.5 * e; T.wide = e;
+          T.browL = T.browR = 14 * e; T.open = k < 0.5 ? 0.35 * e : 0;
+        },
+        smile(k, T) {
+          // quiet approval: squinting smile and a little blush
+          smileFace(ease(k, 0.15, 0.85), T);
+        },
+        sigh(k, T) {
+          // breathe in (head up), then let it out: head sinks, eyelids half closed
+          const up = bump(k, 0, 0.35), down = smooth(0.3, 0.55, k) * (1 - smooth(0.85, 1, k));
+          T.typing = 0; T.hy = -6 * up + 10 * down; T.pitch = -0.2 * up + 0.45 * down; T.lid = 0.55 * down;
+          T.browL = T.browR = 6 * up - 2 * down; T.open = 0.12 * down;
+        },
+        lean(k, T) {
+          // look closer: head comes forward, eyes narrow a little; combine with a glance for the direction
+          const e = ease(k, 0.2, 0.8);
+          T.typing = 0; T.zoom = e; T.pitch = 0.2 * e; T.hy = 4 * e; T.lid = 0.22 * e; T.browL = T.browR = -2 * e;
+        },
+        doubletake(k, T) {
+          // looks left, back to camera, then snaps back left with wide eyes
+          const L = LOOK.L;
+          const w = k < 0.22 ? smooth(0, 0.08, k) : k < 0.45 ? 1 - smooth(0.22, 0.32, k) : smooth(0.45, 0.5, k) * (1 - smooth(0.88, 1, k));
+          const second = k >= 0.45 ? 1 - smooth(0.88, 1, k) : 0;
+          T.typing = 0; T.ex = L.ex * w; T.ey = L.ey * w; T.turn = L.turn * w * 1.2; T.pitch = L.pitch * w; T.rot = L.turn * 2 * w;
+          T.wide = second; T.browL = T.browR = 10 * second; T.hy = -6 * bump(k, 0.45, 0.6);
+        },
+        "nod-small"(k, T) {
+          // one light nod while talking
+          const n = Math.sin(k * Math.PI * 2) * bump(k, 0, 1);
+          T.typing = 0.08; T.pitch = n * 0.6; T.hy = n * 8; T.ey = 1 + n;
+        },
+
+        // ---- expression + overhead effect
+        question(k, T, t, fx) {
+          tiltFace(ease(k, 0.2, 0.8), T);
+          fx.qm = pop(k);
+        },
+        idea(k, T, t, fx) {
+          const e = 1 - smooth(0.6, 1, k);
+          T.typing = 0; T.wide = k < 0.5 ? 1 : 0.3; T.browL = T.browR = 12 * e; T.hy = -10 * bump(k, 0, 0.35);
+          T.pitch = -0.25 * e; T.open = k < 0.25 ? 0.3 : 0;
+          fx.bulb = pop(k);
+        },
+      };
+      const GLINT_AT = { eureka: 0.3, idea: 0.2 };
+
+      function envAt(t) {
+        if (!ENV.length) return 0;
+        const i = clamp(Math.floor(t * ENV_FPS), 0, ENV.length - 1);
+        return ENV[i] / 100;
+      }
+      const inTyping = (t) => TYPING.some(([a, b]) => t >= a && t < b);
+
+      function simulate() {
+        const rng = mulberry32(SEED);
+        const rand = (a, b) => a + rng() * (b - a);
+        const P = {};
+        for (const k of PKEYS) P[k] = 0;
+        const T = { ...P };
+        const fx = { bang: 0 };
+        for (const key of FX_KEYS) fx[key] = 0;
+        const gaze = { x: 0, y: 0, next: 0, typing: false };
+        const blink = { next: 1.8, start: -1 };
+        const keys = { press: [0, 0, 0], next: 0, bump: 0 };
+        NSTEP = Math.ceil(DUR / STEP) + 2;
+        track = new Float32Array(NSTEP * NF);
+        let actIdx = 0;
+        const glinted = new Set();
+
+        for (let s = 0; s < NSTEP; s++) {
+          const t = s * STEP, dt = STEP;
+          const typingNow = inTyping(t);
+
+          // gaze: at the camera with small saccades, or at the laptop while typing
+          if (t >= gaze.next || typingNow !== gaze.typing) {
+            gaze.typing = typingNow;
+            gaze.x = typingNow ? rand(-8, -6) : rand(-1.6, 1.6);
+            gaze.y = typingNow ? rand(6.5, 8) : rand(-0.8, 0.8);
+            gaze.next = t + rand(0.9, 2.8);
+          }
+          T.typing = typingNow ? 1 : 0.08;
+          T.happy = 0; T.wide = 0; T.blush = 0; T.think = 0; T.open = 0;
+          T.browL = Math.sin(t * 0.9) * 1.2; T.browR = Math.sin(t * 0.9 + 1) * 1.2;
+          T.ex = gaze.x; T.ey = gaze.y;
+          T.turn = gaze.x / 8 * 0.3; T.pitch = gaze.y / 5 * 0.3;
+          T.rot = Math.sin(t * 0.45) * 1.0 - gaze.x * 0.1 - (typingNow ? 0 : 1.2);
+          T.hx = 0; T.hy = 0; T.fore = 0; T.hand = 0; T.armUp = 0; T.armSwing = 0; T.handSwing = 0; T.lid = 0; T.zoom = 0; T.grin = 0;
+          // typing: head down toward the laptop, lids lowered, like the D glance
+          if (typingNow) { T.pitch = 0.9; T.turn = -0.35; T.hy = 8; T.lid = 0.3; }
+          fx.bang = 0;
+          for (const key of FX_KEYS) fx[key] = 0;
+
+          for (const [g0, gd, where] of GLANCES) {
+            if (t >= g0 && t < g0 + gd) {
+              const L = LOOK[where];
+              T.ex = L.ex; T.ey = L.ey; T.turn = L.turn; T.pitch = L.pitch;
+              T.rot += L.rot || 0; T.hx += L.hx || 0; T.hy += L.hy || 0;
+              T.lid = Math.max(T.lid, L.lid || 0); T.browL += L.brow || 0; T.browR += L.brow || 0;
+            }
+          }
+
+          // blink
+          if (blink.start < 0 && t > blink.next) blink.start = t;
+          let bv = 0;
+          if (blink.start >= 0) {
+            const k = (t - blink.start) / 0.17;
+            if (k >= 1) {
+              blink.start = -1;
+              blink.next = t + (rng() < 0.2 ? 0.14 : rand(2.2, 5.2));
+            } else bv = k < 0.45 ? 1 : 0;
+          }
+          T.blinkL = T.blinkR = bv;
+
+          // keyed action
+          while (actIdx < ACTS.length && t >= ACTS[actIdx][0] + ACTS[actIdx][2] / 1000) actIdx++;
+          const A = ACTS[actIdx];
+          if (A && t >= A[0]) {
+            const k = (t - A[0]) / (A[2] / 1000);
+            ACTION_FNS[A[1]](k, T, t, fx);
+            const ga = GLINT_AT[A[1]];
+            if (ga !== undefined && k >= ga && !glinted.has(actIdx)) { glinted.add(actIdx); glintEvents.push(t); }
+          }
+
+          // talking, from the narration loudness
+          const amp = envAt(t);
+          if (amp > 0.02) {
+            T.open = Math.max(T.open, amp * 0.72);
+            T.browL += amp * 3; T.browR += amp * 4;
+            T.hy -= amp * 3;
+          }
+
+          for (const key of PKEYS) {
+            const rate = RATE[key] || RATE.default;
+            P[key] += (T[key] - P[key]) * (1 - Math.exp(-dt * rate));
+          }
+
+          // keys under the fingers
+          if (P.typing > 0.5 && t >= keys.next) {
+            const i = rng() < 0.45 ? 0 : rng() < 0.6 ? 1 : 2;
+            keys.press[i] = 1;
+            keys.bump = 1;
+            keys.next = t + rand(0.07, 0.17);
+          }
+          for (let i = 0; i < 3; i++) keys.press[i] = Math.max(0, keys.press[i] - dt * 7);
+          keys.bump = Math.max(0, keys.bump - dt * 5);
+
+          const o = s * NF;
+          for (let i = 0; i < PKEYS.length; i++) track[o + i] = P[PKEYS[i]];
+          const x = o + PKEYS.length;
+          track[x] = keys.press[0]; track[x + 1] = keys.press[1]; track[x + 2] = keys.press[2];
+          track[x + 3] = keys.bump; track[x + 4] = fx.bang; track[x + 5] = T.rot;
+          FX_KEYS.forEach((key, i) => { track[x + 6 + i] = fx[key]; });
+        }
+      }
+
+      // pose at time t, interpolated between recorded steps
+      const S = {};
+      function sample(t) {
+        const f = clamp(t / STEP, 0, NSTEP - 1.001);
+        const i = Math.floor(f), w = f - i;
+        const a = i * NF, b = (i + 1) * NF;
+        for (let k = 0; k < PKEYS.length; k++) S[PKEYS[k]] = mix(track[a + k], track[b + k], w);
+        for (let k = 0; k < XKEYS.length; k++) S[XKEYS[k]] = mix(track[a + PKEYS.length + k], track[b + PKEYS.length + k], w);
+        return S;
+      }
+
+      // ================================================================
+      // Deformers and render
+      // ================================================================
+      let P = null, breath = 0, hairSway = 0, tapAmt = [0, 0, 0], foreAngle = 0, handAngle = 0;
+      const bodyDeform = (x, y) => [x, 1910 + (y - 1910) * (1 + breath * 0.005)];
+      function headDeform(x, y) {
+        const nx = (x - 1050) / 330, ny = (y - 650) / 360;
+        const wf = 1 - smooth(0.3, 1, Math.sqrt(nx * nx + ny * ny));
+        const ex = (x - 1405) / 80, ey = (y - 640) / 120;
+        const we = Math.max(0, 1 - (ex * ex + ey * ey));
+        const hs = clamp((380 - y) / 330, 0, 1);
+        x += P.turn * (24 * wf - 10 * we) + hairSway * 12 * hs * hs;
+        y += P.pitch * 15 * wf;
+        if (P.grin > 0.001) {
+          for (const [cx, cy, dir] of CORNERS) {
+            const dx = x - cx, dy = y - cy;
+            const g = Math.exp(-(dx * dx + dy * dy) / (2 * GRIN_R * GRIN_R)) * P.grin;
+            y -= GRIN_UP * g; x += dir * GRIN_OUT * g;
+          }
+        }
+        // lean / startle: the head comes closer (zoom > 0) or pulls back (zoom < 0), anchored at the chin
+        const z = 1 + 0.06 * P.zoom;
+        x = 1100 + (x - 1100) * z; y = 980 + (y - 980) * z;
+        const p = rotate(x, y, 1180, 960, P.rot);
+        return [p[0] + P.hx, p[1] + P.hy - breath * 4.75];
+      }
+      function eyeDeform(e, open, gx, gy) {
+        return (x, y) => {
+          const nx = (x - e.cx) / e.rx, ny = (y - e.cy) / e.ry;
+          const f = 1 - smooth(0.25, 1.05, Math.sqrt(nx * nx + ny * ny));
+          x += gx * f; y += gy * f;
+          return headDeform(x, e.yb + (y - e.yb) * open);
+        };
+      }
+      const mouthDrop = (x) => P.open * MOUTH_DEPTH * mouthProfile(x);
+      function armDeform(x, y) {
+        for (let i = 0; i < 3; i++) {
+          if (!tapAmt[i]) continue;
+          const dx = x - FINGERS[i][0], dy = y - FINGERS[i][1];
+          const g = Math.exp(-(dx * dx + dy * dy) / (2 * 38 * 38)) * tapAmt[i];
+          x -= 2 * g; y += 7 * g;
+        }
+        const wh = smooth(1380, 1270, x);
+        if (wh > 0) {
+          const h = rotate(x, y, WRIST[0], WRIST[1], handAngle);
+          x = mix(x, h[0], wh); y = mix(y, h[1], wh);
+        }
+        return rotate(x, y, ELBOW[0], ELBOW[1], foreAngle);
+      }
+      // waving arm: hand turns at the wrist, forearm at the elbow, then the whole arm slides by its drop
+      function armRDeform(x, y) {
+        const wh = smooth(1095, 1005, y);
+        if (wh > 0) {
+          const h = rotate(x, y, WRIST_R[0], WRIST_R[1], P.handSwing);
+          x = mix(x, h[0], wh); y = mix(y, h[1], wh);
+        }
+        const p = rotate(x, y, ELBOW_R[0], ELBOW_R[1], P.armSwing + (1 - P.armUp) * 10);
+        return [p[0], p[1] + (1 - P.armUp) * ARM_DROP];
+      }
+      const still = (x, y) => [x, y];
+
+      let gfx = null;
+      function setupScene(layers) {
+        const r = createRenderer($("jay-gl"));
+        const tex = (c, rect) => r.texture(c, rect);
+        const T_ = {
+          body: tex(layers.body, { x: 0, y: 0, w: 2048, h: 2048 }),
+          head: tex(layers.head, R.head),
+          eyeL: tex(layers.eyeL, R.eyeL), eyeR: tex(layers.eyeR, R.eyeR),
+          browL: tex(layers.browL, R.browL), browR: tex(layers.browR, R.browR),
+          mouth: tex(layers.mouth, R.mouth),
+          inside: tex(layers.inside, { x: MOUTH_L, y: 0, w: MOUTH_R - MOUTH_L, h: 1 }),
+          happyL: tex(layers.happyL, R.happy), happyR: tex(layers.happyR, R.happy),
+          blushL: tex(layers.blush, { x: 827, y: 712, w: 116, h: 52 }),
+          blushR: tex(layers.blush, { x: 1144, y: 692, w: 104, h: 48 }),
+          lens: tex(layers.lens, R.lens),
+          arm: tex(layers.arm, R.arm),
+          armR: tex(layers.armR, R.armR),
+          front: tex(layers.front, R.front),
+        };
+        const m = (t, nx, ny, rect) => r.mesh(t, rect || t, nx, ny);
+        return {
+          r,
+          body: m(T_.body, 4, 4),
+          head: m(T_.head, 36, 40),
+          blushL: m(T_.blushL, 1, 1), blushR: m(T_.blushR, 1, 1),
+          eyeL: m(T_.eyeL, 14, 6), eyeR: m(T_.eyeR, 14, 6),
+          inside: m(T_.inside, 24, 2),
+          mouth: m(T_.mouth, 24, 4),
+          browL: m(T_.browL, 4, 2), browR: m(T_.browR, 4, 2),
+          happyL: m(T_.happyL, 8, 2), happyR: m(T_.happyR, 8, 2),
+          lens: m(T_.lens, 6, 2),
+          arm: m(T_.arm, 40, 10),
+          armR: m(T_.armR, 10, 18),
+          front: m(T_.front, 1, 1),
+        };
+      }
+
+      const steamPaths = [...$("jay-steam").children];
+      const waveLines = $("jay-wavelines");
+      const thought = $("jay-thought"), thoughtText = $("jay-thought-text"), bang = $("jay-bang");
+      const BANG_SCALE = 2 * FX;
+      // where the "!" sits (stage units, 2048 = stage width): up and to the right, clear of the hair; drawn around (1580, 220)
+      const BANG_AT = [1710, 160];
+      const qmark = $("jay-qmark"), bulb = $("jay-bulb"), bulbRays = $("jay-bulb-rays");
+
+      function renderAt(t) {
+        t = clamp(t, 0, DUR);
+        P = sample(t);
+        const { r } = gfx;
+        breath = Math.sin(t * Math.PI * 2 / 4.2);
+        hairSway = Math.sin(t * 1.25) * 0.5 + (P.trot - P.rot) * 0.6 - P.turn * 0.4;
+        const ty = P.typing;
+        tapAmt = [P.press0, P.press1, P.press2].map((p) => Math.sin(p * Math.PI) * ty);
+        foreAngle = P.fore + ty * (Math.sin(t * 1.7) * 0.25 + P.bump * 0.35);
+        handAngle = P.hand + ty * Math.sin(t * 2.3) * 0.5;
+
+        r.begin();
+        r.draw(gfx.body, bodyDeform);
+        r.draw(gfx.head, headDeform);
+        r.draw(gfx.blushL, headDeform, P.blush * 0.55);
+        r.draw(gfx.blushR, headDeform, P.blush * 0.55);
+        const openL = clamp((1 - Math.max(P.blinkL, P.happy, P.lid)) * (1 + P.wide * 0.14), 0.06, 1.2);
+        const openR = clamp((1 - Math.max(P.blinkR, P.happy, P.lid)) * (1 + P.wide * 0.14), 0.06, 1.2);
+        r.draw(gfx.eyeL, eyeDeform(EYE.L, openL, P.ex, P.ey), 1 - P.happy);
+        r.draw(gfx.eyeR, eyeDeform(EYE.R, openR, P.ex, P.ey), 1 - P.happy);
+        r.draw(gfx.happyL, headDeform, P.happy);
+        r.draw(gfx.happyR, headDeform, P.happy);
+        r.draw(gfx.inside, (x, v) => {
+          const top = lipY(x) + 4;
+          return headDeform(x, top + v * (6 + mouthDrop(x)));
+        }, smooth(0, 0.06, P.open));
+        r.draw(gfx.mouth, (x, y) => headDeform(x, y + mouthDrop(x)));
+        const browDip = Math.max(P.blinkL, P.blinkR) * 2;
+        r.draw(gfx.browL, (x, y) => headDeform(x, y - P.browL + browDip));
+        r.draw(gfx.browR, (x, y) => headDeform(x, y - P.browR + browDip));
+        let gk = -1;
+        for (const g of glintEvents) if (t >= g && t <= g + 0.48) gk = (t - g) / 0.48;
+        if (gk >= 0) r.draw(gfx.lens, headDeform, 1, [-0.3 + gk * 1.9, 0.07, 0.75]);
+        r.draw(gfx.arm, armDeform);
+        if (P.armUp > 0.002) r.draw(gfx.armR, armRDeform, 1, null, LID_BOTTOM);
+        r.draw(gfx.front, still);
+        r.finish();
+
+        steamPaths.forEach((p, i) => {
+          const k = (t * 0.32 + i / 3) % 1;
+          p.setAttribute("transform", `translate(${(Math.sin(t * 1.5 + i * 2) * 7).toFixed(1)} ${(-k * 70).toFixed(1)})`);
+          p.setAttribute("opacity", (Math.sin(k * Math.PI) * 0.6).toFixed(3));
+        });
+        let thoughtLine = "";
+        for (const [t0, s] of THOUGHTS) if (t >= t0 - 0.5) thoughtLine = s;
+        if (thoughtText.textContent !== thoughtLine) thoughtText.textContent = thoughtLine;
+        thought.setAttribute("opacity", clamp(P.think * 1.15, 0, 1).toFixed(3));
+        thought.setAttribute("transform", `translate(0 ${(Math.sin(t * 2) * 6 + (1 - P.think) * 20).toFixed(1)})`);
+        bang.setAttribute("opacity", clamp(P.bang, 0, 1).toFixed(3));
+        bang.setAttribute("transform", `translate(${BANG_AT[0]} ${BANG_AT[1]}) scale(${(Math.max(0.01, P.bang) * BANG_SCALE).toFixed(3)}) translate(-1580 -220)`);
+
+        // "?" and the bulb take the "!" spot; the "?" rocks a little, the bulb's rays flicker
+        qmark.setAttribute("opacity", clamp(P.qm, 0, 1).toFixed(3));
+        qmark.setAttribute("transform", `translate(${BANG_AT[0]} ${BANG_AT[1]}) scale(${(Math.max(0.01, P.qm) * BANG_SCALE).toFixed(3)}) rotate(${(Math.sin(t * 3) * 6).toFixed(1)}) translate(-1580 -220)`);
+        bulb.setAttribute("opacity", clamp(P.bulb, 0, 1).toFixed(3));
+        bulb.setAttribute("transform", `translate(${BANG_AT[0]} ${BANG_AT[1]}) scale(${(Math.max(0.01, P.bulb) * BANG_SCALE).toFixed(3)}) translate(-1580 -220)`);
+        bulbRays.setAttribute("opacity", (0.55 + 0.45 * Math.abs(Math.sin(t * 9))).toFixed(3));
+
+        // motion lines ride with the hand while it waves
+        const lines = clamp(Math.abs(P.armSwing) / 4, 0, 1) * smooth(0.85, 1, P.armUp);
+        waveLines.setAttribute("opacity", lines.toFixed(3));
+        waveLines.setAttribute("transform",
+          `translate(0 ${((1 - P.armUp) * ARM_DROP).toFixed(1)}) rotate(${(P.armSwing + (1 - P.armUp) * 10).toFixed(2)} ${ELBOW_R[0]} ${ELBOW_R[1]}) rotate(${P.handSwing.toFixed(2)} ${WRIST_R[0]} ${WRIST_R[1]})`);
+      }
+
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      let lastT = 0;
+      const ready = (async () => {
+        loadScript();
+        const layers = await buildLayers();
+        gfx = setupScene(layers);
+        simulate();
+        renderAt(lastT);
+      })();
+      window.__hf.buildReady.jay = ready;
+      ready.catch((err) => console.error("jay build failed", err));
+
+      window.addEventListener("hf-seek", (e) => {
+        lastT = e.detail.time;
+        if (gfx) renderAt(lastT);
+        else e.detail.waitUntil(ready.then(() => renderAt(lastT)));
+      });
+
+      const tl = gsap.timeline({ paused: true });
+      tl.set({}, {}, num(host && host.getAttribute("data-duration"), 60));
+      window.__timelines["jay"] = tl;
+    })();
+  </script>
+</template>
