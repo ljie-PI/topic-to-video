@@ -128,6 +128,8 @@ def complete_through_catalog(ws: Path, **inputs_overrides) -> None:
 
 def complete_through_script(ws: Path, **inputs_overrides) -> None:
     complete_through_catalog(ws, **inputs_overrides)
+    write_text(ws / 'script.txt', '第一段显示稿。\n\n第二段显示稿。\n')
+    write_json(ws / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
     write_text(ws / 'narration.txt', '第一段旁白。\n\n第二段旁白。\n')
     write_json(ws / 'scene-material-suggestions.json', SCENE_SUGGESTIONS)
     write_json(ws / 'scene-text-plan.json', SCENE_TEXT_PLAN)
@@ -204,6 +206,63 @@ def test_corrupt_product_falls_back(tmp_path: Path):
     assert result['next_phase']['id'] == '6-script-scene-plan'
     assert 'narration.txt' in result['corrupt_products']
     assert '6-script-scene-plan' not in result['completed_phases']
+
+
+# --- phase 6 products: script.txt + tts-lexicon.json + narration.txt ------------
+
+
+def test_missing_script_txt_falls_back_to_phase_6(tmp_path: Path):
+    complete_through_script(tmp_path)
+    (tmp_path / 'script.txt').unlink()
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'script.txt' in result['missing_products']
+
+
+def test_blank_script_txt_is_corrupt(tmp_path: Path):
+    complete_through_script(tmp_path)
+    write_text(tmp_path / 'script.txt', '  \n')
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'script.txt' in result['corrupt_products']
+
+
+def test_corrupt_lexicon_json_falls_back_to_phase_6(tmp_path: Path):
+    complete_through_script(tmp_path)
+    write_text(tmp_path / 'tts-lexicon.json', '{"OpenHuman": ')  # 截断 JSON
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'tts-lexicon.json' in result['corrupt_products']
+
+
+def test_lexicon_wrong_shape_falls_back_to_phase_6(tmp_path: Path):
+    complete_through_script(tmp_path)
+    write_json(tmp_path / 'tts-lexicon.json', ['OpenHuman'])  # 不是 map
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'tts-lexicon.json' in result['corrupt_products']
+
+
+def test_empty_lexicon_falls_back_to_phase_6(tmp_path: Path):
+    complete_through_script(tmp_path)
+    write_json(tmp_path / 'tts-lexicon.json', {})
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'tts-lexicon.json' in result['corrupt_products']
+
+
+def test_missing_narration_txt_falls_back_to_phase_6(tmp_path: Path):
+    complete_through_script(tmp_path)
+    (tmp_path / 'narration.txt').unlink()
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'narration.txt' in result['missing_products']
 
 
 def test_deleted_product_falls_back(tmp_path: Path):

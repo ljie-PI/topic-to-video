@@ -1,6 +1,6 @@
 # Phase 6 — 脚本与场景规划（委派给 coding agent）
 
-本 phase 包含三个步骤：`Phase 6.1 — 撰写解说脚本` 产出 `narration.txt`；`Phase 6.2 — 场景-素材匹配建议` 基于脚本和 `material-catalog.json` 产出 `scene-material-suggestions.json`；`Phase 6.3 — 屏幕文本块规划` 基于已匹配素材产出 `scene-text-plan.json`。
+本 phase 包含四个步骤：`Phase 6.1 — 撰写显示稿与词表` 产出 `script.txt`（显示稿）和 `tts-lexicon.json`（词表）；`Phase 6.1b — 生成朗读稿` 由 `scripts/make-narration.py` 根据显示稿和词表确定性生成 `narration.txt`（朗读稿，TTS 输入）；`Phase 6.2 — 场景-素材匹配建议` 基于脚本和 `material-catalog.json` 产出 `scene-material-suggestions.json`；`Phase 6.3 — 屏幕文本块规划` 基于已匹配素材产出 `scene-text-plan.json`。
 
 ## 输入
 
@@ -8,11 +8,11 @@ Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（若 `fet
 
 ## 输出
 
-`narration.txt`（非空）+ `scene-material-suggestions.json`（非空列表）+ `scene-text-plan.json`（非空列表，每个 scene 有 `visual_text_units`）。
+`script.txt`（非空，显示稿）+ `tts-lexicon.json`（非空 JSON map，显示形式 → 朗读形式）+ `narration.txt`（非空，由 make-narration 生成，格式与 TTS 现有输入一致）+ `scene-material-suggestions.json`（非空列表）+ `scene-text-plan.json`（非空列表，每个 scene 有 `visual_text_units`）。
 
 ## 完成判据
 
-三个产物都通过状态脚本的校验（存在、非空、JSON 可解析）；字数与目标时长的偏差在 ±15% 以内；场景规划覆盖 `narration.txt` 的全部段落；素材引用都存在于 catalog 中。校验通过后，把旁白和场景摘要交给用户确认，再进入 TTS。
+五个产物都通过状态脚本的校验（`script.txt` / `narration.txt` 存在非空；`tts-lexicon.json` 是可解析的非空 JSON map，键值都是非空字符串；两个 scene JSON 是非空列表）；字数与目标时长的偏差在 ±15% 以内；场景规划覆盖 `script.txt` 的全部段落；素材引用都存在于 catalog 中。校验通过后，把旁白和场景摘要交给用户确认，再进入 TTS。
 
 ## 下一步
 
@@ -20,9 +20,15 @@ Phase 7（TTS）：只对 `narration.txt` 配音。
 
 ---
 
-## Phase 6.1 — 撰写解说脚本
+## Phase 6.1 — 撰写显示稿与词表
 
 **输入：** Phase 3 的研究 brief（`research-brief.md`）+ Phase 5 的 `material-catalog.json` + 用户偏好的切入角度与时长。某段自然依赖某个具体视觉素材时，在正文里顺带提到对应的 catalog slug 或资源。**不要**在这里设计 HyperFrames 的 scene、卡片、时间轴或 `info_units`；scene 切分和视觉结构归 Phase 9 的 HyperFrames sub-agent。
+
+**显示稿与朗读稿分离：** 本阶段手写两份产物，TTS 朗读稿由脚本生成：
+
+- **`script.txt`（显示稿）**：字幕和画面使用的文本。品牌名、数字、年份一律写**原始写法**（`OpenHuman`、`NVIDIA`、`2026 年`、`5%`），保证字幕和画面专业、准确。
+- **`tts-lexicon.json`（词表）**：JSON map，显示形式 → 朗读形式。TTS 念不顺的写法全部在这里声明改写，例如 `"NVIDIA": "英伟达"`、`"OpenHuman": "Open Human"`、`"2026 年": "二零二六年"`、`"5%": "百分之五"`。
+- **`narration.txt`（朗读稿）**：**不要手写**。由 `scripts/make-narration.py` 按词表做确定性替换生成（规则：每个位置最长显示形式优先匹配，平局按显示形式字符串排序），格式与 TTS 现有输入一致；同时输出 `narration-offsets.json` 偏移表，把朗读稿逐字映射回显示稿（Phase 8 字幕按显示稿呈现时用）。
 
 目标：
 
@@ -30,33 +36,50 @@ Phase 7（TTS）：只对 `narration.txt` 配音。
 
 - 只使用**研究 brief 中的事实**——每个数字、人名、日期和引文都要可追溯。
 - 在有用的地方引用收集到的素材，并为每个 scene 标注推荐的视觉资源。
-- 3-10 分钟、`speech_rate=1.4` 下约 **7.5 字符/秒** → `3min ≈ 1350 chars`、`5min ≈ 2250 chars`、`10min ≈ 4500 chars`。
+- 3-10 分钟、`speech_rate=1.4` 下约 **7.5 字符/秒** → `3min ≈ 1350 chars`、`5min ≈ 2250 chars`、`10min ≈ 4500 chars`（按显示稿字数估算）。
 - 段间用空行分隔，每段约对应一个 scene = **5-8 秒音频**（在 `speech_rate=1.4` / 7.5 字符/秒下约 37-60 字符/段）。按目标时长伸缩，参考量：3min ≈ 23-36 段、5min ≈ 38-60 段、10min ≈ 75-120 段。
-- 数字用中文字符（表示年份的 `二零二六` 而不是 `2026`，表示大数字的 `一万零三百六十五` 而不是 `10365`）。
-- **英文复合品牌名里的数字必须展开为单词。**
-    - `X2Y` → `X to Y`（`Idea2Video → Idea to Video`、`Text2Image → Text to Image`、`Img2Img → Image to Image`）
-    - `X4Y` → `X for Y`（`Search4U → Search for you`）
-    - **视觉里仍写原品牌名** `Idea2Video`；只有 narration（给 TTS 的文本）写展开形式
-- **大小写混排品牌名按空格读** —— narration 里 `OpenHuman → Open Human`、`AutoCameo → Auto Cameo`，避免被读成首字母拼读。视觉文件保留原写法。
-- 英文专有名词保留原文（`Anthropic`、`Claude Code`、`Boris`）。
-- **TTS 朗读效果差的常见英文品牌 / 机构名改用中文。** 例如 `NVIDIA` / `Nvidia` → `英伟达`。视觉文件 / 字幕中仍保留原写法，只有 narration（给 TTS 的文本）写中文念法。
-- 英文多个单词之间的连字符、下划线、斜杠或反斜杠等改成空格（例如 `GPT-5` → `GPT 5`，`Claude_Code` → `Claude Code`）。
-- 数字周围的符号用中文表示（`百分之五` 而不是 `5%`，`负 3` 而不是 `-3`，`约 100` 而不是 `~100`，`200 多` 而不是 `200+`）。
-- **避免全角中文冒号 `：`。** 改用破折号 `——`、用逗号断句或者改写。示例：`某品牌：日均消耗一百万` → `某品牌 —— 日均消耗一百万`。
+
+**词表与显示稿的写法要求**（原来的 TTS 写法规则现在约束这两份产物，朗读稿由替换规则保证）：
+
+- 数字在**朗读形式**里用中文字符（表示年份的 `二零二六`，表示大数字的 `一万零三百六十五`）；显示稿保留阿拉伯数字写法，并在词表里声明映射。
+- **英文复合品牌名里的数字展开为单词**，写进词表。
+    - `X2Y` → `X to Y`（`"Idea2Video": "Idea to Video"`、`"Text2Image": "Text to Image"`）
+    - `X4Y` → `X for Y`（`"Search4U": "Search for you"`）
+    - 显示稿 / 字幕 / 画面仍写原品牌名 `Idea2Video`，只有朗读形式写展开。
+- **大小写混排品牌名按空格读** —— 词表里 `"OpenHuman": "Open Human"`、`"AutoCameo": "Auto Cameo"`，避免被读成首字母拼读。显示稿保留原写法。
+- 英文专有名词保留原文（`Anthropic`、`Claude Code`、`Boris`），通常不需要词表条目。
+- **TTS 朗读效果差的常见英文品牌 / 机构名改用中文**，写进词表。例如 `"NVIDIA": "英伟达"`。显示稿 / 字幕中仍保留原写法。
+- 英文多个单词之间的连字符、下划线、斜杠或反斜杠等改成空格（`"GPT-5": "GPT 5"`、`"Claude_Code": "Claude Code"`）。
+- 数字周围的符号在朗读形式里用中文表示（`"5%": "百分之五"`、`"-3": "负 3"`、`"~100": "约 100"`、`"200+": "200 多"`）。
+- **显示稿和朗读形式都避免全角中文冒号 `：`。** 改用破折号 `——`、用逗号断句或者改写。示例：`某品牌：日均消耗一百万` → `某品牌 —— 日均消耗一百万`。
+- 词表条目重叠时（如同时有 `2026` 和 `2026 年`），**最长显示形式优先**匹配；写词表时优先用带上下文的长条目（`2026 年`）避免歧义。
 - **不要在旁白里引导网页链接。** 禁止“链接放在下面”“点击下方链接”“见简介链接”等说法。
 - 如果用户想要社媒风格，最后一段可用“点赞、关注、收藏，下期见”。
 
-存到 `narration.txt`。
+存到 `script.txt` 和 `tts-lexicon.json`。
+
+## Phase 6.1b — 生成朗读稿
+
+显示稿和词表写完后，运行：
+
+```bash
+python3 scripts/make-narration.py \
+  --script {work_dir}/{topic_name}/script.txt \
+  --lexicon {work_dir}/{topic_name}/tts-lexicon.json \
+  --output-dir {work_dir}/{topic_name}/
+```
+
+产出 `narration.txt`（朗读稿，可直接交给 Phase 7 的 TTS 脚本，不需要任何修改）和 `narration-offsets.json`（偏移表）。不要手改 `narration.txt`；要改就改显示稿或词表后重新生成。
 
 ## Phase 6.2 — 场景-素材匹配建议
 
-`narration.txt` 写入后，在进入 Phase 7（TTS）之前，主 agent inline 完成此步骤（无需 sub-agent）。
+`narration.txt` 生成后，在进入 Phase 7（TTS）之前，主 agent inline 完成此步骤（无需 sub-agent）。
 
-**输入：** `narration.txt` + `material-catalog.json`
+**输入：** `script.txt`（段落以显示稿为准）+ `material-catalog.json`
 
 **步骤：**
 
-1. 把 `narration.txt` 按空行切分为段落，按顺序处理。
+1. 把 `script.txt` 按空行切分为段落，按顺序处理（段落结构与 `narration.txt` 一一对应，屏幕文本以显示稿写法为准）。
 2. 对每个段落，通读其旁白文本，遍历 `material-catalog.json` 中所有图片和视频 clip 的 `semantic_description`、`width` / `height`、`ratio_bucket`、`layout_affordance` 和可选 `focal_region`，对每个候选素材给出 1-10 的匹配分与理由（理由要对应旁白的具体内容，不要泛泛而谈）。对 `tall` / `ultra-tall` 素材，后续 `layout_role` 应优先围绕 `viewport_reveal` 和已记录的重点区域选择。
 3. **全局唯一分配**：每个素材（图片 / 视频 clip）最多分配给一个段落。按匹配分做全局贪心分配——分数最高的 (段落, 素材) 配对先定，已被占用的素材不再分配给其他段落；每个段落最终最多得到一个主素材。多素材对比 scene 可额外占用对比素材，但必须写入 `material_refs` 并把数组内每个素材都视为已占用。例外：连续同素材合并或相邻 `media_continuation` 可沿用同一素材作为稳定视觉锚点；拆成多个相邻 scene 时，group 起点标注 `continuation_group_id`，后续 continuation scene 同时标注 `continuation_group_id` 和 `continuation_of`。
 4. 为已分配素材选择 `layout_role`。极端比例素材或多素材对比 scene 必须写出 `layout_reason`。`tall` / `ultra-tall` 素材优先选择 key-region-aware `viewport_reveal`，并引用 catalog 的 `focal_region`、start / mid / end 关键区域说明或 avoid-region；讲多个局部时可拆成相邻 `media_continuation` scenes。可选角色：`video_first`、`media_first`、`media_continuation`、`viewport_reveal`、`band`、`detail_callout`、`comparison_pair`、`comparison_sequence`。普通 scene 使用 `material_ref`；同一 scene 内的 `comparison_pair` 或 carousel / 分时 `comparison_sequence` 使用 `material_refs`。
@@ -140,7 +163,7 @@ Phase 6.3 在 Phase 6.2 之后、Phase 7（TTS）之前执行。它不重新匹�
 
 **输入：**
 
-- `narration.txt`
+- `script.txt`（显示稿，段落划分依据）
 - `scene-material-suggestions.json`
 - `material-catalog.json`
 
