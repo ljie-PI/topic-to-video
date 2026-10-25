@@ -87,6 +87,18 @@ Animation / effect 选择：
 
 由 sub-agent 在首次 HTML-to-video render 前执行。要求见 `references/composition-stage-protocol.md` 的 **Phase 8.3 — Pre-render Self-Audit Rules**；结果必须写入 `composition/DESIGN.md`。
 
+渲染前先运行确定性 DOM 检查：
+
+```bash
+python3 scripts/check-composition.py {work_dir}/{topic_name}/composition \
+  --layout modules/layouts/<inputs.json 的 layout 字段>.json \
+  --design-doc modules/designs/<inputs.json 的 design 字段>/<design>.md \
+  --subtitle-units {work_dir}/{topic_name}/transcribe/subtitle-units.json \
+  --timeline {work_dir}/{topic_name}/transcribe/timeline.json
+```
+
+它在每个 scene 的开头 / 中点 / 结尾检查：越出 content 区域、侵入 reserved 区域（reserved 区域只放各自对应的组件）、文字溢出、img / video 加载失败、字体未加载、字号低于 design 下限、当前字幕与字幕单元不一致。findings 带 scene_id，只修相关 scene；全部修完再渲染。
+
 #### 9.4 — HTML-to-video render
 
 按 `references/composition-stage-protocol.md` 的 **Phase 8.4 — HTML-to-video Render Rules** 执行。
