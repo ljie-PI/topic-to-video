@@ -33,8 +33,4 @@
    - 运行 `npx hyperframes check`，修掉所有错误；
    - 运行 check-composition（命令见 handoff 的 Outputs 一节）：它按 layout 区域定义检查越界、侵入 reserved 区域、文字溢出、资源加载失败、字体未加载、字号低于 design 下限、字幕与字幕单元不一致；findings 带 scene_id，只修相关 scene；
    - 在每个 scene 的峰值时刻截一张快照，自己目检一遍（区域使用、可读性、与旁白的同步）。
-4. **渲染**。用 HyperFrames 渲染出 `composition/renders/final.mp4`。
-
-## 完成后
-
-向主 agent 报告：`storyboard.md`、`index.html`、`renders/final.mp4` 的路径，以及 hyperframes check 与 check-composition 的 verdict。主 agent 会复核产物与两个检查的通过情况。
+4. **渲染**。用 HyperFrames 渲染出 `composition/renders/final.mp4`。完成后向主 agent 报告 `storyboard.md`、`index.html`、`renders/final.mp4` 的路径，以及 hyperframes check 与 check-composition 的 verdict；主 agent 会复核产物与两个检查的通过情况。

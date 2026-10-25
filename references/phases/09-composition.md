@@ -53,7 +53,7 @@ Phase 10（检查与混音）：在成片上混入 BGM 得到最终交付文件�
 composition agent 报告完成后，主 agent 逐项校验（不修改产物，不合格就把 findings 反馈回去限定范围修复）：
 
 1. **产物齐全**：`composition/storyboard.md`、`composition/index.html`、非空的 `composition/compositions/`、`composition/renders/final.mp4` 都存在。
-2. **渲染前自查通过**：`npx hyperframes check` 无错误；`python3 scripts/check-composition.py {work_dir}/{topic_name}/composition --layout modules/layouts/<layout>.json --design-doc modules/designs/<design>/<design>.md --subtitle-units {work_dir}/{topic_name}/transcribe/subtitle-units.json --timeline {work_dir}/{topic_name}/transcribe/timeline.json` 的 verdict 为 pass（直接重跑，或核验 sub-agent 报告中的 verdict）。
+2. **渲染前自查通过**：sub-agent 报告的 `npx hyperframes check` 无错误、`check-composition` verdict 为 pass（命令见 composition handoff 模板的渲染前自查一节；可直接重跑核验，或核验其报告的 verdict）。
 3. **storyboard 区域标注**：每个 scene 都写明了所用的 content 区域（抽查）。
 
 全部通过后进入 Phase 10。
