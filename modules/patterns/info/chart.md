@@ -33,16 +33,14 @@
 
 ## 用色
 
-- 通用：focal series 用 `--c-focus`；辅助 series 用暖中性色；语义 series 表达真实数据语义。
-- 各主题的具体覆盖写法已从主题文档迁到本 pattern：
+- 通用：focal series 用 `--c-focus`；辅助 series 用中性灰（`--c-ink2` / `--c-muted`）；语义 series 表达真实数据语义。
+- 各主题只写和通用写法不同的地方：
 
 | 主题 | 图表用色 |
 | --- | --- |
-| default | focal series 用 `focus`；辅助 series 用暖中性色；语义 series 表达相应数据语义。 |
-| dawn | series 用 Foam / Pine / Iris；highlight 用 Pine / Love / Foam 线，Gold 只做非唯一辅助点。 |
-| moon | 主线 Foam，secondary series Iris / Rose，danger series Love；highlight cell 用 Gold 描边。 |
-| github | series 用 Blue / Success / Attention / Danger / Done / Teal；highlight cell 用 callout tint。 |
-| producthunt | 信息性橙色 series 用 `#C8392F`，主橙只作辅助 marker；highlight cell 用 callout tint。 |
+| default | 无特殊覆盖。 |
+| github | 增长 / 正面的 series 用 `--c-positive`；高亮格用 `--c-focus-tint` 底。 |
+| producthunt | maker / 增长的 series 用 `--c-positive`，注册 / 流量用 `--c-info`；`--c-highlight` 只做数据点 marker，不做线色。 |
 
 ## 已有实现
 

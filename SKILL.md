@@ -79,7 +79,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 | 脚本 | 用途 | 依赖 |
 | --- | --- | --- |
 | `pipeline-status.py` | 扫描工作区，输出已完成 / 下一个 phase、要读的文档、缺失或损坏的产物 | — |
-| `fonts-download.sh` | 确定性 WOFF2 字体下载 + 本地 CSS | — |
+| `fonts-download.sh` | 把仓库里预置的 WOFF2 字体（`resources/fonts/<design>/`）装进工程，不联网；`--refresh` 才从 Google Fonts 重新下载（维护用） | — |
 | `voice-clone.py` | TTS：把 `narration.txt` 合成 `voice_clone/narration.mp3`；后端由环境变量选择 | 见 `--help` |
 | `transcribe.py` | ASR：输出带词级时间戳的 transcript；后端由环境变量选择 | 见 `--help` |
 | `align-narration.py` | 把 ASR 时间对齐回显示稿，生成字幕单元（subtitle-units.json）与时间轴（timeline.json） | — |
@@ -96,7 +96,6 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 | `mix-bgm.py` | 把 BGM 混入视频 | `ffmpeg` |
 | `merge-paper-manifest.py` | 把论文解析 manifest 条目并入 harvest manifest | — |
 | `apply-video-download-result.py` | 把 yt-dlp 下载结果应用到 manifest metadata | — |
-| `check-cjk-fonts.py` | 渲染后可选的 CJK 字体 sanity check | — |
 
 **系统依赖：** `ffmpeg`、`playwright`（`pip install playwright`，**不要**执行 `playwright install chromium`）、系统 Chrome（自动检测）、`yt-dlp`、带 venv 的 `python3`。
 

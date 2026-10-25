@@ -31,16 +31,14 @@
 
 ## 用色
 
-- 通用：中性维度用暖灰；优劣或风险使用 `--c-positive` / `--c-danger` 等真实语义色；不给整列铺满 accent。
-- 各主题的具体覆盖写法已从主题文档迁到本 pattern：
+- 通用：中性维度用中性灰（`--c-ink2`）；优劣或风险使用 `--c-positive` / `--c-danger` 等真实语义色；不给整列铺满 accent。
+- 各主题只写和通用写法不同的地方：
 
 | 主题 | 对比矩阵用色 |
 | --- | --- |
-| default | 中性维度用暖灰；优劣或风险使用 success / danger 等真实语义，不给整列铺满 accent。 |
-| dawn | 双侧对比用 Pine vs Love；中性维度 Primary；优缺点标签用短 badge，不给整列大面积上色。 |
-| moon | 正向 / stable 用 Pine，风险 / cons 用 Love，中性维度用 Secondary；info 维度才用 Foam；不给整列大面积 accent 底。 |
-| github | 正向 Success，风险 Danger，注意 Attention；正文使用 Primary / Secondary；不要给整列饱和色底。 |
-| producthunt | 推荐 / maker fit 用绿；注册 / info 用蓝；限制 / attention 用中性 chip + ⚠，不用橙 callout 或红。 |
+| default | 无特殊覆盖。 |
+| github | 需要提醒但不算风险的格子用 `--c-warning`。 |
+| producthunt | 推荐 / maker 适配用 `--c-positive`；注册 / info 维度用 `--c-info`；限制用中性小标签加 ⚠，不用 `--c-danger` 铺色。 |
 
 ## 已有实现
 

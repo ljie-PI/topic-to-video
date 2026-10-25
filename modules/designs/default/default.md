@@ -1,65 +1,83 @@
-# 设计主题：default（Frag Note 安静明亮编辑风）
+# 设计主题：default（燕麦纸）
 
-连续暖白画布 + 单一薰衣草强调。深度来自表面色与细分隔线，不靠厚阴影或多色背景。内容 / 论断是最强视觉元素，界面 chrome 必须退后。源自 Frag Note Design System。
+一张暖燕麦色的棉纸，上面是低饱和的墨灰文字和一点灰薰衣草。画面里最显眼的是内容和论断，界面退到后面。不加阴影，用 2px 细线和卡片分层，看起来像一份安静、干净的编辑稿。没有指定风格时用这个主题，适合大多数讲解视频。
 
-这份文档只规定外观，任何类型的视频都能用。字体清单在 `fonts.json`，下载方式见 `designs/designs.md`。
+这份文档只规定外观，任何类型的视频都能用。
+
+背景贴图在 `designs/default/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体已经放在仓库的 `resources/fonts/default/`，安装方式见 1.4。
+
+| 文件 | 用途 |
+|---|---|
+| `textures/paper.jpg` | 背景：暖燕麦棉纸，1920×1080 |
 
 ---
 
 ## 1. 配色
 
-### 1.1 原则
+### 1.1 颜色只有四种用途
 
-- 暖白画布 + 单一薰衣草强调：`--c-focus` 表示行动、焦点、选中、当前结论。
-- 蓝、绿、琥珀、红只表达真实的 info / success / warning / danger 语义，绝不作为随意装饰。
-- 深色 token 只用于代码、终端、媒体局部或遮罩；不把浅色画面切成装饰性的深色分区。
-- 一个卡片、callout、chart series 最多一个强 accent；允许「薰衣草表当前焦点 + 一个语义色表真实状态」，两者必须分属不同元素。
+每一帧最多一种焦点色，再加上指标色的数字：
+
+- **焦点（灰薰衣草）**：正在讲的东西，包括当前高亮的行、当前步骤、当前结论、当前标签。
+- **指标（鼠尾草绿）**：数字、增长、正面的结果。只用在数字和指标上，不拿来做装饰。
+- **标记（赭黄）**：被收藏、被标记的状态，以及需要观众记住的关键词。只做形状和大号短字。
+- **完成（深靛）**：讲完的步骤。
+
+信息蓝、琥珀、砖红只表达真实的 info / warning / danger 语义，不做装饰。
 
 ### 1.2 主题变量值
 
-变量的含义见 `designs/designs.md`。深色表面（代码 / 终端局部）：`#211F26`（底）/ `#2C2932`（抬升）/ `#37333E`（弱表面），其上文字 `#FAF9F5` / `#B9B4C0`。
+变量的含义见 `designs/designs.md`。
 
 | 变量 | 色值 |
 |---|---|
-| `--c-canvas` | `#FAF9F5` |
-| `--c-card` | `#FFFEFB` |
-| `--c-surface` | `#F0ECE6` |
-| `--c-border` | `#E3DED8` |
-| `--c-ink` | `#1F1D24` |
-| `--c-ink2` | `#4D4954` |
-| `--c-muted` | `#716C79` |
-| `--c-focus` | `#6F5BD3` |
-| `--c-focus-tint` | `#EEEAFE` |
-| `--c-info` | `#3D6FA8` |
-| `--c-warning` | `#916019` |
-| `--c-danger` | `#AD414A` |
-| `--c-positive` | `#397352` |
-| `--c-positive-solid` | `#397352` |
-| `--c-positive-tint` | `#EAF5ED` |
-| `--c-positive-text` | `#2E5C44` |
-| `--c-highlight` | `#DED7F7` |
-| `--c-done` | `#513EAD` |
-| `--c-chrome` | `#211F26` |
-| `--c-chrome-ink` | `#FAF9F5` |
-| `--c-chrome-muted` | `#B9B4C0` |
-| `--c-chrome-active` | `#7965DD` |
-| `--c-tile0`–`--c-tile4` | `#F6F3EE` `#E5DEF7` `#CFC4EE` `#B3A3E6` `#6F5BD3`：从暖白到薰衣草的色阶 |
+| `--c-canvas` | `#F3F1EC` |
+| `--c-card` | `#FBFAF7` |
+| `--c-surface` | `#F1EEE8` |
+| `--c-border` | `#D9D4CC` |
+| `--c-ink` | `#25232A` |
+| `--c-ink2` | `#58545F` |
+| `--c-muted` | `#878290` |
+| `--c-focus` | `#5E559E` |
+| `--c-focus-tint` | `#ECE9F4` |
+| `--c-info` | `#3E6994` |
+| `--c-warning` | `#94661B` |
+| `--c-danger` | `#A4434A` |
+| `--c-positive` | `#3D7353` |
+| `--c-positive-solid` | `#4A8261` |
+| `--c-positive-tint` | `#E5EEE7` |
+| `--c-positive-text` | `#2C573F` |
+| `--c-highlight` | `#A3823F` |
+| `--c-done` | `#4C4583` |
+| `--c-chrome` | `#2A282F` |
+| `--c-chrome-ink` | `#F5F3EF` |
+| `--c-chrome-muted` | `#A6A1AD` |
+| `--c-chrome-active` | `#B2A6DE`（淡薰衣草） |
+| `--c-tile0`–`--c-tile4` | `#E8E4DD` `#D9D4E6` `#B8B0D5` `#8A80BD` `#5E559E`：从纸色到焦点薰衣草的色阶 |
 | `--font-sans` | `"NotoSansSC", sans-serif` |
 | `--font-mono` | `"IBMPlexMono", "NotoSansSC", monospace` |
 
-### 1.3 变量代码（复制到视频 `index.html` 的 `:root`）
+### 1.3 对比度
+
+- 正文：`ink` 在卡片底上 14.9:1，`ink2` 7.1:1；`focus` 在卡片底上 6.2:1，在 `focus-tint` 上 5.4:1。
+- `--c-muted` 在卡片底上只有约 3.6:1，只能用在 34px 以上的数字上。
+- `--c-highlight` 在卡片底上约 3.5:1，只做形状、图标和大号短字，不承载正文。
+- 界面条上的次要文字用 `--c-chrome-muted`，约 5.8:1。
+- 指标色标签里的文字用 `--c-positive-text`（在 `positive-tint` 上 7.0:1），不要直接用 `--c-positive`。
+
+### 1.4 变量代码（复制到视频 `index.html` 的 `:root`）
 
 ```css
 :root {
-  --c-canvas: #faf9f5;  --c-card: #fffefb;  --c-surface: #f0ece6;  --c-border: #e3ded8;
-  --c-ink: #1f1d24;     --c-ink2: #4d4954;  --c-muted: #716c79;
-  --c-focus: #6f5bd3;   --c-focus-tint: #eeeafe;
-  --c-info: #3d6fa8;    --c-warning: #916019;  --c-danger: #ad414a;
-  --c-positive: #397352;  --c-positive-solid: #397352;  --c-positive-tint: #eaf5ed;  --c-positive-text: #2e5c44;
-  --c-highlight: #ded7f7; --c-done: #513ead;
-  --c-chrome: #211f26;  --c-chrome-ink: #faf9f5;  --c-chrome-muted: #b9b4c0;  --c-chrome-active: #7965dd;
-  --c-tile0: #f6f3ee;   --c-tile1: #e5def7;  --c-tile2: #cfc4ee;  --c-tile3: #b3a3e6;  --c-tile4: #6f5bd3;
-  --ground: #faf9f5;
+  --c-canvas: #f3f1ec;  --c-card: #fbfaf7;  --c-surface: #f1eee8;  --c-border: #d9d4cc;
+  --c-ink: #25232a;     --c-ink2: #58545f;  --c-muted: #878290;
+  --c-focus: #5e559e;   --c-focus-tint: #ece9f4;
+  --c-info: #3e6994;    --c-warning: #94661b;  --c-danger: #a4434a;
+  --c-positive: #3d7353;  --c-positive-solid: #4a8261;  --c-positive-tint: #e5eee7;  --c-positive-text: #2c573f;
+  --c-highlight: #a3823f; --c-done: #4c4583;
+  --c-chrome: #2a282f;  --c-chrome-ink: #f5f3ef;  --c-chrome-muted: #a6a1ad;  --c-chrome-active: #b2a6de;
+  --c-tile0: #e8e4dd;   --c-tile1: #d9d4e6;  --c-tile2: #b8b0d5;  --c-tile3: #8a80bd;  --c-tile4: #5e559e;
+  --ground: url("assets/textures/paper.jpg") center / cover, #f3f1ec;
   --font-sans: "NotoSansSC", sans-serif;
   --font-mono: "IBMPlexMono", "NotoSansSC", monospace;
   --motion-enter-duration: 0.2s;
@@ -68,70 +86,107 @@
 }
 ```
 
-字体在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/rose-pine-default-fonts.css">` 引入（文件名以 `fonts.json` 的 `css_filename` 为准）。
-
-### 1.4 对比度
-
-- `ink` / `canvas` 15.8:1，`body`(#4D4954) / `canvas` 8.3:1，`muted` / `canvas` 4.8:1，`on-primary` / `primary` 5.1:1，`primary-ink`(#49399B) / `primary-soft` 7.6:1。
-- 正文、表单和字幕目标至少 4.5:1；大号文字、icon、chart stroke 至少 3:1。
-- 状态不能仅用颜色表达；必须有文字、图标或结构辅助。
+字体已经下载好放在仓库的 `resources/fonts/default/`。安装：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/default`，把 NotoSansSC（中文和正文）、IBMPlexMono（代码、数字、路径）的 WOFF2 和一份 `default-fonts.css` 拷进工程，不联网。在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/default-fonts.css">` 引入，CSS 里的字体名就是上面变量用的 `NotoSansSC` / `IBMPlexMono`。
 
 ---
 
 ## 2. 字体
 
-- 中文标题、正文、屏幕文字与字幕固定使用 `NotoSansSC`（标题 600，正文 400/500）；禁止宋体、衬线中文 fallback、手写字体。
-- `IBMPlexMono` 只用于标识符、日志、路径、代码、数字和紧凑 source metadata，不排整段中文正文。
-- 会滚动或需要对齐的数字一律用等宽数字（`font-variant-numeric: tabular-nums`）。
-- 正文保持至少 1.55 行高；避免 700+ 的沉重显示字体。
+- 标题、正文、屏幕文字和字幕都用 NotoSansSC；不用宋体、衬线中文或手写体。
+- IBMPlexMono 只用于标识符、日志、路径、代码和数字，不排整段中文。
+- 会滚动或需要对齐的数字一律用等宽数字（`font-variant-numeric: tabular-nums`），比如排名、计数、日期、标签。
+- 字重：正文 400–500，标签和按钮 600，标题和数字 700。正文行高至少 1.5。
 
-### 2.1 视频尺寸（1920×1080；竖屏按同比例收敛，见 `layouts/portrait.md`）
+### 2.1 字号阶梯（1920×1080）
 
-| 元素 | 1920×1080 | 1080×1440 | 1080×1920 |
-|---|---|---|---|
-| Hero 标题 | 88–136px | 72–116px | 76–124px |
-| Section 标题 | 54–82px | 46–70px | 50–76px |
-| 正文 / callout | 30–48px | 28–42px | 28–44px |
-| 数据 label / source | 22–32px | 22–30px | 22–32px |
-| 代码 / 等宽 | 22–34px | 22–30px | 22–32px |
-| 字幕 | 35px | 35px | 35px |
+| 级别 | 字号 / 字重 | 典型用途 |
+|---|---|---|
+| 特大数字 | 128–150px / 700–800 | 封面上的核心数字、转场卡片上的大标签 |
+| 开场标题 | 140px / 700，字距 -0.01em | 开场大标题 |
+| 大标题 | 72px / 400 + 700 | 封面主名称（过长时自动缩小，最小 36px） |
+| 标题 | 56–60px / 700 | 页眉行标题、一句话介绍 |
+| 小标题 | 44–48px | 标题条里的名称、转场卡片标题 |
+| 强调正文 | 30–36px / 600–700 | 步骤标题、指标说明、字幕（36px / 500） |
+| 正文 | 26–28px / 500 | 描述、列表文字、标签页（28px / 600） |
+| 界面小字 | 22–26px / 600 | 面板标题栏、按钮、小标签 |
 
-**字号下限**：阅读文字不小于 24px，数据 label / 界面小字不小于 22px，字幕 35px（以所选 layout 的字幕规格为准）。
+竖屏画布（1080×1920、1080×1440）宽只有 1080px：特大数字、开场标题、大标题、标题、小标题按上表取值的 0.85 倍（取整到偶数）；强调正文、正文、界面小字以及下面的两条下限都不变。
+
+**字号下限**：阅读文字不小于 26px，界面小字不小于 22px（只适用于放在 `data-text-role="ui"` 元素里的面板标题栏、按钮、小标签），字幕 36px（以所选 layout 的字幕规格为准）。渲染前检查（check-composition）按这两个下限分别检查。HyperFrames 的检查会把 28px 以下的文字报成警告：阅读文字要按警告处理；界面小字可以忽略这条警告。
 
 ---
 
 ## 3. 背景与质感
 
-- 默认背景是纯暖白 `--ground: #FAF9F5`，连续画布，不换色。
-- 层级由表面色（`--c-surface` / `--c-card`）+ `hairline` 细分隔线 + 间距形成；允许的微阴影：`0 1px 2px rgb(31 29 36 / 0.05)`，floating 用 `0 12px 32px rgb(64 52 86 / 0.12), 0 2px 8px rgb(64 52 86 / 0.08)`。
-- 图片 / 视频素材默认无可见 card frame、border、padding、shadow 或露底。
+- 背景是**暖燕麦棉纸** `textures/paper.jpg`，铺满整个画面（`--ground`）。上面不要再叠网格、点阵或方格底纹。
+- 纸纹按 `designs/github/github.md` 第 3 节的做法生成，换成这套颜色：
+  - 底色 `#F3F1EC`；
+  - 深纤维偏暖灰 `#A29B91`；
+  - 四角压暗约 12 级亮度，暗部偏灰薰衣草 `#B4AEC4`；
+  - 其余参数（低频斑驳、纸齿、纤维和杂点数量、颗粒）与 github 相同。
+- 贴图是 1920×1080，用 `center / cover` 铺满：竖屏画布（1080×1920、1080×1440）会把它放大后取中间，不平铺、不出接缝。
+- 背景是静态的，不做动画。
+- 卡片和面板用 `--c-card` 实底盖在纸纹上，靠底色差和 2px 边框分层。
+- 代码和终端可以用 `--c-chrome` 深底的局部面板；除此之外不把浅色画面切成深色分区。
+
+---
 
 ## 4. 形状
 
-- 紧凑、平面、安静的编辑式 panel；不用玻璃、厚投影或 glow。
-- 圆角：`--c-card` 12px（card、dialog）、8px（button、input、tab）、16px（重要容器）、999px（badge、status chip）。
-- 高亮 box 使用 `focus-tint + #49399B` 短文字，或 `card + border`；紧贴短文本，不做大面积紫色填充。
+- 边框统一 **2px** `--c-border`。1px 的线经 H.264 压缩、在手机上看会断开。
+- 圆角：卡片和面板 12px，按钮和分段控件 8px，转场卡片 16px，标签和药丸形 999px，方格 9px（格子 48px）。
+- **不用阴影**，不用渐变、玻璃质感或外发光，不用满屏的饱和色块。唯一的满屏色块是方格转场。
+- 面板顶部的标题栏用 `--c-surface` 底，下边一条 2px 线，高 56–60px。
+- 界面条（导航栏、字幕条）都是 72px 高的 `--c-chrome` 色条，上下对称。
+
+---
 
 ## 5. 图标
 
-- 低调的线性 icon、短 label、细分隔线、节点、箭头与状态 marker；颜色用 `ink2`、`focus` 或真实语义 token。
-- 不使用 emoji、3D icon、贴纸、彩色 icon 拼盘、发光 icon；状态 icon 必须和文字 / 数字一起出现。
+- 线性图标，16×16 视图框，`fill: currentColor`，粗细统一。
+- 图标尺寸是所在行字号的 0.8–0.9 倍，颜色跟随文字，或用真实语义色。
+- 不用 emoji、3D 图标、贴纸、彩色图标拼盘；状态图标必须和文字或数字一起出现。
 
-## 6. 动效
+---
 
-- 运动 token：`--motion-enter-duration: 0.2s`、`--motion-easing: power1.out`、`--motion-list-interval: 0.12s`——克制、轻编辑的节奏。
-- 只 animate opacity / transform；不做 bouncy、背景 blob、渐变、粒子、外发光、idle decorative drift。
-- 文本与信息单元按旁白句子 / 语义 beat 出现；禁止 scene 开头用统一 stagger 把所有叙事文本铺开。
-- 所有动画只由时间决定：不用 `repeat: -1`，不用随机数（需要随机时用固定种子）。
+## 6. 通用元素的外观
 
-## 7. 不要做
+- **卡片 / 面板**：`--c-card` 底，2px 边，12px 圆角，没有阴影；可以带一个标题栏（见第 4 节）。
+- **高亮行**：`--c-focus-tint` 浅底，左侧 6px `--c-focus` 竖条，行首的编号变成焦点色。
+- **小标签（药丸）**：圆点加文字。指标色三件套是：`positive-tint` 底、`positive-solid` 边、`positive-text` 字。焦点色的小标签是 `focus-tint` 底加 `focus` 字。
+- **关键词标记**：在词下方画一条 6px 的 `--c-highlight` 半透明（opacity 0.35）底线，文字颜色不变。
+- **步骤时间线**：左侧一条 2px 竖线串起 44px 圆形节点。当前步骤的节点填焦点色，整行浅焦点底；讲完的步骤节点盖一个 `--c-done` 色的对勾。
+- **数字滚动**：从 0 滚到目标值，1.2 秒，`power1.out`，带千分位。
+- **界面条**：深色条，主文字用 `chrome-ink`，次要文字用 `chrome-muted`，当前项下面有一条 6px 的 `chrome-active` 下划线。
 
-- ❌ 不要用多色 bokeh、mesh background、紫色 gradient、glassmorphism、半透明白卡、outer glow。
-- ❌ 不要混用 slate / stone 等额外中性色阶；所有颜色回到本文件 token。
-- ❌ 不要把浅紫 `focus-tint` 配白字，不要把 `muted` 用于正文。
-- ❌ 不要把状态色用于无关装饰或随机换色；同一元素不叠加多种 accent。
-- ❌ 不要为视觉多样性在浅色画面中插入深色 section；深色仅用于真实代码、终端、媒体局部或 overlay。
-- ❌ 不要在素材关键区域上压 caption、tag、badge、callout；说明信息放在素材外部。
+---
 
+## 7. 动效
 
-按信息形态（`visual_role`）的用色覆盖已迁到 `patterns/` 各文档的「用色」小节。
+节奏由运动 token 定：`--motion-enter-duration: 0.2s`、`--motion-easing: power1.out`、`--motion-list-interval: 0.12s`，是克制、轻编辑的节奏。
+
+- 入场：0.2 秒，`power1.out`，向上位移 12–16px 加淡入。只动 opacity 和 transform。
+- 文本和信息单元按旁白的句子和语义节拍出现；不要在 scene 开头用统一的 stagger 把所有文字一次铺开。
+- 退场：0.2 秒，`power1.in`，淡出。
+- 强调只用焦点色切换和下划线擦出，不做弹跳、背景色团、粒子、外发光或无意义的漂浮。
+- 转场和字幕的时间写法见各组件文档。
+- 所有动画只由时间决定：不用 `repeat: -1`，不用随机数；需要随机的地方用固定种子。
+
+---
+
+## 8. 要做 / 不要做
+
+**要做**
+- 所有颜色都走主题变量。
+- 每帧只有一种焦点色，加上指标色的数字。
+- 讲到的东西总是用焦点色；素材的说明放在素材外面。
+- 文字放不下时自动缩小字号，不要溢出，也不要换行。
+
+**不要做**
+- 不要加阴影、渐变卡片、玻璃质感、满屏饱和色。
+- 不要在纸纹上再叠网格、点阵、方格底纹。
+- 不要使用 NotoSansSC / IBMPlexMono 以外的字体。
+- 不要把 `--c-muted` 或 `--c-highlight` 用作正文颜色，不要把浅薰衣草底配白字。
+- 不要在素材的关键区域上压字幕、标签或标注。
+
+按信息形态的用色见 `patterns/` 各文档的「用色」小节。

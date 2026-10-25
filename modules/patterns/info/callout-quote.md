@@ -34,17 +34,15 @@
 ## 用色
 
 - 通用：`--c-card` 或 `--c-focus-tint` 只在必要时做短信息区底；正文保持 `--c-ink` / `--c-ink2`；风险 / 结论类 callout 用真实语义色左线。
-- 各主题的具体覆盖写法已从主题文档迁到本 pattern：
+- 各主题只写和通用写法不同的地方：
 
 | 主题 | callout / quote 用色 |
 | --- | --- |
-| default | `card` 或 `focus-tint` 仅在必要时做短信息区；正文保持 `ink` / `ink2`。 |
-| dawn | callout 用 card 或 surface 底 + 语义色左线；definition 用 Iris；QA 的 Q 用 Foam、A 用 Pine。 |
-| moon | callout 用 Surface 底 + 语义色左线；definition 用 Iris；QA 的 Q 用 Foam、A 用 Primary。 |
-| github | 优先使用 Primer callout 三件套；definition 用 Info；QA 的 Q 用 Blue，A 用 Primary / Success。 |
-| producthunt | 主推、注册 / info、Maker / verified、中性四套 callout 三件套；QA 的 Q 可用蓝，A 用 Primary。 |
+| default | 无特殊覆盖。 |
+| github | callout 用 `--c-card` 底 + 2px 边 + 语义色左线（`--c-info` / `--c-warning` / `--c-danger` / `--c-positive`）；definition 用 `--c-info` 左线；QA 的 Q 用 `--c-focus`，A 用 `--c-ink`。 |
+| producthunt | 主推 callout 用 `--c-focus-tint` 底 + `--c-focus` 左线；注册 / info 用 `--c-info` 左线；maker / 已认证用 `--c-positive-tint` 底；QA 的 Q 用 `--c-info`，A 用 `--c-ink`。 |
 
-各主题的引述（quote）用色：default 无特殊覆盖；dawn 引号 / source 用 Rose 或 Iris，正文 Primary，不用 Subtle 承载 quote 正文；moon 引号 / source marker 用 Rose，quote 正文 Primary，source 用 Secondary；github quote 正文 Primary，source Secondary / Teal，引用卡可用 Info 或 Done callout tint；producthunt quote 正文 Primary，source / timestamp Tertiary，用户评价亮点可用主推 callout。
+引述（quote）三个主题写法相同：正文用 `--c-ink`，引号和来源前的标记用 `--c-focus`，来源文字用 `--c-ink2`。producthunt 的用户评价亮点可以放进主推 callout。
 
 ## 已有实现
 

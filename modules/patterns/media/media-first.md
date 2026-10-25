@@ -37,7 +37,7 @@
 
 - 外观全部来自所选主题的 token（`designs/designs.md`），pattern 本身不引入新颜色。
 - 图中标注 / pin / marker 可用 `--c-focus` 或真实状态色（信息 / 警示 / 危险语义）；标注文字保持 `--c-ink` / `--c-ink2`，标注尽量放在素材外部。
-- 各主题的具体覆盖写法已从主题文档迁到对应 pattern；本 pattern 没有按 visual_role 的特殊覆盖。
+- 各主题没有特殊覆盖。
 
 ## 已有实现
 

@@ -487,6 +487,38 @@ def test_inputs_json_missing_required_field_falls_back(tmp_path: Path):
     assert 'inputs.json' in result['corrupt_products']
 
 
+def test_removed_design_falls_back_to_phase_1(tmp_path: Path):
+    complete_through_research(tmp_path)
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'design': 'moon'})
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '1-gather-inputs'
+    assert 'inputs.json' in result['corrupt_products']
+    detail = result['next_phase']['problems']['inputs.json']
+    assert "'moon'" in detail and 'default' in detail and 'github' in detail
+
+
+def test_removed_design_keeps_mode_flags(tmp_path: Path):
+    complete_through_research(tmp_path)
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'design': 'moon', 'input_mode': 'paper', 'fetch_materials': False})
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '1-gather-inputs'
+    assert result['input_mode'] == 'paper'
+    assert result['fetch_materials'] is False
+    assert '4-material-harvest' in result['skipped_phases']
+
+
+def test_removed_design_accepted_from_workspace_copy(tmp_path: Path):
+    complete_through_research(tmp_path)
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'design': 'moon'})
+    copy = tmp_path / 'modules' / 'designs' / 'moon'
+    copy.mkdir(parents=True)
+    (copy / 'moon.md').write_text('# moon', encoding='utf-8')
+    write_json(copy / 'fonts.json', {'css_filename': 'moon-fonts.css', 'css2_families': ['X']})
+    result = parse_result(run_cli(str(tmp_path)))
+    assert 'inputs.json' not in result['corrupt_products']
+    assert result['next_phase']['id'] != '1-gather-inputs'
+
+
 def test_missing_qa_level_defaults_to_standard(tmp_path: Path):
     complete_through_research(tmp_path)
     inputs = dict(INPUTS)

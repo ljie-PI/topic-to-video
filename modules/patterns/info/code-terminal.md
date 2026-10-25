@@ -33,16 +33,14 @@
 
 ## 用色
 
-- 通用：代码 / 终端面板用局部深色或主题的 panel 色；命令、路径、版本号用 `--font-mono`；错误输出用 `--c-danger`。
-- 各主题的具体覆盖写法已从主题文档迁到本 pattern：
+- 通用：代码 / 终端面板默认用 `--c-surface` 浅底加 2px 边；需要终端感时用 `--c-chrome` 深底，此时正文用 `--c-chrome-ink`、次要文字用 `--c-chrome-muted`，成功 / 失败只用 ✓ / ✗ 前缀，不把语义色压在深底上；命令、路径、版本号用 `--font-mono`；浅面板上的错误输出用 `--c-danger`。
+- 各主题只写和通用写法不同的地方：
 
 | 主题 | 代码 / 终端用色 |
 | --- | --- |
-| default | 局部深色 `#211F26`；命令、路径、版本号用 IBMPlexMono；错误用 danger。 |
-| dawn | panel 底 `#fffaf3`；路径 / 命令重点用 Pine；注释 / prompt 用 Iris；warning 输出用 Love 或 Gold marker。 |
-| moon | panel 底 Surface；命令 / path 用 Iris；输出值用 Foam / Gold；error / fail 用 Love。 |
-| github | panel 用 `#F6F8FA` 或 terminal 黑；path / command 用 mono；success output Success，error output Danger，hint Blue。 |
-| producthunt | panel 用 `#F8F9FA`；命令 / path 用 mono；CTA / success / info 状态分别用橙 / 绿 / 蓝 marker。 |
+| default | 无特殊覆盖。 |
+| github | 浅面板上，成功输出用 `--c-positive`，提示用 `--c-info`。 |
+| producthunt | 无特殊覆盖。 |
 
 ## 已有实现
 

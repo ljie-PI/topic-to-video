@@ -32,15 +32,13 @@
 ## 用色
 
 - 通用：中性模块用 `--c-surface` / `--c-border`；关键路径用 `--c-focus`；状态节点才用语义色。
-- 各主题的具体覆盖写法已从主题文档迁到本 pattern：
+- 各主题只写和通用写法不同的地方：
 
 | 主题 | 架构图用色 |
 | --- | --- |
-| default | 中性模块用 `surface` / `border`；关键路径用 `focus`；状态节点才用语义色。 |
-| dawn | 模块边线用 Foam / Pine；依赖关系用 Iris；关键路径用 Pine，Gold 只做小 marker。 |
-| moon | 模块边线 Foam / Iris；关键路径 Iris；背景结构线 `#44415a`；Pine 仅作大形状或粗线。 |
-| github | 模块边线 Blue / Teal；dependency 用 Teal；completed path Done；risk edge Danger。 |
-| producthunt | product / CTA 节点用 `#C8392F` 文本或线，用户 / register 蓝，maker / partner 用 `#046B50`；正文 Primary。 |
+| default | 无特殊覆盖。 |
+| github | 依赖关系线用 `--c-ink2`；已完成的路径用 `--c-done`；风险边用 `--c-danger`。 |
+| producthunt | 产品 / CTA 节点用 `--c-focus`；用户 / 注册节点用 `--c-info`；maker / 合作方节点用 `--c-positive`。 |
 
 ## 已有实现
 

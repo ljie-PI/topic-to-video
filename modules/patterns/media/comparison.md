@@ -33,7 +33,7 @@
 ## 用色
 
 - 外观全部来自所选主题的 token；两个对比侧建议共享同一套中性色，差异用 marker 或边框表达，不给某一侧铺大面积 accent。
-- 各主题的具体覆盖写法已从主题文档迁到 `patterns/info/comparison-matrix.md`（其中的对比矩阵用色同样适用于素材对比）。
+- 各主题的写法见 `patterns/info/comparison-matrix.md`，其中的对比矩阵用色同样适用于素材对比。
 
 ## 已有实现
 

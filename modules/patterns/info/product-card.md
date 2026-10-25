@@ -32,15 +32,13 @@
 ## 用色
 
 - 通用：`--c-ink` 标题；可挑一个 `--c-focus` 关键词、短 eyebrow 或身份标记；指标数字按主题指标色。
-- 各主题的具体覆盖写法已从主题文档迁到本 pattern：
+- 各主题只写和通用写法不同的地方：
 
 | 主题 | 身份卡用色 |
 | --- | --- |
-| default | `ink` 标题；可用一个 `focus` 关键词、短 eyebrow 或身份标记。 |
-| dawn | Primary 标题 + Rose / Iris eyebrow；身份信息可用 Pine 短 label。 |
-| moon | Primary 标题 + Iris / Foam eyebrow；产品或项目身份的关键数字可用 Gold。 |
-| github | Primary 标题 + Blue / Success / Done eyebrow；repo path 可用 Blue hover 或 mono Primary。 |
-| producthunt | 产品名 Primary；launch / rank / CTA 文字用 `#C8392F` 或 Primary，主橙只做 marker / 外形；tagline 用 Secondary。 |
+| default | 无特殊覆盖。 |
+| github | eyebrow 按身份用 `--c-focus` / `--c-positive` / `--c-done`；仓库路径用 `--font-mono` + `--c-ink`。 |
+| producthunt | 产品名用 `--c-ink`；发布 / 排名 / CTA 文字用 `--c-focus`；`--c-highlight` 只做 upvote 形状和标记；tagline 用 `--c-ink2`。 |
 
 ## 已有实现
 
