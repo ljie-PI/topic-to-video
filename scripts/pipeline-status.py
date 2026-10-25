@@ -51,6 +51,8 @@ INPUTS_REQUIRED_FIELDS = [
 
 PAPER_MODES = {'paper'}
 
+QA_LEVELS = {'quick', 'standard', 'strict'}
+
 
 @dataclass
 class CheckResult:
@@ -177,6 +179,11 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
         ), None
     if not isinstance(data['fetch_materials'], bool):
         return CheckResult(STATUS_CORRUPT, 'field fetch_materials is not a boolean'), None
+    if data['qa_level'] not in QA_LEVELS:
+        return CheckResult(
+            STATUS_CORRUPT,
+            f'field qa_level must be one of quick / standard / strict, got {data["qa_level"]!r}',
+        ), None
     return OK, data
 
 
@@ -303,6 +310,34 @@ def check_timeline(ws: Path, relpath: str) -> CheckResult:
     return OK
 
 
+def check_qa_report(ws: Path, relpath: str) -> CheckResult:
+    """qa/qa-report.json: the Phase 10 QA result, written once fix rounds have
+    concluded. Contains exactly `findings` ([{scene_id, check, issue, frame}])
+    and `verdict`; verdict must be pass or handed_off (fail means fix rounds
+    are still in progress or were exhausted without a user hand-off)."""
+    result, data = read_json_product(ws, relpath)
+    if not result.ok:
+        return result
+    if not isinstance(data, dict):
+        return CheckResult(STATUS_CORRUPT, 'JSON root is not an object')
+    if set(data.keys()) != {'findings', 'verdict'}:
+        return CheckResult(STATUS_CORRUPT, 'qa-report must contain exactly findings and verdict')
+    if not isinstance(data['findings'], list):
+        return CheckResult(STATUS_CORRUPT, 'findings is not a list')
+    for index, finding in enumerate(data['findings']):
+        if not isinstance(finding, dict):
+            return CheckResult(STATUS_CORRUPT, f'finding {index} is not an object')
+        for field in ('scene_id', 'check', 'issue'):
+            if field not in finding:
+                return CheckResult(STATUS_CORRUPT, f'finding {index} missing {field}')
+    if data['verdict'] not in ('pass', 'handed_off'):
+        return CheckResult(
+            STATUS_CORRUPT,
+            f'verdict must be pass or handed_off once fix rounds conclude, got {data["verdict"]!r}',
+        )
+    return OK
+
+
 # --- phase definitions ---------------------------------------------------------
 
 # Each product maps its workspace-relative path to a checker.
@@ -380,7 +415,10 @@ PHASES: list[dict[str, Any]] = [
         'id': '10-check-mix',
         'title': '检查与混音',
         'doc': 'references/phases/10-check-mix.md',
-        'products': {'composition/renders/final_with_bgm.mp4': check_file_product},
+        'products': {
+            'composition/renders/final_with_bgm.mp4': check_file_product,
+            'qa/qa-report.json': check_qa_report,
+        },
     },
 ]
 

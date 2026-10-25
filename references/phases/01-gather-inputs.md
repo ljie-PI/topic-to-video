@@ -20,7 +20,7 @@
 | `layout` | 所选 layout：`presenter` / `stage` / `portrait` / `portrait-3x4`，由模板或朝向决定，区域定义在 `modules/layouts/` |
 | `coding_agent` | 委派目标，默认 `claude-code` |
 | `fetch_materials` | 是否联网抓取视觉素材（布尔） |
-| `qa_level` | `quick` / `standard`（默认）/ `strict` |
+| `qa_level` | 渲染后 QA 档位（缺省视为 `standard`）：`quick` = 渲染前检查 + 渲染后确定性检查，contact sheet 照常生成给用户看但不作 vision；`standard` = 全部检查（quick + 主 agent 逐张过 contact sheet，每张只看渲染完整 / 画面与旁白相符 / 符合 design / 明显空洞或错位 4 项）；`strict` = standard + 每个 scene 加一张入场帧、每个切点加前 / 中 / 后三帧。三档的完整流程见 Phase 10 |
 
 ## 完成判据
 
@@ -53,6 +53,6 @@
    - 来源是以 `.pdf` 结尾的 URL（例如 arXiv） → 置 `input_mode = "paper"`，并将该 URL 保留用于 `parse-pdf.py --url`
    - 否则 → `input_mode = "standard"`（默认；后续所有 "paper mode" 段落都跳过）
 
-**如果已经存在一个姊妹项目**（例如用户说 "用和 `claude-code-video/` 一样的风格"），从该项目复制 `composition/DESIGN.md` + `fonts/` 过来，并在 `composition-handoff.md` 里注明 "reuse this DESIGN.md"；HyperFrames sub-agent 会决定该如何复用这个设计。
+**如果已经存在一个姊妹项目**（例如用户说 "用和 `claude-code-video/` 一样的风格"），把该项目的 `composition-instructions.md`（旧的 `style-prompt.md` 视为其中一部分）复制进本项目工作区，并在对话中向用户确认要选同一个 design / layout；外观 token 只从所选 design 的文档取，不再复制任何 DESIGN.md。
 
 全部确认后，把结果落盘为 `inputs.json`，再运行 `scripts/pipeline-status.py` 进入下一个 phase。续跑 / 回退永远以状态脚本的输出为准，不要自己扫描工作区猜进度。

@@ -145,6 +145,7 @@ def complete_through_composition(ws: Path, **inputs_overrides) -> None:
 def complete_all(ws: Path, **inputs_overrides) -> None:
     complete_through_composition(ws, **inputs_overrides)
     write_blob(ws / 'composition' / 'renders' / 'final_with_bgm.mp4')
+    write_json(ws / 'qa' / 'qa-report.json', {'findings': [], 'verdict': 'pass'})
 
 
 # --- usage / workspace errors -------------------------------------------------
@@ -458,6 +459,71 @@ def test_inputs_json_missing_required_field_falls_back(tmp_path: Path):
     result = parse_result(proc)
     assert result['next_phase']['id'] == '1-gather-inputs'
     assert 'inputs.json' in result['corrupt_products']
+
+
+def test_invalid_qa_level_is_corrupt_inputs(tmp_path: Path):
+    complete_through_research(tmp_path, qa_level='exhaustive')
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '1-gather-inputs'
+    assert 'inputs.json' in result['corrupt_products']
+
+
+# --- phase 10 products: final_with_bgm.mp4 + qa/qa-report.json ------------------
+
+
+def test_missing_qa_report_falls_back_to_phase_10(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    write_blob(tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4')
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '10-check-mix'
+    assert 'qa/qa-report.json' in result['missing_products']
+
+
+def test_fail_verdict_qa_report_falls_back_to_phase_10(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    write_blob(tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4')
+    write_json(
+        tmp_path / 'qa' / 'qa-report.json',
+        {
+            'findings': [{'scene_id': 's1', 'check': 'black_screen', 'issue': 'black', 'frame': None}],
+            'verdict': 'fail',
+        },
+    )
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '10-check-mix'
+    assert 'qa/qa-report.json' in result['corrupt_products']
+
+
+def test_handed_off_qa_report_completes_phase_10(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    write_blob(tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4')
+    write_json(
+        tmp_path / 'qa' / 'qa-report.json',
+        {
+            'findings': [{'scene_id': 's1', 'check': 'freeze', 'issue': 'frozen', 'frame': 'sheet_001'}],
+            'verdict': 'handed_off',
+        },
+    )
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert '10-check-mix' in result['completed_phases']
+    assert result['next_phase'] is None
+
+
+def test_qa_report_with_extra_keys_is_corrupt(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    write_blob(tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4')
+    write_json(
+        tmp_path / 'qa' / 'qa-report.json',
+        {'findings': [], 'verdict': 'pass', 'qa_level': 'standard'},
+    )
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '10-check-mix'
+    assert 'qa/qa-report.json' in result['corrupt_products']
 
 
 def test_corrupt_inputs_json_falls_back_to_phase_1(tmp_path: Path):
