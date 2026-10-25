@@ -4,11 +4,13 @@
 # Usage: bash fonts-download.sh [target_dir] [--theme <theme_dir|theme_name> | style] [--dry-run]
 #   target_dir defaults to ./fonts
 #   --theme reads a theme's fonts.json manifest (e.g. modules/designs/dawn or dawn)
-#   style (legacy) values: default, dawn, moon, github, producthunt, all
+#   style (legacy) values: any theme name under modules/designs, or all
 #
-# Theme manifests live in modules/designs/<theme>/fonts.json; a manifest lists
-# the Google Fonts css2 families, the local CSS filename and the rename flag.
-# The legacy named styles are aliases for the matching theme manifests.
+# Theme manifests live in modules/designs/<theme>/fonts.json and are the only
+# source of truth for the theme roster: adding a theme = dropping a new
+# manifest dir. A manifest lists the Google Fonts css2 families, the local
+# CSS filename and the rename flag. The legacy named styles are aliases for
+# the matching theme dirs.
 set -Eeuo pipefail
 
 log() {
@@ -65,12 +67,23 @@ trap on_error ERR
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODULES_DESIGNS="$SCRIPT_DIR/../modules/designs"
-LEGACY_STYLES="default dawn moon github producthunt"
 
-TARGET=""
+if [[ ! -d "$MODULES_DESIGNS" ]]; then
+  runtime_error "theme dir $MODULES_DESIGNS does not exist"
+fi
+
+# All theme manifests (the roster source of truth).
+theme_manifests() {
+  local manifest
+  for manifest in "$MODULES_DESIGNS"/*/fonts.json; do
+    [[ -f "$manifest" ]] && echo "$manifest"
+  done
+}
+
 THEME=""
 STYLE=""
 DRY_RUN=""
+POSITIONALS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -83,22 +96,20 @@ while [[ $# -gt 0 ]]; do
       THEME="$2"
       shift 2
       ;;
-    default|dawn|moon|github|producthunt|all)
-      STYLE="$1"
-      shift
-      ;;
     *)
-      if [[ -z "$TARGET" ]]; then
-        TARGET="$1"
-      else
-        bad_args "Usage: bash fonts-download.sh [target_dir] [--theme <theme_dir|theme_name> | style] [--dry-run]"
-      fi
+      POSITIONALS+=("$1")
       shift
       ;;
   esac
 done
 
-TARGET="${TARGET:-fonts}"
+if [[ ${#POSITIONALS[@]} -gt 2 ]]; then
+  bad_args "Usage: bash fonts-download.sh [target_dir] [--theme <theme_dir|theme_name> | style] [--dry-run]"
+fi
+TARGET="${POSITIONALS[0]:-fonts}"
+if [[ ${#POSITIONALS[@]} -eq 2 ]]; then
+  STYLE="${POSITIONALS[1]}"
+fi
 
 if [[ -n "$THEME" && -n "$STYLE" ]]; then
   bad_args "pass either --theme or a named style, not both"
@@ -119,77 +130,55 @@ resolve_manifest() {
   fi
   if [[ -d "$spec" ]]; then
     dir="$spec"
-  elif [[ -d "$MODULES_DESIGNS/$spec" ]]; then
+  elif [[ -f "$MODULES_DESIGNS/$spec/fonts.json" ]]; then
     dir="$MODULES_DESIGNS/$spec"
   else
-    runtime_error "unknown theme '$spec' (no fonts.json; not a dir under $MODULES_DESIGNS)"
-  fi
-  if [[ ! -f "$dir/fonts.json" ]]; then
-    runtime_error "theme dir '$dir' has no fonts.json"
+    runtime_error "unknown theme '$spec' (no fonts.json under $MODULES_DESIGNS)"
   fi
   echo "$dir/fonts.json"
 }
 
-# Read a manifest and download its families. Manifest fields:
-#   css_filename   local CSS file written into the target dir
-#   rename         true -> short family aliases (NotoSansSC, ...); false -> keep
-#   css2_families  list of Google Fonts css2 family specs
+# Download one theme manifest: validate it, build the css2 URL, fetch the
+# WOFF2 subsets and write the local CSS in a single pass.
 download_manifest() {
   local manifest="$1"
   python3 - "$manifest" "$TARGET" "$DRY_RUN" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-manifest_path = Path(sys.argv[1])
-manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-css_url = "https://fonts.googleapis.com/css2?family=" + "&family=".join(
-    manifest["css2_families"]
-) + "&display=swap"
-print(manifest["css_filename"])
-print(css_url)
-print("rename" if manifest.get("rename") else "keep")
-PY
-}
-
-download_theme() {
-  local manifest="$1"
-  local style_name
-  style_name="$(basename "$(dirname "$manifest")")"
-  local fields
-  fields="$(download_manifest "$manifest")"
-  local css_file css_url rename_families
-  css_file="$(sed -n '1p' <<<"$fields")"
-  css_url="$(sed -n '2p' <<<"$fields")"
-  rename_families="$(sed -n '3p' <<<"$fields")"
-  download_google_fonts "$style_name" "$css_url" "$rename_families" "$css_file"
-}
-
-download_google_fonts() {
-  local style_name="$1"
-  local css_url="$2"
-  local rename_families="${3:-rename}"
-  local css_file="$TARGET/${4:-rose-pine-${style_name}-fonts.css}"
-
-  if [[ "$DRY_RUN" == "--dry-run" ]]; then
-    log "dry-run ${style_name} css: $css_url"
-    log "dry-run ${style_name} css output: $css_file"
-    return
-  fi
-
-  python3 - "$style_name" "$css_url" "$css_file" "$rename_families" <<'PY'
 import hashlib
+import json
 import re
 import sys
 import time
 import urllib.request
 from pathlib import Path
 
-style_name = sys.argv[1]
-css_url = sys.argv[2]
-css_file = Path(sys.argv[3])
-rename_families = sys.argv[4] == "rename"
-target_dir = css_file.parent
+manifest_path = Path(sys.argv[1])
+target_dir = Path(sys.argv[2])
+dry_run = sys.argv[3] == "--dry-run"
+
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+try:
+    families = manifest["css2_families"]
+    css_filename = manifest["css_filename"]
+    rename_families = bool(manifest.get("rename"))
+except KeyError as exc:
+    raise SystemExit(f"manifest {manifest_path} missing field: {exc}")
+if not isinstance(families, list) or not families:
+    raise SystemExit(f"manifest {manifest_path}: css2_families must be a non-empty list")
+
+style_name = manifest_path.parent.name
+css_url = "https://fonts.googleapis.com/css2?family=" + "&family=".join(families) + "&display=swap"
+css_file = target_dir / css_filename
+
+
+def log(message: str) -> None:
+    print(f"[fonts] {message}", file=sys.stderr)
+
+
+if dry_run:
+    log(f"dry-run {style_name} css: {css_url}")
+    log(f"dry-run {style_name} css output: {css_file}")
+    raise SystemExit(0)
+
 # A modern browser UA makes Google Fonts serve real WOFF2 (unicode-range
 # subsets, variable axes kept); a bare UA gets static TrueType per instance.
 headers = {
@@ -209,7 +198,7 @@ def fetch(url: str, attempts: int = 3) -> bytes:
         except OSError as exc:
             if attempt == attempts:
                 raise
-            print(f"[fonts] retry {attempt}/{attempts - 1} after {exc}", file=sys.stderr)
+            log(f"retry {attempt}/{attempts - 1} after {exc}")
             time.sleep(2 * attempt)
 
 
@@ -223,9 +212,9 @@ for index, url in enumerate(urls):
     filename = f"{style_name}-{index:02d}-{digest}.woff2"
     destination = target_dir / filename
     if destination.exists():
-        print(f"[fonts] {filename} (cached)", file=sys.stderr)
+        log(f"{filename} (cached)")
     else:
-        print(f"[fonts] downloading {filename}", file=sys.stderr)
+        log(f"downloading {filename}")
         destination.write_bytes(fetch(url))
     css = css.replace(url, filename)
 
@@ -237,22 +226,26 @@ if rename_families:
     css = css.replace("'Zhi Mang Xing'", "'ZhiMangXing'")
     css = css.replace("'Patrick Hand'", "'PatrickHand'")
 css_file.write_text(css, encoding="utf-8")
-print(f"[fonts] wrote {css_file}", file=sys.stderr)
+log(f"wrote {css_file}")
 PY
 }
 
 if [[ -n "$THEME" ]]; then
-  manifest="$(resolve_manifest "$THEME")"
-  download_theme "$manifest"
+  download_manifest "$(resolve_manifest "$THEME")"
 else
   case "$STYLE" in
     all)
-      for name in $LEGACY_STYLES; do
-        download_theme "$MODULES_DESIGNS/$name/fonts.json"
-      done
+      while IFS= read -r manifest; do
+        download_manifest "$manifest"
+      done < <(theme_manifests)
       ;;
     *)
-      download_theme "$MODULES_DESIGNS/$STYLE/fonts.json"
+      manifest="$MODULES_DESIGNS/$STYLE/fonts.json"
+      if [[ ! -f "$manifest" ]]; then
+        known="$(theme_manifests | while IFS= read -r m; do basename "$(dirname "$m")"; done | tr '\n' ' ')"
+        bad_args "Unknown style '$STYLE'. Expected one of: $known all"
+      fi
+      download_manifest "$manifest"
       ;;
   esac
 fi

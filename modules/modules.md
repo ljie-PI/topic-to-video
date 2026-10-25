@@ -11,6 +11,8 @@
 
 本文档是模块库的入口。下文所有路径都相对 `modules/` 目录。每个模块的文档、HTML 和图片放在同一个目录里；HTML 和图片按各模块文档复制进视频工程。
 
+路径约定：正文（散文、表格、行内代码）里的路径引用一律相对 `modules/` 书写；可以直接照抄运行的 shell 命令一律从 skill 根目录（仓库根）写相对路径，例如 `bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/github`。
+
 ## 目录
 
 ```
@@ -87,7 +89,7 @@ examples/
 6. **数据**：
    - 写 `data/video-data.js`（`window.VIDEO = {…}`），在 `index.html` 的 `<head>` 里、GSAP 之后引入；
    - 数据最好用脚本从字幕和配音生成，参考示例里的 `tools/build-data.mjs`；
-   - 嘴型用 `node components/jay/make-envelope.mjs <配音>` 生成。
+   - 嘴型用 `node modules/components/jay/make-envelope.mjs <配音>` 生成。
 7. **检查**：
    - 跑 `npx hyperframes check`，修掉所有错误；
    - 用 `npx hyperframes preview` 交给用户看，确认后再 `render`。

@@ -6,7 +6,7 @@
 
 画布有两种变体：**1080×1920（9:16）** 和 **1080×1440（3:4）**。本文档同时写两个变体的区域表；区域定义是一份画布一个 JSON（机器可读格式只装得下一张画布）：`portrait.json` 是 1080×1920，`portrait-3x4.json` 是 1080×1440。**JSON 里的数值必须和本文档的区域表一致**，改任何一个都要同步另一个。
 
-竖屏字幕允许两行，字号取所选主题字幕规格（默认 42px），分段宽度取 `caption.width_px`——`align-narration.py --layout modules/layouts/portrait.json` 直接读这份规格。
+竖屏字幕允许两行。字幕规格（文字区宽度、字号、最大行数）由所选 layout 的区域定义决定，不由主题决定；主题只供字体和颜色。分段宽度取 `caption.width_px`，默认 42px——`python3 scripts/align-narration.py --layout modules/layouts/portrait.json` 直接读这份规格。
 
 ## 画布 1080×1920（9:16，30 fps，左右边距 70px）
 

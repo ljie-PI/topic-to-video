@@ -49,7 +49,7 @@ Prompt 示例：
 - references/layout-routing.md
 - references/animation-routing.md
 - references/composition-stage-protocol.md
-- handoff 指定的 references/design-<theme>.md（现为 modules/designs/<theme>/<theme>.md，如有）
+- handoff 指定的 modules/designs/<theme>/<theme>.md（如有）
 
 如果必需文件缺失，停止并反馈主 agent。
 
