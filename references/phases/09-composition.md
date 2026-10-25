@@ -14,7 +14,7 @@ Phase 7 的 `voice_clone/narration.mp3` + Phase 8 的 `transcribe/subtitle-units
 
 ## 下一步
 
-Phase 10（检查与混音）：在成片上混入 BGM 得到最终交付文件。渲染后的 QA 流程由后续批次（#77）重写，本 phase 到 final.mp4 为止。
+Phase 10（检查与混音）：渲染后 QA（`check-render.py` 确定性检查 + `make-contact-sheet.py` 拼图 + 按 `qa_level` 三档的 vision 检查，修复轮最多 2 轮）通过后混入 BGM，得到最终交付文件。
 
 ---
 
