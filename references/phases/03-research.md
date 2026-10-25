@@ -34,7 +34,7 @@ Phase 4（素材抓取，若 `fetch_materials = true`）或 Phase 6（脚本与�
 
    ```bash
    scripts/gemini-deep-research.py \
-     --prompt "Comprehensive overview of [topic]: history, key developments, notable figures, technical details, latest news" \
+     --prompt "关于 [topic] 的全面综述：历史、关键进展、重要人物、技术细节、最新动态" \
      --output-dir {work_dir}/{topic_name}/
    ```
    - 脚本会**新开一个浏览器标签页**执行，不会导航走你已打开的标签页。
