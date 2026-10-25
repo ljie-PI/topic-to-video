@@ -133,21 +133,5 @@
 - ❌ 不要为视觉多样性在浅色画面中插入深色 section；深色仅用于真实代码、终端、媒体局部或 overlay。
 - ❌ 不要在素材关键区域上压 caption、tag、badge、callout；说明信息放在素材外部。
 
----
 
-> ## 「待迁 patterns」：按 visual_role 覆盖颜色
->
-> 以下段落原来属于 style hint 的「`visual_role` 色彩覆盖」，等 patterns 文档建好后会迁到对应 pattern 的「用色」小节，届时此处删除。
->
-> | `visual_role` | 配色方式 |
-> |---|---|
-> | `title` / `product_card` / `section_divider` | `ink` 标题；可用一个 `focus` 关键词、短 eyebrow 或身份标记。 |
-> | `leaderboard` / `big_number` / `data_block` / `metric_strip` | 主数字 `ink` / `focus`；确认或风险数值才用 success / warning / danger；普通 label 用 `ink2` / `muted`。 |
-> | `data_table` / `chart` | focal series 用 `focus`；辅助 series 用暖中性色；语义 series 必须表达相应数据语义。 |
-> | `timeline` / `process_flow` / `state_machine` | 默认节点与连线用 `border` / `ink2`；当前节点用 `focus` / `focus-tint`；失败 / 等待用真实语义 token。 |
-> | `architecture_diagram` / `network_graph` | 中性模块用 `surface` / `border`；关键路径用 `focus`；状态节点才用语义色。 |
-> | `comparison_matrix` / `pros_cons` | 中性维度用暖灰；优劣或风险使用 success / danger 等真实语义，不给整列铺满 accent。 |
-> | `list` / `feature_grid` | item label 用 `ink` / `ink2`；bullet / index 只在有语义时用 `focus` 或 status color。 |
-> | `callout` / `definition` / `qa` / `quote` | `card` 或 `focus-tint` 仅在必要时做短信息区；正文保持 `ink` / `ink2`。 |
-> | `code_block` / `terminal_block` / `file_tree` | 局部深色 `#211F26`；命令、路径、版本号用 `IBMPlexMono`；错误用 `danger`。 |
-> | `annotated_media` | 标注放在素材外部，pin / marker 可用 `focus` 或真实状态色。 |
+按信息形态（`visual_role`）的用色覆盖已迁到 `patterns/` 各文档的「用色」小节。

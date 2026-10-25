@@ -128,22 +128,4 @@
 - ❌ 不要用厚 drop shadow；Hero 字号不要超过 160px；Logotype 永远是 "Product Hunt" 两个首字母大写的单词。
 - ❌ 不要为了「丰富」而给无语义差异的同类元素随机换 accent 色。
 
----
-
-> ## 「待迁 patterns」：按 visual_role 覆盖颜色
->
-> 以下段落原来属于 style hint 的「`visual_role` 色彩覆盖」，等 patterns 文档建好后会迁到对应 pattern 的「用色」小节，届时此处删除。
->
-> | `visual_role` | 配色方式 |
-> |---|---|
-> | `title` / `product_card` / `section_divider` | 产品名 Primary；launch / rank / CTA 文字用 `#C8392F` 或 Primary，主橙只做 marker / 外形；tagline 用 Secondary。 |
-> | `leaderboard` / `big_number` / `data_block` / `metric_strip` | upvote / rank 的外形用主橙，文字用 Primary / `#C8392F`；maker / verified metric 文字用 `#046B50`；注册 / traffic info 用蓝色。 |
-> | `data_table` / `chart` | 表格正文 Primary / Secondary；highlight cell 用 callout tint；信息性橙色 series 用 `#C8392F`，主橙只作辅助 marker。 |
-> | `timeline` / `process_flow` / `state_machine` | launch step 可用 `#C8392F` 文本 / 线 + `#FF6154` 外形点缀；register / onboarding 用蓝；maker verified 用 `#046B50`。 |
-> | `architecture_diagram` / `network_graph` | product / CTA 节点用 `#C8392F` 文本或线，用户 / register 蓝，maker / partner 用 `#046B50`；正文 Primary。 |
-> | `comparison_matrix` / `pros_cons` | 推荐 / maker fit 用绿；注册 / info 用蓝；限制 / attention 用中性 chip + ⚠，不用橙 callout 或红。 |
-> | `list` / `feature_grid` | feature icon 若承载信息用 `#C8392F` / 蓝 / `#046B50` 按语义；item label Primary，detail Secondary。 |
-> | `callout` / `definition` / `qa` | 主推、注册 / info、Maker / verified、中性四套 callout 三件套；QA 的 Q 可用蓝，A 用 Primary。 |
-> | `code_block` / `terminal_block` / `file_tree` | panel 用 `#F8F9FA`；命令 / path 用 mono；CTA / success / info 状态分别用橙 / 绿 / 蓝 marker。 |
-> | `annotated_media` | 标注在素材外置信息区；pin 用 `#C8392F` 或蓝，主橙只作非唯一外形点缀。 |
-> | `quote` | quote 正文 Primary；source / timestamp Tertiary；用户评价亮点可用主推 callout。 |
+按信息形态（`visual_role`）的用色覆盖已迁到 `patterns/` 各文档的「用色」小节。

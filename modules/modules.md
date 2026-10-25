@@ -34,6 +34,11 @@ components/
   nav-bar/nav-bar.md, nav-bar.html        顶部界面条
   caption-bar/caption-bar.md, caption-bar.html   底部字幕条
   transitions/tile-wipe/tile-wipe.md, tile-wipe.html   方格转场
+patterns/
+  patterns.md                             patterns 总览：两类 pattern 的索引和使用方式
+  media/                                  媒体呈现类：media-first、video-first、viewport-reveal、band、detail-callout、comparison、continuation
+  info/                                   信息形态类：leaderboard、product-card、big-number、data-table、chart、process-flow、architecture、list-grid、comparison-matrix、code-terminal、callout-quote
+motion.md                                 运动指南：动画能力发现、选择顺序、runtime 选择、全局运动原则
 templates/
   templates.md                            模板总览
   github/github.md                        GitHub 热榜视频：组装方法、专属配色和元素、人物演法
@@ -55,6 +60,7 @@ examples/
 | 选外观 / 新建主题 | `designs/designs.md`，再看具体主题 |
 | 安排版面、确定区域坐标 | `layouts/<布局>.md` + 同名的 `.json`（机器可读区域定义，字幕脚本读它的 `caption` 段） |
 | 挂某个组件、写它的数据 | `components/<组件>/<组件>.md` |
+| 设计某个 scene 的画面（选形态、摆位置、配动效） | `patterns/<类>/<pattern>.md`，动效问题再看 `motion.md` |
 | 让人物做动作、配嘴型 | `components/jay/jay.md`；每个动作的样子见 `examples/jay-actions/` |
 | 看一个完整的成品怎么写 | `examples/github-trending/`（`index.html`、`data/video-data.js`、`tools/build-data.mjs`） |
 
@@ -65,6 +71,7 @@ examples/
 | 设计主题 | `designs/<主题>/` | **通用**：配色、字体、字号、背景、形状、动效。只管外观 |
 | 布局 | `layouts/` | **通用**：区域的位置、尺寸、层级。只管版面 |
 | 组件 | `components/<组件>/` | **通用**：不带具体内容；配色和字体只读主题变量；位置默认按布局 |
+| patterns | `patterns/<类>/` | **通用建议**：媒体呈现和信息形态怎么摆、怎么动，只作建议不作规则 |
 | 模板 | `templates/<类型>/` | **专用于一类视频**：选布局，组合组件并定好参数，加入专属配色和元素，提供可填内容的场景 |
 
 ## 组装一支视频
