@@ -42,10 +42,10 @@ python3 scripts/align-narration.py \
   --script {work_dir}/{topic_name}/script.txt \
   --units-output {work_dir}/{topic_name}/transcribe/subtitle-units.json \
   --timeline-output {work_dir}/{topic_name}/transcribe/timeline.json \
-  --width <字幕区宽度px> --font-size <字号px> --max-lines <最大行数>
+  --layout modules/layouts/<inputs.json 的 layout 字段>.json
 ```
 
-字幕宽度参数暂时由参数传入（后续改由所选 layout 的字幕规格提供；竖屏允许 2 行）。如果存在带 `cues` 的 `scene-plan.json`，追加 `--scene-plan {work_dir}/{topic_name}/scene-plan.json`，cue 的秒数会写进 `timeline.json`；没有场景规划时 `timeline.json` 只含段落起止。
+字幕宽度直接取自所选 layout 的区域定义：`--layout` 读取 JSON 里的 `caption` 段（`width_px` / `font_size_px` / `max_lines`，如 `presenter` 的 1166px / 36px / 1 行、`portrait` 的 940px / 42px / 2 行），每行宽度上限按现有公式 `int(width_px / font_size_px)` 折算成 CJK 单位。layout 名从 `inputs.json` 的 `layout` 字段取，映射到 `modules/layouts/<layout>.json`（本 phase 由主 agent 显式传入；不做自动查找，design/layout 的自动接线归 composition 阶段）。显式的 `--width` / `--font-size` / `--max-lines` 仍然可用（与 `--layout` 同传时 layout 优先；两者都不传是参数错误）。如果存在带 `cues` 的 `scene-plan.json`，追加 `--scene-plan {work_dir}/{topic_name}/scene-plan.json`，cue 的秒数会写进 `timeline.json`；没有场景规划时 `timeline.json` 只含段落起止。
 
 对齐规则：字幕文本以显示稿 `script.txt` 为准，ASR 只提供时间。脚本先把 ASR token 和朗读稿归一化（标点 / 空格 / 大小写不敏感，中文数字与阿拉伯数字等价）再做字符级对齐，然后通过偏移表映射回显示稿，品牌名和数字按显示形式出现。ASR 听到而朗读稿没有的内容保留 ASR 文本，并在该字幕单元上标记 `fallback: true`；TTS 漏读的内容没有音频可依，会被丢弃并在 stderr / summary 里警告。分段先按句末标点切，超宽时在逗号、分号、顿号、冒号、破折号处断开，不在英文单词或数字内部断开，过短尾段均衡重切，不足 0.6 秒的单元并入相邻单元。详见 `scripts/align-narration.py --help`。
 

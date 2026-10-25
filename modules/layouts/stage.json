@@ -1,0 +1,41 @@
+{
+  "layout": "stage",
+  "canvas": { "width": 1920, "height": 1080 },
+  "regions": [
+    {
+      "id": "ground",
+      "kind": "reserved",
+      "rect": { "x": 0, "y": 0, "width": 1920, "height": 1080 },
+      "component": "ground（视频 index.html 的 #ground，var(--ground)）"
+    },
+    {
+      "id": "nav-bar",
+      "kind": "reserved",
+      "rect": { "x": 0, "y": 0, "width": 1920, "height": 72 },
+      "component": "nav-bar"
+    },
+    {
+      "id": "header",
+      "kind": "content",
+      "rect": { "x": 96, "y": 100, "width": 1728, "height": 72 }
+    },
+    {
+      "id": "main",
+      "kind": "content",
+      "rect": { "x": 96, "y": 196, "width": 1728, "height": 764 }
+    },
+    {
+      "id": "caption-bar",
+      "kind": "reserved",
+      "rect": { "x": 0, "y": 1008, "width": 1920, "height": 72 },
+      "component": "caption-bar"
+    },
+    {
+      "id": "caption-text",
+      "kind": "reserved",
+      "rect": { "x": 96, "y": 1008, "width": 1728, "height": 72 },
+      "component": "caption-bar"
+    }
+  ],
+  "caption": { "width_px": 1728, "font_size_px": 36, "max_lines": 1 }
+}

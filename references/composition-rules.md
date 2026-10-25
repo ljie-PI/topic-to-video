@@ -10,7 +10,7 @@ Phase 8 必须读取 `hyperframes`、`hyperframes-animation` 与 `hyperframes-cl
 ## Scope and Required References
 
 - 本文件是 Phase 8 hard constraints 的权威来源；HyperFrames sub-agent 必须读取工作区本地副本 `references/composition-rules.md`。
-- sub-agent 必须完整读取 `composition-handoff.md`、`references/composition-rules.md`、`references/composition-stage-protocol.md`，并读取 `references/layout-routing.md` 的 required global sections + 当前 scene 命中 sections、`references/animation-routing.md` 中当前 scene 命中的 routing sections，以及 handoff 指定的 `references/design-<theme>.md`（如有）。
+- sub-agent 必须完整读取 `composition-handoff.md`、`references/composition-rules.md`、`references/composition-stage-protocol.md`，并读取 `references/layout-routing.md` 的 required global sections + 当前 scene 命中 sections、`references/animation-routing.md` 中当前 scene 命中的 routing sections，以及 handoff 指定的 `modules/designs/<theme>/<theme>.md`（如有）。
 - 如果 `composition-handoff.md`、`references/composition-rules.md`、`references/layout-routing.md`、`references/animation-routing.md`、`references/composition-stage-protocol.md` 或指定 design file 不存在 / 不可读，必须停止并反馈主 agent，不得凭默认审美继续制作。
 - `composition-handoff.md` 可以补充 user-derived customized rules，但不得修改或覆盖本文件。
 - 若 customized rule 与本文件冲突，sub-agent 必须以本文件为底线，并在 `composition/DESIGN.md` 记录冲突处理。

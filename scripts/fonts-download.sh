@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# Download deterministic local WOFF2 fonts for topic-to-video styles.
+# Download deterministic local WOFF2 fonts for topic-to-video themes.
 #
-# Usage: bash fonts-download.sh [target_dir] [style] [--dry-run]
+# Usage: bash fonts-download.sh [target_dir] [--theme <theme_dir|theme_name> | style] [--dry-run]
 #   target_dir defaults to ./fonts
-#   style defaults to default
-#   style values: default, dawn, moon, github, all
+#   --theme reads a theme's fonts.json manifest (e.g. modules/designs/dawn or dawn)
+#   style (legacy) values: any theme name under modules/designs, or all
 #
-# Downloads Google Fonts WOFF2 subsets and writes a local CSS file for each style.
+# Theme manifests live in modules/designs/<theme>/fonts.json and are the only
+# source of truth for the theme roster: adding a theme = dropping a new
+# manifest dir. A manifest lists the Google Fonts css2 families, the local
+# CSS filename and the rename flag. The legacy named styles are aliases for
+# the matching theme dirs.
 set -Eeuo pipefail
 
 log() {
@@ -61,47 +65,120 @@ on_error() {
 }
 trap on_error ERR
 
-TARGET="${1:-fonts}"
-STYLE="${2:-default}"
-DRY_RUN="${3:-}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODULES_DESIGNS="$SCRIPT_DIR/../modules/designs"
 
-if [[ "$#" -gt 3 ]]; then
-  bad_args "Usage: bash fonts-download.sh [target_dir] [style] [--dry-run]"
+if [[ ! -d "$MODULES_DESIGNS" ]]; then
+  runtime_error "theme dir $MODULES_DESIGNS does not exist"
 fi
 
-if [[ "$DRY_RUN" != "" && "$DRY_RUN" != "--dry-run" ]]; then
-  bad_args "Usage: bash fonts-download.sh [target_dir] [style] [--dry-run]"
+# All theme manifests (the roster source of truth).
+theme_manifests() {
+  local manifest
+  for manifest in "$MODULES_DESIGNS"/*/fonts.json; do
+    [[ -f "$manifest" ]] && echo "$manifest"
+  done
+}
+
+THEME=""
+STYLE=""
+DRY_RUN=""
+POSITIONALS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run)
+      DRY_RUN="--dry-run"
+      shift
+      ;;
+    --theme)
+      [[ $# -ge 2 ]] || bad_args "--theme requires a theme dir or theme name"
+      THEME="$2"
+      shift 2
+      ;;
+    *)
+      POSITIONALS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ ${#POSITIONALS[@]} -gt 2 ]]; then
+  bad_args "Usage: bash fonts-download.sh [target_dir] [--theme <theme_dir|theme_name> | style] [--dry-run]"
+fi
+TARGET="${POSITIONALS[0]:-fonts}"
+if [[ ${#POSITIONALS[@]} -eq 2 ]]; then
+  STYLE="${POSITIONALS[1]}"
+fi
+
+if [[ -n "$THEME" && -n "$STYLE" ]]; then
+  bad_args "pass either --theme or a named style, not both"
+fi
+if [[ -z "$THEME" && -z "$STYLE" ]]; then
+  STYLE="default"
 fi
 
 mkdir -p "$TARGET"
 
-download_google_fonts() {
-  local style_name="$1"
-  local css_url="$2"
-  # Short family aliases (NotoSansSC, ...) are what the design-*.md styles
-  # reference; modules/designs themes use the Google family names as-is.
-  local rename_families="${3:-rename}"
-  local css_file="$TARGET/rose-pine-${style_name}-fonts.css"
-
-  if [[ "$DRY_RUN" == "--dry-run" ]]; then
-    log "dry-run ${style_name} css: $css_url"
-    log "dry-run ${style_name} css output: $css_file"
+# Resolve a theme dir / theme name / fonts.json path to a manifest file.
+resolve_manifest() {
+  local spec="$1"
+  local dir=""
+  if [[ -f "$spec" ]]; then
+    echo "$spec"
     return
   fi
+  if [[ -d "$spec" ]]; then
+    dir="$spec"
+  elif [[ -f "$MODULES_DESIGNS/$spec/fonts.json" ]]; then
+    dir="$MODULES_DESIGNS/$spec"
+  else
+    runtime_error "unknown theme '$spec' (no fonts.json under $MODULES_DESIGNS)"
+  fi
+  echo "$dir/fonts.json"
+}
 
-  python3 - "$style_name" "$css_url" "$css_file" "$rename_families" <<'PY'
+# Download one theme manifest: validate it, build the css2 URL, fetch the
+# WOFF2 subsets and write the local CSS in a single pass.
+download_manifest() {
+  local manifest="$1"
+  python3 - "$manifest" "$TARGET" "$DRY_RUN" <<'PY'
 import hashlib
+import json
 import re
 import sys
 import time
 import urllib.request
 from pathlib import Path
 
-style_name = sys.argv[1]
-css_url = sys.argv[2]
-css_file = Path(sys.argv[3])
-rename_families = sys.argv[4] == "rename"
-target_dir = css_file.parent
+manifest_path = Path(sys.argv[1])
+target_dir = Path(sys.argv[2])
+dry_run = sys.argv[3] == "--dry-run"
+
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+try:
+    families = manifest["css2_families"]
+    css_filename = manifest["css_filename"]
+    rename_families = bool(manifest.get("rename"))
+except KeyError as exc:
+    raise SystemExit(f"manifest {manifest_path} missing field: {exc}")
+if not isinstance(families, list) or not families:
+    raise SystemExit(f"manifest {manifest_path}: css2_families must be a non-empty list")
+
+style_name = manifest_path.parent.name
+css_url = "https://fonts.googleapis.com/css2?family=" + "&family=".join(families) + "&display=swap"
+css_file = target_dir / css_filename
+
+
+def log(message: str) -> None:
+    print(f"[fonts] {message}", file=sys.stderr)
+
+
+if dry_run:
+    log(f"dry-run {style_name} css: {css_url}")
+    log(f"dry-run {style_name} css output: {css_file}")
+    raise SystemExit(0)
+
 # A modern browser UA makes Google Fonts serve real WOFF2 (unicode-range
 # subsets, variable axes kept); a bare UA gets static TrueType per instance.
 headers = {
@@ -121,7 +198,7 @@ def fetch(url: str, attempts: int = 3) -> bytes:
         except OSError as exc:
             if attempt == attempts:
                 raise
-            print(f"[fonts] retry {attempt}/{attempts - 1} after {exc}", file=sys.stderr)
+            log(f"retry {attempt}/{attempts - 1} after {exc}")
             time.sleep(2 * attempt)
 
 
@@ -135,9 +212,9 @@ for index, url in enumerate(urls):
     filename = f"{style_name}-{index:02d}-{digest}.woff2"
     destination = target_dir / filename
     if destination.exists():
-        print(f"[fonts] {filename} (cached)", file=sys.stderr)
+        log(f"{filename} (cached)")
     else:
-        print(f"[fonts] downloading {filename}", file=sys.stderr)
+        log(f"downloading {filename}")
         destination.write_bytes(fetch(url))
     css = css.replace(url, filename)
 
@@ -149,58 +226,29 @@ if rename_families:
     css = css.replace("'Zhi Mang Xing'", "'ZhiMangXing'")
     css = css.replace("'Patrick Hand'", "'PatrickHand'")
 css_file.write_text(css, encoding="utf-8")
-print(f"[fonts] wrote {css_file}", file=sys.stderr)
+log(f"wrote {css_file}")
 PY
 }
 
-download_default() {
-  download_google_fonts \
-    "default" \
-    "https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap"
-}
-
-download_dawn() {
-  download_google_fonts \
-    "dawn" \
-    "https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Long+Cang&family=Zhi+Mang+Xing&family=Caveat:wght@700&family=Patrick+Hand&display=swap"
-}
-
-download_moon() {
-  download_google_fonts \
-    "moon" \
-    "https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap"
-}
-
-download_github() {
-  download_google_fonts \
-    "github" \
-    "https://fonts.googleapis.com/css2?family=Noto+Sans:wdth,wght@62.5..100,100..900&family=Noto+Sans+SC:wght@100..900&family=Noto+Sans+Mono:wdth,wght@62.5..100,100..900&display=swap" \
-    "keep"
-}
-
-case "$STYLE" in
-  default)
-    download_default
-    ;;
-  dawn)
-    download_dawn
-    ;;
-  moon)
-    download_moon
-    ;;
-  github)
-    download_github
-    ;;
-  all)
-    download_default
-    download_dawn
-    download_moon
-    download_github
-    ;;
-  *)
-    bad_args "Unknown style '$STYLE'. Expected: default, dawn, moon, github, all"
-    ;;
-esac
+if [[ -n "$THEME" ]]; then
+  download_manifest "$(resolve_manifest "$THEME")"
+else
+  case "$STYLE" in
+    all)
+      while IFS= read -r manifest; do
+        download_manifest "$manifest"
+      done < <(theme_manifests)
+      ;;
+    *)
+      manifest="$MODULES_DESIGNS/$STYLE/fonts.json"
+      if [[ ! -f "$manifest" ]]; then
+        known="$(theme_manifests | while IFS= read -r m; do basename "$(dirname "$m")"; done | tr '\n' ' ')"
+        bad_args "Unknown style '$STYLE'. Expected one of: $known all"
+      fi
+      download_manifest "$manifest"
+      ;;
+  esac
+fi
 
 set --
 while IFS= read -r file; do

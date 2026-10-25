@@ -1,0 +1,56 @@
+{
+  "layout": "portrait-3x4",
+  "canvas": {
+    "width": 1080,
+    "height": 1440
+  },
+  "regions": [
+    {
+      "id": "ground",
+      "kind": "reserved",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 1440
+      },
+      "component": "ground（视频 index.html 的 #ground，var(--ground)）"
+    },
+    {
+      "id": "header",
+      "kind": "content",
+      "rect": {
+        "x": 70,
+        "y": 90,
+        "width": 940,
+        "height": 120
+      }
+    },
+    {
+      "id": "main",
+      "kind": "content",
+      "rect": {
+        "x": 70,
+        "y": 250,
+        "width": 940,
+        "height": 880
+      }
+    },
+    {
+      "id": "caption-text",
+      "kind": "reserved",
+      "rect": {
+        "x": 70,
+        "y": 1220,
+        "width": 940,
+        "height": 170
+      },
+      "component": "caption-bar（或无条字幕遮罩）"
+    }
+  ],
+  "caption": {
+    "width_px": 940,
+    "font_size_px": 40,
+    "max_lines": 2
+  }
+}

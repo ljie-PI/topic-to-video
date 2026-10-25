@@ -23,7 +23,12 @@ Inputs:
   --width / --font-size / --max-lines
                  subtitle area parameters: the per-line width cap in CJK
                  units is int(width / font_size); a unit may span up to
-                 --max-lines lines (portrait allows 2).
+                 --max-lines lines (portrait allows 2). Ignored when
+                 --layout is given.
+  --layout       path to a layout region definition JSON (layouts/*.json);
+                 the caption spec is read from its `caption` object
+                 ({width_px, font_size_px, max_lines}). Either --layout or
+                 the three explicit flags are required.
   --scene-plan   optional scene plan JSON; when scenes carry `cues`, each
                  cue's seconds are written to timeline.json.
 
@@ -170,16 +175,24 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help='Output path for timeline.json (default: <transcript dir>/timeline.json).',
     )
-    parser.add_argument('--width', type=int, default=1200, help='Subtitle area width in px (default 1200).')
-    parser.add_argument('--font-size', type=int, default=42, help='Subtitle font size in px (default 42).')
-    parser.add_argument('--max-lines', type=int, default=1, help='Maximum subtitle lines per unit (default 1).')
+    parser.add_argument('--width', type=int, default=None, help='Subtitle area width in px (default: none; see --layout).')
+    parser.add_argument('--font-size', type=int, default=None, help='Subtitle font size in px (default: none; see --layout).')
+    parser.add_argument('--max-lines', type=int, default=None, help='Maximum subtitle lines per unit (default: none; see --layout).')
+    parser.add_argument(
+        '--layout',
+        default=None,
+        help='Path to a layout region definition JSON (layouts/*.json); its caption spec overrides --width/--font-size/--max-lines.',
+    )
     parser.add_argument(
         '--scene-plan',
         default=None,
         help='Optional scene plan JSON with per-scene cues; enables cue seconds in timeline.json.',
     )
     args = parser.parse_args()
-    if args.width <= 0 or args.font_size <= 0 or args.max_lines < 1:
+    explicit = [args.width, args.font_size, args.max_lines]
+    if args.layout is None and any(value is None for value in explicit):
+        parser.error('caption spec required: pass --layout <path.json> or all of --width/--font-size/--max-lines')
+    if any(value is not None and value <= 0 for value in explicit[:2]) or (args.max_lines is not None and args.max_lines < 1):
         parser.error('--width and --font-size must be positive, --max-lines must be >= 1')
     return args
 
@@ -322,6 +335,35 @@ def is_cjk(char: str) -> bool:
 
 
 # --- inputs ----------------------------------------------------------------------
+
+
+def load_caption_spec(args: argparse.Namespace) -> tuple[int, int, int]:
+    """Resolve the subtitle width / font size / max lines.
+
+    --layout wins over the explicit flags; without --layout all three explicit
+    flags are required (enforced in parse_args). The layout file is a region
+    definition with a `caption` object: {width_px, font_size_px, max_lines}.
+    """
+    if args.layout is not None:
+        with open(args.layout, encoding='utf-8') as file:
+            layout = json.load(file)
+        if not isinstance(layout, dict) or isinstance(layout.get('caption'), dict) is False:
+            raise ValueError(f'layout file {args.layout} has no caption object')
+        if 'canvases' in layout:
+            raise ValueError('multi-canvas layout file; pass a single-canvas variant JSON')
+        caption = layout['caption']
+        try:
+            width = int(caption['width_px'])
+            font_size = int(caption['font_size_px'])
+            max_lines = int(caption['max_lines'])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f'layout caption spec must be width_px/font_size_px/max_lines integers: {exc}')
+        if width <= 0 or font_size <= 0 or max_lines < 1:
+            raise ValueError('layout caption width_px/font_size_px must be positive, max_lines >= 1')
+        log(f'caption spec from layout {args.layout}: width={width} font_size={font_size} max_lines={max_lines}')
+        return width, font_size, max_lines
+    assert args.width is not None and args.font_size is not None and args.max_lines is not None
+    return args.width, args.font_size, args.max_lines
 
 
 def load_offsets(path: str) -> tuple[dict[str, Any], Callable[[int], int]]:
@@ -825,7 +867,8 @@ def align(args: argparse.Namespace) -> dict[str, Any]:
     warnings: list[str] = []
     atoms = build_atoms(script_text, narration_text, to_script, words, spans, warnings)
 
-    cap = int(args.width / args.font_size) * args.max_lines
+    caption_width, caption_font_size, caption_max_lines = load_caption_spec(args)
+    cap = int(caption_width / caption_font_size) * caption_max_lines
     log(f'paragraphs={len(spans)} asr_words={len(words)} atoms={len(atoms)} cap={cap}')
 
     atoms_by_paragraph = group_atoms_by_paragraph(atoms)

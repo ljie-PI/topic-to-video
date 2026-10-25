@@ -91,8 +91,8 @@ pytest
 
 | 风格 | 参考文件 | 字体 | 适用场景 |
 |------|---------|------|---------|
-| **Frag Note Default**（默认） | `references/design-default.md` | NotoSansSC、IBMPlexMono | 暖白 + 克制薰衣草的安静编辑风 |
-| **Rosé Pine Dawn** | `references/design-dawn.md` | Caveat、PatrickHand、MaShanZheng、NotoSansSC | 温暖、手绘风的讲解视频 |
-| **Rosé Pine Moon** | `references/design-moon.md` | NotoSansSC、IBMPlexMono | 深色、严肃的编辑向内容 |
-| **GitHub** | `references/design-github.md` | NotoSansSC、IBMPlexMono | GitHub trending / repo launch / 开源项目介绍 |
-| **Product Hunt** | `references/design-producthunt.md` | NotoSansSC、IBMPlexMono | Product Hunt 周榜 / SaaS launch / 新产品发布 |
+| **Frag Note Default**（默认） | `modules/designs/default/default.md` | NotoSansSC、IBMPlexMono | 暖白 + 克制薰衣草的安静编辑风 |
+| **Rosé Pine Dawn** | `modules/designs/dawn/dawn.md` | Caveat、PatrickHand、MaShanZheng、NotoSansSC | 温暖、手绘风的讲解视频 |
+| **Rosé Pine Moon** | `modules/designs/moon/moon.md` | NotoSansSC、IBMPlexMono | 深色、严肃的编辑向内容 |
+| **GitHub** | `modules/designs/github/github.md` | NotoSansSC、IBMPlexMono | GitHub trending / repo launch / 开源项目介绍 |
+| **Product Hunt** | `modules/designs/producthunt/producthunt.md` | NotoSansSC、IBMPlexMono | Product Hunt 周榜 / SaaS launch / 新产品发布 |
