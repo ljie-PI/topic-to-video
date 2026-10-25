@@ -1,2 +1,2 @@
-# Dev-only dependencies. Runtime script deps are documented in README/SKILL.
 pytest>=8
+Pillow>=10
