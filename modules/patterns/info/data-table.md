@@ -32,12 +32,12 @@
 
 ## 用色
 
-- 通用：focal series / 高亮单元格用 `--c-focus`；辅助内容用暖中性色；语义内容必须表达真实数据语义（涨跌、风险用对应语义色）。
+- 通用：focal series / 高亮单元格用 `--c-focus`；辅助内容用暖中性色；语义内容表达真实数据语义（涨跌、风险用对应语义色）。
 - 各主题的具体覆盖写法已从主题文档迁到本 pattern：
 
 | 主题 | 表格用色 |
 | --- | --- |
-| default | focal series 用 `focus`；辅助 series 用暖中性色；语义 series 必须表达相应数据语义。 |
+| default | focal series 用 `focus`；辅助 series 用暖中性色；语义 series 表达相应数据语义。 |
 | dawn | 表格正文 Primary；表头 Secondary 大号；highlight cell 用 Pine / Love / Foam 线，Gold 只做非唯一辅助点；series 用 Foam / Pine / Iris。 |
 | moon | 表格正文 Secondary；highlight cell 用 Gold 描边；chart 主线 Foam，secondary series Iris / Rose，danger series Love。 |
 | github | 表格正文 Primary / Secondary；highlight cell 用 callout tint；series 用 Blue / Success / Attention / Danger / Done / Teal。 |

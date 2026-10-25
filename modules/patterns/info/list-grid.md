@@ -33,7 +33,7 @@
 
 ## 用色
 
-- 通用：item label 用 `--c-ink` / `--c-ink2`；bullet / index 只在有语义时用 `--c-focus` 或状态色。
+- 通用：item label 用 `--c-ink` / `--c-ink2`；bullet / index 只在有语义时用 `--c-focus` 或状态色。data_block / metric_strip 里的数值指标用色同 leaderboard 的数值行（各主题一行表见 `info/leaderboard.md`）。
 - 各主题的具体覆盖写法已从主题文档迁到本 pattern：
 
 | 主题 | 列表 / 指标用色 |

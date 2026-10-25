@@ -38,7 +38,7 @@
 
 | 主题 | 图表用色 |
 | --- | --- |
-| default | focal series 用 `focus`；辅助 series 用暖中性色；语义 series 必须表达相应数据语义。 |
+| default | focal series 用 `focus`；辅助 series 用暖中性色；语义 series 表达相应数据语义。 |
 | dawn | series 用 Foam / Pine / Iris；highlight 用 Pine / Love / Foam 线，Gold 只做非唯一辅助点。 |
 | moon | 主线 Foam，secondary series Iris / Rose，danger series Love；highlight cell 用 Gold 描边。 |
 | github | series 用 Blue / Success / Attention / Danger / Done / Teal；highlight cell 用 callout tint。 |

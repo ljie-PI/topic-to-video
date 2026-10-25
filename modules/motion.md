@@ -2,7 +2,7 @@
 
 这份指南回答 composition 时的运动问题：HyperFrames 有哪些动画能力、一个 scene 的动画按什么顺序选、runtime 怎么挑、全片保持什么节奏。它只提供建议和候选，不是规则；每个 scene 最终以旁白语义和素材实际情况为准。
 
-转场（scene 之间的交接）不在这份指南里，见组件文档 `components/transitions/tile-wipe/tile-wipe.md` 和 `components/transitions/` 下的其他转场。
+转场（scene 之间的交接）不在这份指南里，见组件文档 `components/transitions/tile-wipe/tile-wipe.md`（目前唯一的转场组件）。
 
 ## 能力发现流程
 

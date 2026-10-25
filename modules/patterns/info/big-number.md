@@ -32,15 +32,7 @@
 ## 用色
 
 - 通用：主数字用 `--c-ink` / `--c-focus`；确认或风险数值才用语义色；普通 label 用 `--c-ink2` / `--c-muted`。
-- 各主题的具体覆盖写法已从主题文档迁到本 pattern：
-
-| 主题 | 大数字用色 |
-| --- | --- |
-| default | 主数字 `ink` / `focus`；确认或风险数值才用 success / warning / danger；普通 label 用 `ink2` / `muted`。 |
-| dawn | 数字用 Primary 或 Pine；当前排名 / 重点数字可配 Gold 小点缀；变化趋势用 Foam / Love 线。 |
-| moon | 数字用 Gold / Foam；rank marker 用 Iris；风险数值用 Love；普通 label 用 Secondary。 |
-| github | 数字 Primary / mono；star / growth 用 Success；rank / link 用 Blue；warning metric 用 Attention callout。 |
-| producthunt | upvote / rank 的外形用主橙，文字用 Primary / `#C8392F`；maker / verified metric 文字用 `#046B50`；注册 / traffic info 用蓝色。 |
+大数字与榜单共享同一套数值用色（来源是主题文档里 leaderboard / big_number / data_block / metric_strip 的合并行）：见 `info/leaderboard.md` 的「用色」表，按主题取行。
 
 ## 已有实现
 
