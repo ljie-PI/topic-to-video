@@ -2,7 +2,7 @@
 
 ## 输入
 
-用户在对话中给出的主题、文章 URL、粘贴的文本或论文 PDF / URL；项目工作区里可选的 `style-prompt.md`（自由文本风格备注）。
+用户在对话中给出的主题、文章 URL、粘贴的文本或论文 PDF / URL；项目工作区里可选的项目指令文件：`narration-instructions.md`（旁白要求）、`composition-instructions.md`（画面要求）、旧的 `style-prompt.md`（视为 composition 指令的一部分）。
 
 ## 输出
 
@@ -37,7 +37,8 @@
 1. 来源：要抓取的 URL、粘贴的文本，或仅一个主题。
 2. 朝向：`1920×1080`（横屏）、`1080×1920`（竖屏）或 `1080×1440`（3:4 竖向）。
 3. 模板与 layout：主题命中已有模板（如 GitHub 热榜，模板见 `modules/templates/`）→ 选模板，layout 用模板指定的那个（github 模板是讲解模式，用 `presenter`）。不选模板时按朝向选通用 layout：横屏用 `stage`（1920×1080，无主持人），竖屏用 `portrait`（1080×1920）或 `portrait-3x4`（1080×1440）。选定的 layout 写进 `inputs.json` 的 `layout` 字段（`pipeline-status` 会校验该字段），区域定义读 `modules/layouts/<layout>.md` + 同名的 `.json`。
-4. 风格：从用户措辞推断，或在项目工作区里有 `style-prompt.md` 时读取它。`style-prompt.md` 是一份可选的自由文本备注，其内容会覆盖默认的风格推断，并作为 style hint 传给下游 composition。
+4. 风格：从用户措辞推断。项目工作区里已有的 `narration-instructions.md` / `composition-instructions.md` 是用户为单个项目追加的旁白 / 画面要求（叠加顺序见 `references/delegation/conventions.md`）；旧项目的 `style-prompt.md` 视为 composition 指令的一部分。
+   - 用户在对话中对旁白或画面提出的额外要求（例如“结尾不要 CTA”“语气更口语”），由主 agent **追加写入对应的项目指令文件**（旁白要求追加到 `narration-instructions.md`，画面要求追加到 `composition-instructions.md`），再进入对应 phase；追加前若文件不存在则新建。
    - 五个主题都在 `modules/designs/` 里（契约见 `modules/designs/designs.md`）：
    - 默认：`default`——Frag Note 安静明亮编辑风（`modules/designs/default/default.md`）
    - 主题是 GitHub trending / repo launch / open source 项目介绍，或选了 github 模板 → **github**（`modules/designs/github/github.md`）

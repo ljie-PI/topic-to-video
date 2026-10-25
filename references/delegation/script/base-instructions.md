@@ -1,0 +1,78 @@
+# script 委派包 — 基础指令（旁白 + 场景规划）
+
+你负责为一个解说视频撰写**显示稿、词表和叙事层的场景规划**。主 agent 不会替你做这些决定；你独立完成并落盘产物。
+
+先读工作区里的输入（Inputs 一节列出的文件），再按下面的结构写作。指令冲突时，按 `references/delegation/conventions.md` 的叠加顺序处理：后读的（模板旁白要求 → 项目指令 → 用户追加要求）覆盖先读的。
+
+## 叙事结构
+
+### 标准模式（`input_mode = "standard"` / `topic` / `article` / `text"`）
+
+按目标时长伸缩，整体遵循：
+
+1. **开场（约占 5–10%）**：一句话点题 + 为什么值得看。可以用一个反常识、一个数字或一个场景化问题切入。
+2. **背景 / 问题（约占 10–15%）**：观众需要知道的上下文——现状是什么、缺口在哪。
+3. **主体展开（约占 60–70%）**：按逻辑分 2–4 个部分推进，每部分若干段落；每个部分开头一句话交代这一部分要回答什么。并列点用清楚的层次（首先 / 其次 / 最后），因果关系写明因果。
+4. **亮点 / 对比（视内容可选）**：数据、对比、取舍——把最有说服力的证据放在这里，而不是堆在开头。
+5. **结尾（约占 5–10%）**：回扣开头的钩子，给出结论或行动建议。用户要求社媒风格时，最后一段可用“点赞、关注、收藏，下期见”；用户不要 CTA 就不要写。
+
+### 论文模式（`input_mode = "paper"`）
+
+叙事结构、figure / table 引用规则见 `references/phases/02-paper-parse.md` 的「论文模式解说结构」，按它执行，本文不重复。
+
+### 通用要求
+
+- 只使用**研究 brief 中的事实**——每个数字、人名、日期和引文都要可追溯。
+- 3–10 分钟、`speech_rate=1.4` 下约 **7.5 字符/秒** → `3min ≈ 1350 chars`、`5min ≈ 2250 chars`、`10min ≈ 4500 chars`（按显示稿字数估算）。按目标时长伸缩。
+- 段间用空行分隔。段落是叙事单元：一个段落讲清一个意思，长短按内容自然伸缩，**不要**按“每段 = 一个 scene / 5–8 秒”硬切——scene 切分由场景规划按语义决定。
+- **不要**设计 HyperFrames 的 scene 卡片、时间轴、布局或屏幕文字；画面设计归 composition 阶段。场景规划只到叙事层（见下）。
+- 不要在旁白里引导网页链接（“链接放在下面”“见简介链接”等）。
+
+## 显示稿与词表的写法要求
+
+TTS 朗读稿由 `scripts/make-narration.py` 按词表确定性生成，不要手写。以下规则约束显示稿和词表：
+
+- 品牌名、数字、年份在**显示稿**里一律写原始写法（`OpenHuman`、`NVIDIA`、`2026 年`、`5%`）。
+- 数字在**朗读形式**里用中文字符（年份 `二零二六`，大数字 `一万零三百六十五`），映射写进词表。
+- 英文复合品牌名里的数字展开为单词：`X2Y` → `X to Y`、`X4Y` → `X for Y`（`"Idea2Video": "Idea to Video"`）。显示稿保留原写法。
+- 大小写混排品牌名按空格读：`"OpenHuman": "Open Human"`、`"AutoCameo": "Auto Cameo"`。
+- TTS 朗读效果差的常见英文品牌 / 机构名改用中文（`"NVIDIA": "英伟达"`）。
+- 英文单词间的连字符、下划线、斜杠改成空格（`"GPT-5": "GPT 5"`）。
+- 数字周围的符号在朗读形式里用中文（`"5%": "百分之五"`、`"200+": "200 多"`）。
+- **显示稿和朗读形式都避免全角中文冒号 `：`**，改用破折号 `——`、逗号断句或改写。
+- 词表条目重叠时最长显示形式优先；优先用带上下文的长条目（`2026 年`）避免歧义。
+
+## 产物与 schema
+
+全部写到工作区根目录（与 handoff 同级的 `{work_dir}/{topic_name}/`）：
+
+1. **`script.txt`（显示稿）**：纯文本，段间空行分隔。字幕与画面共用这份文本。
+2. **`tts-lexicon.json`（词表）**：JSON map，显示形式 → 朗读形式，键值都是非空字符串。TTS 念不顺的写法全部在这里声明。
+3. **`scene-plan.json`（叙事层场景规划）**：JSON 列表，只作参考，composition 阶段可自由合并 / 拆分 / 改选素材。每项：
+
+   ```json
+   {
+     "scene_id": "scene_1",
+     "paragraphs": [1, 2],
+     "intent": "这一段帮助观众理解什么",
+     "template_scene": "trending-overview",
+     "pattern_hints": ["leaderboard"],
+     "facts": ["数字、实体、列表、代码等关键事实"],
+     "material_candidates": [
+       {"ref": "img_001", "score": 8, "reason": "对应旁白提到的 X"}
+     ],
+     "cues": ["模板需要的锚点句摘录"]
+   }
+   ```
+
+   - `scene_id`：`scene_1`, `scene_2`, ... 顺序编号。
+   - `paragraphs`：覆盖的**段落序号（1 起）**；所有 scene 的段落并集必须覆盖 `script.txt` 的全部段落，段落可以属于多个 scene（合并 / 拆分时）。
+   - `intent`：这场景要帮观众理解什么。
+   - `template_scene` / `pattern_hints`：可选。选了模板时，`cues` 按模板的旁白要求（`modules/templates/<template>/narration.md`）摘录需要的锚点句——这些句子会用来从配音里算出秒数，务必原样取自显示稿。
+   - `facts`：这一段旁白依赖的关键事实（数字、实体、列表、代码）。
+   - `material_candidates`：候选素材引用，每项含 `ref`（catalog 素材 id 或 `<video_id>:<start>-<end>` clip 引用）、`score`（1–10）、`reason`。**只是候选，不做排他分配**；同一素材可以被多个 scene 候选。引用的素材 id 必须存在于 `material-catalog.json`；`fetch_materials = false` 时没有 catalog，留空列表。素材 id 的引用格式见 `references/phases/05-material-catalog.md`。
+   - **不包含** `layout_role` / `visual_role` / `display_text`——那是 composition 阶段的设计空间。
+
+## 完成后
+
+运行 `scripts/make-narration.py` 生成 `narration.txt` 与 `narration-offsets.json`（命令见 handoff 的 Outputs 一节），然后向主 agent 报告四个产物路径。主 agent 会做确定性校验（字数 / 段落覆盖 / 素材引用），通过后交给用户确认。
