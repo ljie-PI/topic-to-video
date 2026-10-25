@@ -1,4 +1,4 @@
-# Phase 8 — 对齐与字幕（ASR + 字体预置）
+# Phase 8 — 对齐与字幕
 
 ## 输入
 
@@ -6,19 +6,19 @@ Phase 7 产出的 `voice_clone/narration.mp3` + Phase 6 产出的 `script.txt`�
 
 ## 输出
 
-`transcribe/transcript.json`（词级时间戳的句子列表）+ `transcribe/subtitle-units.json`（字幕单元）+ `transcribe/timeline.json`（段落 / cue 时间轴）+ `fonts/`（按所选 design 预置的 WOFF2 字体与 CSS，供 Phase 9 composition 使用）。
+`transcribe/transcript.json`（词级时间戳的句子列表）+ `transcribe/subtitle-units.json`（字幕单元）+ `transcribe/timeline.json`（段落 / cue 时间轴）。
 
 ## 完成判据
 
-`transcript.json` 存在、非空、JSON 可解析，是句子列表且每句含 `begin` / `end` / `text` / `words`；`subtitle-units.json` 存在且 `units` 非空；`timeline.json` 存在且 `paragraphs` 非空；`fonts/` 含所选 design 的 `.woff2` 与 style CSS。
+`transcript.json` 存在、非空、JSON 可解析，是句子列表且每句含 `begin` / `end` / `text` / `words`；`subtitle-units.json` 存在且 `units` 非空；`timeline.json` 存在且 `paragraphs` 非空。
 
 ## 下一步
 
-Phase 9（composition，委派）：sub-agent 用字幕单元、时间轴、素材 catalog 和字体目录完成画面与渲染。
+Phase 9（composition，委派）：sub-agent 用字幕单元、时间轴和素材 catalog 完成画面与渲染；字体由 Phase 9 准备阶段按所选 design 预置。
 
 ---
 
-本阶段为下游的 HyperFrames sub-agent 准备时间轴与字体输入。`topic-to-video` 主 agent **不**负责设计 scene、写 `info_units`、把素材映射到布局，或者生成 HyperFrames 的 HTML。
+本阶段为下游的 HyperFrames sub-agent 准备时间轴输入。`topic-to-video` 主 agent **不**负责设计 scene、写 `info_units`、把素材映射到布局，或者生成 HyperFrames 的 HTML。
 
 #### 8.1 — ASR transcript
 
@@ -56,19 +56,4 @@ python3 scripts/align-narration.py \
 
 若 `narration.txt` 在 TTS 后被改过，必须重新生成 TTS + ASR + 字幕产物（偏移表与音频都失效）。
 
-#### 8.3 — 预置字体
-
-如果 `{work_dir}/{topic_name}/fonts/` 已经包含所选风格对应的 `.woff2` 文件与 style CSS，则跳过。
-
-```bash
-# Default 默认明亮编辑风
-bash scripts/fonts-download.sh {work_dir}/{topic_name}/fonts default
-
-# Moon 严肃技术 / 编辑风
-bash scripts/fonts-download.sh {work_dir}/{topic_name}/fonts moon
-
-# 如果想做一个后期可切换风格的可复用项目模板
-bash scripts/fonts-download.sh {work_dir}/{topic_name}/fonts all
-```
-
-预置字体属于上游职责——这样能为 HyperFrames sub-agent 提供确定性的本地字体资源，避免不小心 fallback 到系统字体。
+字体预置不属于本 phase：它随 composition 重写挪到了 Phase 9 的准备阶段，由所选 design 决定（见 `references/phases/09-composition.md` 的 9.1）。本阶段的 align-narration 只做文本与时间对齐，不读字体、不需要字体目录。

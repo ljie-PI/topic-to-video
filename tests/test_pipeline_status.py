@@ -138,6 +138,7 @@ def complete_through_align(ws: Path, **inputs_overrides) -> None:
 
 def complete_through_composition(ws: Path, **inputs_overrides) -> None:
     complete_through_align(ws, **inputs_overrides)
+    write_text(ws / 'composition' / 'index.html', '<html></html>')
     write_blob(ws / 'composition' / 'renders' / 'final.mp4')
 
 
@@ -293,6 +294,28 @@ def test_deleted_product_falls_back(tmp_path: Path):
     result = parse_result(proc)
     assert result['next_phase']['id'] == '7-tts'
     assert 'voice_clone/narration.mp3' in result['missing_products']
+
+
+# --- phase 9 products: composition index.html + final.mp4 ------------------------
+
+
+def test_missing_composition_index_falls_back_to_phase_9(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    (tmp_path / 'composition' / 'index.html').unlink()
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '9-composition'
+    assert 'composition/index.html' in result['missing_products']
+    assert '9-composition' not in result['completed_phases']
+
+
+def test_missing_final_mp4_falls_back_to_phase_9(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    (tmp_path / 'composition' / 'renders' / 'final.mp4').unlink()
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '9-composition'
+    assert 'composition/renders/final.mp4' in result['missing_products']
 
 
 # --- phase 8 products: transcript + subtitle units + timeline --------------------

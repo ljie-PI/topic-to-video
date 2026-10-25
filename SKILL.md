@@ -12,7 +12,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 - **Web 调研** 在写脚本之前获取准确的内容
 - **HyperFrames** 用于下游 HTML composition + 渲染（delegated）
 - **TTS / ASR** 生成配音并拿回词级时间戳；后端由环境变量选择，参数和依赖见两个脚本的 `--help`
-- 一份可配置的 style hint，交给下游 HyperFrames sub-agent
+- 一份 design / layout / template 选择，约束下游 composition 的外观与版面
 
 **输出：** `{work_dir}/{topic_name}/composition/renders/final.mp4`，可直接发布（由 Phase 9 coding sub-agent 产出）；Phase 10 混入 BGM 后得到 `final_with_bgm.mp4`。
 
@@ -46,7 +46,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 ### 字体与文本
 
-4. **预先 stage 确定性的 WOFF2 字体。** 用 `scripts/fonts-download.sh` 下载，然后让 Phase 9 handoff 指向 `fonts/`。
+4. **预先 stage 确定性的 WOFF2 字体。** Phase 9 准备阶段按所选 design 用 `scripts/fonts-download.sh` 预置到 composition 工程的 `assets/fonts/`，handoff 指向该目录。
    ↳ DO NOT：让主 agent 处理 composition 的字体 CSS。
 5. **字体实现归 HyperFrames。** Phase 9 sub-agent 使用本地字体，并按 `hyperframes` skill 中的排版规则处理。
 
@@ -58,7 +58,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 ### Composition
 
-8. **Composition 委派给 HyperFrames sub-agent。** 主 agent 只写 `composition-handoff.md`，并把固定 rules（`references/composition-rules.md`）/ layout routing（`references/layout-routing.md`）/ animation routing（`references/animation-routing.md`）/ stage protocol（`references/composition-stage-protocol.md`）/ design references 物化到项目工作区的 `references/` 下。
+8. **Composition 委派给 coding agent。** 主 agent 只写 `composition-handoff.md`，并把 composition 委派包（`references/delegation/composition/`）与 modules（不含 `examples/`）物化到工作区，再按所选 design 预置字体；委派约定与指令叠加顺序见 `references/delegation/conventions.md`。
    ↳ DO NOT：手写 `composition/index.html`、挑选低层 animation / effect skill，或在本 session 里修 HyperFrames lint；除非用户明确指定，否则由 Phase 9 sub-agent 选择。
 9. **Scene 设计归 HyperFrames。** 切分、素材映射、布局、视觉层级、动画、lint/inspect 与渲染迭代都发生在 Phase 9。
 
@@ -83,6 +83,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 | `voice-clone.py` | TTS：把 `narration.txt` 合成 `voice_clone/narration.mp3`；后端由环境变量选择 | 见 `--help` |
 | `transcribe.py` | ASR：输出带词级时间戳的 transcript；后端由环境变量选择 | 见 `--help` |
 | `align-narration.py` | 把 ASR 时间对齐回显示稿，生成字幕单元（subtitle-units.json）与时间轴（timeline.json） | — |
+| `check-composition.py` | composition 渲染前检查：越界 / reserved 区域侵入 / 文字溢出 / 资源与字体加载 / 字号下限 / 字幕一致性 | `playwright`、系统 Chrome |
 | `extract-frames.py` | ffmpeg 抽帧 | `ffmpeg` |
 | `subtitle-parse.py` | SRT/VTT 解析 + 关键词过滤 | — |
 | `vision-analyze.py` | VLM 分析（或委派回 agent 的 `view`） | `VLM_*`（可选） |

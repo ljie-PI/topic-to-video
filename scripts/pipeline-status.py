@@ -371,7 +371,10 @@ PHASES: list[dict[str, Any]] = [
         'id': '9-composition',
         'title': 'composition（委派）',
         'doc': 'references/phases/09-composition.md',
-        'products': {'composition/renders/final.mp4': check_file_product},
+        'products': {
+            'composition/index.html': check_file_product,
+            'composition/renders/final.mp4': check_file_product,
+        },
     },
     {
         'id': '10-check-mix',

@@ -21,8 +21,7 @@ second, and measures the DOM. Checks:
 
 Inputs:
   <composition>   composition dir, project dir containing composition/,
-                  or index.html path (same resolution as
-                  measure-composition-layout.py).
+                  or index.html path.
   --layout        layout region definition JSON (modules/layouts/*.json):
                   regions (kind content/reserved, rect, component) and the
                   caption spec.
