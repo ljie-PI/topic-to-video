@@ -1,4 +1,4 @@
-# composition-handoff 模板（Phase 9 — composition）
+# composition-handoff 模板（Phase 8 — composition）
 
 主 agent 复制本模板为 `{work_dir}/{topic_name}/composition-handoff.md`，填好各节，然后按 `references/delegation/conventions.md` 派发：委派 prompt 只有一句话，让被委派的 agent 读本文件。
 

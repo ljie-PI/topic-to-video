@@ -312,7 +312,7 @@ def check_timeline(ws: Path, relpath: str) -> CheckResult:
 
 
 def check_qa_report(ws: Path, relpath: str) -> CheckResult:
-    """qa/qa-report.json: the Phase 10 QA result, written once fix rounds have
+    """qa/qa-report.json: the Phase 9 QA result, written once fix rounds have
     concluded. Contains exactly `findings` ([{scene_id, check, issue, frame}])
     and `verdict`; verdict must be pass or handed_off (fail means fix rounds
     are still in progress or were exhausted without a user hand-off)."""
@@ -388,34 +388,29 @@ PHASES: list[dict[str, Any]] = [
         },
     },
     {
-        'id': '7-tts',
-        'title': 'TTS 配音',
-        'doc': 'references/phases/07-tts.md',
-        'products': {'voice_clone/narration.mp3': check_file_product},
-    },
-    {
-        'id': '8-align-subtitles',
-        'title': '对齐与字幕',
-        'doc': 'references/phases/08-align-subtitles.md',
+        'id': '7-voice-subtitles',
+        'title': '配音与字幕',
+        'doc': 'references/phases/07-voice-subtitles.md',
         'products': {
+            'voice_clone/narration.mp3': check_file_product,
             'transcribe/transcript.json': check_transcript,
             'transcribe/subtitle-units.json': check_subtitle_units,
             'transcribe/timeline.json': check_timeline,
         },
     },
     {
-        'id': '9-composition',
+        'id': '8-composition',
         'title': 'composition（委派）',
-        'doc': 'references/phases/09-composition.md',
+        'doc': 'references/phases/08-composition.md',
         'products': {
             'composition/index.html': check_file_product,
             'composition/renders/final.mp4': check_file_product,
         },
     },
     {
-        'id': '10-check-mix',
+        'id': '9-check-mix',
         'title': '检查与混音',
-        'doc': 'references/phases/10-check-mix.md',
+        'doc': 'references/phases/09-check-mix.md',
         'products': {
             'composition/renders/final_with_bgm.mp4': check_file_product,
             'qa/qa-report.json': check_qa_report,

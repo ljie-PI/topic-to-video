@@ -20,7 +20,7 @@
 | `layout` | 所选 layout：`presenter` / `stage` / `portrait` / `portrait-3x4`，由模板或朝向决定，区域定义在 `modules/layouts/` |
 | `coding_agent` | 委派目标，默认 `claude-code` |
 | `fetch_materials` | 是否联网抓取视觉素材（布尔） |
-| `qa_level` | 渲染后 QA 档位（缺省视为 `standard`）：`quick` = 渲染前检查 + 渲染后确定性检查，contact sheet 照常生成给用户看但不作 vision；`standard` = 全部检查（quick + 主 agent 逐张过 contact sheet，每张只看渲染完整 / 画面与旁白相符 / 符合 design / 明显空洞或错位 4 项）；`strict` = standard + 每个 scene 加一张入场帧、每个切点加前 / 中 / 后三帧。三档的完整流程见 Phase 10 |
+| `qa_level` | 渲染后 QA 档位（缺省视为 `standard`）：`quick` = 渲染前检查 + 渲染后确定性检查，contact sheet 照常生成给用户看但不作 vision；`standard` = 全部检查（quick + 主 agent 逐张过 contact sheet，每张只看渲染完整 / 画面与旁白相符 / 符合 design / 明显空洞或错位 4 项）；`strict` = standard + 每个 scene 加一张入场帧、每个切点加前 / 中 / 后三帧。三档的完整流程见 Phase 9 |
 
 ## 完成判据
 

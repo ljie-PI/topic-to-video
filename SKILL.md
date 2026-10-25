@@ -14,7 +14,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 - **TTS / ASR** 生成配音并拿回词级时间戳；后端由环境变量选择，参数和依赖见两个脚本的 `--help`
 - 一份 design / layout / template 选择，约束下游 composition 的外观与版面
 
-**输出：** `{work_dir}/{topic_name}/composition/renders/final.mp4`，可直接发布（由 Phase 9 coding sub-agent 产出）；Phase 10 混入 BGM 后得到 `final_with_bgm.mp4`。
+**输出：** `{work_dir}/{topic_name}/composition/renders/final.mp4`，可直接发布（由 Phase 8 coding sub-agent 产出）；Phase 9 混入 BGM 后得到 `final_with_bgm.mp4`。
 
 ## 工作流：一个循环
 
@@ -41,26 +41,26 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 ### TTS / ASR
 
 2. **TTS 后端由环境变量选择。** 配音脚本、参考音色、参数和依赖见 `scripts/voice-clone.py --help`。**绝不**使用 `npx hyperframes tts`。
-3. **ASR 后端由环境变量选择。** transcript 必须带词级时间戳（schema 见 Phase 7 / 8 文档的接口契约）。后端、参数和依赖见 `scripts/transcribe.py --help`。
+3. **ASR 后端由环境变量选择。** transcript 必须带词级时间戳（schema 见 Phase 7 文档的接口契约）。后端、参数和依赖见 `scripts/transcribe.py --help`；直对齐后端（voice-clone.py 的 mlx，或 qwen3tts + `--emit-transcript`）由配音脚本直接写出 transcript，跳过 ASR。
    ↳ DO NOT：用 `npx hyperframes transcribe`；接受没有词级时间戳的 transcript。
 
 ### 字体与文本
 
-4. **预先 stage 确定性的 WOFF2 字体。** Phase 9 准备阶段按所选 design 用 `scripts/fonts-download.sh` 预置到 composition 工程的 `assets/fonts/`，handoff 指向该目录。
+4. **预先 stage 确定性的 WOFF2 字体。** Phase 8 准备阶段按所选 design 用 `scripts/fonts-download.sh` 预置到 composition 工程的 `assets/fonts/`，handoff 指向该目录。
    ↳ DO NOT：让主 agent 处理 composition 的字体 CSS。
-5. **字体实现归 HyperFrames。** Phase 9 sub-agent 使用本地字体，并按 `hyperframes` skill 中的排版规则处理。
+5. **字体实现归 HyperFrames。** Phase 8 sub-agent 使用本地字体，并按 `hyperframes` skill 中的排版规则处理。
 
 ### 素材
 
-6. **每个资源都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。**视频材料一律剥音轨**：catalog 阶段 `ffmpeg -an` 输出；Phase 9 HTML 嵌入时 `<video>` 标签必须带 `muted playsinline` 兜底。
+6. **每个资源都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。**视频材料一律剥音轨**：catalog 阶段 `ffmpeg -an` 输出；Phase 8 HTML 嵌入时 `<video>` 标签必须带 `muted playsinline` 兜底。
    ↳ DO NOT：嵌入整段原视频；切片段时不带 `-an`；`<video>` 漏 `muted`。
 7. **素材搜索是可选但推荐的。** `inputs.json` 里 `fetch_materials = false` 或用户自带全部视觉时跳过（Phase 4 / 5 一起跳过）。
 
 ### Composition
 
 8. **Composition 委派给 coding agent。** 主 agent 只写 `composition-handoff.md`，并把 composition 委派包（`references/delegation/composition/`）与 modules（不含 `examples/`）物化到工作区，再按所选 design 预置字体；委派约定与指令叠加顺序见 `references/delegation/conventions.md`。
-   ↳ DO NOT：手写 `composition/index.html`、挑选低层 animation / effect skill，或在本 session 里修 HyperFrames lint；除非用户明确指定，否则由 Phase 9 sub-agent 选择。
-9. **Scene 设计归 HyperFrames。** 切分、素材映射、布局、视觉层级、动画、lint/inspect 与渲染迭代都发生在 Phase 9。
+   ↳ DO NOT：手写 `composition/index.html`、挑选低层 animation / effect skill，或在本 session 里修 HyperFrames lint；除非用户明确指定，否则由 Phase 8 sub-agent 选择。
+9. **Scene 设计归 HyperFrames。** 切分、素材映射、布局、视觉层级、动画、lint/inspect 与渲染迭代都发生在 Phase 8。
 
 ### 环境与工具
 

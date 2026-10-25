@@ -1,8 +1,8 @@
-# Phase 9 — composition（委派给 coding agent）
+# Phase 8 — composition（委派给 coding agent）
 
 ## 输入
 
-Phase 7 的 `voice_clone/narration.mp3` + Phase 8 的 `transcribe/subtitle-units.json` / `transcribe/timeline.json` + `material-catalog.json`（若 `fetch_materials = false` 则无）+ `scene-plan.json`（叙事层场景规划，仅作参考）+ `script.txt` + `inputs.json`（design / layout / template）+ 主 agent 写的 `composition-handoff.md` 与物化到工作区的委派包、modules 副本和预置字体。
+Phase 7 的 `voice_clone/narration.mp3` + `transcribe/subtitle-units.json` / `transcribe/timeline.json` + `material-catalog.json`（若 `fetch_materials = false` 则无）+ `scene-plan.json`（叙事层场景规划，仅作参考）+ `script.txt` + `inputs.json`（design / layout / template）+ 主 agent 写的 `composition-handoff.md` 与物化到工作区的委派包、modules 副本和预置字体。
 
 ## 输出
 
@@ -14,13 +14,13 @@ Phase 7 的 `voice_clone/narration.mp3` + Phase 8 的 `transcribe/subtitle-units
 
 ## 下一步
 
-Phase 10（检查与混音）：渲染后 QA（`check-render.py` 确定性检查 + `make-contact-sheet.py` 拼图 + 按 `qa_level` 三档的 vision 检查，修复轮最多 2 轮）通过后混入 BGM，得到最终交付文件。
+Phase 9（检查与混音）：渲染后 QA（`check-render.py` 确定性检查 + `make-contact-sheet.py` 拼图 + 按 `qa_level` 三档的 vision 检查，修复轮最多 2 轮）通过后混入 BGM，得到最终交付文件。
 
 ---
 
 本 phase 整体委派给 coding agent 完成：storyboard、画面组装、渲染前自查与渲染由 composition agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认 claude-code；派发 prompt 只有一句话，让对方读 handoff）。composition agent 使用 `hyperframes`、`hyperframes-cli` 与 `hyperframes-animation` skills；主 agent 不读委派包里的基础指令。
 
-#### 9.1 — 物化到工作区
+#### 8.1 — 物化到工作区
 
 主 agent 做四步准备，全部落到 `{work_dir}/{topic_name}/` 下：
 
@@ -34,11 +34,11 @@ Phase 10（检查与混音）：渲染后 QA（`check-render.py` 确定性检查
      --theme modules/designs/<inputs.json 的 design 字段>
    ```
 
-#### 9.2 — 写 `composition-handoff.md`
+#### 8.2 — 写 `composition-handoff.md`
 
-按 `references/delegation/composition/handoff-template.md` 写出 `{work_dir}/{topic_name}/composition-handoff.md`：填入 Coding Agent（`inputs.json` 的 `coding_agent`，默认 claude-code）、Inputs（上述输入的实际路径）、Outputs、Required References（基础指令 → `modules/modules.md` → 所选 design 文档 → 所选 layout 的 json + 文档 → 模板 / pattern / 组件文档，全部指向 9.1 物化的工作区副本）、Additional Instructions（实际存在的 `composition-instructions.md`，旧项目的 `style-prompt.md` 视为其中一部分；没有写 None）。
+按 `references/delegation/composition/handoff-template.md` 写出 `{work_dir}/{topic_name}/composition-handoff.md`：填入 Coding Agent（`inputs.json` 的 `coding_agent`，默认 claude-code）、Inputs（上述输入的实际路径）、Outputs、Required References（基础指令 → `modules/modules.md` → 所选 design 文档 → 所选 layout 的 json + 文档 → 模板 / pattern / 组件文档，全部指向 8.1 物化的工作区副本）、Additional Instructions（实际存在的 `composition-instructions.md`，旧项目的 `style-prompt.md` 视为其中一部分；没有写 None）。
 
-#### 9.3 — 委派 composition agent
+#### 8.3 — 委派 composition agent
 
 按 `references/delegation/conventions.md` 派发，prompt 一句话：
 
@@ -48,7 +48,7 @@ Phase 10（检查与混音）：渲染后 QA（`check-render.py` 确定性检查
 
 被委派的 agent 自己从磁盘读 handoff 与 Required References 列出的文件（含工作区的委派包与 modules 副本）；主 agent 不在 prompt 里复述指令内容，也**不要**在主 agent 的会话里驱动 composition authoring 或手工 patch `composition/index.html`。
 
-#### 9.4 — 主 agent 校验
+#### 8.4 — 主 agent 校验
 
 composition agent 报告完成后，主 agent 逐项校验（不修改产物，不合格就把 findings 反馈回去限定范围修复）：
 
@@ -56,4 +56,4 @@ composition agent 报告完成后，主 agent 逐项校验（不修改产物，�
 2. **渲染前自查通过**：sub-agent 报告的 `npx hyperframes check` 无错误、`check-composition` verdict 为 pass（命令见 composition handoff 模板的渲染前自查一节；可直接重跑核验，或核验其报告的 verdict）。
 3. **storyboard 区域标注**：每个 scene 都写明了所用的 content 区域（抽查）。
 
-全部通过后进入 Phase 10。
+全部通过后进入 Phase 9。

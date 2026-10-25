@@ -124,20 +124,17 @@ def complete_through_script(ws: Path, **inputs_overrides) -> None:
     write_json(ws / 'scene-plan.json', SCENE_PLAN)
 
 
-def complete_through_tts(ws: Path, **inputs_overrides) -> None:
+def complete_through_voice_subtitles(ws: Path, **inputs_overrides) -> None:
+    """Phase 7 (配音与字幕) products: narration.mp3 + transcript + units + timeline."""
     complete_through_script(ws, **inputs_overrides)
     write_blob(ws / 'voice_clone' / 'narration.mp3')
-
-
-def complete_through_align(ws: Path, **inputs_overrides) -> None:
-    complete_through_tts(ws, **inputs_overrides)
     write_json(ws / 'transcribe' / 'transcript.json', TRANSCRIPT)
     write_json(ws / 'transcribe' / 'subtitle-units.json', SUBTITLE_UNITS)
     write_json(ws / 'transcribe' / 'timeline.json', TIMELINE)
 
 
 def complete_through_composition(ws: Path, **inputs_overrides) -> None:
-    complete_through_align(ws, **inputs_overrides)
+    complete_through_voice_subtitles(ws, **inputs_overrides)
     write_text(ws / 'composition' / 'index.html', '<html></html>')
     write_blob(ws / 'composition' / 'renders' / 'final.mp4')
 
@@ -287,76 +284,106 @@ def test_scene_plan_missing_paragraphs_falls_back_to_phase_6(tmp_path: Path):
     assert 'scene-plan.json' in result['corrupt_products']
 
 
-def test_deleted_product_falls_back(tmp_path: Path):
-    complete_through_tts(tmp_path)
+# --- phase 7 products (配音与字幕): narration.mp3 + transcript + units + timeline
+
+
+def test_missing_narration_mp3_falls_back_to_phase_7(tmp_path: Path):
+    complete_through_voice_subtitles(tmp_path)
     (tmp_path / 'voice_clone' / 'narration.mp3').unlink()
     proc = run_cli(str(tmp_path))
     assert proc.returncode == 0
     result = parse_result(proc)
-    assert result['next_phase']['id'] == '7-tts'
+    assert result['next_phase']['id'] == '7-voice-subtitles'
+    assert result['next_phase']['doc'] == 'references/phases/07-voice-subtitles.md'
     assert 'voice_clone/narration.mp3' in result['missing_products']
+    assert '7-voice-subtitles' not in result['completed_phases']
 
 
-# --- phase 9 products: composition index.html + final.mp4 ------------------------
+def test_missing_transcript_falls_back_to_phase_7(tmp_path: Path):
+    complete_through_voice_subtitles(tmp_path)
+    (tmp_path / 'transcribe' / 'transcript.json').unlink()
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '7-voice-subtitles'
+    assert 'transcribe/transcript.json' in result['missing_products']
 
 
-def test_missing_composition_index_falls_back_to_phase_9(tmp_path: Path):
+def test_corrupt_transcript_falls_back_to_phase_7(tmp_path: Path):
+    complete_through_voice_subtitles(tmp_path)
+    write_json(tmp_path / 'transcribe' / 'transcript.json', [{'begin': 0}])  # 缺字段
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '7-voice-subtitles'
+    assert 'transcribe/transcript.json' in result['corrupt_products']
+
+
+def test_missing_subtitle_units_falls_back_to_phase_7(tmp_path: Path):
+    complete_through_voice_subtitles(tmp_path)
+    (tmp_path / 'transcribe' / 'subtitle-units.json').unlink()
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '7-voice-subtitles'
+    assert 'transcribe/subtitle-units.json' in result['missing_products']
+
+
+def test_missing_timeline_falls_back_to_phase_7(tmp_path: Path):
+    complete_through_voice_subtitles(tmp_path)
+    (tmp_path / 'transcribe' / 'timeline.json').unlink()
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '7-voice-subtitles'
+    assert 'transcribe/timeline.json' in result['missing_products']
+    assert '7-voice-subtitles' not in result['completed_phases']
+
+
+def test_corrupt_timeline_falls_back_to_phase_7(tmp_path: Path):
+    complete_through_voice_subtitles(tmp_path)
+    write_json(tmp_path / 'transcribe' / 'timeline.json', {'paragraphs': []})
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '7-voice-subtitles'
+    assert 'transcribe/timeline.json' in result['corrupt_products']
+
+
+def test_truncated_timeline_json_falls_back_to_phase_7(tmp_path: Path):
+    complete_through_voice_subtitles(tmp_path)
+    write_text(tmp_path / 'transcribe' / 'timeline.json', '{"paragraphs": [')  # 截断 JSON
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '7-voice-subtitles'
+    assert 'transcribe/timeline.json' in result['corrupt_products']
+
+
+def test_corrupt_subtitle_units_falls_back_to_phase_7(tmp_path: Path):
+    complete_through_voice_subtitles(tmp_path)
+    write_json(tmp_path / 'transcribe' / 'subtitle-units.json', {'units': []})
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '7-voice-subtitles'
+    assert 'transcribe/subtitle-units.json' in result['corrupt_products']
+
+
+# --- phase 8 products: composition index.html + final.mp4 ------------------------
+
+
+def test_missing_composition_index_falls_back_to_phase_8(tmp_path: Path):
     complete_through_composition(tmp_path)
     (tmp_path / 'composition' / 'index.html').unlink()
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
-    assert result['next_phase']['id'] == '9-composition'
+    assert result['next_phase']['id'] == '8-composition'
+    assert result['next_phase']['doc'] == 'references/phases/08-composition.md'
     assert 'composition/index.html' in result['missing_products']
-    assert '9-composition' not in result['completed_phases']
+    assert '8-composition' not in result['completed_phases']
 
 
-def test_missing_final_mp4_falls_back_to_phase_9(tmp_path: Path):
+def test_missing_final_mp4_falls_back_to_phase_8(tmp_path: Path):
     complete_through_composition(tmp_path)
     (tmp_path / 'composition' / 'renders' / 'final.mp4').unlink()
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
-    assert result['next_phase']['id'] == '9-composition'
+    assert result['next_phase']['id'] == '8-composition'
     assert 'composition/renders/final.mp4' in result['missing_products']
-
-
-# --- phase 8 products: transcript + subtitle units + timeline --------------------
-
-
-def test_missing_timeline_falls_back_to_phase_8(tmp_path: Path):
-    complete_through_align(tmp_path)
-    (tmp_path / 'transcribe' / 'timeline.json').unlink()
-    proc = run_cli(str(tmp_path))
-    result = parse_result(proc)
-    assert result['next_phase']['id'] == '8-align-subtitles'
-    assert 'transcribe/timeline.json' in result['missing_products']
-    assert '8-align-subtitles' not in result['completed_phases']
-
-
-def test_corrupt_timeline_falls_back_to_phase_8(tmp_path: Path):
-    complete_through_align(tmp_path)
-    write_json(tmp_path / 'transcribe' / 'timeline.json', {'paragraphs': []})
-    proc = run_cli(str(tmp_path))
-    result = parse_result(proc)
-    assert result['next_phase']['id'] == '8-align-subtitles'
-    assert 'transcribe/timeline.json' in result['corrupt_products']
-
-
-def test_truncated_timeline_json_falls_back_to_phase_8(tmp_path: Path):
-    complete_through_align(tmp_path)
-    write_text(tmp_path / 'transcribe' / 'timeline.json', '{"paragraphs": [')  # 截断 JSON
-    proc = run_cli(str(tmp_path))
-    result = parse_result(proc)
-    assert result['next_phase']['id'] == '8-align-subtitles'
-    assert 'transcribe/timeline.json' in result['corrupt_products']
-
-
-def test_corrupt_subtitle_units_falls_back_to_phase_8(tmp_path: Path):
-    complete_through_align(tmp_path)
-    write_json(tmp_path / 'transcribe' / 'subtitle-units.json', {'units': []})
-    proc = run_cli(str(tmp_path))
-    result = parse_result(proc)
-    assert result['next_phase']['id'] == '8-align-subtitles'
-    assert 'transcribe/subtitle-units.json' in result['corrupt_products']
 
 
 def test_truncated_json_falls_back(tmp_path: Path):
@@ -381,10 +408,9 @@ def test_all_complete(tmp_path: Path):
         '4-material-harvest',
         '5-material-catalog',
         '6-script-scene-plan',
-        '7-tts',
-        '8-align-subtitles',
-        '9-composition',
-        '10-check-mix',
+        '7-voice-subtitles',
+        '8-composition',
+        '9-check-mix',
     ]
     assert result['next_phase'] is None
     assert result['missing_products'] == []
@@ -480,19 +506,19 @@ def test_invalid_qa_level_is_corrupt_inputs(tmp_path: Path):
     assert 'inputs.json' in result['corrupt_products']
 
 
-# --- phase 10 products: final_with_bgm.mp4 + qa/qa-report.json ------------------
+# --- phase 9 products: final_with_bgm.mp4 + qa/qa-report.json ------------------
 
 
-def test_missing_qa_report_falls_back_to_phase_10(tmp_path: Path):
+def test_missing_qa_report_falls_back_to_phase_9(tmp_path: Path):
     complete_through_composition(tmp_path)
     write_blob(tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4')
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
-    assert result['next_phase']['id'] == '10-check-mix'
+    assert result['next_phase']['id'] == '9-check-mix'
     assert 'qa/qa-report.json' in result['missing_products']
 
 
-def test_fail_verdict_qa_report_falls_back_to_phase_10(tmp_path: Path):
+def test_fail_verdict_qa_report_falls_back_to_phase_9(tmp_path: Path):
     complete_through_composition(tmp_path)
     write_blob(tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4')
     write_json(
@@ -504,11 +530,11 @@ def test_fail_verdict_qa_report_falls_back_to_phase_10(tmp_path: Path):
     )
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
-    assert result['next_phase']['id'] == '10-check-mix'
+    assert result['next_phase']['id'] == '9-check-mix'
     assert 'qa/qa-report.json' in result['corrupt_products']
 
 
-def test_handed_off_qa_report_completes_phase_10(tmp_path: Path):
+def test_handed_off_qa_report_completes_phase_9(tmp_path: Path):
     complete_through_composition(tmp_path)
     write_blob(tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4')
     write_json(
@@ -520,7 +546,7 @@ def test_handed_off_qa_report_completes_phase_10(tmp_path: Path):
     )
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
-    assert '10-check-mix' in result['completed_phases']
+    assert '9-check-mix' in result['completed_phases']
     assert result['next_phase'] is None
 
 
@@ -533,7 +559,7 @@ def test_qa_report_with_extra_keys_is_corrupt(tmp_path: Path):
     )
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
-    assert result['next_phase']['id'] == '10-check-mix'
+    assert result['next_phase']['id'] == '9-check-mix'
     assert 'qa/qa-report.json' in result['corrupt_products']
 
 
@@ -546,7 +572,7 @@ def test_qa_report_finding_missing_frame_is_corrupt(tmp_path: Path):
     )
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
-    assert result['next_phase']['id'] == '10-check-mix'
+    assert result['next_phase']['id'] == '9-check-mix'
     assert 'qa/qa-report.json' in result['corrupt_products']
 
 

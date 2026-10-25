@@ -2,7 +2,11 @@
 """
 Word/character level ASR with a local-first backend.
 
-Backends (select via --backend or ASR_BACKEND env, default: qwen3):
+Backends (select via --backend or ASR_BACKEND env, default: auto):
+  auto       Pick by environment: CUDA GPU -> qwen3; DASHSCOPE_API_KEY ->
+             dashscope; Apple Silicon (darwin/arm64) -> error: no ASR is
+             needed there — voice-clone.py's mlx backend aligns the narration
+             text directly and writes transcript.json itself.
   qwen3      Local Qwen3-ASR + Qwen3-ForcedAligner (Apache-2.0). Runs on the
              local GPU, returns char-level (CJK) / word-level (Latin)
              timestamps with optional ITN. No cloud key needed.
@@ -11,10 +15,11 @@ Backends (select via --backend or ASR_BACKEND env, default: qwen3):
 
 Usage:
   python3 transcribe.py <input.mp3|http(s)://...|oss://...> <output.json>
-                        [--backend qwen3|dashscope]
+                        [--backend auto|qwen3|dashscope]
+  python3 transcribe.py --resolve-backend   # print the auto decision (no model)
 
 Optional env:
-  ASR_BACKEND           qwen3 (default) | dashscope
+  ASR_BACKEND           auto (default) | qwen3 | dashscope
   # qwen3 backend:
   QWEN3_ASR_MODEL       default Qwen/Qwen3-ASR-1.7B
   QWEN3_ALIGNER_MODEL   default Qwen/Qwen3-ForcedAligner-0.6B
@@ -37,6 +42,12 @@ Output JSON shape (stable downstream contract):
     },
     ...
   ]
+
+Testing seam (documented; also used by the test-suite): the hardware/OS
+probes behind auto/--resolve-backend read these overrides when set:
+  ASR_DETECT_PLATFORM   e.g. darwin | linux   (default: sys.platform)
+  ASR_DETECT_MACHINE    e.g. arm64 | x86_64   (default: platform.machine())
+  ASR_DETECT_CUDA       1 | 0                 (default: torch.cuda.is_available())
 """
 from __future__ import annotations
 
@@ -44,10 +55,95 @@ import abc
 import argparse
 import json
 import os
+import platform
 import re
 import sys
 import unicodedata
 from http import HTTPStatus
+
+
+# --- environment probes (auto backend) -----------------------------------------
+#
+# Every probe reads an ASR_DETECT_* override first so the auto decision is
+# testable without the hardware (documented in the module docstring).
+
+
+def detect_platform() -> str:
+    return os.environ.get('ASR_DETECT_PLATFORM') or sys.platform
+
+
+def detect_machine() -> str:
+    return os.environ.get('ASR_DETECT_MACHINE') or platform.machine()
+
+
+def detect_cuda() -> bool:
+    override = os.environ.get('ASR_DETECT_CUDA')
+    if override is not None:
+        return override == '1'
+    try:
+        import torch
+
+        return bool(torch.cuda.is_available())
+    except Exception:  # noqa: BLE001 - no torch / broken torch => no CUDA
+        return False
+
+
+def environment_probes() -> dict[str, object]:
+    return {
+        'platform': detect_platform(),
+        'machine': detect_machine(),
+        'cuda': detect_cuda(),
+        'dashscope_key': bool(os.environ.get('DASHSCOPE_API_KEY')),
+    }
+
+
+class BackendUnavailableError(Exception):
+    """Auto resolution found no usable backend; carries the missing list."""
+
+    def __init__(self, message: str, missing: list[str], probes: dict[str, object]) -> None:
+        self.missing = missing
+        self.probes = probes
+        super().__init__(message)
+
+
+class UnknownBackendError(Exception):
+    pass
+
+
+def resolve_backend_name(cli_backend: str | None) -> tuple[str, str, dict[str, object]]:
+    """Resolve the effective backend. Returns (name, source, probes).
+
+    source is 'cli' (--backend), 'env' (ASR_BACKEND) or 'auto'. Auto order:
+    CUDA -> qwen3; DASHSCOPE_API_KEY -> dashscope. On Apple Silicon ASR is
+    unnecessary (voice-clone.py's mlx backend emits transcript.json via direct
+    forced alignment), so auto raises BackendUnavailableError pointing there.
+    """
+    explicit = cli_backend or os.environ.get('ASR_BACKEND')
+    source = 'cli' if cli_backend else ('env' if os.environ.get('ASR_BACKEND') else 'auto')
+    if explicit and explicit != 'auto':
+        if explicit not in BACKENDS:
+            raise UnknownBackendError(f'unknown ASR backend: {explicit}')
+        return explicit, source, environment_probes()
+
+    probes = environment_probes()
+    missing: list[str] = []
+    if probes['cuda']:
+        return 'qwen3', 'auto', probes
+    missing.append('CUDA-capable GPU with torch (backend qwen3)')
+    if probes['dashscope_key']:
+        return 'dashscope', 'auto', probes
+    missing.append('DASHSCOPE_API_KEY (backend dashscope)')
+    if probes['platform'] == 'darwin' and probes['machine'] == 'arm64':
+        raise BackendUnavailableError(
+            'no ASR backend available, and none is needed: on Apple Silicon use '
+            "voice-clone.py's mlx backend — it aligns the narration text directly "
+            'and writes transcript.json itself (run voice-clone.py --resolve-backend)',
+            missing,
+            probes,
+        )
+    raise BackendUnavailableError(
+        'no usable ASR backend: ' + '; '.join(missing), missing, probes
+    )
 
 
 def print_json(payload: dict[str, object]) -> None:
@@ -493,26 +589,82 @@ class JsonArgumentParser(argparse.ArgumentParser):
 
 def parse_args() -> argparse.Namespace:
     parser = JsonArgumentParser(
-        description='Transcribe audio to word/char level timestamps.')
-    parser.add_argument('input', help='input.mp3 | http(s)://... | oss://...')
-    parser.add_argument('output', help='output JSON path')
+        description='Transcribe audio to word/char level timestamps.',
+        epilog=(
+            'key env vars: ASR_BACKEND (default auto), QWEN3_ASR_MODEL, '
+            'QWEN3_ALIGNER_MODEL, DASHSCOPE_API_KEY, ASR_MODEL. Probe overrides '
+            'for --resolve-backend: ASR_DETECT_PLATFORM / ASR_DETECT_MACHINE / '
+            'ASR_DETECT_CUDA. Full docs: module docstring.'
+        ),
+    )
+    parser.add_argument('input', nargs='?', default=None,
+                        help='input.mp3 | http(s)://... | oss://...')
+    parser.add_argument('output', nargs='?', default=None, help='output JSON path')
     parser.add_argument(
         '--backend',
-        choices=sorted(BACKENDS),
+        choices=['auto'] + sorted(BACKENDS),
         default=None,
-        help='ASR backend. Defaults to ASR_BACKEND env or "qwen3".',
+        help='ASR backend. Defaults to ASR_BACKEND env or "auto" (CUDA -> '
+             'qwen3; DASHSCOPE_API_KEY -> dashscope).',
+    )
+    parser.add_argument(
+        '--resolve-backend',
+        action='store_true',
+        help='Print the backend decision as one JSON document and exit '
+             '(probes only — no model is loaded).',
     )
     return parser.parse_args()
 
 
+def resolve_backend_cli(args: argparse.Namespace) -> int:
+    """--resolve-backend: print the backend decision (probes only), no models."""
+    try:
+        backend_name, source, probes = resolve_backend_name(args.backend)
+    except UnknownBackendError as exc:
+        log(f'error: {exc}')
+        print_json({'success': False, 'error': str(exc)})
+        return 2
+    except BackendUnavailableError as exc:
+        log(f'error: {exc}')
+        print_json(
+            {'success': False, 'error': str(exc), 'missing': exc.missing, 'probes': exc.probes}
+        )
+        return 1
+    print_json(
+        {
+            'success': True,
+            'backend': backend_name,
+            'backend_source': source,
+            'probes': probes,
+        }
+    )
+    return 0
+
+
 def main() -> int:
     args = parse_args()
-    backend_name = args.backend or os.environ.get('ASR_BACKEND', 'qwen3')
+    if args.resolve_backend:
+        return resolve_backend_cli(args)
+    if not args.input or not args.output:
+        log('bad arguments: input and output are required (unless --resolve-backend)')
+        print_json({'success': False, 'error': 'input and output are required'})
+        return 2
 
     try:
-        backend_cls = BACKENDS.get(backend_name)
-        if backend_cls is None:
-            raise ValueError(f'unknown ASR backend: {backend_name}')
+        backend_name, _source, _probes = resolve_backend_name(args.backend)
+    except UnknownBackendError as exc:
+        log(f'error: {exc}')
+        print_json({'success': False, 'error': str(exc)})
+        return 2
+    except BackendUnavailableError as exc:
+        log(f'error: {exc}')
+        print_json(
+            {'success': False, 'error': str(exc), 'missing': exc.missing, 'probes': exc.probes}
+        )
+        return 1
+
+    try:
+        backend_cls = BACKENDS[backend_name]
         sentences = backend_cls().transcribe(args.input)
 
         out_dir = os.path.dirname(os.path.abspath(args.output))
