@@ -29,7 +29,7 @@ or interruption, re-run with the saved URL:
 
 Usage:
   python3 gemini-deep-research.py \\
-    --prompt "Comprehensive overview of quantum computing" \\
+    --prompt "关于量子计算的全面综述" \\
     --output-dir ./quantum_computing/
 
   python3 gemini-deep-research.py --self-check

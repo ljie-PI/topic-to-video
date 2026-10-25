@@ -18,7 +18,7 @@ Two modes, selected by environment:
     vision-capable model.
 
 Usage:
-  python3 vision-analyze.py --prompt "Describe content and rate quality 1-10" \
+  python3 vision-analyze.py --prompt "描述内容并给出 1-10 的质量评分" \
       --images frame_001.jpg frame_002.jpg https://example.com/img.jpg \
       [--model <model>] [--detail low|high|auto]
 

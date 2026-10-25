@@ -25,17 +25,17 @@
 Phase 3 跑 Gemini Deep Research 时，把标准研究 prompt 替换为基于解析论文的版本：
 
 ```
-"Background research for the paper '{title}':
-Abstract: {abstract}
+"围绕论文《{title}》的背景调研：
+摘要：{abstract}
 
-Research:
-1. What problem does this paper address? What was SOTA before it?
-2. Key related works and how they compare
-3. Citations and impact since publication
-4. Subsequent developments building on this work
-5. Community criticisms or limitations
-6. Real-world applications
-7. arXiv URLs of the most important related papers (供本 phase 解析相关论文)"
+请调研：
+1. 这篇论文解决什么问题？此前的最优方法（SOTA）是什么？
+2. 关键相关工作和它们与本工作的对比
+3. 发表以来的引用与影响力
+4. 基于本工作的后续进展
+5. 社区对本工作的批评或局限
+6. 现实世界的应用
+7. 最重要相关论文的 arXiv URL（供本 phase 解析相关论文）"
 ```
 
 论文自身的 markdown 是**主要**内容来源。Deep Research 提供上下文——背景、影响、相关工作对比。调研的其余部分（用 `web_search` 补漏、合成 `research-brief.md`）按 Phase 3 常规流程进行。
