@@ -252,6 +252,19 @@ def test_usage_error_exits_2():
     assert result['success'] is False
 
 
+def test_invalid_argument_value_exits_2(tmp_path: Path):
+    comp = write_composition(tmp_path, [scene('s1', 0.0, 10.0, CLEAN_SCENE)])
+    proc = run_cli(
+        str(comp),
+        '--layout', str(PRESENTER_LAYOUT),
+        '--min-font-size', '22',
+        '--viewport', 'not-a-viewport',
+    )
+    assert proc.returncode == 2
+    result = json.loads(proc.stdout)
+    assert result['success'] is False
+
+
 def test_missing_composition_exits_1(tmp_path: Path):
     proc = run_cli(
         str(tmp_path / 'nope'),

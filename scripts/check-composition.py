@@ -78,8 +78,15 @@ CHROME_CANDIDATES_WIN = [
 
 DEFAULT_VIEWPORT = '1920x1080'
 RECT_TOLERANCE_PX = 2.0
+# Minimum overlap (px^2) before an element counts as intruding into a reserved region.
 MIN_INTRUSION_AREA_PX2 = 4.0
+# Floor (px^2) for the leftover area in covered_by(): below this, a rect is
+# considered contained even if not exactly (antialiasing / sub-pixel edges).
+COVERED_LEFTOVER_FLOOR_PX2 = 4.0
 OVERFLOW_TOLERANCE_PX = 2.0
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+SNAPSHOT_JS_PATH = SCRIPT_DIR / 'check-composition-snapshot.js'
 
 
 class ArgumentParser(argparse.ArgumentParser):
@@ -165,46 +172,52 @@ def load_layout(path: str) -> Dict[str, Any]:
     return data
 
 
-def load_subtitle_units(path: Optional[str]) -> List[Dict[str, Any]]:
+def load_json_object_list(path: Optional[str], key: str, *, required: bool) -> List[Dict[str, Any]]:
+    """Shared load-validate shape for JSON files holding a list under ``key``.
+
+    Returns [] when path is unset, and (unless required) when the key is
+    absent or not a list — a missing optional section is not an error.
+    """
     if not path:
         return []
     data = json.loads(Path(path).read_text(encoding='utf-8'))
-    units = data.get('units') if isinstance(data, dict) else None
-    if not isinstance(units, list):
-        raise ValueError(f'subtitle units file {path} has no units list')
-    cleaned = []
-    for unit in units:
-        if isinstance(unit, dict) and isinstance(unit.get('text'), str):
-            cleaned.append(
-                {
-                    'text': unit['text'],
-                    'begin_s': float(unit.get('begin_s', unit.get('begin_ms', 0) / 1000)),
-                    'end_s': float(unit.get('end_s', unit.get('end_ms', 0) / 1000)),
-                }
-            )
-    cleaned.sort(key=lambda unit: unit['begin_s'])
-    return cleaned
+    items = data.get(key) if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        if required:
+            raise ValueError(f'{path} has no {key} list')
+        return []
+    return [item for item in items if isinstance(item, dict)]
+
+
+def load_subtitle_units(path: Optional[str]) -> List[Dict[str, Any]]:
+    units = []
+    for unit in load_json_object_list(path, 'units', required=True):
+        if not isinstance(unit.get('text'), str):
+            continue
+        units.append(
+            {
+                'text': unit['text'],
+                'begin_s': float(unit.get('begin_s', unit.get('begin_ms', 0) / 1000)),
+                'end_s': float(unit.get('end_s', unit.get('end_ms', 0) / 1000)),
+            }
+        )
+    units.sort(key=lambda unit: unit['begin_s'])
+    return units
 
 
 def load_timeline_scenes(path: Optional[str]) -> List[Dict[str, Any]]:
-    if not path:
-        return []
-    data = json.loads(Path(path).read_text(encoding='utf-8'))
-    scenes = data.get('scenes') if isinstance(data, dict) else None
-    if not isinstance(scenes, list):
-        return []
-    cleaned = []
-    for scene in scenes:
-        if not isinstance(scene, dict) or 'scene_id' not in scene:
+    scenes = []
+    for scene in load_json_object_list(path, 'scenes', required=False):
+        if 'scene_id' not in scene:
             continue
-        cleaned.append(
+        scenes.append(
             {
                 'scene_id': str(scene['scene_id']),
                 'begin_s': float(scene['begin_s']),
                 'end_s': float(scene['end_s']),
             }
         )
-    return cleaned
+    return scenes
 
 
 def resolve_composition_path(raw_path: str) -> Tuple[Path, Path]:
@@ -315,168 +328,19 @@ def covered_by(rect: Rect, allowed: List[Rect]) -> bool:
         if not remainders:
             return True
     leftover = sum(r['width'] * r['height'] for r in remainders)
-    return leftover <= max(MIN_INTRUSION_AREA_PX2, 0.005 * rect['width'] * rect['height'])
+    return leftover <= max(COVERED_LEFTOVER_FLOOR_PX2, 0.005 * rect['width'] * rect['height'])
 
 
 # --- browser measurement ------------------------------------------------------------
 
-MEASURE_JS = r"""
-async ({ checks }) => {
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+def load_snapshot_js() -> str:
+    """The snapshot-collection function expression evaluated in the page.
 
-  async function seekTo(seconds) {
-    const time = Math.max(0, Number(seconds) || 0);
-    const timeMs = time * 1000;
-    let didSeek = false;
+    Kept in scripts/check-composition-snapshot.js so the JavaScript is
+    reviewable and lintable; must remain a single async function expression.
+    """
+    return SNAPSHOT_JS_PATH.read_text(encoding='utf-8')
 
-    if (window.__layoutQA && typeof window.__layoutQA.seek === 'function') {
-      try { await window.__layoutQA.seek(time); didSeek = true; } catch (_) {}
-    }
-    const timelines = window.__timelines ? Object.values(window.__timelines).filter(Boolean) : [];
-    for (const timeline of timelines) {
-      try {
-        if (typeof timeline.pause === 'function') timeline.pause();
-        if (typeof timeline.seek === 'function') { timeline.seek(time, false); didSeek = true; }
-        else if (typeof timeline.totalTime === 'function') { timeline.totalTime(time, false); didSeek = true; }
-      } catch (_) {}
-    }
-    const animeInstances = Array.isArray(window.__hfAnime) ? window.__hfAnime : [];
-    for (const entry of animeInstances) {
-      const animation = entry && (entry.animation || entry.instance || entry);
-      try {
-        if (typeof animation.pause === 'function') animation.pause();
-        if (typeof animation.seek === 'function') { animation.seek(timeMs); didSeek = true; }
-      } catch (_) {}
-    }
-    for (const media of Array.from(document.querySelectorAll('video,audio'))) {
-      try {
-        media.pause();
-        if (Number.isFinite(media.duration)) {
-          media.currentTime = Math.max(0, Math.min(time, media.duration || time));
-        }
-        didSeek = true;
-      } catch (_) {}
-    }
-    // Test seam: compositions may toggle scene visibility on this event; the
-    // built-in seek hooks above drive real animation timelines.
-    window.__checkTime = time;
-    try { document.dispatchEvent(new CustomEvent('check-time', { detail: { time } })); } catch (_) {}
-    await sleep(didSeek ? 80 : 120);
-  }
-
-  function hasBox(rect) {
-    return rect && rect.width > 3 && rect.height > 3;
-  }
-
-  function visible(el) {
-    let current = el;
-    while (current && current.nodeType === Node.ELEMENT_NODE) {
-      const style = getComputedStyle(current);
-      if (style.display === 'none' || ['hidden', 'collapse'].includes(style.visibility)
-          || Number(style.opacity || 1) < 0.03) return false;
-      current = current.parentElement;
-    }
-    return hasBox(el.getBoundingClientRect());
-  }
-
-  function labelOf(el) {
-    return `${el.tagName || ''} ${el.id || ''} ${typeof el.className === 'string' ? el.className : ''}`.toLowerCase();
-  }
-
-  function hasOwnText(el) {
-    return Array.from(el.childNodes).some(
-      (node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim().length > 0);
-  }
-
-  function textContent(el) {
-    return (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
-  }
-
-  function hasVisibleSurface(el) {
-    const style = getComputedStyle(el);
-    return (
-      style.backgroundImage !== 'none' ||
-      (style.backgroundColor && !['rgba(0, 0, 0, 0)', 'transparent'].includes(style.backgroundColor)) ||
-      parseFloat(style.borderTopWidth || '0') > 0
-    );
-  }
-
-  function selectorFor(el) {
-    if (el.id) return `#${el.id}`;
-    const classes = typeof el.className === 'string'
-      ? el.className.trim().split(/\s+/).filter(Boolean).slice(0, 3) : [];
-    if (classes.length) return `${el.tagName.toLowerCase()}.${classes.join('.')}`;
-    return el.tagName.toLowerCase();
-  }
-
-  function collectSnapshot(time) {
-    const elements = [];
-    for (const el of Array.from(document.querySelectorAll('*'))) {
-      if (el.nodeType !== Node.ELEMENT_NODE) continue;
-      const rect = el.getBoundingClientRect();
-      if (!hasBox(rect) || !visible(el)) continue;
-      const style = getComputedStyle(el);
-      const isSceneRoot = el.hasAttribute('data-scene-id');
-      const layoutIgnore = el.hasAttribute('data-layout-ignore');
-      const ancestors = [];
-      let current = el.parentElement;
-      while (current) {
-        if (current.id) ancestors.push(current.id);
-        if (current.getAttribute && current.getAttribute('data-composition-id')) {
-          ancestors.push(current.getAttribute('data-composition-id'));
-        }
-        current = current.parentElement;
-      }
-      let media = null;
-      if (el.tagName === 'IMG') {
-        media = { tag: 'img', complete: el.complete, naturalWidth: el.naturalWidth,
-                  src: el.getAttribute('src') || '' };
-      } else if (el.tagName === 'VIDEO') {
-        media = { tag: 'video', readyState: el.readyState, error: Boolean(el.error),
-                  src: el.getAttribute('src') || '' };
-      }
-      elements.push({
-        selector: selectorFor(el),
-        id: el.id || '',
-        tag: el.tagName.toLowerCase(),
-        label: labelOf(el),
-        rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
-        ownText: hasOwnText(el),
-        text: textContent(el),
-        fontSize: parseFloat(style.fontSize || '0') || 0,
-        isCaption: /subtitle|caption|closed-caption/.test(labelOf(el)),
-        isSceneRoot,
-        layoutIgnore,
-        surface: hasVisibleSurface(el),
-        media,
-        ancestors,
-        overflowStyle: [style.overflowX, style.overflowY].join(' '),
-        clientWidth: el.clientWidth,
-        clientHeight: el.clientHeight,
-        scrollWidth: el.scrollWidth,
-        scrollHeight: el.scrollHeight,
-      });
-    }
-    const captionTexts = elements
-      .filter((el) => el.isCaption && el.ownText && el.text)
-      .map((el) => el.text);
-    return {
-      time,
-      fontsStatus: document.fonts ? document.fonts.status : 'loaded',
-      elements,
-      captionTexts,
-    };
-  }
-
-  const results = [];
-  for (const check of checks) {
-    await seekTo(check.time);
-    await sleep(150);
-    results.push({ scene_id: check.scene_id, ...collectSnapshot(check.time) });
-  }
-  return results;
-}
-"""
 
 DISCOVER_SCENES_JS = r"""
 () => {
@@ -581,6 +445,115 @@ class RegionIndex:
         return next((r for r in self.reserved if r['id'] == region_id), None)
 
 
+def check_region_containment(
+    element: Dict[str, Any], owner: Optional[str], regions: RegionIndex
+) -> Optional[str]:
+    """Element bbox must be contained in the content regions (or its own region)."""
+    if covered_by(element['rect'], regions.allowed_rects_for(owner)):
+        return None
+    rect = element['rect']
+    return (
+        f'{element["selector"]} ({element["tag"]}) at ({rect["x"]:.0f},{rect["y"]:.0f}) '
+        f'{rect["width"]:.0f}x{rect["height"]:.0f} is not contained in any content region'
+    )
+
+
+def check_reserved_intrusion(
+    element: Dict[str, Any], owner: Optional[str], regions: RegionIndex
+) -> List[str]:
+    """Only the region's own component may sit in a reserved region.
+
+    Layout regions may overlap each other (e.g. presenter person x caption-bar),
+    so a component fully inside its own reserved region is the layout's business.
+    """
+    owner_tokens = set(regions.reserved_tokens.get(owner, [])) if owner else set()
+    owner_region = regions.reserved_region_by_id(owner) if owner else None
+    if owner_region is not None and covered_by(element['rect'], [owner_region['rect']]):
+        return []
+    details = []
+    for region in regions.reserved:
+        tokens = set(regions.reserved_tokens[region['id']])
+        if tokens & owner_tokens:
+            continue  # same component group
+        overlap = intersection_area(element['rect'], region['rect'])
+        if overlap > MIN_INTRUSION_AREA_PX2:
+            details.append(
+                f'{element["selector"]} ({element["tag"]}) intrudes into reserved region '
+                f'{region["id"]} ({overlap:.0f}px^2)'
+            )
+    return details
+
+
+def check_text_overflow(element: Dict[str, Any]) -> Optional[str]:
+    if not element['ownText'] or not any(
+        style in element['overflowStyle'] for style in ('hidden', 'clip', 'scroll', 'auto')
+    ):
+        return None
+    overflow_h = element['scrollHeight'] - element['clientHeight']
+    overflow_w = element['scrollWidth'] - element['clientWidth']
+    if overflow_h <= OVERFLOW_TOLERANCE_PX and overflow_w <= OVERFLOW_TOLERANCE_PX:
+        return None
+    return (
+        f'{element["selector"]} text overflows its box '
+        f'(scroll {element["scrollWidth"]}x{element["scrollHeight"]} vs '
+        f'client {element["clientWidth"]}x{element["clientHeight"]})'
+    )
+
+
+def check_media_load(element: Dict[str, Any]) -> Optional[str]:
+    media = element['media']
+    if not media:
+        return None
+    if media['tag'] == 'img' and media['complete'] and media['naturalWidth'] == 0:
+        return f'{element["selector"]} image failed to load: {media["src"]}'
+    if media['tag'] == 'video' and media['src'] and (media['error'] or media['readyState'] == 0):
+        return f'{element["selector"]} video failed to load: {media["src"]}'
+    return None
+
+
+def check_font_size(
+    element: Dict[str, Any],
+    owner: Optional[str],
+    regions: RegionIndex,
+    min_font_size: float,
+) -> Optional[str]:
+    """Reading text below the design minimum; caption text follows the caption spec."""
+    if not element['ownText'] or not (0 < element['fontSize'] < min_font_size):
+        return None
+    owner_tokens = regions.reserved_tokens.get(owner, []) if owner else []
+    if element['isCaption'] or 'caption' in ' '.join(owner_tokens):
+        return None
+    return (
+        f'{element["selector"]} font size {element["fontSize"]:.0f}px is below the design '
+        f'minimum {min_font_size:.0f}px'
+    )
+
+
+def check_fonts_loaded(snapshot: Dict[str, Any]) -> Optional[str]:
+    if snapshot['fontsStatus'] == 'loaded':
+        return None
+    return f'document.fonts status is {snapshot["fontsStatus"]}'
+
+
+def check_caption(snapshot: Dict[str, Any], subtitle_units: List[Dict[str, Any]]) -> Optional[str]:
+    unit = active_subtitle_unit(subtitle_units, snapshot['time'])
+    if unit is None:
+        return None
+    on_screen = normalize_text(' '.join(snapshot['captionTexts']))
+    expected = normalize_text(unit['text'])
+    if not on_screen:
+        return (
+            f'no visible caption at {snapshot["time"]:.1f}s '
+            f'but subtitle unit {unit["text"]!r} is active'
+        )
+    if on_screen != expected:
+        return (
+            f'on-screen caption {on_screen!r} does not match subtitle unit {expected!r} '
+            f'at {snapshot["time"]:.1f}s'
+        )
+    return None
+
+
 def analyze_snapshot(
     snapshot: Dict[str, Any],
     regions: RegionIndex,
@@ -588,11 +561,11 @@ def analyze_snapshot(
     subtitle_units: List[Dict[str, Any]],
 ) -> List[Dict[str, str]]:
     scene_id = snapshot['scene_id']
-    time_s = snapshot['time']
     findings: List[Dict[str, str]] = []
 
-    def add(check: str, detail: str) -> None:
-        findings.append({'scene_id': scene_id, 'check': check, 'detail': detail})
+    def add(check: str, detail: Optional[str]) -> None:
+        if detail:
+            findings.append({'scene_id': scene_id, 'check': check, 'detail': detail})
 
     elements = snapshot['elements']
 
@@ -603,82 +576,17 @@ def analyze_snapshot(
             continue
         if element_in_ignored_subtree(element, elements):
             continue
-        rect = element['rect']
-        selector = element['selector']
         owner = element_owner_region(element, regions.reserved_tokens)
 
-        allowed = regions.allowed_rects_for(owner)
-        if not covered_by(rect, allowed):
-            add(
-                'outside_content_regions',
-                f'{selector} ({element["tag"]}) at ({rect["x"]:.0f},{rect["y"]:.0f}) '
-                f'{rect["width"]:.0f}x{rect["height"]:.0f} is not contained in any content region',
-            )
+        add('outside_content_regions', check_region_containment(element, owner, regions))
+        for detail in check_reserved_intrusion(element, owner, regions):
+            add('reserved_region_intrusion', detail)
+        add('text_overflow', check_text_overflow(element))
+        add('media_load_failure', check_media_load(element))
+        add('font_size_below_min', check_font_size(element, owner, regions, min_font_size))
 
-        owner_tokens = set(regions.reserved_tokens.get(owner, [])) if owner else set()
-        owner_region = regions.reserved_region_by_id(owner) if owner else None
-        # Layout regions may overlap each other (e.g. presenter person x caption-bar):
-        # a component fully inside its own reserved region is the layout's business.
-        inside_own_region = owner_region is not None and covered_by(rect, [owner_region['rect']])
-        if not inside_own_region:
-            for region in regions.reserved:
-                tokens = set(regions.reserved_tokens[region['id']])
-                if tokens & owner_tokens:
-                    continue  # same component group
-                overlap = intersection_area(rect, region['rect'])
-                if overlap > MIN_INTRUSION_AREA_PX2:
-                    add(
-                        'reserved_region_intrusion',
-                        f'{selector} ({element["tag"]}) intrudes into reserved region '
-                        f'{region["id"]} ({overlap:.0f}px^2)',
-                    )
-
-        if element['ownText'] and any(
-            style in element['overflowStyle'] for style in ('hidden', 'clip', 'scroll', 'auto')
-        ):
-            overflow_h = element['scrollHeight'] - element['clientHeight']
-            overflow_w = element['scrollWidth'] - element['clientWidth']
-            if overflow_h > OVERFLOW_TOLERANCE_PX or overflow_w > OVERFLOW_TOLERANCE_PX:
-                add(
-                    'text_overflow',
-                    f'{selector} text overflows its box '
-                    f'(scroll {element["scrollWidth"]}x{element["scrollHeight"]} vs '
-                    f'client {element["clientWidth"]}x{element["clientHeight"]})',
-                )
-
-        media = element['media']
-        if media:
-            if media['tag'] == 'img' and media['complete'] and media['naturalWidth'] == 0:
-                add('media_load_failure', f'{selector} image failed to load: {media["src"]}')
-            elif media['tag'] == 'video' and media['src'] and (media['error'] or media['readyState'] == 0):
-                add('media_load_failure', f'{selector} video failed to load: {media["src"]}')
-
-        if element['ownText'] and element['fontSize'] > 0 and element['fontSize'] < min_font_size:
-            if not (element['isCaption'] or owner and 'caption' in ' '.join(owner_tokens)):
-                add(
-                    'font_size_below_min',
-                    f'{selector} font size {element["fontSize"]:.0f}px is below the design '
-                    f'minimum {min_font_size:.0f}px',
-                )
-
-    if snapshot['fontsStatus'] != 'loaded':
-        add('fonts_not_loaded', f'document.fonts status is {snapshot["fontsStatus"]}')
-
-    unit = active_subtitle_unit(subtitle_units, time_s)
-    if unit is not None:
-        on_screen = normalize_text(' '.join(snapshot['captionTexts']))
-        expected = normalize_text(unit['text'])
-        if not on_screen:
-            add(
-                'caption_mismatch',
-                f'no visible caption at {time_s:.1f}s but subtitle unit {unit["text"]!r} is active',
-            )
-        elif on_screen != expected:
-            add(
-                'caption_mismatch',
-                f'on-screen caption {on_screen!r} does not match subtitle unit {expected!r} '
-                f'at {time_s:.1f}s',
-            )
+    add('fonts_not_loaded', check_fonts_loaded(snapshot))
+    add('caption_mismatch', check_caption(snapshot, subtitle_units))
 
     return findings
 
@@ -709,6 +617,30 @@ def scene_check_times(scene: Dict[str, Any]) -> List[float]:
         round(begin + duration / 2, 3),
         round(end - epsilon, 3),
     ]
+
+
+def resolve_scenes(page: Any, timeline_scenes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Scene timing precedence:
+
+    1. timeline.json scenes passed via --timeline;
+    2. [data-scene-id] DOM roots with data-scene-start / data-scene-end;
+    3. one global scene spanning the probed [data-duration] total (10s fallback).
+    """
+    if timeline_scenes:
+        return timeline_scenes
+    dom_scenes = page.evaluate(DISCOVER_SCENES_JS)
+    scenes = [
+        {
+            'scene_id': str(scene['scene_id']),
+            'begin_s': float(scene['begin_s']),
+            'end_s': float(scene['end_s']),
+        }
+        for scene in dom_scenes
+    ]
+    if scenes:
+        return scenes
+    total = page.evaluate(DURATION_PROBE_JS) or 10.0
+    return [{'scene_id': 'global', 'begin_s': 0.0, 'end_s': float(total)}]
 
 
 def build_report(
@@ -755,6 +687,9 @@ def main() -> None:
     args = parse_args()
     try:
         viewport = parse_viewport(args.viewport)
+    except ValueError as exc:
+        fail(str(exc), exit_code=2)  # invalid argument value
+    try:
         composition_dir, index_path = resolve_composition_path(args.composition)
     except (ValueError, OSError) as exc:
         fail(str(exc), exit_code=1)
@@ -762,7 +697,7 @@ def main() -> None:
         layout = load_layout(args.layout)
         min_font_size = load_min_font_size(args)
         subtitle_units = load_subtitle_units(args.subtitle_units)
-        scenes = load_timeline_scenes(args.timeline)
+        timeline_scenes = load_timeline_scenes(args.timeline)
     except (ValueError, OSError, json.JSONDecodeError) as exc:
         fail(str(exc), exit_code=1)
 
@@ -785,25 +720,13 @@ def main() -> None:
                 page = browser.new_page(viewport={'width': viewport[0], 'height': viewport[1]})
                 page.goto(index_url, wait_until='networkidle', timeout=30000)
                 page.wait_for_timeout(300)
-                if not scenes:
-                    dom_scenes = page.evaluate(DISCOVER_SCENES_JS)
-                    scenes = [
-                        {
-                            'scene_id': str(scene['scene_id']),
-                            'begin_s': float(scene['begin_s']),
-                            'end_s': float(scene['end_s']),
-                        }
-                        for scene in dom_scenes
-                    ]
-                if not scenes:
-                    total = page.evaluate(DURATION_PROBE_JS) or 10.0
-                    scenes = [{'scene_id': 'global', 'begin_s': 0.0, 'end_s': float(total)}]
+                scenes = resolve_scenes(page, timeline_scenes)
                 checks = [
                     {'scene_id': scene['scene_id'], 'time': time}
                     for scene in scenes
                     for time in scene_check_times(scene)
                 ]
-                snapshots = page.evaluate(MEASURE_JS, {'checks': checks})
+                snapshots = page.evaluate(load_snapshot_js(), {'checks': checks})
             finally:
                 browser.close()
 

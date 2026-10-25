@@ -12,7 +12,7 @@ Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（若 `fet
 
 ## 完成判据
 
-四个主产物都通过状态脚本的校验（`script.txt` / `narration.txt` 存在非空；`tts-lexicon.json` 是可解析的非空 JSON map，键值都是非空字符串；`scene-plan.json` 是非空列表，每个 scene 有 `scene_id` 和非空 `paragraphs`）；字数与目标时长的偏差在 ±15% 以内；场景规划覆盖 `script.txt` 的全部段落；素材引用都存在于 catalog 中。校验通过后，把旁白和场景摘要交给用户确认，再进入 TTS。
+全部产物都通过状态脚本的校验（`script.txt` / `narration.txt` 存在非空；`tts-lexicon.json` 是可解析的非空 JSON map，键值都是非空字符串；`scene-plan.json` 是非空列表，每个 scene 有 `scene_id` 和非空 `paragraphs`）；字数与目标时长的偏差在 ±15% 以内；场景规划覆盖 `script.txt` 的全部段落；素材引用都存在于 catalog 中。校验通过后，把旁白和场景摘要交给用户确认，再进入 TTS。
 
 ## 下一步
 
@@ -44,15 +44,6 @@ script agent 报告完成后，主 agent 逐项校验（不修改产物，不合
 
 全部通过后，把旁白和场景摘要（每个 scene 的 `scene_id` + `intent`）交给用户确认；用户确认前不要进入 Phase 7。
 
-## Phase 6.3 — 生成朗读稿
+## Phase 6.3 — 朗读稿生成归属
 
-显示稿和词表确认后，运行：
-
-```bash
-python3 scripts/make-narration.py \
-  --script {work_dir}/{topic_name}/script.txt \
-  --lexicon {work_dir}/{topic_name}/tts-lexicon.json \
-  --output-dir {work_dir}/{topic_name}/
-```
-
-产出 `narration.txt`（朗读稿，可直接交给 Phase 7 的 TTS 脚本，不需要任何修改）和 `narration-offsets.json`（偏移表）。不要手改 `narration.txt`；要改就改显示稿或词表后重新生成（改了显示稿需重新过一遍 6.2 校验与用户确认）。
+`narration.txt` 与 `narration-offsets.json` 由 **script agent** 在委派任务内作为最后一步生成（handoff 的 Outputs 已列出 `scripts/make-narration.py` 命令；生成是确定性的）。主 agent 不运行 make-narration，只在校验（6.2）里确认这两份产物存在且非空。不要手改 `narration.txt`；要改就改显示稿或词表，然后让 script agent 重新生成（改了显示稿需重新过一遍 6.2 校验与用户确认）。
