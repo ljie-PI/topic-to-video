@@ -6,18 +6,18 @@
 python3 scripts/pipeline-status.py {work_dir}/{topic_name}
 ```
 
-## 冒烟 A：github 模板 60 秒主题，Phase 1 → 10
+## 冒烟 A：github 模板 60 秒主题，Phase 1 → 9
 
 **前置**：Chrome 已登录 Gemini；TTS / ASR 后端环境变量已配置（见两个脚本的 `--help`）；`claude-code` 可用作主 agent 的原生 sub-agent 派发目标；`.venv` 已激活。
 
 1. **触发**：对主 agent 说“用 github 模板做一个 60 秒讲 <某主题> 的视频”。
 2. **Phase 1 核对**：主 agent 逐项确认输入后落盘 `inputs.json`，核对这些字段：`duration` ≈ 60 秒、`template` = `github`、`design` = `github`、`layout` = `presenter`、`orientation` = `landscape`、`fetch_materials` = `true`、`qa_level` = `standard`、`coding_agent` = `claude-code`。
-3. **循环推进**：每完成一个 phase 重跑一次状态脚本，`next_phase` 应按 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 前进。
+3. **循环推进**：每完成一个 phase 重跑一次状态脚本，`next_phase` 应按 3 → 4 → 5 → 6 → 7 → 8 → 9 前进。
 4. **Phase 3**：确认先跑了 `scripts/gemini-deep-research.py --self-check`（通过后才提交调研）；产出 `research-brief.md` 且先给你过目。
 5. **Phase 6（委派 1/2）**：确认主 agent 只对 Claude Code sub-agent 发了一句话 prompt（`读取 {work_dir}/{topic_name}/script-handoff.md 并按它执行；完成后报告产物路径。`），产物为 `script.txt` / `tts-lexicon.json` / `narration.txt` / `narration-offsets.json` / `scene-plan.json`；主 agent 做 ±15% 字数、段落全覆盖、素材引用三项校验后把旁白与场景摘要给你确认。
 6. **续跑测试（中断恢复）**：Phase 6 完成、Phase 7 配音之前，手动删掉一个中间产物（例如 `narration.txt`），重跑状态脚本——`next_phase` 必须回退到 Phase 6；让主 agent 继续，确认它能从 handoff 重新委派补齐产物，之后 `next_phase` 恢复正常前进。
-7. **Phase 9（委派 2/2）**：确认 composition 同样经 Claude Code 委派（读 `composition-handoff.md`）；storyboard 的每个 scene 都标注了所用 content 区域；渲染前 `npx hyperframes check` 无错误、`check-composition` verdict 为 pass；产物含 `composition/index.html`、`composition/compositions/`、`composition/renders/final.mp4`。
-8. **Phase 10（standard 档 QA）**：`check-render.py` 确定性检查 pass；`make-contact-sheet.py` 生成 `qa/sheet_NNN.jpg`（约 40 scene 的片子 vision 调用应 ≈ scene 数 ÷ 4）；主 agent 逐张过目并写 `qa/qa-report.json`（只含 `findings` + `verdict`）。若 verdict 为 `fail`，确认修复轮 ≤ 2 轮、每轮只改受影响 scene；finding 数不再下降时应标 `handed_off` 交还给你。
+7. **Phase 8（委派 2/2）**：确认 composition 同样经 Claude Code 委派（读 `composition-handoff.md`）；storyboard 的每个 scene 都标注了所用 content 区域；渲染前 `npx hyperframes check` 无错误、`check-composition` verdict 为 pass；产物含 `composition/index.html`、`composition/compositions/`、`composition/renders/final.mp4`。
+8. **Phase 9（standard 档 QA）**：`check-render.py` 确定性检查 pass；`make-contact-sheet.py` 生成 `qa/sheet_NNN.jpg`（约 40 scene 的片子 vision 调用应 ≈ scene 数 ÷ 4）；主 agent 逐张过目并写 `qa/qa-report.json`（只含 `findings` + `verdict`）。若 verdict 为 `fail`，确认修复轮 ≤ 2 轮、每轮只改受影响 scene；finding 数不再下降时应标 `handed_off` 交还给你。
 9. **最终交付**：`mix-bgm.py` 产出 `composition/renders/final_with_bgm.mp4` 存在且非空；状态脚本报告 `next_phase` 为 `null`（全部完成）。
 
 **验收**：`final_with_bgm.mp4` 生成；两个委派步骤都由 Claude Code 完成；删中间产物后续跑正确；standard 档 QA 通过或 2 轮内停下交回报告。

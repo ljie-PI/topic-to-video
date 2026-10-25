@@ -16,7 +16,7 @@ Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（若 `fet
 
 ## 下一步
 
-Phase 7（TTS）：只对 `narration.txt` 配音。
+Phase 7（配音与字幕）：只对 `narration.txt` 配音，并生成词级时间戳与字幕单元。
 
 ---
 

@@ -2,7 +2,11 @@
 """
 Word/character level ASR with a local-first backend.
 
-Backends (select via --backend or ASR_BACKEND env, default: qwen3):
+Backends (select via --backend or ASR_BACKEND env, default: auto):
+  auto       Pick by environment: CUDA GPU -> qwen3; DASHSCOPE_API_KEY ->
+             dashscope; Apple Silicon (darwin/arm64) -> error: no ASR is
+             needed there — voice-clone.py's mlx backend aligns the narration
+             text directly and writes transcript.json itself.
   qwen3      Local Qwen3-ASR + Qwen3-ForcedAligner (Apache-2.0). Runs on the
              local GPU, returns char-level (CJK) / word-level (Latin)
              timestamps with optional ITN. No cloud key needed.
@@ -11,10 +15,11 @@ Backends (select via --backend or ASR_BACKEND env, default: qwen3):
 
 Usage:
   python3 transcribe.py <input.mp3|http(s)://...|oss://...> <output.json>
-                        [--backend qwen3|dashscope]
+                        [--backend auto|qwen3|dashscope]
+  python3 transcribe.py --resolve-backend   # print the auto decision (no model)
 
 Optional env:
-  ASR_BACKEND           qwen3 (default) | dashscope
+  ASR_BACKEND           auto (default) | qwen3 | dashscope
   # qwen3 backend:
   QWEN3_ASR_MODEL       default Qwen/Qwen3-ASR-1.7B
   QWEN3_ALIGNER_MODEL   default Qwen/Qwen3-ForcedAligner-0.6B
@@ -37,6 +42,12 @@ Output JSON shape (stable downstream contract):
     },
     ...
   ]
+
+Testing seam (documented; also used by the test-suite): the hardware/OS
+probes behind auto/--resolve-backend read these overrides when set:
+  ASR_DETECT_PLATFORM   e.g. darwin | linux   (default: sys.platform)
+  ASR_DETECT_MACHINE    e.g. arm64 | x86_64   (default: platform.machine())
+  ASR_DETECT_CUDA       1 | 0                 (default: torch.cuda.is_available())
 """
 from __future__ import annotations
 
@@ -46,8 +57,68 @@ import json
 import os
 import re
 import sys
-import unicodedata
 from http import HTTPStatus
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+
+import backend_select as bs
+from backend_select import BackendUnavailableError, UnknownBackendError
+from transcript_schema import transcript_from_torch_alignment
+
+
+# --- backend selection (auto) ---------------------------------------------------
+#
+# The probes, the CLI > env > auto resolution and the --resolve-backend output
+# live in backend_select.py (shared with voice-clone.py). This script only
+# supplies the ASR backend registry and the ASR auto order; the documented
+# probe overrides are ASR_DETECT_PLATFORM / ASR_DETECT_MACHINE / ASR_DETECT_CUDA.
+
+PROBE_PREFIX = 'ASR_DETECT'
+
+
+def _auto_backend(probes: dict[str, object]) -> tuple[str, dict[str, object]]:
+    """ASR auto order: CUDA -> qwen3; DASHSCOPE_API_KEY -> dashscope.
+
+    On Apple Silicon ASR is unnecessary (voice-clone.py's mlx backend emits
+    transcript.json via direct forced alignment), so auto raises
+    BackendUnavailableError pointing there.
+    """
+    missing: list[str] = []
+    if probes['cuda']:
+        return 'qwen3', probes
+    missing.append('CUDA-capable GPU with torch (backend qwen3)')
+    if probes['dashscope_key']:
+        return 'dashscope', probes
+    missing.append('DASHSCOPE_API_KEY (backend dashscope)')
+    if probes['platform'] == 'darwin' and probes['machine'] == 'arm64':
+        raise BackendUnavailableError(
+            'no ASR backend available, and none is needed: on Apple Silicon use '
+            "voice-clone.py's mlx backend — it aligns the narration text directly "
+            'and writes transcript.json itself (run voice-clone.py --resolve-backend)',
+            missing,
+            probes,
+        )
+    raise BackendUnavailableError(
+        'no usable ASR backend: ' + '; '.join(missing), missing, probes
+    )
+
+
+def resolve_backend_name(cli_backend: str | None) -> tuple[str, str, dict[str, object]]:
+    """Resolve the effective ASR backend. Returns (name, source, probes).
+
+    source is 'cli' (--backend), 'env' (ASR_BACKEND) or 'auto'. See
+    backend_select.resolve_backend_name for the shared contract and
+    _auto_backend for the ASR auto order.
+    """
+    return bs.resolve_backend_name(
+        cli_backend,
+        env_var='ASR_BACKEND',
+        probe_prefix=PROBE_PREFIX,
+        backends=BACKENDS,
+        auto_resolve=_auto_backend,
+        label='ASR',
+    )
 
 
 def print_json(payload: dict[str, object]) -> None:
@@ -73,12 +144,6 @@ _CAL_UNITS = '年月日号時时分秒'
 _CAL_SPLIT = re.compile(f'(?<=[{_CAL_UNITS}])')
 _ITN_NORMALIZER = None
 _ITN_DISABLED = False
-
-# Sentence-final boundaries used to re-segment the flat aligned token stream
-# (the forced aligner returns one flat list; downstream wants sentences).
-# CJK enders split unconditionally; Latin .!? split only when followed by
-# whitespace or end-of-string so "GPT 5.4" / "v2.0" are not split mid-number.
-_SENTENCE_BOUNDARY = re.compile(r'(?<=[。！？…\n])|(?<=[.!?])(?=\s|$)')
 
 
 def itn_enabled() -> bool:
@@ -177,106 +242,16 @@ def apply_itn_to_sentences(sentences: list[dict]) -> list[dict]:
     return out
 
 
-def _kept_chars(text: str) -> str:
-    """Letters/numbers only, lowercased.
-
-    Mirrors the forced aligner's token cleaning (it keeps Unicode L/N
-    categories and drops punctuation/space), so a sentence's kept-char string
-    equals the concatenation of its aligned tokens' kept-char strings.
-    """
-    return ''.join(
-        ch.lower() for ch in text if unicodedata.category(ch)[0] in ('L', 'N')
-    )
-
-
-def _to_ms(seconds: float) -> int:
-    return int(round(float(seconds) * 1000.0))
-
-
 def segment_into_sentences(full_text: str, items: list) -> list[dict]:
-    """Group a flat list of aligned tokens into sentences.
+    """Group a flat list of aligned tokens into the pipeline transcript schema.
 
-    ``items`` is the forced aligner output: objects with ``text`` /
-    ``start_time`` / ``end_time`` (seconds), one per CJK character or Latin
-    word, with punctuation stripped. ``full_text`` retains punctuation, so we
-    split it into sentences and walk the tokens to fill each one.
-
-    The walk is *token-anchored*: every token is always assigned to exactly one
-    sentence, so no word-level timing is ever dropped. A token whose kept chars
-    overshoot the current sentence boundary stays in the sentence it completes,
-    and the overflow is carried so subsequent sentences stay aligned.
+    Thin adapter over transcript_schema.transcript_from_torch_alignment: the
+    torch forced aligner returns one flat token list (``text`` / ``start_time``
+    / ``end_time``, seconds), while ``full_text`` retains punctuation and
+    supplies the sentence boundaries. The shared schema builder owns the
+    grouping walk (token-anchored, no word timing dropped or duplicated).
     """
-    words = [
-        {
-            'text': it.text,
-            'begin': _to_ms(it.start_time),
-            'end': _to_ms(it.end_time),
-        }
-        for it in items
-    ]
-    if not words:
-        return []
-
-    targets = []
-    for part in _SENTENCE_BOUNDARY.split(full_text):
-        sentence_text = part.strip()
-        if not sentence_text:
-            continue
-        keep_len = len(_kept_chars(sentence_text))
-        if keep_len == 0:
-            continue
-        targets.append({'text': sentence_text, 'keep_len': keep_len})
-
-    # No usable sentence text — keep all words in a single synthesized sentence.
-    if not targets:
-        return [
-            {
-                'begin': words[0]['begin'],
-                'end': words[-1]['end'],
-                'text': ''.join(w['text'] for w in words),
-                'words': list(words),
-            }
-        ]
-
-    sentences: list[dict] = []
-    ti = 0
-    group: list[dict] = []
-    acc = 0  # kept chars accumulated toward the current target (incl. carry)
-    for word in words:
-        group.append(word)
-        acc += len(_kept_chars(word['text']))
-        # Close the current sentence once its quota is met, carrying overflow
-        # from a boundary-spanning token. The ``group`` guard prevents emitting
-        # an empty sentence when a single oversized token satisfies two or more
-        # consecutive target quotas at once.
-        while ti < len(targets) - 1 and group and acc >= targets[ti]['keep_len']:
-            acc -= targets[ti]['keep_len']
-            sentences.append(
-                {
-                    'begin': group[0]['begin'],
-                    'end': group[-1]['end'],
-                    'text': targets[ti]['text'],
-                    'words': group,
-                }
-            )
-            group = []
-            ti += 1
-
-    # Remaining tokens belong to the final target. If a sentence boundary was
-    # reached exactly on the previous token, `group` may be empty; only emit a
-    # final sentence when it actually holds tokens.
-    if group:
-        sentences.append(
-            {
-                'begin': group[0]['begin'],
-                'end': group[-1]['end'],
-                'text': targets[ti]['text'] if ti < len(targets) else ''.join(
-                    w['text'] for w in group
-                ),
-                'words': group,
-            }
-        )
-    return sentences
+    return transcript_from_torch_alignment(full_text, items)
 
 
 # --------------------------------------------------------------------------- #
@@ -493,26 +468,56 @@ class JsonArgumentParser(argparse.ArgumentParser):
 
 def parse_args() -> argparse.Namespace:
     parser = JsonArgumentParser(
-        description='Transcribe audio to word/char level timestamps.')
-    parser.add_argument('input', help='input.mp3 | http(s)://... | oss://...')
-    parser.add_argument('output', help='output JSON path')
+        description='Transcribe audio to word/char level timestamps.',
+        epilog=(
+            'key env vars: ASR_BACKEND (default auto), QWEN3_ASR_MODEL, '
+            'QWEN3_ALIGNER_MODEL, DASHSCOPE_API_KEY, ASR_MODEL. Probe overrides '
+            'for --resolve-backend: ASR_DETECT_PLATFORM / ASR_DETECT_MACHINE / '
+            'ASR_DETECT_CUDA. Full docs: module docstring.'
+        ),
+    )
+    parser.add_argument('input', nargs='?', default=None,
+                        help='input.mp3 | http(s)://... | oss://...')
+    parser.add_argument('output', nargs='?', default=None, help='output JSON path')
     parser.add_argument(
         '--backend',
-        choices=sorted(BACKENDS),
+        choices=['auto'] + sorted(BACKENDS),
         default=None,
-        help='ASR backend. Defaults to ASR_BACKEND env or "qwen3".',
+        help='ASR backend. Defaults to ASR_BACKEND env or "auto" (CUDA -> '
+             'qwen3; DASHSCOPE_API_KEY -> dashscope).',
+    )
+    parser.add_argument(
+        '--resolve-backend',
+        action='store_true',
+        help='Print the backend decision as one JSON document and exit '
+             '(probes only — no model is loaded).',
     )
     return parser.parse_args()
 
 
+def resolve_backend_cli(args: argparse.Namespace) -> int:
+    """--resolve-backend: print the backend decision (probes only), no models."""
+    return bs.resolve_backend_cli(
+        lambda: resolve_backend_name(args.backend), log=log, print_json=print_json
+    )
+
+
 def main() -> int:
     args = parse_args()
-    backend_name = args.backend or os.environ.get('ASR_BACKEND', 'qwen3')
+    if args.resolve_backend:
+        return resolve_backend_cli(args)
+    if not args.input or not args.output:
+        log('bad arguments: input and output are required (unless --resolve-backend)')
+        print_json({'success': False, 'error': 'input and output are required'})
+        return 2
 
     try:
-        backend_cls = BACKENDS.get(backend_name)
-        if backend_cls is None:
-            raise ValueError(f'unknown ASR backend: {backend_name}')
+        backend_name, _source, _probes = resolve_backend_name(args.backend)
+    except (UnknownBackendError, BackendUnavailableError) as exc:
+        return bs.backend_error_response(exc, log=log, print_json=print_json)
+
+    try:
+        backend_cls = BACKENDS[backend_name]
         sentences = backend_cls().transcribe(args.input)
 
         out_dir = os.path.dirname(os.path.abspath(args.output))

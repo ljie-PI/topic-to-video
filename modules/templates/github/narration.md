@@ -1,6 +1,6 @@
 # 旁白要求：github 模板（GitHub 热榜 / 开源项目盘点）
 
-模板（见 `modules/templates/github/github.md`）需要的**锚点句**和读法要求。script agent 撰写旁白与场景规划时读本文件；锚点句写进 `scene-plan.json` 的 `cues` 字段，Phase 8 用它们从配音里算出秒数，驱动导航 tab、转场卡片、Jay 的瞥视和 Star → Starred 动画。
+模板（见 `modules/templates/github/github.md`）需要的**锚点句**和读法要求。script agent 撰写旁白与场景规划时读本文件；锚点句写进 `scene-plan.json` 的 `cues` 字段，Phase 7 的 7.2 用它们从配音里算出秒数，驱动导航 tab、转场卡片、Jay 的瞥视和 Star → Starred 动画。
 
 ## 锚点句（cues）
 

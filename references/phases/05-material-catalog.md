@@ -57,7 +57,7 @@ Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产
 
    **Paper-origin entries（`source_type: "paper_pdf"`）：** 直接把 PDF caption（`paper_metadata.figure_captions` / `table_captions`）作为 `semantic_description`，默认 `score: 8`。只对没有 caption 的论文素材跑 VLM。
 
-4. **组合**：把 `entry.text_excerpt` + 图片描述 + 各帧描述合成 catalog entry。**关键：** 对每个视频，写一份 `selected_clips` 列表，元素形如 `{start, end, reason, frame_paths[]}` —— 这些就是 Phase 6（场景规划的 `material_candidates`）和 Phase 9（composition）会引用的片段。
+4. **组合**：把 `entry.text_excerpt` + 图片描述 + 各帧描述合成 catalog entry。**关键：** 对每个视频，写一份 `selected_clips` 列表，元素形如 `{start, end, reason, frame_paths[]}` —— 这些就是 Phase 6（场景规划的 `material_candidates`）和 Phase 8（composition）会引用的片段。
 
 5. **过滤：** 丢掉 VLM 评分 <5/10 或者偏题的素材。不要把垃圾带进解说阶段。
 
@@ -104,11 +104,11 @@ Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产
 ```
 
 - `entries[*].slug` 在每个 URL 上唯一，与 harvest 输出目录名一致。
-- 每张图 / 每个视频都带一个 `id`（harvester 写出的文件 stem，例如 `img_001` 或 YouTube video id）。Phase 6 起通过 **`material_ref`** 引用素材：图片 / 视频用素材 id，视频 clip 用 `<video_id>:<start>-<end>`（秒，与 `selected_clips` 对应）。Phase 9 的 composition agent 负责把 `material_ref` 解析成 catalog entry → `local_path`；主 agent 永远不直接碰 `local_path`。
-- `semantic_description` 是结合话题 context 生成的叙事锚点描述（"适合用于说明 X 概念 / Y 论点"），而非纯粹的图像内容描述；Phase 6 的场景规划（`material_candidates`）和 Phase 9 的 composition agent 都依赖它做匹配决策。
-- **`width` / `height` 必须透传**：图片由 harvester 抓取时记录；视频由 `video-download.py` + `apply-video-download-result.py` 通过 ffprobe 写入 manifest，构建 catalog 时直接搬过来。Phase 9 的 HyperFrames sub-agent 用这两个字段为每个素材容器设置正确的宽高比，**禁止猜或假设 16:9**。若个别素材缺失（旧 manifest、抓取失败），catalog 里写 `null` 而不是省略字段。
+- 每张图 / 每个视频都带一个 `id`（harvester 写出的文件 stem，例如 `img_001` 或 YouTube video id）。Phase 6 起通过 **`material_ref`** 引用素材：图片 / 视频用素材 id，视频 clip 用 `<video_id>:<start>-<end>`（秒，与 `selected_clips` 对应）。Phase 8 的 composition agent 负责把 `material_ref` 解析成 catalog entry → `local_path`；主 agent 永远不直接碰 `local_path`。
+- `semantic_description` 是结合话题 context 生成的叙事锚点描述（"适合用于说明 X 概念 / Y 论点"），而非纯粹的图像内容描述；Phase 6 的场景规划（`material_candidates`）和 Phase 8 的 composition agent 都依赖它做匹配决策。
+- **`width` / `height` 必须透传**：图片由 harvester 抓取时记录；视频由 `video-download.py` + `apply-video-download-result.py` 通过 ffprobe 写入 manifest，构建 catalog 时直接搬过来。Phase 8 的 HyperFrames sub-agent 用这两个字段为每个素材容器设置正确的宽高比，**禁止猜或假设 16:9**。若个别素材缺失（旧 manifest、抓取失败），catalog 里写 `null` 而不是省略字段。
 - `aspect_ratio`、`ratio_bucket`、`layout_affordance`、`focal_region` 是布局提示字段，优先由 Phase 5 根据 `width` / `height`、视觉分析和 topic context 写入；旧 catalog 缺失时，可按 `width / height` 推断。`ratio_bucket` 建议按 `r = width / height` 判定：`ultra-wide` / `strip` `r >= 2.4`；`wide` `1.20 <= r < 2.4`；`square-ish` `0.90 <= r < 1.20`；`tall` `0.50 <= r < 0.90`；`ultra-tall` `r < 0.50`。`tall` / `ultra-tall` 素材写入 `layout_affordance: ["viewport_reveal"]`，并提供 `focal_region`、start / mid / end 关键区域说明或 avoid-region。
 - `layout_affordance` 只表示素材适合的展示方式，不等于最终 layout；composition 阶段根据旁白和 scene 需求自由决定呈现方式。可选值包括 `video_first`、`media_first`、`viewport_reveal`、`band`、`detail_callout`、`comparison_pair`、`comparison_sequence`。
-- `focal_region` 使用归一化坐标 `{x, y, w, h, reason}` 描述关键区域或应避免遮挡的区域；它不是自动裁切命令，只用于 Phase 9 设计 reveal viewport、半透明文本浮层避让和 QA 检查。
+- `focal_region` 使用归一化坐标 `{x, y, w, h, reason}` 描述关键区域或应避免遮挡的区域；它不是自动裁切命令，只用于 Phase 8 设计 reveal viewport、半透明文本浮层避让和 QA 检查。
 
 **输出：** `extract_frames/<slug>/<video-name>/`、`vision_analyze/<slug>/`、`material-catalog.json`。

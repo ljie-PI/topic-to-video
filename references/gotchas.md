@@ -145,7 +145,7 @@ Phase 6 只能引用 Phase 5 产出的 `material-catalog.json`。如果 catalog 
 
 ## 17. 主 agent 不手写 composition HTML
 
-主 agent 只负责生成 `composition-handoff.md`，并把 composition 委派包（`references/delegation/composition/`）与 modules（不含 `examples/`）物化到工作区、按所选 design 预置字体。`composition/index.html`、storyboard、场景布局、动画、渲染前自查和渲染迭代都属于 Phase 9 coding sub-agent。
+主 agent 只负责生成 `composition-handoff.md`，并把 composition 委派包（`references/delegation/composition/`）与 modules（不含 `examples/`）物化到工作区、按所选 design 预置字体。`composition/index.html`、storyboard、场景布局、动画、渲染前自查和渲染迭代都属于 Phase 8 coding sub-agent。
 
 修复：如果发现主 agent 已开始手写 HTML，停下并改为补全 handoff、物化委派包与 modules 副本、核对素材引用；让 composition sub-agent 接管 composition。
 
