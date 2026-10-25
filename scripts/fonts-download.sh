@@ -1,257 +1,248 @@
 #!/usr/bin/env bash
-# Download deterministic local WOFF2 fonts for topic-to-video themes.
+# Install the vendored WOFF2 fonts of a topic-to-video theme into a project.
 #
-# Usage: bash fonts-download.sh [target_dir] [--theme <theme_dir|theme_name> | style] [--dry-run]
-#   target_dir defaults to ./fonts
-#   --theme reads a theme's fonts.json manifest (e.g. modules/designs/dawn or dawn)
-#   style (legacy) values: any theme name under modules/designs, or all
+# Usage:
+#   bash fonts-download.sh [target_dir] [--theme <theme_dir|theme_name> | style] [--dry-run]
+#   bash fonts-download.sh --refresh (--theme <theme_dir|theme_name> | style) [--dry-run]
+#     target_dir defaults to ./fonts; style (legacy) is a theme name or all
 #
-# Theme manifests live in modules/designs/<theme>/fonts.json and are the only
-# source of truth for the theme roster: adding a theme = dropping a new
-# manifest dir. A manifest lists the Google Fonts css2 families, the local
-# CSS filename and the rename flag. The legacy named styles are aliases for
-# the matching theme dirs.
-set -Eeuo pipefail
-
-log() {
-  echo "[fonts] $*" >&2
-}
-
-emit_json_error() {
-  python3 - "$1" <<'PY'
-import json
-import sys
-
-print(json.dumps({"success": False, "error": sys.argv[1]}, ensure_ascii=False))
-PY
-}
-
-emit_json_success() {
-  python3 - "$TARGET" "$@" <<'PY'
-import json
-import sys
-
-print(
-    json.dumps(
-        {
-            "success": True,
-            "output_dir": sys.argv[1],
-            "files": sys.argv[2:],
-        },
-        ensure_ascii=False,
-    )
-)
-PY
-}
-
-bad_args() {
-  local message="$1"
-  log "$message"
-  emit_json_error "$message"
-  exit 2
-}
-
-runtime_error() {
-  local message="$1"
-  log "$message"
-  emit_json_error "$message"
-  exit 1
-}
-
-on_error() {
-  local command="$BASH_COMMAND"
-  trap - ERR
-  runtime_error "command failed: $command"
-}
-trap on_error ERR
+# Fonts are committed under resources/fonts/<theme>/: the CSS named by the
+# theme's fonts.json css_filename plus the WOFF2 files it references.
+# Installing copies that directory into target_dir and never touches the
+# network. --refresh is the maintenance path: it re-downloads the families in
+# modules/designs/<theme>/fonts.json from Google Fonts into
+# resources/fonts/<theme>/, replacing what is there, so the result can be
+# committed.
+#
+# Output: one JSON document on stdout, logs on stderr; exit 0 = success,
+# 1 = runtime error, 2 = invalid arguments.
+# Overrides (maintenance and tests): FONTS_RESOURCES_DIR (default
+# <repo>/resources/fonts), FONTS_CSS2_URL (default
+# https://fonts.googleapis.com/css2).
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MODULES_DESIGNS="$SCRIPT_DIR/../modules/designs"
+exec python3 - "$SCRIPT_DIR" "$@" <<'PY'
+from __future__ import annotations
 
-if [[ ! -d "$MODULES_DESIGNS" ]]; then
-  runtime_error "theme dir $MODULES_DESIGNS does not exist"
-fi
-
-# All theme manifests (the roster source of truth).
-theme_manifests() {
-  local manifest
-  for manifest in "$MODULES_DESIGNS"/*/fonts.json; do
-    [[ -f "$manifest" ]] && echo "$manifest"
-  done
-}
-
-THEME=""
-STYLE=""
-DRY_RUN=""
-POSITIONALS=()
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --dry-run)
-      DRY_RUN="--dry-run"
-      shift
-      ;;
-    --theme)
-      [[ $# -ge 2 ]] || bad_args "--theme requires a theme dir or theme name"
-      THEME="$2"
-      shift 2
-      ;;
-    *)
-      POSITIONALS+=("$1")
-      shift
-      ;;
-  esac
-done
-
-if [[ ${#POSITIONALS[@]} -gt 2 ]]; then
-  bad_args "Usage: bash fonts-download.sh [target_dir] [--theme <theme_dir|theme_name> | style] [--dry-run]"
-fi
-TARGET="${POSITIONALS[0]:-fonts}"
-if [[ ${#POSITIONALS[@]} -eq 2 ]]; then
-  STYLE="${POSITIONALS[1]}"
-fi
-
-if [[ -n "$THEME" && -n "$STYLE" ]]; then
-  bad_args "pass either --theme or a named style, not both"
-fi
-if [[ -z "$THEME" && -z "$STYLE" ]]; then
-  STYLE="default"
-fi
-
-mkdir -p "$TARGET"
-
-# Resolve a theme dir / theme name / fonts.json path to a manifest file.
-resolve_manifest() {
-  local spec="$1"
-  local dir=""
-  if [[ -f "$spec" ]]; then
-    echo "$spec"
-    return
-  fi
-  if [[ -d "$spec" ]]; then
-    dir="$spec"
-  elif [[ -f "$MODULES_DESIGNS/$spec/fonts.json" ]]; then
-    dir="$MODULES_DESIGNS/$spec"
-  else
-    runtime_error "unknown theme '$spec' (no fonts.json under $MODULES_DESIGNS)"
-  fi
-  echo "$dir/fonts.json"
-}
-
-# Download one theme manifest: validate it, build the css2 URL, fetch the
-# WOFF2 subsets and write the local CSS in a single pass.
-download_manifest() {
-  local manifest="$1"
-  python3 - "$manifest" "$TARGET" "$DRY_RUN" <<'PY'
+import argparse
 import hashlib
 import json
+import os
 import re
+import shutil
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
-manifest_path = Path(sys.argv[1])
-target_dir = Path(sys.argv[2])
-dry_run = sys.argv[3] == "--dry-run"
-
-manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-try:
-    families = manifest["css2_families"]
-    css_filename = manifest["css_filename"]
-    rename_families = bool(manifest.get("rename"))
-except KeyError as exc:
-    raise SystemExit(f"manifest {manifest_path} missing field: {exc}")
-if not isinstance(families, list) or not families:
-    raise SystemExit(f"manifest {manifest_path}: css2_families must be a non-empty list")
-
-style_name = manifest_path.parent.name
-css_url = "https://fonts.googleapis.com/css2?family=" + "&family=".join(families) + "&display=swap"
-css_file = target_dir / css_filename
-
-
-def log(message: str) -> None:
-    print(f"[fonts] {message}", file=sys.stderr)
-
-
-if dry_run:
-    log(f"dry-run {style_name} css: {css_url}")
-    log(f"dry-run {style_name} css output: {css_file}")
-    raise SystemExit(0)
-
+REPO = Path(sys.argv[1]).parent
+DESIGNS = REPO / 'modules' / 'designs'
+RESOURCES = Path(os.environ.get('FONTS_RESOURCES_DIR') or REPO / 'resources' / 'fonts')
+CSS2_URL = os.environ.get('FONTS_CSS2_URL') or 'https://fonts.googleapis.com/css2'
+# Short family aliases used by themes whose fonts.json sets "rename": true.
+RENAMES = {"'Noto Sans SC'": "'NotoSansSC'", "'IBM Plex Mono'": "'IBMPlexMono'"}
 # A modern browser UA makes Google Fonts serve real WOFF2 (unicode-range
 # subsets, variable axes kept); a bare UA gets static TrueType per instance.
-headers = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+HEADERS = {
+    'User-Agent': (
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
     )
 }
 
 
+class BadArguments(Exception):
+    pass
+
+
+class Parser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise BadArguments(message)
+
+
+def log(message: str) -> None:
+    print(f'[fonts] {message}', file=sys.stderr)
+
+
+def print_json(payload: dict) -> None:
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = Parser(prog='fonts-download.sh', add_help=False)
+    parser.add_argument('positionals', nargs='*')
+    parser.add_argument('--theme')
+    parser.add_argument('--refresh', action='store_true')
+    parser.add_argument('--dry-run', action='store_true')
+    args = parser.parse_intermixed_args(argv)
+    limit = 1 if args.refresh else 2
+    if len(args.positionals) > limit:
+        raise BadArguments(
+            'usage: fonts-download.sh [target_dir] [--theme <theme> | style] [--dry-run] | '
+            '--refresh (--theme <theme> | style) [--dry-run]'
+        )
+    style = args.positionals[-1] if len(args.positionals) == limit else None
+    if args.theme and style:
+        raise BadArguments('pass either --theme or a named style, not both')
+    args.spec = args.theme or style
+    if args.refresh and not args.spec:
+        raise BadArguments('--refresh needs --theme <theme> or a theme name / all')
+    args.spec = args.spec or 'default'
+    args.target = None if args.refresh else Path(args.positionals[0] if args.positionals else 'fonts')
+    return args
+
+
+def known_themes() -> list[str]:
+    return sorted(manifest.parent.name for manifest in DESIGNS.glob('*/fonts.json'))
+
+
+def resolve_manifests(spec: str) -> list[Path]:
+    if spec == 'all':
+        return sorted(DESIGNS.glob('*/fonts.json'))
+    # A bare theme name always means modules/designs/<name>, whatever the
+    # working directory contains; only path-like specs are resolved as paths.
+    if '/' not in spec and (DESIGNS / spec / 'fonts.json').is_file():
+        return [DESIGNS / spec / 'fonts.json']
+    for base in (Path.cwd(), REPO):
+        path = base / spec
+        if path.is_file() and path.name == 'fonts.json':
+            return [path]
+        if path.is_dir() and (path / 'fonts.json').is_file():
+            return [path / 'fonts.json']
+    raise BadArguments(f"unknown theme '{spec}'. Expected one of: {' '.join(known_themes())} all")
+
+
+def load_manifest(path: Path) -> dict:
+    manifest = json.loads(path.read_text(encoding='utf-8'))
+    families = manifest.get('css2_families')
+    if not isinstance(families, list) or not families:
+        raise ValueError(f'manifest {path}: css2_families must be a non-empty list')
+    if not isinstance(manifest.get('css_filename'), str) or not manifest['css_filename']:
+        raise ValueError(f'manifest {path}: css_filename must be a non-empty string')
+    return manifest
+
+
+def install(manifest_path: Path, target: Path, dry_run: bool) -> list[str]:
+    theme = manifest_path.parent.name
+    manifest = load_manifest(manifest_path)
+    source = RESOURCES / theme
+    if not (source / manifest['css_filename']).is_file():
+        raise FileNotFoundError(
+            f'no vendored fonts for theme {theme} in {source}; '
+            f'run: bash scripts/fonts-download.sh --refresh --theme {theme}'
+        )
+    files = sorted(p for p in source.iterdir() if p.is_file() and p.suffix in ('.css', '.woff2'))
+    if not dry_run:
+        target.mkdir(parents=True, exist_ok=True)
+        for file in files:
+            shutil.copyfile(file, target / file.name)
+    log(f"{'would install' if dry_run else 'installed'} {len(files)} files for {theme} into {target}")
+    return [str((target / file.name).resolve()) for file in files]
+
+
 def fetch(url: str, attempts: int = 3) -> bytes:
-    request = urllib.request.Request(url, headers=headers)
+    request = urllib.request.Request(url, headers=HEADERS)
     for attempt in range(1, attempts + 1):
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
                 return response.read()
+        except urllib.error.HTTPError as exc:
+            # 4xx will not get better on retry; only server errors are retried.
+            if exc.code < 500 or attempt == attempts:
+                raise
+            log(f'retry {attempt}/{attempts - 1} after {exc}')
+            time.sleep(2 * attempt)
         except OSError as exc:
             if attempt == attempts:
                 raise
-            log(f"retry {attempt}/{attempts - 1} after {exc}")
+            log(f'retry {attempt}/{attempts - 1} after {exc}')
             time.sleep(2 * attempt)
+    raise AssertionError('unreachable')
 
 
-css = fetch(css_url).decode("utf-8")
-urls = list(dict.fromkeys(re.findall(r"url\((https://fonts\.gstatic\.com/[^)]+)\)", css)))
-if not urls:
-    raise SystemExit("No Google Font WOFF2 URLs found in CSS response")
+def refresh(manifest_path: Path, dry_run: bool) -> list[str]:
+    theme = manifest_path.parent.name
+    manifest = load_manifest(manifest_path)
+    css_url = CSS2_URL + '?family=' + '&family='.join(manifest['css2_families']) + '&display=swap'
+    out = RESOURCES / theme
+    if dry_run:
+        log(f'dry-run {theme} css: {css_url}')
+        log(f'dry-run {theme} output: {out}')
+        return []
+    css = fetch(css_url).decode('utf-8')
+    urls = list(dict.fromkeys(re.findall(r'url\((https?://[^)]+)\)', css)))
+    if not urls:
+        raise ValueError(f'no font URLs found in the CSS for {theme}')
+    # Download into a hidden staging dir and swap it in only when complete, so
+    # a failed refresh leaves the committed fonts untouched and no debris.
+    staging = RESOURCES / f'.{theme}.partial'
+    previous = RESOURCES / f'.{theme}.previous'
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True)
+    try:
+        for index, url in enumerate(urls):
+            digest = hashlib.sha256(url.encode('utf-8')).hexdigest()[:12]
+            filename = f'{theme}-{index:02d}-{digest}.woff2'
+            log(f'downloading {filename}')
+            (staging / filename).write_bytes(fetch(url))
+            css = css.replace(url, filename)
+        if manifest.get('rename'):
+            for old, new in RENAMES.items():
+                css = css.replace(old, new)
+        (staging / manifest['css_filename']).write_text(css, encoding='utf-8')
+        shutil.rmtree(previous, ignore_errors=True)
+        if out.exists():
+            out.rename(previous)
+        try:
+            staging.rename(out)
+        except OSError:
+            if previous.exists() and not out.exists():
+                previous.rename(out)
+            raise
+        shutil.rmtree(previous, ignore_errors=True)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    log(f'refreshed {theme}: {len(urls)} font files in {out}')
+    return sorted(str(p.resolve()) for p in out.iterdir())
 
-for index, url in enumerate(urls):
-    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
-    filename = f"{style_name}-{index:02d}-{digest}.woff2"
-    destination = target_dir / filename
-    if destination.exists():
-        log(f"{filename} (cached)")
-    else:
-        log(f"downloading {filename}")
-        destination.write_bytes(fetch(url))
-    css = css.replace(url, filename)
 
-if rename_families:
-    css = css.replace("'Noto Sans SC'", "'NotoSansSC'")
-    css = css.replace("'IBM Plex Mono'", "'IBMPlexMono'")
-    css = css.replace("'Ma Shan Zheng'", "'MaShanZheng'")
-    css = css.replace("'Long Cang'", "'LongCang'")
-    css = css.replace("'Zhi Mang Xing'", "'ZhiMangXing'")
-    css = css.replace("'Patrick Hand'", "'PatrickHand'")
-css_file.write_text(css, encoding="utf-8")
-log(f"wrote {css_file}")
+def main(argv: list[str]) -> int:
+    try:
+        args = parse_args(argv)
+        if args.refresh and args.spec != 'all' and (
+            '/' in args.spec or not (DESIGNS / args.spec / 'fonts.json').is_file()
+        ):
+            # Refresh rewrites committed fonts, so it only takes theme names
+            # under modules/designs, never paths to other manifests.
+            raise BadArguments(
+                f"--refresh takes a theme name under modules/designs: {' '.join(known_themes())} all"
+            )
+        manifests = resolve_manifests(args.spec)
+        files: list[str] = []
+        for manifest in manifests:
+            if args.refresh:
+                files += refresh(manifest, args.dry_run)
+            else:
+                files += install(manifest, args.target, args.dry_run)
+        output_dir = RESOURCES if args.refresh else args.target
+        print_json({
+            'success': True,
+            'mode': 'refresh' if args.refresh else 'install',
+            'output_dir': str(output_dir.resolve()),
+            'files': files,
+        })
+        return 0
+    except BadArguments as exc:
+        log(f'bad arguments: {exc}')
+        print_json({'success': False, 'error': str(exc)})
+        return 2
+    except Exception as exc:  # noqa: BLE001 - every runtime failure becomes one JSON error
+        log(f'error: {exc}')
+        print_json({'success': False, 'error': str(exc)})
+        return 1
+
+
+sys.exit(main(sys.argv[2:]))
 PY
-}
-
-if [[ -n "$THEME" ]]; then
-  download_manifest "$(resolve_manifest "$THEME")"
-else
-  case "$STYLE" in
-    all)
-      while IFS= read -r manifest; do
-        download_manifest "$manifest"
-      done < <(theme_manifests)
-      ;;
-    *)
-      manifest="$MODULES_DESIGNS/$STYLE/fonts.json"
-      if [[ ! -f "$manifest" ]]; then
-        known="$(theme_manifests | while IFS= read -r m; do basename "$(dirname "$m")"; done | tr '\n' ' ')"
-        bad_args "Unknown style '$STYLE'. Expected one of: $known all"
-      fi
-      download_manifest "$manifest"
-      ;;
-  esac
-fi
-
-set --
-while IFS= read -r file; do
-  set -- "$@" "$file"
-done < <(find "$TARGET" -type f \( -name '*.woff2' -o -name '*.css' \) | sort)
-emit_json_success "$@"

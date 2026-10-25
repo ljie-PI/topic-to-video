@@ -31,16 +31,14 @@
 
 ## 用色
 
-- 通用：主数字用 `--c-ink` / `--c-focus`；确认或风险数值才用 `--c-positive` / `--c-warning` / `--c-danger`；普通 label 用 `--c-ink2` / `--c-muted`。
-- 各主题的具体覆盖写法已从主题文档迁到本 pattern：
+- 通用：主数字用 `--c-ink` / `--c-focus`；确认或风险数值才用 `--c-positive` / `--c-warning` / `--c-danger`；普通 label 用 `--c-ink2`（`--c-muted` 只用于 34px 以上的弱化数字）。
+- 各主题只写和通用写法不同的地方：
 
 | 主题 | 榜单用色 |
 | --- | --- |
-| default | 主数字 `ink` / `focus`；确认或风险数值才用 success / warning / danger；普通 label 用 `ink2` / `muted`。 |
-| dawn | 数字用 Primary 或 Pine；当前排名 / 重点数字可配 Gold 小点缀；变化趋势用 Foam / Love 线。 |
-| moon | 数字用 Gold / Foam；rank marker 用 Iris；风险数值用 Love；普通 label 用 Secondary。 |
-| github | 数字 Primary / mono；star / growth 用 Success；rank / link 用 Blue；warning metric 用 Attention callout。 |
-| producthunt | upvote / rank 的外形用主橙，文字用 Primary / `#C8392F`；maker / verified metric 文字用 `#046B50`；注册 / traffic info 用蓝色。 |
+| default | 无特殊覆盖。 |
+| github | star / 增长数字用 `--c-positive`；排名和链接用 `--c-focus`；数字用等宽字。 |
+| producthunt | upvote / 排名的形状（三角、药丸边）用 `--c-highlight`，数字用 `--c-ink`；当前项文字用 `--c-focus`；maker / 已认证指标用 `--c-positive-text`；注册 / 流量用 `--c-info`。 |
 
 ## 已有实现
 

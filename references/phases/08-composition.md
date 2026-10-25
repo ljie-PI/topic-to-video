@@ -27,7 +27,7 @@ Phase 9（检查与混音）：渲染后 QA（`check-render.py` 确定性检查 
 1. **委派包**：复制 `references/delegation/conventions.md` 与 `references/delegation/composition/`（基础指令 + handoff 模板）→ `{work_dir}/{topic_name}/references/delegation/`，保持相对路径不变。
 2. **modules 库**：复制整个 `modules/` 目录（**不含 `examples/`**）→ `{work_dir}/{topic_name}/modules/`。modules 内部的相对路径不变，`modules.md`、design / layout / pattern / component 文档与机器可读的区域定义 JSON 都以相同路径出现在工作区。
 3. **所选模块资源**：按各模块文档把所选 design 的 textures、所用组件的图片 / HTML、模板资源复制进 composition 工程（如 `composition/assets/textures/`、`composition/compositions/`、`composition/assets/brand/`）；复制清单见 `modules/modules.md` 的「组装一支视频」与所选模块各自的文档。
-4. **字体预置**（由所选 design 决定）：如果 `{work_dir}/{topic_name}/composition/assets/fonts/` 还没含所选 design 的 `.woff2` 与 CSS，运行：
+4. **字体预置**（由所选 design 决定）：每次准备都运行一次（字体从仓库的 `resources/fonts/` 拷贝，不联网，很快；重跑也会补上旧工程缺的新文件名）：
 
    ```bash
    bash scripts/fonts-download.sh {work_dir}/{topic_name}/composition/assets/fonts \

@@ -12,3 +12,6 @@ chrome_profile/
 # Root-only: downloaded theme fonts inside projects (e.g. <project>/assets/fonts)
 # are NOT ignored; only the skill root fonts/ directory is.
 /fonts/
+
+# Staging dirs left by an interrupted `fonts-download.sh --refresh`
+resources/fonts/.*

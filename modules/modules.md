@@ -19,11 +19,9 @@
 modules.md                                 本文档：入口、组装流程、约定
 designs/
   designs.md                              主题变量约定（token 契约：--c-* 颜色 / --font-* / --motion-* / 字号下限）、字体清单格式、备选配色
-  default/default.md, fonts.json          主题：Frag Note 暖白 + 克制薰衣草（纯 token）
-  dawn/dawn.md, fonts.json                主题：Rosé Pine Dawn 暖奶油 + 手绘（纯 token）
-  moon/moon.md, fonts.json                主题：Rosé Pine Moon 深色技术编辑（纯 token）
-  github/github.md, fonts.json, textures/ 主题：纸本（冷灰棉纸 + 低饱和 GitHub 色）；paper.jpg、slate.jpg、grain.png
-  producthunt/producthunt.md, fonts.json  主题：Product Hunt 产品风（纯 token）
+  default/default.md, fonts.json, textures/   主题：燕麦纸（暖燕麦棉纸 + 低饱和墨灰与灰薰衣草）；paper.jpg
+  github/github.md, fonts.json, textures/   主题：纸本（冷灰棉纸 + 低饱和 GitHub 色）；paper.jpg、slate.jpg
+  producthunt/producthunt.md, fonts.json, textures/   主题：亚麻纸（粉调亚麻纸 + 低饱和墨蓝与陶土橙）；paper.jpg
 layouts/
   presenter.md, presenter.json            布局：讲解模式（人物右下角主持，主 / 副展示区，上下界面条）
   stage.md, stage.json                    布局：舞台模式（1920×1080，无主持人，主展示区贯穿，全局字幕区）
@@ -50,7 +48,7 @@ examples/
   jay-actions/                            人物动作演示：15 个动作加打字和瞥视逐个演一遍（59.9 秒）
 ```
 
-主题字体不放在仓库里，按主题的 `fonts.json` 清单用 skill 根目录的 `scripts/fonts-download.sh` 下载，例如 `bash scripts/fonts-download.sh <视频工程>/assets/fonts --theme modules/designs/github`（旧的具名风格 `github` 等价）。
+主题字体已经下载好放在仓库的 `resources/fonts/<主题>/`，用 skill 根目录的 `scripts/fonts-download.sh` 拷进视频工程，不联网，例如 `bash scripts/fonts-download.sh <视频工程>/assets/fonts --theme modules/designs/github`（旧的具名风格 `github` 等价）。
 
 ## 读哪份文档
 
@@ -81,7 +79,7 @@ examples/
    - 或者 `npx hyperframes init <目录>` 新建。
 2. **主题**：
    - 把 `designs/<主题>/textures/` 复制到工程的 `assets/textures/`；
-   - 用 skill 根目录的 `scripts/fonts-download.sh <工程>/assets/fonts <主题>` 下载字体，并在 `index.html` 的 `<head>` 里引入它生成的 CSS；
+   - 用 skill 根目录的 `bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/<主题>` 把字体装进工程，并在 `index.html` 的 `<head>` 里引入装进去的 CSS；
    - 把主题文档里的变量代码放进 `index.html` 的 `:root`；
    - 根节点放一个铺满全屏的 `#ground`，背景用 `var(--ground)`。
 3. **模板**：按 `templates/<类型>/<类型>.md`：

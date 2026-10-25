@@ -33,15 +33,13 @@
 ## 用色
 
 - 标注一律放在素材外置信息区；pin / marker 可用 `--c-focus` 或真实状态色，说明文字保持 `--c-ink` / `--c-ink2`。
-- 各主题的具体覆盖写法已从主题文档迁到本 pattern：
+- 各主题只写和通用写法不同的地方：
 
 | 主题 | 标注用色 |
 | --- | --- |
-| default | 标注放在素材外部，pin / marker 可用 `--c-focus` 或真实状态色。 |
-| dawn | 标注放在素材外置信息区；pin / arrow 用 Gold / Foam；说明文字 Primary。 |
-| moon | 标注在素材外部；pin 用 Gold / Foam；解释文字 Primary / Secondary。 |
-| github | 标注外置；pin / border 用 Blue / Attention / Danger；解释文字用 callout text 或 Primary。 |
-| producthunt | 标注在素材外置信息区；pin 用 `#C8392F` 或蓝，主橙只作非唯一外形点缀。 |
+| default | 无特殊覆盖。 |
+| github | pin / 边框按语义用 `--c-focus` / `--c-warning` / `--c-danger`。 |
+| producthunt | pin 用 `--c-focus` 或 `--c-info`；`--c-highlight` 只作非唯一的外形点缀。 |
 
 ## 已有实现
 

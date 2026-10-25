@@ -32,16 +32,14 @@
 
 ## 用色
 
-- 通用：focal series / 高亮单元格用 `--c-focus`；辅助内容用暖中性色；语义内容表达真实数据语义（涨跌、风险用对应语义色）。
-- 各主题的具体覆盖写法已从主题文档迁到本 pattern：
+- 通用：focal series / 高亮单元格用 `--c-focus`；辅助文字用 `--c-ink2`（`--c-muted` 只用于 34px 以上的弱化数字）；语义内容表达真实数据语义（涨跌、风险用对应语义色）。
+- 各主题只写和通用写法不同的地方：
 
 | 主题 | 表格用色 |
 | --- | --- |
-| default | focal series 用 `focus`；辅助 series 用暖中性色；语义 series 表达相应数据语义。 |
-| dawn | 表格正文 Primary；表头 Secondary 大号；highlight cell 用 Pine / Love / Foam 线，Gold 只做非唯一辅助点；series 用 Foam / Pine / Iris。 |
-| moon | 表格正文 Secondary；highlight cell 用 Gold 描边；chart 主线 Foam，secondary series Iris / Rose，danger series Love。 |
-| github | 表格正文 Primary / Secondary；highlight cell 用 callout tint；series 用 Blue / Success / Attention / Danger / Done / Teal。 |
-| producthunt | 表格正文 Primary / Secondary；highlight cell 用 callout tint；信息性橙色 series 用 `#C8392F`，主橙只作辅助 marker。 |
+| default | 无特殊覆盖。 |
+| github | 涨跌用 `--c-positive` / `--c-danger`；高亮单元格用 `--c-focus-tint` 底。 |
+| producthunt | 高亮单元格用 `--c-focus-tint` 底；upvote 列的数字用 `--c-ink`，前面的三角用 `--c-highlight`。 |
 
 ## 已有实现
 

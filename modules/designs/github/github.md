@@ -4,13 +4,12 @@
 
 这份文档只规定外观，任何类型的视频都能用。GitHub 专属的内容（Octocat 标志、语言色点、仓库卡片、Star 按钮、贡献图配色等）不在这里，在 `templates/github/github.md`。
 
-背景贴图在 `designs/github/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体不放在仓库里，用 skill 根目录的 `scripts/fonts-download.sh <工程>/assets/fonts github` 下载，得到 Noto Sans（英文和数字）、Noto Sans SC（中文）、Noto Sans Mono（代码、文件名）三种可变字重（100–900）的 WOFF2 和一份 `rose-pine-github-fonts.css`。
+背景贴图在 `designs/github/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体已经放在仓库的 `resources/fonts/github/`，安装方式见 1.5。
 
 | 文件 | 用途 |
 |---|---|
 | `textures/paper.jpg` | 默认背景：冷灰棉纸，1920×1080 |
-| `textures/slate.jpg` | 变体背景：淡灰绿石板 |
-| `textures/grain.png` | 变体背景用的静态颗粒，256×256 平铺 |
+| `textures/slate.jpg` | slate 变体的背景：淡灰绿石板 |
 
 ---
 
@@ -43,13 +42,13 @@
 | `--c-focus` | `#2F6AA8` |
 | `--c-focus-tint` | `#E6EEF7` |
 | `--c-info` | `#0969DA`（Primer Blue） |
-| `--c-warning` | `#BE7D00`（Primer Attention） |
+| `--c-warning` | `#986400`（Primer Attention 加深，保证正文对比度） |
 | `--c-danger` | `#CF2230`（Primer Danger） |
 | `--c-positive` | `#337A4C` |
 | `--c-positive-solid` | `#3D8757` |
 | `--c-positive-tint` | `#E4F0E8` |
 | `--c-positive-text` | `#24563A` |
-| `--c-highlight` | `#C9A645` |
+| `--c-highlight` | `#A88831` |
 | `--c-done` | `#6F5BB5` |
 | `--c-chrome` | `#262B31` |
 | `--c-chrome-ink` | `#F6F8FA` |
@@ -63,6 +62,8 @@
 
 - 正文（26px 及以下）对背景至少 4.5:1；大字、图标、粗线至少 3:1。
 - `--c-muted` 在卡片底上只有约 3.4:1，只能用在 34px 以上的数字上。
+- `--c-warning` 在纸色上约 4.6:1，在卡片底上约 4.9:1，可以承载正文。
+- `--c-highlight` 在纸色上约 3.1:1，只做形状、图标和大号短字，不承载正文。
 - 界面条上的次要文字用 `--c-chrome-muted`，约 4.8:1。
 - 指标色标签里的文字用 `--c-positive-text`，不要直接用 `--c-positive`。
 
@@ -75,57 +76,20 @@
   - 文字 `ink #1F2A25`，`ink2 #4F5E57`；焦点 `focus #2A6B88`；指标 `positive #2D7646`；
   - 界面条 `chrome #2C3A34`，当前项标记 `chrome-active #F0B56A`；
   - 方格从 `#E3E9E4` 到 `#2A6B88`。
-- **primer-white（Primer 白底）**：GitHub 官网式的纯白画布变体，见 1.6。
-- **aurora（柔光）**：
-  - 底色 `#F7F8FA`，背景是四团柔和色晕加 `grain.png` 颗粒（见 1.5）；
-  - 颜色保持原饱和度：`focus #0969DA`，`positive #08872B`，`chrome #25292E`，`chrome-active #FD8C73`。
 
-### 1.6 变体：primer-white（Primer 白底）
-
-以 paper 变量为基础，覆盖成 GitHub 官网的纯白底高饱和配色。组件和模板都不用改：
-
-| 变量 | 覆盖值 |
-|---|---|
-| `--c-canvas` | `#FFFFFF` |
-| `--c-card` | `#FFFFFF` |
-| `--c-surface` | `#F6F8FA` |
-| `--c-border` | `#D1D9E0` |
-| `--c-ink` | `#1F2328` |
-| `--c-ink2` | `#59636E` |
-| `--c-muted` | `#8C959F` |
-| `--c-focus` | `#0969DA` |
-| `--c-focus-tint` | `#DDF4FF` |
-| `--c-info` | `#0969DA` |
-| `--c-warning` | `#BE7D00` |
-| `--c-danger` | `#CF2230` |
-| `--c-positive` | `#08872B` |
-| `--c-positive-solid` | `#1F883D` |
-| `--c-positive-tint` | `#DAFBE1` |
-| `--c-positive-text` | `#0A5128` |
-| `--c-highlight` | `#BE7D00` |
-| `--c-done` | `#8534F3` |
-| `--c-chrome` | `#25292E` |
-| `--c-chrome-ink` | `#FFFFFF` |
-| `--c-chrome-muted` | `#8C959F` |
-| `--c-chrome-active` | `#FD8C73` |
-| `--c-tile0`–`--c-tile4` | `#EFEFEF` `#D1D9E0` `#96A3B3` `#5A8FC7` `#0969DA` |
-| `--ground` | `#FFFFFF`（可叠 `#EFEFEF` 极淡背景网格） |
-
-primer-white 上允许用极淡背景网格（`#EFEFEF` 横竖 2px 线、约 72px 间距、opacity 0.35–0.45，放背景层）；语义正文优先用 Primer callout 三件套（info `#DDF4FF` / `#0969DA` / `#0A3069`，success `#DAFBE1` / `#1F883D` / `#0A5128`，attention `#FFF8C5` / `#BE7D00` / `#7D4E00`，danger `#FFEBE9` / `#CF2230` / `#A40E26`，done `#FBEFFF` / `#8534F3` / `#512A97`）。Octocat 标志、语言色点、repo 卡片、Star 按钮这些 GitHub 专属元素在 `templates/github/`。
-
-### 1.7 变量代码（复制到视频 `index.html` 的 `:root`）
+### 1.5 变量代码（复制到视频 `index.html` 的 `:root`）
 
 ```css
 :root {
   --c-canvas: #f2f4f6;  --c-card: #fbfcfd;  --c-surface: #f3f5f7;  --c-border: #d3d9df;
   --c-ink: #22272e;     --c-ink2: #57606a;  --c-muted: #818a94;
   --c-focus: #2f6aa8;   --c-focus-tint: #e6eef7;
-  --c-info: #0969da;    --c-warning: #be7d00;  --c-danger: #cf2230;
+  --c-info: #0969da;    --c-warning: #986400;  --c-danger: #cf2230;
   --c-positive: #337a4c;  --c-positive-solid: #3d8757;  --c-positive-tint: #e4f0e8;  --c-positive-text: #24563a;
-  --c-highlight: #c9a645; --c-done: #6f5bb5;
+  --c-highlight: #a88831; --c-done: #6f5bb5;
   --c-chrome: #262b31;  --c-chrome-ink: #f6f8fa;  --c-chrome-muted: #9aa3ad;  --c-chrome-active: #e08a73;
   --c-tile0: #e4e8ec;   --c-tile1: #c9d6e3;  --c-tile2: #9db4cc;  --c-tile3: #6f92b5;  --c-tile4: #2f6aa8;
-  --ground: url("assets/textures/paper.jpg") 0 0 / 1920px 1080px, #f2f4f6;
+  --ground: url("assets/textures/paper.jpg") center / cover, #f2f4f6;
   --font-sans: "Noto Sans", "Noto Sans SC", sans-serif;
   --font-mono: "Noto Sans Mono", "Noto Sans SC", monospace;
   --motion-enter-duration: 0.45s;
@@ -134,21 +98,9 @@ primer-white 上允许用极淡背景网格（`#EFEFEF` 横竖 2px 线、约 72p
 }
 ```
 
-字体清单在 `fonts.json`，下载：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/github`，得到 Noto Sans（英文和数字）、Noto Sans SC（中文）、Noto Sans Mono（代码、文件名）三种可变字重（100–900）的 WOFF2 和一份 `rose-pine-github-fonts.css`。
+字体已经下载好放在仓库的 `resources/fonts/github/`。安装：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/github`，把 Noto Sans（英文和数字）、Noto Sans SC（中文）、Noto Sans Mono（代码、文件名）三种可变字重（100–900）的 WOFF2 和一份 `github-fonts.css` 拷进工程，不联网。
 
-字体在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/rose-pine-github-fonts.css">` 引入，CSS 里的字体名就是上面变量用的 `Noto Sans` / `Noto Sans SC` / `Noto Sans Mono`。
-
-aurora 变体的 `--ground`：
-
-```css
---ground:
-  url("assets/textures/grain.png") 0 0 / 256px 256px,
-  radial-gradient(1000px 760px at 6% 8%, rgba(176, 216, 255, 0.8), rgba(176, 216, 255, 0) 70%),
-  radial-gradient(820px 620px at 82% 0%, rgba(226, 208, 255, 0.6), rgba(226, 208, 255, 0) 70%),
-  radial-gradient(1100px 820px at 98% 100%, rgba(173, 238, 196, 0.75), rgba(173, 238, 196, 0) 70%),
-  radial-gradient(760px 520px at 30% 112%, rgba(255, 226, 204, 0.45), rgba(255, 226, 204, 0) 70%),
-  #f7f8fa;
-```
+字体在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/github-fonts.css">` 引入，CSS 里的字体名就是上面变量用的 `Noto Sans` / `Noto Sans SC` / `Noto Sans Mono`。
 
 ---
 
@@ -171,7 +123,9 @@ aurora 变体的 `--ground`：
 | 正文 | 26–28px / 500 | 描述、列表文字、标签页（28px / 600） |
 | 界面小字 | 22–26px / 600 | 面板标题栏、按钮、小标签 |
 
-**字号下限**：阅读文字不小于 26px，界面小字不小于 22px，字幕 36px。HyperFrames 的检查会把 28px 以下的文字报成警告：阅读文字要按警告处理；界面小字可以忽略这条警告。
+竖屏画布（1080×1920、1080×1440）宽只有 1080px：特大数字、开场标题、大标题、标题、小标题按上表取值的 0.85 倍（取整到偶数）；强调正文、正文、界面小字以及下面的两条下限都不变。
+
+**字号下限**：阅读文字不小于 26px，界面小字不小于 22px（只适用于放在 `data-text-role="ui"` 元素里的面板标题栏、按钮、小标签），字幕 36px（以所选 layout 的字幕规格为准）。渲染前检查（check-composition）按这两个下限分别检查。HyperFrames 的检查会把 28px 以下的文字报成警告：阅读文字要按警告处理；界面小字可以忽略这条警告。
 
 ---
 
@@ -189,6 +143,7 @@ aurora 变体的 `--ground`：
   - 输出 1920×1080 的 JPEG（质量 q2）。
 
   颗粒同时能防止渐变在 H.264 下出现色带。
+- 贴图是 1920×1080，用 `center / cover` 铺满：竖屏画布（1080×1920、1080×1440）会把它放大后取中间，不平铺、不出接缝。
 - 背景是静态的，不做动画。
 - 卡片和面板用 `--c-card` 实底盖在纸纹上，靠底色差和 2px 边框分层。
 
@@ -255,4 +210,4 @@ aurora 变体的 `--ground`：
 - 不要使用 Noto 家族以外的字体。
 - 不要把裸的强调色当作小号正文颜色。
 
-按信息形态（`visual_role`）的用色覆盖已迁到 `patterns/` 各文档的「用色」小节。
+按信息形态的用色见 `patterns/` 各文档的「用色」小节。

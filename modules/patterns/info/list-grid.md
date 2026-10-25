@@ -34,15 +34,13 @@
 ## 用色
 
 - 通用：item label 用 `--c-ink` / `--c-ink2`；bullet / index 只在有语义时用 `--c-focus` 或状态色。data_block / metric_strip 里的数值指标用色同 leaderboard 的数值行（各主题一行表见 `info/leaderboard.md`）。
-- 各主题的具体覆盖写法已从主题文档迁到本 pattern：
+- 各主题只写和通用写法不同的地方：
 
 | 主题 | 列表 / 指标用色 |
 | --- | --- |
-| default | item label 用 `ink` / `ink2`；bullet / index 只在有语义时用 `focus` 或 status color。 |
-| dawn | item label Primary；bullet / index 用 Foam / Rose / Pine 按语义区分；detail 用 Primary 或大号 Secondary。 |
-| moon | item label Primary；bullet / index 按语义用 Iris / Foam / Gold / Love；detail 用 Secondary。 |
-| github | item label Primary；bullet / icon 按语义用 Blue / Success / Attention / Danger；detail 用 Secondary。 |
-| producthunt | feature icon 若承载信息用 `#C8392F` / 蓝 / `#046B50` 按语义；item label Primary，detail Secondary。 |
+| default | 无特殊覆盖。 |
+| github | bullet / 图标按语义用 `--c-focus` / `--c-positive` / `--c-warning` / `--c-danger`；说明文字用 `--c-ink2`。 |
+| producthunt | 承载信息的功能图标按语义用 `--c-focus` / `--c-info` / `--c-positive`；说明文字用 `--c-ink2`。 |
 
 ## 已有实现
 

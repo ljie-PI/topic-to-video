@@ -166,6 +166,31 @@ def check_dict_entries_product(ws: Path, relpath: str) -> CheckResult:
     return OK
 
 
+def is_design_dir(path: Path) -> bool:
+    """A design is a dir holding <name>/<name>.md and the fonts.json manifest."""
+    return (path / f'{path.name}.md').is_file() and (path / 'fonts.json').is_file()
+
+
+def available_designs() -> list[str]:
+    """Design names under the skill's modules/designs/."""
+    root = SKILL_ROOT / 'modules' / 'designs'
+    return sorted(d.name for d in root.iterdir() if is_design_dir(d))
+
+
+def design_problem(ws: Path, design: Any) -> str | None:
+    """Why inputs.json's design cannot be used, or None.
+
+    A design removed from the skill is still accepted when the workspace
+    already holds its copy (modules/ is materialized there in Phase 8), so
+    a project composed with it is not sent back to Phase 1.
+    """
+    designs = available_designs()
+    if isinstance(design, str) and design and '/' not in design:
+        if design in designs or is_design_dir(ws / 'modules' / 'designs' / design):
+            return None
+    return f'field design {design!r} is not an available design (choose one of: {", ".join(designs)})'
+
+
 def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
     """Validate inputs.json and return (result, parsed inputs)."""
     result, data = read_json_product(ws, 'inputs.json')
@@ -180,6 +205,12 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
         ), None
     if not isinstance(data['fetch_materials'], bool):
         return CheckResult(STATUS_CORRUPT, 'field fetch_materials is not a boolean'), None
+    problem = design_problem(ws, data['design'])
+    if problem:
+        # e.g. a project created before a theme was removed: back to Phase 1
+        # to pick one that still exists. The rest of inputs.json is valid, so
+        # it is returned too and phase applicability (paper / fetch) still holds.
+        return CheckResult(STATUS_CORRUPT, problem), data
     if 'qa_level' in data and data['qa_level'] not in QA_LEVELS:
         return CheckResult(
             STATUS_CORRUPT,

@@ -3,8 +3,8 @@
 The test seam is the script's command line (repo convention: stdout = one
 JSON, exit 0 = run completed with verdict pass/fail, 1 = runtime error,
 2 = usage). Fixture compositions are tiny static HTML files built in tmp
-dirs and measured through system Chrome + Playwright; when no Chrome is
-available the tests skip instead of failing.
+dirs and measured through system Chrome + Playwright (required dependencies:
+without them these tests fail via the require_chrome fixture, never skip).
 """
 from __future__ import annotations
 
@@ -15,31 +15,11 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures('require_chrome')
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'check-composition.py'
 PRESENTER_LAYOUT = REPO_ROOT / 'modules' / 'layouts' / 'presenter.json'
-
-CHROME_CANDIDATES = [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium',
-]
-
-
-def chrome_available() -> bool:
-    if subprocess.run(
-        [sys.executable, '-c', 'import playwright'],
-        capture_output=True,
-    ).returncode != 0:
-        return False
-    return any(Path(candidate).is_file() for candidate in CHROME_CANDIDATES)
-
-
-pytestmark = pytest.mark.skipif(
-    not chrome_available(),
-    reason='Chrome or Playwright not available',
-)
 
 SUBTITLE_UNITS = {
     'units': [
@@ -309,5 +289,40 @@ def test_design_doc_supplies_min_font_size(tmp_path: Path):
     assert proc.returncode == 0
     result = json.loads(proc.stdout)
     assert result['min_font_size'] == 26
+    # Without a 界面小字 label the UI-text minimum falls back to the reading one.
+    assert result['min_ui_font_size'] == 26
     # panel text is 30px, above the parsed 26px floor
     assert result['verdict'] == 'pass'
+
+
+UI_TEXT_SCENE = """
+  <div class="panel" style="position:absolute; left:96px; top:196px; width:800px; height:400px;
+       font-size:30px; line-height:1.4;">
+    <div class="title-bar" data-text-role="ui" style="font-size:23px;">面板标题</div>
+    <div class="body-small" style="font-size:23px;">正文小字</div>
+  </div>
+"""
+
+
+def test_ui_text_role_uses_the_ui_minimum(tmp_path: Path):
+    comp = write_composition(tmp_path, [scene('s1', 0.0, 10.0, UI_TEXT_SCENE + CAPTION_BAR)])
+    design_doc = tmp_path / 'theme.md'
+    design_doc.write_text(
+        '# theme\n\n**字号下限**：阅读文字不小于 26px，界面小字不小于 22px，字幕 36px。\n',
+        encoding='utf-8',
+    )
+    units_path = tmp_path / 'subtitle-units.json'
+    write_json(units_path, SUBTITLE_UNITS)
+    proc = run_cli(
+        str(comp),
+        '--layout', str(PRESENTER_LAYOUT),
+        '--design-doc', str(design_doc),
+        '--subtitle-units', str(units_path),
+    )
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(proc.stdout)
+    assert (result['min_font_size'], result['min_ui_font_size']) == (26, 22)
+    small = [f['detail'] for f in result['findings'] if f['check'] == 'font_size_below_min']
+    # 23px body text fails the 26px reading minimum; the 23px UI title bar passes.
+    assert len(small) == 1
+    assert 'body-small' in small[0] and 'reading-text minimum 26px' in small[0]

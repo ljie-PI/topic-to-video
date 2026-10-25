@@ -13,9 +13,10 @@ second, and measures the DOM. Checks:
     scroll size beyond its client size;
   - media_load_failure : an img/video failed to load;
   - fonts_not_loaded        : document.fonts has not finished loading;
-  - font_size_below_min     : visible reading text below the design
-    minimum font size (excludes caption text, which follows the layout
-    caption spec);
+  - font_size_below_min     : visible text below the design minimum font
+    size: the reading-text minimum, or the UI-text minimum for elements
+    inside [data-text-role="ui"] (panel title bars, buttons, small labels).
+    Caption text is excluded; it follows the layout caption spec;
   - caption_mismatch        : the on-screen caption does not match the
     subtitle unit active at that second.
 
@@ -25,9 +26,12 @@ Inputs:
   --layout        layout region definition JSON (modules/layouts/*.json):
                   regions (kind content/reserved, rect, component) and the
                   caption spec.
-  --min-font-size design minimum reading-text size in px. Alternatively
-                  --design-doc parses the first "不小于 <N>px" from a
-                  theme doc. One of the two is required.
+  --min-font-size design minimum reading-text size in px, with
+                  --min-ui-font-size (default: same) for UI text.
+                  Alternatively --design-doc parses both from a theme doc's
+                  字号下限 line ("阅读文字不小于 <N>px" / "界面小字不小于
+                  <N>px"; without labels the first "不小于 <N>px" is the
+                  reading minimum). One of the two is required.
   --subtitle-units subtitle-units.json for the caption check (optional).
   --timeline      timeline.json; its scenes list ({scene_id, begin_s,
                   end_s}) drives scene timing. Without it, scene roots are
@@ -130,9 +134,11 @@ def parse_args() -> argparse.Namespace:
     font = parser.add_argument_group('design minimum font size (one required)')
     font.add_argument('--min-font-size', type=int, default=None,
                       help='Design minimum reading-text font size in px.')
+    font.add_argument('--min-ui-font-size', type=int, default=None,
+                      help='Minimum for text inside [data-text-role="ui"] (default: --min-font-size).')
     font.add_argument('--design-doc', default=None,
-                      help='Theme doc (modules/designs/<theme>/<theme>.md); the first '
-                           '"不小于 <N>px" under 字号下限 is parsed.')
+                      help='Theme doc (modules/designs/<theme>/<theme>.md); the reading-text and '
+                           'UI-text minimums are parsed from its 字号下限 line.')
     parser.add_argument('--subtitle-units', default=None,
                         help='subtitle-units.json used for the caption check (optional).')
     parser.add_argument('--timeline', default=None,
@@ -146,22 +152,31 @@ def parse_args() -> argparse.Namespace:
         parser.error('design minimum font size required: pass --min-font-size or --design-doc')
     if args.min_font_size is not None and args.min_font_size <= 0:
         parser.error('--min-font-size must be positive')
+    if args.min_ui_font_size is not None and args.min_ui_font_size <= 0:
+        parser.error('--min-ui-font-size must be positive')
     return args
 
 
 # --- input loading -----------------------------------------------------------------
 
 
-def load_min_font_size(args: argparse.Namespace) -> int:
+def load_font_floors(args: argparse.Namespace) -> Tuple[int, int]:
+    """(reading-text minimum, UI-text minimum) in px."""
     if args.min_font_size is not None:
-        return args.min_font_size
+        return args.min_font_size, args.min_ui_font_size or args.min_font_size
     text = Path(args.design_doc).read_text(encoding='utf-8')
-    section = text.split('字号下限', 1)
-    haystack = section[1] if len(section) > 1 else text
-    match = re.search(r'不小于\s*(\d+)\s*px', haystack)
-    if not match:
+    # The floor line is the first one naming 字号下限 that also carries a value.
+    lines = [line for line in text.splitlines() if '字号下限' in line and '不小于' in line]
+    haystack = lines[0] if lines else text
+    reading = re.search(r'阅读文字不小于\s*(\d+)\s*px', haystack) or re.search(
+        r'不小于\s*(\d+)\s*px', haystack
+    )
+    if not reading:
         raise ValueError(f'could not find a "不小于 <N>px" font size floor in {args.design_doc}')
-    return int(match.group(1))
+    ui = re.search(r'界面小字不小于\s*(\d+)\s*px', haystack)
+    reading_min = int(reading.group(1))
+    ui_min = args.min_ui_font_size or (int(ui.group(1)) if ui else reading_min)
+    return reading_min, ui_min
 
 
 def load_layout(path: str) -> Dict[str, Any]:
@@ -514,17 +529,21 @@ def check_font_size(
     element: Dict[str, Any],
     owner: Optional[str],
     regions: RegionIndex,
-    min_font_size: float,
+    font_floors: Tuple[float, float],
 ) -> Optional[str]:
-    """Reading text below the design minimum; caption text follows the caption spec."""
-    if not element['ownText'] or not (0 < element['fontSize'] < min_font_size):
+    """Text below the design minimum (UI-text minimum inside [data-text-role="ui"]);
+    caption text follows the caption spec."""
+    is_ui = bool(element.get('isUiText'))
+    minimum = font_floors[1] if is_ui else font_floors[0]
+    if not element['ownText'] or not (0 < element['fontSize'] < minimum):
         return None
     owner_tokens = regions.reserved_tokens.get(owner, []) if owner else []
     if element['isCaption'] or 'caption' in ' '.join(owner_tokens):
         return None
+    kind = 'UI-text' if is_ui else 'reading-text'
     return (
         f'{element["selector"]} font size {element["fontSize"]:.0f}px is below the design '
-        f'minimum {min_font_size:.0f}px'
+        f'{kind} minimum {minimum:.0f}px'
     )
 
 
@@ -556,7 +575,7 @@ def check_caption(snapshot: Dict[str, Any], subtitle_units: List[Dict[str, Any]]
 def analyze_snapshot(
     snapshot: Dict[str, Any],
     regions: RegionIndex,
-    min_font_size: float,
+    font_floors: Tuple[float, float],
     subtitle_units: List[Dict[str, Any]],
 ) -> List[Dict[str, str]]:
     scene_id = snapshot['scene_id']
@@ -582,7 +601,7 @@ def analyze_snapshot(
             add('reserved_region_intrusion', detail)
         add('text_overflow', check_text_overflow(element))
         add('media_load_failure', check_media_load(element))
-        add('font_size_below_min', check_font_size(element, owner, regions, min_font_size))
+        add('font_size_below_min', check_font_size(element, owner, regions, font_floors))
 
     add('fonts_not_loaded', check_fonts_loaded(snapshot))
     add('caption_mismatch', check_caption(snapshot, subtitle_units))
@@ -648,7 +667,7 @@ def build_report(
     scenes: List[Dict[str, Any]],
     snapshots: List[Dict[str, Any]],
     regions: RegionIndex,
-    min_font_size: int,
+    font_floors: Tuple[int, int],
     subtitle_units: List[Dict[str, Any]],
     viewport: Tuple[int, int],
 ) -> Dict[str, Any]:
@@ -666,7 +685,7 @@ def build_report(
             }
         )
         for snapshot in scene_snapshots:
-            findings.extend(analyze_snapshot(snapshot, regions, min_font_size, subtitle_units))
+            findings.extend(analyze_snapshot(snapshot, regions, font_floors, subtitle_units))
 
     scene_order = [scene['scene_id'] for scene in scenes]
     findings = dedup_findings(findings, scene_order)
@@ -676,7 +695,8 @@ def build_report(
         'composition_dir': str(composition_dir),
         'layout': str(layout_path),
         'viewport': {'width': viewport[0], 'height': viewport[1]},
-        'min_font_size': min_font_size,
+        'min_font_size': font_floors[0],
+        'min_ui_font_size': font_floors[1],
         'scenes_checked': checked,
         'findings': findings,
     }
@@ -694,7 +714,7 @@ def main() -> None:
         fail(str(exc), exit_code=1)
     try:
         layout = load_layout(args.layout)
-        min_font_size = load_min_font_size(args)
+        font_floors = load_font_floors(args)
         subtitle_units = load_subtitle_units(args.subtitle_units)
         timeline_scenes = load_timeline_scenes(args.timeline)
     except (ValueError, OSError, json.JSONDecodeError) as exc:
@@ -736,7 +756,7 @@ def main() -> None:
             scenes,
             snapshots,
             regions,
-            min_font_size,
+            font_floors,
             subtitle_units,
             viewport,
         )

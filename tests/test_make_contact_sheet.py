@@ -2,27 +2,24 @@
 
 The test seam is the script's command line (repo convention: stdout = one
 JSON, exit codes 0 / 1 / 2). A tiny testsrc video is generated with ffmpeg in
-a tmp dir and paired with a fabricated timeline.json. All tests skip when
-ffmpeg is not installed.
+a tmp dir and paired with a fabricated timeline.json. ffmpeg / ffprobe are
+required dependencies, without them these tests fail via the
+require_ffmpeg fixture, never skip.
 """
 from __future__ import annotations
 
 import json
 import math
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures('require_ffmpeg')
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'make-contact-sheet.py'
-
-pytestmark = pytest.mark.skipif(
-    shutil.which('ffmpeg') is None or shutil.which('ffprobe') is None,
-    reason='ffmpeg / ffprobe not installed',
-)
 
 TIMELINE = {
     'total_s': 10.0,

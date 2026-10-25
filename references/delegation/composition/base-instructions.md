@@ -17,6 +17,7 @@
 ## 二、必须参考 design
 
 - 颜色、字体、动效只取所选 design 的 token（token 契约见 `modules/designs/designs.md` 与 `modules/designs/<design>/<design>.md`）。
+- 字号守所选 design 的「字号下限」：面板标题栏、按钮、小标签这类界面小字放在带 `data-text-role="ui"` 的元素里，按界面小字下限检查；其余文字都按阅读文字下限检查。
 - 选了模板时，模板的专属变量与覆盖值**写在 design 之后**，只能增补主题，不能替换 design 的语义。
 
 ## 三、必须遵守 layout 区域

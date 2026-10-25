@@ -125,6 +125,7 @@ async ({ checks }) => {
         text: textContent(el),
         fontSize: parseFloat(style.fontSize || '0') || 0,
         isCaption: /subtitle|caption|closed-caption/.test(labelOf(el)),
+        isUiText: Boolean(el.closest('[data-text-role="ui"]')),
         isSceneRoot,
         layoutIgnore,
         surface: hasVisibleSurface(el),

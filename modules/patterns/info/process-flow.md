@@ -33,15 +33,13 @@
 ## 用色
 
 - 通用：默认节点与连线用 `--c-border` / `--c-ink2`；当前节点用 `--c-focus` / `--c-focus-tint`；失败 / 等待用真实语义 token（`--c-danger` / `--c-warning`）。
-- 各主题的具体覆盖写法已从主题文档迁到本 pattern：
+- 各主题只写和通用写法不同的地方：
 
 | 主题 | 流程 / 时间线用色 |
 | --- | --- |
-| default | 默认节点与连线用 `border` / `ink2`；当前节点用 `focus` / `focus-tint`；失败 / 等待用真实语义 token。 |
-| dawn | 节点正文 Primary；当前节点用 Pine / Primary + Gold 点缀；完成节点 Pine；连接线 Foam / Iris。 |
-| moon | 节点正文 Primary / Secondary；当前节点 Gold；active tech 节点 Iris；失败状态 Love；连接线 Foam。 |
-| github | 当前步骤 Blue；成功节点 Success；失败节点 Danger；完成节点 Done；连接线 `#D1D9E0` + 语义色 marker。 |
-| producthunt | launch step 可用 `#C8392F` 文本 / 线 + `#FF6154` 外形点缀；register / onboarding 用蓝；maker verified 用 `#046B50`。 |
+| default | 无特殊覆盖。 |
+| github | 成功节点用 `--c-positive`；讲完的节点盖 `--c-done` 对勾；失败节点用 `--c-danger`。 |
+| producthunt | 发布步骤用 `--c-focus`；注册 / 上手步骤用 `--c-info`；maker 认证用 `--c-positive`；`--c-highlight` 只做节点外形点缀。 |
 
 ## 已有实现
 

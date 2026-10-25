@@ -3,26 +3,23 @@
 The test seam is the script's command line (repo convention: stdout = one
 JSON, exit codes 0 / 1 / 2). Tiny synthetic videos are generated with ffmpeg
 in tmp dirs: testsrc plus an injected black segment (concat) for black
-detection, and tpad stop_mode=clone for freeze detection. All tests skip when
-ffmpeg is not installed.
+detection, and tpad stop_mode=clone for freeze detection. ffmpeg / ffprobe
+are required dependencies, without them these tests fail via the
+require_ffmpeg fixture, never skip.
 """
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures('require_ffmpeg')
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'check-render.py'
-
-pytestmark = pytest.mark.skipif(
-    shutil.which('ffmpeg') is None or shutil.which('ffprobe') is None,
-    reason='ffmpeg / ffprobe not installed',
-)
 
 TIMELINE = {
     'total_s': 7.5,
