@@ -130,22 +130,4 @@
 - ❌ 不要用拉丁手写字体显示中文；不要在同一个元素上叠加多种 accent 色。
 - ❌ 不要把 accent 色作为大面积背景填充；标注不要压住素材关键区域。
 
----
-
-> ## 「待迁 patterns」：按 visual_role 覆盖颜色
->
-> 以下段落原来属于 style hint 的「`visual_role` 色彩覆盖」，等 patterns 文档建好后会迁到对应 pattern 的「用色」小节，届时此处删除。
->
-> | `visual_role` | 配色方式 |
-> |---|---|
-> | `title` / `product_card` / `section_divider` | Primary 标题 + Rose / Iris eyebrow；身份信息可用 Pine 短 label。 |
-> | `leaderboard` / `big_number` / `data_block` / `metric_strip` | 数字用 Primary 或 Pine；当前排名 / 重点数字可配 Gold 小点缀；变化趋势用 Foam / Love 线。 |
-> | `data_table` / `chart` | 表格正文 Primary；表头 Secondary 大号；highlight cell 用 Pine / Love / Foam 线，Gold 只做非唯一辅助点；series 用 Foam / Pine / Iris。 |
-> | `timeline` / `process_flow` / `state_machine` | 节点正文 Primary；当前节点用 Pine / Primary + Gold 点缀；完成节点 Pine；连接线 Foam / Iris。 |
-> | `architecture_diagram` / `network_graph` | 模块边线用 Foam / Pine；依赖关系用 Iris；关键路径用 Pine，Gold 只做小 marker。 |
-> | `comparison_matrix` / `pros_cons` | 双侧对比用 Pine vs Love；中性维度 Primary；优缺点标签用短 badge，不给整列大面积上色。 |
-> | `list` / `feature_grid` | item label Primary；bullet / index 用 Foam / Rose / Pine 按语义区分；detail 用 Primary 或大号 Secondary。 |
-> | `callout` / `definition` / `qa` | callout 用 `card` 或 `surface` 底 + 语义色左线；definition 用 Iris；QA 的 Q 用 Foam、A 用 Pine。 |
-> | `code_block` / `terminal_block` / `file_tree` | panel 底 `#fffaf3`；路径 / 命令重点用 Pine；注释 / prompt 用 Iris；warning 输出用 Love 或 Gold marker。 |
-> | `annotated_media` | 标注必须在素材外置信息区；pin / arrow 用 Gold / Foam；说明文字 Primary。 |
-> | `quote` | 引号 / source 用 Rose 或 Iris；正文 Primary；不要用 Subtle 承载 quote 正文。 |
+按信息形态（`visual_role`）的用色覆盖已迁到 `patterns/` 各文档的「用色」小节。

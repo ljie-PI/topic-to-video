@@ -128,22 +128,4 @@
 - ❌ 不要给素材加可见边框、卡片底、shadow、glow；不要把标注压在素材之上。
 - ❌ 不要在同一个元素上叠加多种 accent 色；不要把 accent 色做大面积背景。
 
----
-
-> ## 「待迁 patterns」：按 visual_role 覆盖颜色
->
-> 以下段落原来属于 style hint 的「`visual_role` 色彩覆盖」，等 patterns 文档建好后会迁到对应 pattern 的「用色」小节，届时此处删除。
->
-> | `visual_role` | 配色方式 |
-> |---|---|
-> | `title` / `product_card` / `section_divider` | Primary 标题 + Iris / Foam eyebrow；产品或项目身份的关键数字可用 Gold。 |
-> | `leaderboard` / `big_number` / `data_block` / `metric_strip` | 数字用 Gold / Foam；rank marker 用 Iris；风险数值用 Love；普通 label 用 Secondary。 |
-> | `data_table` / `chart` | 表格正文 Secondary；highlight cell 用 Gold 描边；chart 主线 Foam，secondary series Iris / Rose，danger series Love。 |
-> | `timeline` / `process_flow` / `state_machine` | 节点正文 Primary / Secondary；当前节点 Gold；active tech 节点 Iris；失败状态 Love；连接线 Foam。 |
-> | `architecture_diagram` / `network_graph` | 模块边线 Foam / Iris；关键路径 Iris；背景结构线 `#44415a`；Pine 仅作大形状或粗线。 |
-> | `comparison_matrix` / `pros_cons` | 正向 / stable 用 Pine，风险 / cons 用 Love，中性维度用 Secondary；info 维度才用 Foam；不给整列大面积 accent 底。 |
-> | `list` / `feature_grid` | item label Primary；bullet / index 按语义用 Iris / Foam / Gold / Love；detail 用 Secondary。 |
-> | `callout` / `definition` / `qa` | callout 用 Surface 底 + 语义色左线；definition 用 Iris；QA 的 Q 用 Foam、A 用 Primary。 |
-> | `code_block` / `terminal_block` / `file_tree` | panel 底 Surface；命令 / path 用 Iris；输出值用 Foam / Gold；error / fail 用 Love。 |
-> | `annotated_media` | 标注在素材外部；pin 用 Gold / Foam；解释文字 Primary / Secondary。 |
-> | `quote` | 引号 / source marker 用 Rose；quote 正文 Primary；source 用 Secondary。 |
+按信息形态（`visual_role`）的用色覆盖已迁到 `patterns/` 各文档的「用色」小节。

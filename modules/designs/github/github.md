@@ -255,22 +255,4 @@ aurora 变体的 `--ground`：
 - 不要使用 Noto 家族以外的字体。
 - 不要把裸的强调色当作小号正文颜色。
 
----
-
-> ## 「待迁 patterns」：按 visual_role 覆盖颜色
->
-> 以下段落来自旧版 GitHub style hint 的「`visual_role` 色彩覆盖」，等 patterns 文档建好后会迁到对应 pattern 的「用色」小节，届时此处删除。
->
-> | `visual_role` | 配色方式 |
-> |---|---|
-> | `title` / `product_card` / `section_divider` | Primary 标题 + Blue / Success / Done eyebrow；repo path 可用 Blue hover 或 mono Primary。 |
-> | `leaderboard` / `big_number` / `data_block` / `metric_strip` | 数字 Primary / mono；star / growth 用 Success；rank / link 用 Blue；warning metric 用 Attention callout。 |
-> | `data_table` / `chart` | 表格正文 Primary / Secondary；highlight cell 用 callout tint；series 用 Blue / Success / Attention / Danger / Done / Teal。 |
-> | `timeline` / `process_flow` / `state_machine` | 当前步骤 Blue；成功节点 Success；失败节点 Danger；完成节点 Done；连接线 `#D1D9E0` + 语义色 marker。 |
-> | `architecture_diagram` / `network_graph` | 模块边线 Blue / Teal；dependency 用 Teal；completed path Done；risk edge Danger。 |
-> | `comparison_matrix` / `pros_cons` | 正向 Success，风险 Danger，注意 Attention；正文使用 Primary / Secondary；不要给整列饱和色底。 |
-> | `list` / `feature_grid` | item label Primary；bullet / icon 按语义用 Blue / Success / Attention / Danger；detail 用 Secondary。 |
-> | `callout` / `definition` / `qa` | 必须优先使用 Primer callout 三件套；definition 用 Info；QA 的 Q 用 Blue，A 用 Primary / Success。 |
-> | `code_block` / `terminal_block` / `file_tree` | panel 用 `#F6F8FA` 或 terminal 黑；path / command 用 mono；success output Success，error output Danger，hint Blue。 |
-> | `annotated_media` | 标注外置；pin / border 用 Blue / Attention / Danger；解释文字用 callout text 或 Primary。 |
-> | `quote` | quote 正文 Primary；source Secondary / Teal；引用卡可用 Info 或 Done callout tint。 |
+按信息形态（`visual_role`）的用色覆盖已迁到 `patterns/` 各文档的「用色」小节。
