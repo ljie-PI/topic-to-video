@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 import time
 from pathlib import Path
@@ -135,14 +136,21 @@ class ResourceMonitor:
 
 
 def save_metrics(path: Path, metrics: dict[str, Any]) -> None:
+    """Write metrics JSON; the diagnostic line goes to stderr, never stdout."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(metrics, f, ensure_ascii=False, indent=2)
-    print(f"[metrics] saved -> {path}")
+    print(f"[metrics] saved -> {path}", file=sys.stderr)
 
 
 def log_latency(stage: str, started: float) -> float:
+    """Log a stage's wall time to STDERR and return the elapsed seconds.
+
+    Diagnostics MUST NOT go to stdout: ``voice-clone.py`` (mlx backend) calls
+    this through ``tts_qwen.synthesize`` and its stdout is exactly one JSON
+    document, so a ``[latency]`` line on stdout would break that contract.
+    """
     elapsed = time.perf_counter() - started
-    print(f"[latency] {stage}: {elapsed:.2f}s")
+    print(f"[latency] {stage}: {elapsed:.2f}s", file=sys.stderr)
     return elapsed

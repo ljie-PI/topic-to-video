@@ -70,13 +70,15 @@ import abc
 import argparse
 import json
 import os
-import platform
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+
+import backend_select as bs
+from backend_select import BackendUnavailableError, UnknownBackendError
 
 # Reduce CUDA allocator fragmentation so long narrations don't OOM on smaller
 # cards (e.g. 11GB). Must be set before torch initializes the CUDA allocator;
@@ -98,97 +100,78 @@ DEFAULT_QWEN3TTS_SPEECH_RATE = 1.0
 DEFAULT_DASHSCOPE_SPEECH_RATE = 1.4
 
 
-# --- environment probes (auto backend) -----------------------------------------
+# --- backend selection (auto) ---------------------------------------------------
 #
-# Every probe reads a TTS_DETECT_* override first so the auto decision is
-# testable without the hardware (documented in the module docstring).
+# The probes, the CLI > env > auto resolution and the --resolve-backend output
+# live in backend_select.py (shared with transcribe.py). This script only
+# supplies the TTS backend registry and the TTS auto order; the documented
+# probe overrides are TTS_DETECT_PLATFORM / TTS_DETECT_MACHINE /
+# TTS_DETECT_CUDA / TTS_DETECT_MLX_AUDIO.
+
+PROBE_PREFIX = 'TTS_DETECT'
 
 
-def detect_platform() -> str:
-    return os.environ.get('TTS_DETECT_PLATFORM') or sys.platform
-
-
-def detect_machine() -> str:
-    return os.environ.get('TTS_DETECT_MACHINE') or platform.machine()
-
-
-def detect_cuda() -> bool:
-    override = os.environ.get('TTS_DETECT_CUDA')
-    if override is not None:
-        return override == '1'
-    try:
-        import torch
-
-        return bool(torch.cuda.is_available())
-    except Exception:  # noqa: BLE001 - no torch / broken torch => no CUDA
-        return False
-
-
-def detect_mlx_audio() -> bool:
-    override = os.environ.get('TTS_DETECT_MLX_AUDIO')
-    if override is not None:
-        return override == '1'
-    import importlib.util
-
-    return importlib.util.find_spec('mlx_audio') is not None
-
-
-def environment_probes() -> dict[str, object]:
-    return {
-        'platform': detect_platform(),
-        'machine': detect_machine(),
-        'mlx_audio': detect_mlx_audio(),
-        'cuda': detect_cuda(),
-        'dashscope_key': bool(os.environ.get('DASHSCOPE_API_KEY')),
-    }
-
-
-class BackendUnavailableError(Exception):
-    """Auto resolution found no usable backend; carries the missing list."""
-
-    def __init__(self, missing: list[str], probes: dict[str, object] | None = None) -> None:
-        self.missing = missing
-        self.probes = probes or {}
-        super().__init__('no usable TTS backend: ' + '; '.join(missing))
-
-
-class UnknownBackendError(Exception):
-    pass
-
-
-def resolve_backend_name(cli_backend: str | None) -> tuple[str, str, dict[str, object]]:
-    """Resolve the effective backend. Returns (name, source, probes).
-
-    source is 'cli' (--backend), 'env' (TTS_BACKEND) or 'auto'. Auto order:
-    Apple Silicon with mlx-audio -> mlx; CUDA -> qwen3tts; DASHSCOPE_API_KEY
-    -> dashscope; otherwise raise BackendUnavailableError. Raises
-    UnknownBackendError for values outside BACKENDS/'auto'.
-    """
-    explicit = cli_backend or os.environ.get('TTS_BACKEND')
-    source = 'cli' if cli_backend else ('env' if os.environ.get('TTS_BACKEND') else 'auto')
-    if explicit and explicit != 'auto':
-        if explicit not in BACKENDS:
-            raise UnknownBackendError(f'unknown TTS backend: {explicit}')
-        return explicit, source, environment_probes()
-
-    probes = environment_probes()
+def _auto_backend(probes: dict[str, object]) -> tuple[str, dict[str, object]]:
+    """TTS auto order: Apple Silicon + mlx-audio -> mlx; CUDA -> qwen3tts;
+    DASHSCOPE_API_KEY -> dashscope; otherwise BackendUnavailableError."""
     missing: list[str] = []
     if probes['platform'] == 'darwin' and probes['machine'] == 'arm64':
         if probes['mlx_audio']:
-            return 'mlx', 'auto', probes
+            return 'mlx', probes
         missing.append('mlx-audio package on Apple Silicon (pip install mlx-audio; backend mlx)')
     if probes['cuda']:
-        return 'qwen3tts', 'auto', probes
+        return 'qwen3tts', probes
     missing.append('CUDA-capable GPU with torch (backend qwen3tts)')
     if probes['dashscope_key']:
-        return 'dashscope', 'auto', probes
+        return 'dashscope', probes
     missing.append('DASHSCOPE_API_KEY (backend dashscope)')
-    raise BackendUnavailableError(missing, probes)
+    raise BackendUnavailableError(
+        'no usable TTS backend: ' + '; '.join(missing), missing, probes
+    )
+
+
+def resolve_backend_name(cli_backend: str | None) -> tuple[str, str, dict[str, object]]:
+    """Resolve the effective TTS backend. Returns (name, source, probes).
+
+    source is 'cli' (--backend), 'env' (TTS_BACKEND) or 'auto'. See
+    backend_select.resolve_backend_name for the shared contract and
+    _auto_backend for the TTS auto order. Raises UnknownBackendError for
+    values outside BACKENDS/'auto'.
+    """
+    return bs.resolve_backend_name(
+        cli_backend,
+        env_var='TTS_BACKEND',
+        probe_prefix=PROBE_PREFIX,
+        backends=BACKENDS,
+        auto_resolve=_auto_backend,
+        label='TTS',
+        include_mlx=True,
+    )
 
 
 def reference_wav_env() -> str | None:
     """Reference WAV path from TTS_REF_WAV (legacy alias VOXCPM_REF_WAV)."""
     return os.environ.get('TTS_REF_WAV') or os.environ.get('VOXCPM_REF_WAV')
+
+
+def default_reference_wav() -> Path | None:
+    """Bundled reference voice: <repo>/resources/my_voice.wav when present."""
+    candidate = Path(__file__).resolve().parent.parent / 'resources' / 'my_voice.wav'
+    return candidate if candidate.is_file() else None
+
+
+def resolve_reference_audio(cli_value: str | None) -> Path:
+    """CLI --reference-wav > TTS_REF_WAV > bundled resources/my_voice.wav."""
+    value = cli_value or reference_wav_env()
+    if value:
+        return Path(value).expanduser()
+    bundled = default_reference_wav()
+    if bundled is not None:
+        return bundled
+    raise EnvironmentError(
+        'reference audio needed. Pass --reference-wav, set TTS_REF_WAV, '
+        'or provide resources/my_voice.wav.'
+    )
 
 
 def reference_text_env() -> str | None:
@@ -485,9 +468,22 @@ def write_mp3(wav, sample_rate: int, output_path: Path, atempo: float | None) ->
 
 
 class TTSBackend(abc.ABC):
-    """Common interface: synthesize narration text into an mp3 file."""
+    """Common interface: synthesize narration text into an mp3 file.
+
+    Backends also declare whether they can emit ``transcript.json`` from a
+    local forced aligner (``transcript_capability``):
+
+    * ``'always'`` — mlx: the narration text is aligned straight onto the audio,
+      so the transcript is a normal product of every run;
+    * ``'opt_in'`` — qwen3tts: only with ``--emit-transcript`` (torch aligner);
+    * ``None`` — dashscope: no local aligner, fall back to transcribe.py.
+
+    ``main()`` owns the single emission call; backends only say whether the
+    transcript should be produced and provide the aligner for it.
+    """
 
     name: str
+    transcript_capability: str | None = None
 
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
@@ -497,9 +493,34 @@ class TTSBackend(abc.ABC):
         raw = self.args.transcript_output
         return Path(raw).expanduser() if raw else output_path.parent / 'transcript.json'
 
+    def wants_transcript(self, emit_transcript: bool) -> bool:
+        """Whether this run should emit a transcript (capability + flag)."""
+        return self.transcript_capability == 'always' or (
+            self.transcript_capability == 'opt_in' and emit_transcript
+        )
+
     @abc.abstractmethod
-    def synthesize(self, text: str, output_path: Path) -> None:
+    def synthesize(self, text: str, output_path: Path) -> Path | None:
+        """Write ``output_path``; return audio kept for alignment (or None).
+
+        The returned path is handed to :meth:`emit_transcript` and released in
+        :meth:`cleanup`, so a backend can align on the pre-mp3 waveform without
+        leaking it into the output directory.
+        """
         raise NotImplementedError
+
+    def emit_transcript(
+        self,
+        text: str,
+        output_path: Path,
+        transcript_path: Path,
+        alignment_audio: Path | None = None,
+    ) -> bool:
+        """Write transcript.json when this backend has an aligner; False if not."""
+        return False
+
+    def cleanup(self) -> None:
+        """Release any temporary audio kept for transcript emission."""
 
 
 def write_transcript(path: Path, sentences: list[dict]) -> None:
@@ -569,31 +590,28 @@ class MLXBackend(TTSBackend):
 
     Apple Silicon path: no ASR — the narration text is aligned straight onto
     the synthesized audio, so transcript.json matches narration.txt verbatim.
+    Synthesis and transcript emission are separate steps (``main`` calls both).
     """
 
     name = 'mlx'
+    transcript_capability = 'always'
 
-    def synthesize(self, text: str, output_path: Path) -> None:
+    def __init__(self, args: argparse.Namespace) -> None:
+        super().__init__(args)
+        self._wav_path: Path | None = None
+        self._atempo: float = DEFAULT_QWEN3TTS_SPEECH_RATE
+
+    def _synthesize_wav(self, text: str, wav_path: Path) -> None:
+        """Run mlx-audio TTS into ``wav_path`` (the pre-mp3 alignment source)."""
         from tts_qwen import synthesize as mlx_synthesize  # lazy: pulls mlx-audio
-        from text_align import align_text, transcript_from_alignment
 
-        ref_wav_value = self.args.reference_wav or reference_wav_env()
-        if not ref_wav_value:
-            raise EnvironmentError(
-                'mlx backend needs reference audio. Pass --reference-wav or set TTS_REF_WAV.'
-            )
-        ref_wav = Path(ref_wav_value).expanduser()
+        ref_wav = resolve_reference_audio(self.args.reference_wav)
         if not ref_wav.is_file():
             raise FileNotFoundError(f'reference audio not found: {ref_wav}')
         ref_text = resolve_reference_text_optional(ref_wav, self.args.reference_text)
 
         tts_model = os.environ.get('TTS_MODEL_MLX', DEFAULT_TTS_MODEL_MLX)
-        aligner_model = os.environ.get('ALIGNER_MODEL_MLX', DEFAULT_ALIGNER_MODEL_MLX)
         tts_language = os.environ.get('TTS_LANGUAGE_MLX', 'auto')
-        align_language = os.environ.get('ALIGNER_LANGUAGE_MLX', 'Chinese')
-        atempo = self.args.speech_rate if self.args.speech_rate is not None else DEFAULT_QWEN3TTS_SPEECH_RATE
-
-        wav_path = output_path.with_suffix('.wav')
         log(f'synthesizing narration with mlx-audio Qwen3-TTS (model={tts_model})')
         mlx_synthesize(
             text,
@@ -603,33 +621,68 @@ class MLXBackend(TTSBackend):
             language=tts_language,
             ref_text=ref_text,
         )
+
+    def synthesize(self, text: str, output_path: Path) -> Path:
+        """Synthesize the mp3; keep the wav for direct alignment and return it."""
+        self._atempo = (
+            self.args.speech_rate
+            if self.args.speech_rate is not None
+            else DEFAULT_QWEN3TTS_SPEECH_RATE
+        )
+        self._wav_path = output_path.with_suffix('.wav')
+        self._synthesize_wav(text, self._wav_path)
+        convert_to_mp3(self._wav_path, output_path, self._atempo)
+        return self._wav_path
+
+    def emit_transcript(
+        self,
+        text: str,
+        output_path: Path,
+        transcript_path: Path,
+        alignment_audio: Path | None = None,
+    ) -> bool:
+        """Align the narration text with mlx-audio and write transcript.json.
+
+        Failure is non-fatal: the mp3 is still usable via transcribe.py, so log
+        a warning and return False.
+        """
+        from text_align import align_text, transcript_from_alignment
+
+        aligner_model = os.environ.get('ALIGNER_MODEL_MLX', DEFAULT_ALIGNER_MODEL_MLX)
+        align_language = os.environ.get('ALIGNER_LANGUAGE_MLX', 'Chinese')
+        audio = alignment_audio or self._wav_path or output_path
         try:
-            try:
-                log(f'aligning narration text directly (model={aligner_model}, no ASR)')
-                alignment = align_text(wav_path, text, model_path=aligner_model, language=align_language)
-                if atempo and abs(atempo - 1.0) > 1e-3:
-                    # The mp3 is re-timed after alignment; scale timestamps to match.
-                    alignment = scale_alignment_times(alignment, 1.0 / atempo)
-                write_transcript(
-                    self.transcript_path(output_path), transcript_from_alignment(alignment)
-                )
-            except Exception as exc:  # noqa: BLE001 - audio still usable via ASR
-                log(
-                    f'warning: mlx forced alignment failed ({exc}); transcript.json '
-                    'not written — run transcribe.py for the transcript'
-                )
-            convert_to_mp3(wav_path, output_path, atempo)
-        finally:
-            try:
-                wav_path.unlink()
-            except OSError:
-                pass
+            log(f'aligning narration text directly (model={aligner_model}, no ASR)')
+            alignment = align_text(
+                audio, text, model_path=aligner_model, language=align_language
+            )
+            if self._atempo and abs(self._atempo - 1.0) > 1e-3:
+                # The mp3 was re-timed after synthesis; scale timestamps to match.
+                alignment = scale_alignment_times(alignment, 1.0 / self._atempo)
+            write_transcript(transcript_path, transcript_from_alignment(alignment))
+            return True
+        except Exception as exc:  # noqa: BLE001 - audio still usable via ASR
+            log(
+                f'warning: mlx forced alignment failed ({exc}); transcript.json '
+                'not written — run transcribe.py for the transcript'
+            )
+            return False
+
+    def cleanup(self) -> None:
+        if self._wav_path is None:
+            return
+        try:
+            self._wav_path.unlink()
+        except OSError:
+            pass
+        self._wav_path = None
 
 
 class Qwen3TTSBackend(TTSBackend):
     """Local Qwen3-TTS voice clone (reference WAV + its transcript)."""
 
     name = 'qwen3tts'
+    transcript_capability = 'opt_in'
 
     def synthesize(self, text: str, output_path: Path) -> None:
         import gc
@@ -637,12 +690,7 @@ class Qwen3TTSBackend(TTSBackend):
         import torch
         from qwen_tts import Qwen3TTSModel
 
-        ref_wav_value = self.args.reference_wav or reference_wav_env()
-        if not ref_wav_value:
-            raise EnvironmentError(
-                'Qwen3-TTS reference audio not set. Pass --reference-wav or set TTS_REF_WAV.'
-            )
-        ref_wav = Path(ref_wav_value).expanduser()
+        ref_wav = resolve_reference_audio(self.args.reference_wav)
         if not ref_wav.is_file():
             raise FileNotFoundError(f'reference audio not found: {ref_wav}')
 
@@ -679,6 +727,16 @@ class Qwen3TTSBackend(TTSBackend):
 
         atempo = self.args.speech_rate if self.args.speech_rate is not None else DEFAULT_QWEN3TTS_SPEECH_RATE
         write_mp3(wav, int(sr), output_path, atempo)
+
+    def emit_transcript(
+        self,
+        text: str,
+        output_path: Path,
+        transcript_path: Path,
+        alignment_audio: Path | None = None,
+    ) -> bool:
+        """Opt-in transcript via the torch Qwen3-ForcedAligner (no ASR)."""
+        return emit_transcript_via_torch_aligner(text, output_path, transcript_path)
 
 
 class CosyVoiceBackend(TTSBackend):
@@ -724,27 +782,9 @@ BACKENDS: dict[str, type[TTSBackend]] = {
 
 def resolve_backend_cli(args: argparse.Namespace) -> int:
     """--resolve-backend: print the backend decision (probes only), no models."""
-    try:
-        backend_name, source, probes = resolve_backend_name(args.backend)
-    except UnknownBackendError as exc:
-        log(f'error: {exc}')
-        print_json({'success': False, 'error': str(exc)})
-        return 2
-    except BackendUnavailableError as exc:
-        log(f'error: {exc}')
-        print_json(
-            {'success': False, 'error': str(exc), 'missing': exc.missing, 'probes': exc.probes}
-        )
-        return 1
-    print_json(
-        {
-            'success': True,
-            'backend': backend_name,
-            'backend_source': source,
-            'probes': probes,
-        }
+    return bs.resolve_backend_cli(
+        lambda: resolve_backend_name(args.backend), log=log, print_json=print_json
     )
-    return 0
 
 
 def main() -> int:
@@ -755,16 +795,8 @@ def main() -> int:
 
         try:
             backend_name, _source, _probes = resolve_backend_name(args.backend)
-        except UnknownBackendError as exc:
-            log(f'error: {exc}')
-            print_json({'success': False, 'error': str(exc)})
-            return 2
-        except BackendUnavailableError as exc:
-            log(f'error: {exc}')
-            print_json(
-                {'success': False, 'error': str(exc), 'missing': exc.missing, 'probes': exc.probes}
-            )
-            return 1
+        except (UnknownBackendError, BackendUnavailableError) as exc:
+            return bs.backend_error_response(exc, log=log, print_json=print_json)
         backend_cls = BACKENDS[backend_name]
 
         input_text = read_input_text(args.input_file)
@@ -773,15 +805,20 @@ def main() -> int:
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = (output_dir / 'narration.mp3').resolve()
 
+        # One transcript emission site for every backend: synthesize() returns
+        # the audio kept for alignment (mlx's pre-mp3 wav), the backend's
+        # transcript capability decides whether this run emits one, and
+        # cleanup() releases that audio in all cases.
         backend = backend_cls(args)
-        backend.synthesize(input_text, output_path)
-
-        # qwen3tts (CUDA): --emit-transcript adds the direct-alignment
-        # transcript when the torch aligner is importable; mlx writes its
-        # transcript inside synthesize().
         transcript_path = backend.transcript_path(output_path)
-        if backend_name == 'qwen3tts' and args.emit_transcript:
-            emit_transcript_via_torch_aligner(input_text, output_path, transcript_path)
+        try:
+            alignment_audio = backend.synthesize(input_text, output_path)
+            if backend.wants_transcript(args.emit_transcript):
+                backend.emit_transcript(
+                    input_text, output_path, transcript_path, alignment_audio
+                )
+        finally:
+            backend.cleanup()
 
         duration_s = detect_duration_seconds(output_path)
         log(f'wrote {output_path}')

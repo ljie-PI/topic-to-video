@@ -1,74 +1,60 @@
-# voice-utils
+# scripts/ 语音工具说明
 
-通用语音工具集(基于 mlx-audio,Qwen3-TTS / VoxCPM2,Apple Silicon)。
+`scripts/` 下有两组语音相关工具。**pipeline 流程只走第一组**；第二组是独立工具集（mlx-audio），按需单独使用。
 
-## 工具
+## 一、pipeline 语音链路（Phase 7「配音与字幕」，见 `references/phases/07-voice-subtitles.md`）
 
-### `narrate.py` — 旁白一站式:TTS + 对齐字幕(推荐)
+| 脚本 | 作用 |
+|---|---|
+| `voice-clone.py` | TTS + transcript 一步出。`--backend auto`（默认）按环境选后端，见下表；mlx/qwen3tts 后端可直接强制对齐朗读稿并写 `transcript.json` |
+| `transcribe.py` | 全 ASR 路线（transcript 由 ASR 产生）。`--backend auto`；ASR 后端 `qwen3` / `dashscope` |
+| `align-narration.py` | transcript 时间 + 朗读稿 → 字幕单元（按标点分段）+ `timeline.json` |
+| `make-narration.py` | 显示稿 + 词表 → 朗读稿 `narration.txt` |
 
-把旁白文稿一步变成「配音 + 字幕」:克隆参考声音生成音频,再拿**原始文稿**
-做强制对齐,产出词级/句子级时间戳和 SRT。两个模型只加载一次。
+后端选择（`--backend` 或环境变量，auto 的判定顺序）：
 
-```bash
-.venv/bin/python voice-utils/narrate.py --text-file 旁白文稿.txt --prefix ep01
-```
+| 环境 | 方法 | TTS 后端 | transcript 来源 |
+|---|---|---|---|
+| M 系列 Mac（arm64） | 最新方案（默认） | `mlx`（mlx-audio Qwen3-TTS） | ForcedAligner 直接对齐朗读稿，**跳过 ASR** |
+| 有 CUDA | 旧方案 / 优先直对齐 | `qwen3tts`（torch Qwen3-TTS） | 优先 `--emit-transcript`（ForcedAligner）；不可用回退 `transcribe.py` 全 ASR |
+| 其他 | 兜底 | `dashscope`（需 `DASHSCOPE_API_KEY`） | `transcribe.py --backend dashscope` |
 
-输出:`ep01.wav` / `ep01.srt` / `ep01.align.json` / `ep01_metrics.json`,
-stdout 末尾打印 `WAV=` / `SRT=` / `JSON=` 供脚本取用。
+`voice-clone.py --resolve-backend` 只打印 auto 会选什么，不加载模型，可用来排查环境。
 
-### `tts_qwen.py` — 单步 TTS(只要音频不要字幕时)
+## 二、独立语音工具（mlx-audio，按需使用）
 
-以参考音频克隆声音,**生成即干净,无需降噪**(Qwen codec 架构底噪比
-~0.0006,比 diffusion 系模型低一个数量级,也不产生停顿幻觉)。
+这三个工具不接入 pipeline，适合单独跑 TTS / 出 SRT；它们输出 `.wav` / `.srt` / `.align.json`，**不**产出 pipeline 用的 `transcript.json`（那是 `voice-clone.py` 的 `--emit-transcript` 与 `text_align.py --align-json` 转换的职责）。
 
-```bash
-.venv/bin/python voice-utils/tts_qwen.py --text "要合成的文本" --prefix my_task
-```
+| 工具 | 作用 | 输出 |
+|---|---|---|
+| `narrate.py` | TTS + 强制对齐一站式 | `<prefix>.wav` / `.srt` / `.align.json` / `_metrics.json` |
+| `tts_qwen.py` | 只做 TTS | `<prefix>.wav` + `_metrics.json` |
+| `text_align.py` | 只做对齐；`--align-json <in> --emit-transcript <out>` 可把 align.json 转成 pipeline transcript schema（不需要模型） | `<stem>.align.json` / `.srt` |
 
-输出:
-- `<prefix>.wav` — 合成音频(24kHz)
-- `<prefix>_metrics.json` — 延迟与资源占用(模型加载/合成耗时、CPU、内存、GPU 显存)
-
-### `text_align.py` — 单步对齐(已有音频+文稿,要时间戳时)
-
-```bash
-.venv/bin/python voice-utils/text_align.py --audio ep01.wav --text-file 旁白文稿.txt
-```
-
-输出:`<音频名>.align.json`(词级+句子级)/ `<音频名>.srt`
-
-### 公共参数约定
-
-所有工具统一遵循 CLI > 环境变量 > 默认值,无硬编码路径:
+公共参数约定：CLI > 环境变量 > 默认值。
 
 | 参数 | 环境变量 | 默认 |
 |---|---|---|
-| `--text` / `--text-file` / 位置参数 | `TTS_TEXT` | 必填 |
-| `--voice` | `VOICE_REF` | `<repo>/resources/my_voice.wav` |
-| `--ref-text` | `TTS_REF_TEXT` | 无(Qwen Base 不需要也能克隆) |
+| `--text` / 位置参数 | `TTS_TEXT` | 必填（与下面的文件二选一） |
+| `--text-file` | `TTS_TEXT_FILE` | 无；`--text` 缺席时读取该文件 |
+| `--voice` | `VOICE_REF` | `resources/my_voice.wav` |
+| `--ref-text` | `TTS_REF_TEXT` | 无（Qwen Base 不提供也能克隆） |
 | `--language` | `TTS_LANGUAGE` | `auto` |
-| `--model` | `TTS_MODEL` | `<repo>/models/Qwen3-TTS-12Hz-1.7B-Base-bf16` |
-| `--aligner-model` | `ALIGNER_MODEL` | `<repo>/models/Qwen3-ForcedAligner-0.6B-8bit` |
+| `--model` | `TTS_MODEL` | `<仓库>/models/Qwen3-TTS-12Hz-1.7B-Base-bf16`（也可给 HF id） |
+| `--aligner-model` | `ALIGNER_MODEL` | `<仓库>/models/Qwen3-ForcedAligner-0.6B-8bit`（也可给 HF id） |
 | `--output-dir` | `TTS_OUTPUT_DIR` | 当前目录 |
 | `--prefix` | `TTS_PREFIX` | `narration` / `tts` |
 
-### 依赖
+`text_align.py` 另有 `ALIGN_AUDIO`（等同 `--audio`）、`ALIGN_TEXT` / `ALIGN_TEXT_FILE`（文本来源）、`ALIGN_LANGUAGE`（默认 `Chinese`）与 `ALIGN_OUTPUT_BASE`；`narrate.py` 的 `--metrics` 对应 `NARRATE_METRICS_FILE`。
 
-- Python 3.12 + mlx-audio 环境(仓库根目录 `.venv`)
-- `psutil`(资源监控,可选,缺失时自动跳过 CPU/内存采样)
+## 依赖
 
-## 选型建议
+- mlx 路线：`mlx-audio`（Apple Silicon），模型可用 HF id 让 mlx 自己下载，或放本地目录并用环境变量指过去
+- CUDA 路线：`torch` + Qwen3-TTS / Qwen3-ASR（依赖与参数见 `python3 scripts/voice-clone.py --help`）
+- 云端路线：`DASHSCOPE_API_KEY` + `COSYVOICE_VOICE_ID`（见 `--help`）
+- `psutil` 可选（资源监控，缺失时跳过采样）
+- 具体后端的包、环境变量与硬件要求只写在对应脚本的 `--help` 里
 
-| 场景 | 工具 |
-|---|---|
-| 旁白视频生产(音频+字幕) | `narrate.py` |
-| 日常 TTS(克隆 `my_voice.wav`) | `tts_qwen.py` |
-| 给已有音频+文稿出字幕 | `text_align.py` |
-| 需要 48kHz / 特殊风格设计 | VoxCPM2(workflow 见 `workspace/voice_clone_voxcpm2.py`) |
-| 设计全新声音(不用参考) | Qwen VoiceDesign(`workspace/voice_design_qwen.py`) |
+## 参考音色
 
-## 生成一个自定义 voice 参考
-
-1. 录一段干净人声 → 降噪(如 Adobe Podcast / 谱减)
-2. whisper STT 出转写文本
-3. 之后每次 `--voice` 指向它即可
+默认参考音频是 `resources/my_voice.wav`（转写稿 `resources/my_voice.txt`）。换成自己的音色：录一段干净人声 → 降噪 → 出转写文本 → 用 `--voice` / `VOICE_REF` 指向它。

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Narrate a script: TTS + forced alignment in one run.
 
 Turns a plain narration script (no timestamps) into:
@@ -11,7 +11,9 @@ This is the composition of tts_qwen.py and text_align.py; use those when you
 only need one stage. Both heavy models are loaded exactly once.
 
 Path configuration (nothing is hardcoded; CLI > env var > default):
-    --text / TTS_TEXT             script text (or positional, or --text-file / TTS_TEXT_FILE)
+    --text / TTS_TEXT             script text (or positional, or --text-file /
+                                  TTS_TEXT_FILE; TTS_TEXT_FILE is read when
+                                  neither --text nor --text-file is passed)
     --voice / VOICE_REF           reference voice audio (default: <repo>/resources/my_voice.wav)
     --ref-text / TTS_REF_TEXT     transcript of the reference audio (optional)
     --language / TTS_LANGUAGE     language code (default: auto)
@@ -28,6 +30,9 @@ Outputs in <output-dir>:
     <prefix>_metrics.json latency + resource usage of every stage
 
 Scriptable: stdout ends with WAV= / SRT= / JSON= lines.
+
+Failures print one JSON line ({"success": false, "error": ...}) on stdout and
+exit 1; progress and latency diagnostics go to stderr where noted.
 """
 
 from __future__ import annotations
@@ -57,23 +62,44 @@ def parse_args() -> argparse.Namespace:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("text_pos", nargs="?", default=None, help="script text (positional)")
-    p.add_argument("--text", default=None)
-    p.add_argument("--text-file", default=None, help="file containing the script")
-    p.add_argument("--voice", default=None, help="reference voice audio")
-    p.add_argument("--ref-text", default=None, help="transcript of the reference audio (optional)")
-    p.add_argument("--language", default=None, help="language code (default: auto)")
-    p.add_argument("--model", default=None, help="TTS model dir")
-    p.add_argument("--aligner-model", default=None, help="forced aligner model dir")
-    p.add_argument("--output-dir", default=None)
-    p.add_argument("--prefix", default=None)
-    p.add_argument("--metrics", default=None)
+    p.add_argument("text_pos", nargs="?", default=None,
+                   help="script text (positional; or set TTS_TEXT)")
+    p.add_argument("--text", default=None,
+                   help="script text (or set TTS_TEXT)")
+    p.add_argument("--text-file", default=None,
+                   help="file containing the script (or set TTS_TEXT_FILE; used "
+                        "when --text is absent)")
+    p.add_argument("--voice", default=None,
+                   help="reference voice audio (or set VOICE_REF; default: "
+                        "<repo>/resources/my_voice.wav)")
+    p.add_argument("--ref-text", default=None,
+                   help="transcript of the reference audio, optional (or set "
+                        "TTS_REF_TEXT)")
+    p.add_argument("--language", default=None,
+                   help="language code (or set TTS_LANGUAGE; default: auto)")
+    p.add_argument("--model", default=None,
+                   help="TTS model dir or HF id (or set TTS_MODEL)")
+    p.add_argument("--aligner-model", default=None,
+                   help="forced aligner model dir or HF id (or set ALIGNER_MODEL)")
+    p.add_argument("--output-dir", default=None,
+                   help="output directory (or set TTS_OUTPUT_DIR; default: cwd)")
+    p.add_argument("--prefix", default=None,
+                   help="output file prefix (or set TTS_PREFIX; default: narration)")
+    p.add_argument("--metrics", default=None,
+                   help="metrics JSON path (or set NARRATE_METRICS_FILE)")
     return p.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
+def main() -> int:
+    """Run TTS + alignment; human-readable progress on success, JSON on failure."""
+    try:
+        return _run(parse_args())
+    except Exception as exc:  # noqa: BLE001 - failures end with one JSON line
+        print(json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False))
+        return 1
 
+
+def _run(args: argparse.Namespace) -> int:
     # ---- resolve inputs ---------------------------------------------------
     model_path = resolve_path(args.model, "TTS_MODEL",
                               default_models_dir() / "Qwen3-TTS-12Hz-1.7B-Base-bf16")
@@ -91,13 +117,19 @@ def main() -> None:
                                 output_dir / f"{prefix}_metrics.json")
 
     text = args.text_pos or args.text
-    if text is None and args.text_file:
-        text = Path(resolve_path(args.text_file, "TTS_TEXT_FILE", Path.cwd())).read_text(
-            encoding="utf-8").strip()
     if text is None:
+        text_file = args.text_file or os.environ.get("TTS_TEXT_FILE")
+        if text_file:
+            text = Path(
+                resolve_path(text_file, "TTS_TEXT_FILE", Path.cwd())
+            ).read_text(encoding="utf-8").strip()
+    if not text:
         text = os.environ.get("TTS_TEXT")
     if not text:
-        raise ValueError("no script text: pass it positionally, via --text / --text-file / TTS_TEXT")
+        raise ValueError(
+            "no script text: pass it positionally, via --text / --text-file, "
+            "or set TTS_TEXT / TTS_TEXT_FILE"
+        )
 
     ref_text = args.ref_text or os.environ.get("TTS_REF_TEXT") or None
     language = args.language or os.environ.get("TTS_LANGUAGE") or "auto"
@@ -146,12 +178,13 @@ def main() -> None:
     # ---- stage 2: align the ORIGINAL script against the fresh audio -------
     # the aligner wants a language name, not a code
     align_language = "Chinese" if language == "auto" else language.capitalize()
+    t_align = time.perf_counter()
     align_metrics = align_text(
         wav_path, text,
         model_path=aligner_path, language=align_language,
         load_model_fn=aligner_model,
     )
-    log_latency("align", time.perf_counter() - align_metrics["align_s"])
+    log_latency("align", t_align)
 
     words = align_metrics["words"]
     sentences = align_metrics["sentences"]
@@ -185,7 +218,8 @@ def main() -> None:
     print(f"WAV=  {wav_path}")
     print(f"SRT=  {srt_path}")
     print(f"JSON= {json_path}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

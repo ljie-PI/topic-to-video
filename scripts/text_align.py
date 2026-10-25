@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Align a narration script to its TTS audio: word- and sentence-level
 timestamps without any ASR step.
 
@@ -20,13 +20,18 @@ align.json into the pipeline transcript schema):
     Reads the align.json written by this script (or a dump of the dict returned
     by align_text) and writes the pipeline transcript schema: a sentence list,
     every sentence {begin, end, text, words:[{text, begin, end}]}, ALL times
-    in MILLISECONDS (align.json uses seconds). Prints one JSON result to
-    stdout; exit 0 on success, 1 on error (missing/invalid input or an
-    alignment with no sentences/words).
+    in MILLISECONDS (align.json uses seconds).
+
+stdout is exactly one JSON document in every mode: success or error, exit 0
+on success, 1 on a runtime/input error (unreadable or invalid align.json, an
+alignment with no sentences/words, missing audio/model) and 2 on a usage
+error (--align-json and --emit-transcript must be passed together). Progress
+and latency diagnostics go to stderr.
 
 Path configuration (CLI > env var > default):
-    --audio / ALIGN_AUDIO       TTS-generated audio (required)
-    --text / ALIGN_TEXT         the source script text (or --text-file)
+    --audio / ALIGN_AUDIO       TTS-generated audio (required outside conversion)
+    --text / ALIGN_TEXT         the source script text (or --text-file /
+                                ALIGN_TEXT_FILE)
     --language / ALIGN_LANGUAGE (default: Chinese)
     --model / ALIGNER_MODEL     (default: <models>/Qwen3-ForcedAligner-0.6B-8bit)
     --output / ALIGN_OUTPUT_BASE  output path without extension
@@ -45,6 +50,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from transcript_schema import transcript_from_mlx_alignment
 from utils import (
     ResourceMonitor,
     default_models_dir,
@@ -55,10 +61,6 @@ from utils import (
 
 # sentence-ending punctuation for Chinese/English scripts
 _SENT_SPLIT = re.compile(r"(?<=[。！？!?；;])|\n+")
-
-
-def _to_ms(seconds: float) -> int:
-    return int(round(float(seconds) * 1000.0))
 
 
 def transcript_from_alignment(align: dict) -> list[dict]:
@@ -72,36 +74,14 @@ def transcript_from_alignment(align: dict) -> list[dict]:
     ``{begin, end, text, words:[{text, begin, end}]}`` with ALL times in
     milliseconds.
 
-    Words are assigned to sentences by start time: a word belongs to the
-    latest sentence whose ``start`` is <= the word's ``start`` (which is how
-    :func:`group_sentences` built the spans, so no token is dropped or
-    duplicated). Raises ValueError when the alignment holds no sentences or
-    no words — an empty transcript is never a valid pipeline product.
+    Thin adapter over transcript_schema.transcript_from_mlx_alignment, which
+    owns the shared grouping walk. Raises ValueError when the alignment holds
+    no sentences or no words — an empty transcript is never a valid pipeline
+    product.
     """
-    words = align.get("words") or []
-    sentences = align.get("sentences") or []
-    if not sentences or not words:
+    if not align.get("sentences") or not align.get("words"):
         raise ValueError("alignment has no sentences or no words")
-    transcript = []
-    wi = 0
-    for si, sent in enumerate(sentences):
-        next_start = sentences[si + 1]["start"] if si + 1 < len(sentences) else None
-        sent_words = []
-        while wi < len(words) and (next_start is None or words[wi]["start"] < next_start):
-            w = words[wi]
-            sent_words.append(
-                {"text": w["word"], "begin": _to_ms(w["start"]), "end": _to_ms(w["end"])}
-            )
-            wi += 1
-        transcript.append(
-            {
-                "begin": _to_ms(sent["start"]),
-                "end": _to_ms(sent["end"]),
-                "text": sent["text"],
-                "words": sent_words,
-            }
-        )
-    return transcript
+    return transcript_from_mlx_alignment(align)
 
 
 def align_text(
@@ -132,78 +112,16 @@ def align_text(
             "align_s": round(time.perf_counter() - t0, 3)}
 
 
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    p.add_argument("--audio", default=None,
-                   help="TTS audio to align (required unless --emit-transcript "
-                        "conversion mode is used)")
-    p.add_argument("--text", default=None)
-    p.add_argument("--text-file", default=None)
-    p.add_argument("--language", default=None)
-    p.add_argument("--model", default=None)
-    p.add_argument("--output", default=None)
-    p.add_argument("--metrics", default=None)
-    p.add_argument("--align-json", default=None,
-                   help="conversion mode: read this align.json instead of "
-                        "running the aligner (no model load)")
-    p.add_argument("--emit-transcript", default=None,
-                   help="conversion mode: write the pipeline transcript schema "
-                        "(milliseconds) to this path")
-    return p.parse_args()
-
-
-def convert_align_json(align_json_path: str, transcript_path: str) -> int:
-    """Pure align.json -> transcript.json conversion (no model, no audio).
-
-    Prints one JSON result to stdout; returns the process exit code.
-    """
-    src = Path(align_json_path)
-    try:
-        payload = json.loads(src.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        print(json.dumps({"success": False,
-                          "error": f"align.json not found: {src}"}, ensure_ascii=False))
-        return 1
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        print(json.dumps({"success": False,
-                          "error": f"invalid align.json: {exc}"}, ensure_ascii=False))
-        return 1
-    if not isinstance(payload, dict):
-        print(json.dumps({"success": False,
-                          "error": "align.json root is not an object"}, ensure_ascii=False))
-        return 1
-    try:
-        transcript = transcript_from_alignment(payload)
-    except (ValueError, KeyError, TypeError) as exc:
-        print(json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False))
-        return 1
-    out = Path(transcript_path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(transcript, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({
-        "success": True,
-        "output_path": str(out.resolve()),
-        "sentence_count": len(transcript),
-        "word_count": sum(len(s["words"]) for s in transcript),
-    }, ensure_ascii=False))
-    return 0
-
-
 def group_sentences(words: list[dict], script_text: str) -> list[dict]:
-    """Group aligned word spans into sentence spans using the script's
-    punctuation. Falls back to pauses > 0.5s when punctuation count differs.
+    """Group aligned word spans into sentence spans using the script's punctuation.
+
+    Each punctuated chunk of the script consumes aligned words until their
+    combined length covers the chunk's alignable text, so every sentence span
+    starts at its first word and ends at its last. Chunks with no alignable
+    characters (pure punctuation) are skipped.
     """
-    boundaries = [m.end() for m in _SENT_SPLIT.finditer(script_text)]
-    # cumulative character count in the aligned units (aligner units are
-    # CJK chars or words, punctuation typically not emitted)
-    units = [w["word"] for w in words]
-    flat = "".join(units)
-    # strip punctuation/spaces from script for index mapping
-    stripped = _SENT_SPLIT.split(script_text)
-    stripped = [s for s in (s.strip() for s in stripped) if s]
+    stripped = [s.strip() for s in _SENT_SPLIT.split(script_text)]
+    stripped = [s for s in stripped if s]
 
     sentences = []
     pos = 0  # pointer into words
@@ -211,14 +129,14 @@ def group_sentences(words: list[dict], script_text: str) -> list[dict]:
         target = re.sub(r"[\s，,、.．:：\"'\"'()（）-]", "", chunk)
         if not target:
             continue
+        if pos >= len(words):
+            break
         # find the word span covering this chunk
         acc = ""
         start_word = pos
         while pos < len(words) and len(acc) < len(target):
             acc += words[pos]["word"]
             pos += 1
-        if start_word >= len(words):
-            break
         sentences.append({
             "text": chunk,
             "start": words[start_word]["start"],
@@ -241,29 +159,136 @@ def to_srt(sentences: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def main() -> None:
-    args = parse_args()
+class JsonArgumentParser(argparse.ArgumentParser):
+    """Usage errors still print one JSON document on stdout (exit 2)."""
 
-    # Pure conversion mode: align.json -> pipeline transcript (no model load).
-    if args.align_json or args.emit_transcript:
-        if not (args.align_json and args.emit_transcript):
-            raise SystemExit(
-                "--align-json and --emit-transcript must be passed together")
-        raise SystemExit(convert_align_json(args.align_json, args.emit_transcript))
+    def error(self, message: str) -> None:
+        print(json.dumps({"success": False, "error": message}, ensure_ascii=False))
+        raise SystemExit(2)
 
+
+def parse_args() -> argparse.Namespace:
+    p = JsonArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("--audio", default=None,
+                   help="TTS audio to align (required unless the --align-json "
+                        "conversion mode is used; or set ALIGN_AUDIO)")
+    p.add_argument("--text", default=None,
+                   help="source script text (or --text-file / ALIGN_TEXT_FILE, "
+                        "or set ALIGN_TEXT)")
+    p.add_argument("--text-file", default=None,
+                   help="file containing the source script text (or set "
+                        "ALIGN_TEXT_FILE)")
+    p.add_argument("--language", default=None,
+                   help="aligner language name (default: ALIGN_LANGUAGE or Chinese)")
+    p.add_argument("--model", default=None,
+                   help="aligner model dir or HF id (default: ALIGNER_MODEL or "
+                        "<repo>/models/Qwen3-ForcedAligner-0.6B-8bit)")
+    p.add_argument("--output", default=None,
+                   help="output path without extension (default: ALIGN_OUTPUT_BASE "
+                        "or the audio's own path)")
+    p.add_argument("--metrics", default=None,
+                   help="metrics JSON path (default: ALIGN_METRICS_FILE or "
+                        "<output>.align_metrics.json)")
+    p.add_argument("--align-json", default=None,
+                   help="conversion mode: read this align.json instead of "
+                        "running the aligner (no model load)")
+    p.add_argument("--emit-transcript", default=None,
+                   help="conversion mode: write the pipeline transcript schema "
+                        "(milliseconds) to this path")
+    return p.parse_args()
+
+
+def _print_json(payload: dict) -> None:
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+def convert_align_json(align_json_path: str, transcript_path: str) -> int:
+    """Pure align.json -> transcript.json conversion (no model, no audio).
+
+    Prints one JSON result to stdout; returns the process exit code.
+    """
+    src = Path(align_json_path)
+    try:
+        payload = json.loads(src.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        _print_json({"success": False, "error": f"align.json not found: {src}"})
+        return 1
+    except OSError as exc:
+        _print_json({"success": False,
+                     "error": f"cannot read align.json: {exc}"})
+        return 1
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        _print_json({"success": False, "error": f"invalid align.json: {exc}"})
+        return 1
+    if not isinstance(payload, dict):
+        _print_json({"success": False,
+                     "error": "align.json root is not an object"})
+        return 1
+    try:
+        transcript = transcript_from_alignment(payload)
+    except (ValueError, KeyError, TypeError) as exc:
+        _print_json({"success": False, "error": str(exc)})
+        return 1
+    out = Path(transcript_path)
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(transcript, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError as exc:
+        _print_json({"success": False,
+                     "error": f"cannot write transcript: {exc}"})
+        return 1
+    _print_json({
+        "success": True,
+        "output_path": str(out.resolve()),
+        "sentence_count": len(transcript),
+        "word_count": sum(len(s["words"]) for s in transcript),
+    })
+    return 0
+
+
+def _run_conversion(args: argparse.Namespace) -> int:
+    """--align-json / --emit-transcript: usage error -> exit 2, else convert."""
+    if not (args.align_json and args.emit_transcript):
+        _print_json({
+            "success": False,
+            "error": "--align-json and --emit-transcript must be passed together",
+        })
+        return 2
+    return convert_align_json(args.align_json, args.emit_transcript)
+
+
+def _align_language(args: argparse.Namespace) -> str:
+    return args.language or os.environ.get("ALIGN_LANGUAGE") or "Chinese"
+
+
+def _resolve_text(args: argparse.Namespace) -> str:
+    """CLI --text > ALIGN_TEXT > --text-file / ALIGN_TEXT_FILE."""
+    text = args.text or os.environ.get("ALIGN_TEXT")
+    if text is None:
+        text_file = args.text_file or os.environ.get("ALIGN_TEXT_FILE")
+        if text_file:
+            text = Path(
+                resolve_path(text_file, "ALIGN_TEXT_FILE", Path.cwd())
+            ).read_text(encoding="utf-8").strip()
+    if not text:
+        raise ValueError(
+            "no text: pass --text / --text-file, or set ALIGN_TEXT / ALIGN_TEXT_FILE"
+        )
+    return text
+
+
+def run_alignment(args: argparse.Namespace) -> int:
+    """Align audio + script, write align.json/srt/metrics, print one JSON."""
     if not args.audio and not os.environ.get("ALIGN_AUDIO"):
-        raise SystemExit("no audio: pass --audio (or set ALIGN_AUDIO)")
+        raise ValueError("no audio: pass --audio (or set ALIGN_AUDIO)")
     audio_path = resolve_path(args.audio, "ALIGN_AUDIO", Path.cwd())
     model_path = resolve_path(args.model, "ALIGNER_MODEL",
                               default_models_dir() / "Qwen3-ForcedAligner-0.6B-8bit")
-    language = args.language or "Chinese"
-
-    text = args.text
-    if text is None and args.text_file:
-        text = Path(resolve_path(args.text_file, "ALIGN_TEXT_FILE", Path.cwd())).read_text(
-            encoding="utf-8").strip()
-    if not text:
-        raise ValueError("no text: pass --text or --text-file")
+    language = _align_language(args)
+    text = _resolve_text(args)
 
     if not audio_path.exists():
         raise FileNotFoundError(f"audio not found: {audio_path}")
@@ -274,18 +299,18 @@ def main() -> None:
     metrics_path = resolve_path(args.metrics, "ALIGN_METRICS_FILE",
                                 Path(str(out_base) + ".align_metrics.json"))
 
-    print(f"audio    : {audio_path}")
-    print(f"text     : {text[:60]}{'...' if len(text) > 60 else ''}")
-    print(f"language : {language}")
+    print(f"audio    : {audio_path}", file=sys.stderr)
+    print(f"text     : {text[:60]}{'...' if len(text) > 60 else ''}", file=sys.stderr)
+    print(f"language : {language}", file=sys.stderr)
 
     monitor = ResourceMonitor(sample_interval=0.5)
     monitor.start()
-
+    t_align = time.perf_counter()
     result = align_text(audio_path, text, model_path=model_path, language=language)
-    words, sentences, elapsed = result["words"], result["sentences"], result["align_s"]
-
+    log_latency("align", t_align)
     monitor.stop()
-    log_latency("align", time.perf_counter() - elapsed)
+
+    words, sentences, elapsed = result["words"], result["sentences"], result["align_s"]
 
     json_path = Path(str(out_base) + ".align.json")
     srt_path = Path(str(out_base) + ".srt")
@@ -309,10 +334,30 @@ def main() -> None:
     }
     save_metrics(metrics_path, metrics)
 
-    print(f"\n{len(words)} words, {len(sentences)} sentences")
-    print(f"JSON={json_path}")
-    print(f"SRT=  {srt_path}")
+    _print_json({
+        "success": True,
+        "audio": str(audio_path),
+        "align_json": str(json_path.resolve()),
+        "srt": str(srt_path.resolve()),
+        "metrics": str(metrics_path.resolve()),
+        "word_count": len(words),
+        "sentence_count": len(sentences),
+        "align_s": elapsed,
+    })
+    return 0
+
+
+def main() -> int:
+    """Entry point: stdout carries exactly one JSON document, in every mode."""
+    try:
+        args = parse_args()
+        if args.align_json or args.emit_transcript:
+            return _run_conversion(args)
+        return run_alignment(args)
+    except Exception as exc:  # noqa: BLE001 - failures end with one JSON error
+        _print_json({"success": False, "error": str(exc)})
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Qwen TTS: clone a reference voice with Qwen3-TTS Base (mlx-audio).
 
 Designed for the Qwen codec architecture whose output is already clean —
@@ -6,7 +6,9 @@ no post-processing denoise stage. Emits the audio and a metrics JSON with
 latency and resource usage (CPU / memory / GPU memory).
 
 Path configuration (nothing is hardcoded; CLI > env var > default):
-    --text / TTS_TEXT             text to synthesize (or --text-file / TTS_TEXT_FILE)
+    --text / TTS_TEXT             text to synthesize (or --text-file / TTS_TEXT_FILE;
+                                  TTS_TEXT_FILE is read when neither --text nor
+                                  --text-file is passed)
     --voice / VOICE_REF           reference audio (default: <repo>/resources/my_voice.wav)
     --ref-text / TTS_REF_TEXT     transcript of the reference audio (optional —
                                   Qwen Base clones well without it)
@@ -21,12 +23,16 @@ Outputs:
     metrics JSON
 
 Scriptable: stdout ends with OUTPUT=<path> so callers can do
-    out=$(python tts_qwen.py --text "..." | grep '^OUTPUT=' | cut -d= -f2)
+    out=$(python3 tts_qwen.py --text "..." | grep '^OUTPUT=' | cut -d= -f2)
+
+Failures print one JSON line ({"success": false, "error": ...}) on stdout and
+exit 1; progress and latency diagnostics go to stderr where noted.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -49,16 +55,29 @@ def parse_args() -> argparse.Namespace:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("text_pos", nargs="?", default=None, help="text to synthesize (positional)")
-    p.add_argument("--text", default=None, help="text to synthesize")
-    p.add_argument("--text-file", default=None, help="file containing the text")
-    p.add_argument("--voice", default=None, help="reference audio for the voice")
-    p.add_argument("--ref-text", default=None, help="transcript of the reference audio (optional)")
-    p.add_argument("--language", default=None, help="language code (default: auto)")
-    p.add_argument("--model", default=None)
-    p.add_argument("--output-dir", default=None)
-    p.add_argument("--prefix", default=None)
-    p.add_argument("--metrics", default=None)
+    p.add_argument("text_pos", nargs="?", default=None,
+                   help="text to synthesize (positional; or set TTS_TEXT)")
+    p.add_argument("--text", default=None,
+                   help="text to synthesize (or set TTS_TEXT)")
+    p.add_argument("--text-file", default=None,
+                   help="file containing the text (or set TTS_TEXT_FILE; used when "
+                        "--text is absent)")
+    p.add_argument("--voice", default=None,
+                   help="reference audio for the voice (or set VOICE_REF; default: "
+                        "<repo>/resources/my_voice.wav)")
+    p.add_argument("--ref-text", default=None,
+                   help="transcript of the reference audio, optional (or set "
+                        "TTS_REF_TEXT)")
+    p.add_argument("--language", default=None,
+                   help="language code (or set TTS_LANGUAGE; default: auto)")
+    p.add_argument("--model", default=None,
+                   help="TTS model dir or HF id (or set TTS_MODEL)")
+    p.add_argument("--output-dir", default=None,
+                   help="output directory (or set TTS_OUTPUT_DIR; default: cwd)")
+    p.add_argument("--prefix", default=None,
+                   help="output file prefix (or set TTS_PREFIX; default: tts)")
+    p.add_argument("--metrics", default=None,
+                   help="metrics JSON path (or set TTS_METRICS_FILE)")
     return p.parse_args()
 
 
@@ -127,9 +146,16 @@ def synthesize(
     return metrics
 
 
-def main() -> None:
-    args = parse_args()
+def main() -> int:
+    """Run TTS; human-readable progress on success, one JSON error on failure."""
+    try:
+        return _run(parse_args())
+    except Exception as exc:  # noqa: BLE001 - failures end with one JSON line
+        print(json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False))
+        return 1
 
+
+def _run(args: argparse.Namespace) -> int:
     # ---- resolve inputs ---------------------------------------------------
     model_path = resolve_path(args.model, "TTS_MODEL",
                               default_models_dir() / "Qwen3-TTS-12Hz-1.7B-Base-bf16")
@@ -146,13 +172,19 @@ def main() -> None:
                                 output_dir / f"{prefix}_metrics.json")
 
     text = args.text_pos or args.text
-    if text is None and args.text_file:
-        text = Path(resolve_path(args.text_file, "TTS_TEXT_FILE", Path.cwd())).read_text(
-            encoding="utf-8").strip()
     if text is None:
+        text_file = args.text_file or os.environ.get("TTS_TEXT_FILE")
+        if text_file:
+            text = Path(
+                resolve_path(text_file, "TTS_TEXT_FILE", Path.cwd())
+            ).read_text(encoding="utf-8").strip()
+    if not text:
         text = os.environ.get("TTS_TEXT")
     if not text:
-        raise ValueError("no text: pass it positionally, via --text / --text-file / TTS_TEXT")
+        raise ValueError(
+            "no text: pass it positionally, via --text / --text-file, "
+            "or set TTS_TEXT / TTS_TEXT_FILE"
+        )
 
     ref_text = args.ref_text or os.environ.get("TTS_REF_TEXT") or None
     language = args.language or os.environ.get("TTS_LANGUAGE") or "auto"
@@ -179,7 +211,8 @@ def main() -> None:
     save_metrics(metrics_path, metrics)
 
     print(f"OUTPUT={output_path}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

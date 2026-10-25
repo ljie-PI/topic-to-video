@@ -1,6 +1,6 @@
 # 委派约定（统一）
 
-Phase 5（素材 catalog）、Phase 6（脚本与场景规划）与 Phase 9（composition）这类 context 消耗大的步骤，委派给 coding agent 完成。这些委派步骤共用本约定。
+Phase 5（素材 catalog）、Phase 6（脚本与场景规划）与 Phase 8（composition）这类 context 消耗大的步骤，委派给 coding agent 完成。这些委派步骤共用本约定。
 
 ## 委派给谁
 

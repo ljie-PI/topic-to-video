@@ -50,7 +50,7 @@ ffprobe -v error -show_entries format=duration \
 ```
 
 - 后端由环境选择，参数和依赖（参考音色、Python 包、硬件要求等）见 `scripts/voice-clone.py --help`。拿不准当前机器会选哪个后端时先跑 `python3 scripts/voice-clone.py --resolve-backend`。
-- **mlx**（arm64 Mac）：合成后直接用 mlx-audio ForcedAligner 对齐朗读稿原文并写出 transcript.json（该后端总是出 transcript，不需要 `--emit-transcript`）。
+- **mlx**（arm64 Mac）：合成后直接用 mlx-audio ForcedAligner 对齐朗读稿原文并写出 transcript.json（该后端默认出 transcript，不需要 `--emit-transcript`；aligner 不可用时告警并跳过，用户需按 7.2 的回退路径补 transcript）。
 - **qwen3tts**（CUDA）：`--emit-transcript` 让 torch Qwen3-ForcedAligner 可用时同样直对齐出 transcript.json；aligner 不可导入时脚本只在 stderr 警告、不写 transcript.json —— 这时跑全 ASR：
 
   ```bash

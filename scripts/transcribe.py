@@ -55,83 +55,41 @@ import abc
 import argparse
 import json
 import os
-import platform
 import re
 import sys
-import unicodedata
 from http import HTTPStatus
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+
+import backend_select as bs
+from backend_select import BackendUnavailableError, UnknownBackendError
+from transcript_schema import transcript_from_torch_alignment
 
 
-# --- environment probes (auto backend) -----------------------------------------
+# --- backend selection (auto) ---------------------------------------------------
 #
-# Every probe reads an ASR_DETECT_* override first so the auto decision is
-# testable without the hardware (documented in the module docstring).
+# The probes, the CLI > env > auto resolution and the --resolve-backend output
+# live in backend_select.py (shared with voice-clone.py). This script only
+# supplies the ASR backend registry and the ASR auto order; the documented
+# probe overrides are ASR_DETECT_PLATFORM / ASR_DETECT_MACHINE / ASR_DETECT_CUDA.
+
+PROBE_PREFIX = 'ASR_DETECT'
 
 
-def detect_platform() -> str:
-    return os.environ.get('ASR_DETECT_PLATFORM') or sys.platform
+def _auto_backend(probes: dict[str, object]) -> tuple[str, dict[str, object]]:
+    """ASR auto order: CUDA -> qwen3; DASHSCOPE_API_KEY -> dashscope.
 
-
-def detect_machine() -> str:
-    return os.environ.get('ASR_DETECT_MACHINE') or platform.machine()
-
-
-def detect_cuda() -> bool:
-    override = os.environ.get('ASR_DETECT_CUDA')
-    if override is not None:
-        return override == '1'
-    try:
-        import torch
-
-        return bool(torch.cuda.is_available())
-    except Exception:  # noqa: BLE001 - no torch / broken torch => no CUDA
-        return False
-
-
-def environment_probes() -> dict[str, object]:
-    return {
-        'platform': detect_platform(),
-        'machine': detect_machine(),
-        'cuda': detect_cuda(),
-        'dashscope_key': bool(os.environ.get('DASHSCOPE_API_KEY')),
-    }
-
-
-class BackendUnavailableError(Exception):
-    """Auto resolution found no usable backend; carries the missing list."""
-
-    def __init__(self, message: str, missing: list[str], probes: dict[str, object]) -> None:
-        self.missing = missing
-        self.probes = probes
-        super().__init__(message)
-
-
-class UnknownBackendError(Exception):
-    pass
-
-
-def resolve_backend_name(cli_backend: str | None) -> tuple[str, str, dict[str, object]]:
-    """Resolve the effective backend. Returns (name, source, probes).
-
-    source is 'cli' (--backend), 'env' (ASR_BACKEND) or 'auto'. Auto order:
-    CUDA -> qwen3; DASHSCOPE_API_KEY -> dashscope. On Apple Silicon ASR is
-    unnecessary (voice-clone.py's mlx backend emits transcript.json via direct
-    forced alignment), so auto raises BackendUnavailableError pointing there.
+    On Apple Silicon ASR is unnecessary (voice-clone.py's mlx backend emits
+    transcript.json via direct forced alignment), so auto raises
+    BackendUnavailableError pointing there.
     """
-    explicit = cli_backend or os.environ.get('ASR_BACKEND')
-    source = 'cli' if cli_backend else ('env' if os.environ.get('ASR_BACKEND') else 'auto')
-    if explicit and explicit != 'auto':
-        if explicit not in BACKENDS:
-            raise UnknownBackendError(f'unknown ASR backend: {explicit}')
-        return explicit, source, environment_probes()
-
-    probes = environment_probes()
     missing: list[str] = []
     if probes['cuda']:
-        return 'qwen3', 'auto', probes
+        return 'qwen3', probes
     missing.append('CUDA-capable GPU with torch (backend qwen3)')
     if probes['dashscope_key']:
-        return 'dashscope', 'auto', probes
+        return 'dashscope', probes
     missing.append('DASHSCOPE_API_KEY (backend dashscope)')
     if probes['platform'] == 'darwin' and probes['machine'] == 'arm64':
         raise BackendUnavailableError(
@@ -143,6 +101,23 @@ def resolve_backend_name(cli_backend: str | None) -> tuple[str, str, dict[str, o
         )
     raise BackendUnavailableError(
         'no usable ASR backend: ' + '; '.join(missing), missing, probes
+    )
+
+
+def resolve_backend_name(cli_backend: str | None) -> tuple[str, str, dict[str, object]]:
+    """Resolve the effective ASR backend. Returns (name, source, probes).
+
+    source is 'cli' (--backend), 'env' (ASR_BACKEND) or 'auto'. See
+    backend_select.resolve_backend_name for the shared contract and
+    _auto_backend for the ASR auto order.
+    """
+    return bs.resolve_backend_name(
+        cli_backend,
+        env_var='ASR_BACKEND',
+        probe_prefix=PROBE_PREFIX,
+        backends=BACKENDS,
+        auto_resolve=_auto_backend,
+        label='ASR',
     )
 
 
@@ -169,12 +144,6 @@ _CAL_UNITS = '年月日号時时分秒'
 _CAL_SPLIT = re.compile(f'(?<=[{_CAL_UNITS}])')
 _ITN_NORMALIZER = None
 _ITN_DISABLED = False
-
-# Sentence-final boundaries used to re-segment the flat aligned token stream
-# (the forced aligner returns one flat list; downstream wants sentences).
-# CJK enders split unconditionally; Latin .!? split only when followed by
-# whitespace or end-of-string so "GPT 5.4" / "v2.0" are not split mid-number.
-_SENTENCE_BOUNDARY = re.compile(r'(?<=[。！？…\n])|(?<=[.!?])(?=\s|$)')
 
 
 def itn_enabled() -> bool:
@@ -273,106 +242,16 @@ def apply_itn_to_sentences(sentences: list[dict]) -> list[dict]:
     return out
 
 
-def _kept_chars(text: str) -> str:
-    """Letters/numbers only, lowercased.
-
-    Mirrors the forced aligner's token cleaning (it keeps Unicode L/N
-    categories and drops punctuation/space), so a sentence's kept-char string
-    equals the concatenation of its aligned tokens' kept-char strings.
-    """
-    return ''.join(
-        ch.lower() for ch in text if unicodedata.category(ch)[0] in ('L', 'N')
-    )
-
-
-def _to_ms(seconds: float) -> int:
-    return int(round(float(seconds) * 1000.0))
-
-
 def segment_into_sentences(full_text: str, items: list) -> list[dict]:
-    """Group a flat list of aligned tokens into sentences.
+    """Group a flat list of aligned tokens into the pipeline transcript schema.
 
-    ``items`` is the forced aligner output: objects with ``text`` /
-    ``start_time`` / ``end_time`` (seconds), one per CJK character or Latin
-    word, with punctuation stripped. ``full_text`` retains punctuation, so we
-    split it into sentences and walk the tokens to fill each one.
-
-    The walk is *token-anchored*: every token is always assigned to exactly one
-    sentence, so no word-level timing is ever dropped. A token whose kept chars
-    overshoot the current sentence boundary stays in the sentence it completes,
-    and the overflow is carried so subsequent sentences stay aligned.
+    Thin adapter over transcript_schema.transcript_from_torch_alignment: the
+    torch forced aligner returns one flat token list (``text`` / ``start_time``
+    / ``end_time``, seconds), while ``full_text`` retains punctuation and
+    supplies the sentence boundaries. The shared schema builder owns the
+    grouping walk (token-anchored, no word timing dropped or duplicated).
     """
-    words = [
-        {
-            'text': it.text,
-            'begin': _to_ms(it.start_time),
-            'end': _to_ms(it.end_time),
-        }
-        for it in items
-    ]
-    if not words:
-        return []
-
-    targets = []
-    for part in _SENTENCE_BOUNDARY.split(full_text):
-        sentence_text = part.strip()
-        if not sentence_text:
-            continue
-        keep_len = len(_kept_chars(sentence_text))
-        if keep_len == 0:
-            continue
-        targets.append({'text': sentence_text, 'keep_len': keep_len})
-
-    # No usable sentence text — keep all words in a single synthesized sentence.
-    if not targets:
-        return [
-            {
-                'begin': words[0]['begin'],
-                'end': words[-1]['end'],
-                'text': ''.join(w['text'] for w in words),
-                'words': list(words),
-            }
-        ]
-
-    sentences: list[dict] = []
-    ti = 0
-    group: list[dict] = []
-    acc = 0  # kept chars accumulated toward the current target (incl. carry)
-    for word in words:
-        group.append(word)
-        acc += len(_kept_chars(word['text']))
-        # Close the current sentence once its quota is met, carrying overflow
-        # from a boundary-spanning token. The ``group`` guard prevents emitting
-        # an empty sentence when a single oversized token satisfies two or more
-        # consecutive target quotas at once.
-        while ti < len(targets) - 1 and group and acc >= targets[ti]['keep_len']:
-            acc -= targets[ti]['keep_len']
-            sentences.append(
-                {
-                    'begin': group[0]['begin'],
-                    'end': group[-1]['end'],
-                    'text': targets[ti]['text'],
-                    'words': group,
-                }
-            )
-            group = []
-            ti += 1
-
-    # Remaining tokens belong to the final target. If a sentence boundary was
-    # reached exactly on the previous token, `group` may be empty; only emit a
-    # final sentence when it actually holds tokens.
-    if group:
-        sentences.append(
-            {
-                'begin': group[0]['begin'],
-                'end': group[-1]['end'],
-                'text': targets[ti]['text'] if ti < len(targets) else ''.join(
-                    w['text'] for w in group
-                ),
-                'words': group,
-            }
-        )
-    return sentences
+    return transcript_from_torch_alignment(full_text, items)
 
 
 # --------------------------------------------------------------------------- #
@@ -618,27 +497,9 @@ def parse_args() -> argparse.Namespace:
 
 def resolve_backend_cli(args: argparse.Namespace) -> int:
     """--resolve-backend: print the backend decision (probes only), no models."""
-    try:
-        backend_name, source, probes = resolve_backend_name(args.backend)
-    except UnknownBackendError as exc:
-        log(f'error: {exc}')
-        print_json({'success': False, 'error': str(exc)})
-        return 2
-    except BackendUnavailableError as exc:
-        log(f'error: {exc}')
-        print_json(
-            {'success': False, 'error': str(exc), 'missing': exc.missing, 'probes': exc.probes}
-        )
-        return 1
-    print_json(
-        {
-            'success': True,
-            'backend': backend_name,
-            'backend_source': source,
-            'probes': probes,
-        }
+    return bs.resolve_backend_cli(
+        lambda: resolve_backend_name(args.backend), log=log, print_json=print_json
     )
-    return 0
 
 
 def main() -> int:
@@ -652,16 +513,8 @@ def main() -> int:
 
     try:
         backend_name, _source, _probes = resolve_backend_name(args.backend)
-    except UnknownBackendError as exc:
-        log(f'error: {exc}')
-        print_json({'success': False, 'error': str(exc)})
-        return 2
-    except BackendUnavailableError as exc:
-        log(f'error: {exc}')
-        print_json(
-            {'success': False, 'error': str(exc), 'missing': exc.missing, 'probes': exc.probes}
-        )
-        return 1
+    except (UnknownBackendError, BackendUnavailableError) as exc:
+        return bs.backend_error_response(exc, log=log, print_json=print_json)
 
     try:
         backend_cls = BACKENDS[backend_name]
