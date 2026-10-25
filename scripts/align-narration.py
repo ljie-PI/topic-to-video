@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Align the ASR transcript to the narration draft and build subtitle units.
 
-Replaces the old calibrate-transcript / scene-anchor pair. Subtitle text
-comes from the DISPLAY draft (script.txt); the ASR transcript only provides
-timing. The alignment is backend-independent: ASR tokens and the narration
-draft are normalized before a character-level alignment, so tokens with or
-without punctuation, with or without spaces, and Chinese or Arabic numerals
-all align (Chinese numeral runs are converted to Arabic digits, reusing the
-normalization logic from the retired calibrate-transcript.py).
+Replaces the old calibrate-transcript / scene-anchor pair (kept here only
+as historical provenance). Subtitle text comes from the DISPLAY draft
+(script.txt); the ASR transcript only provides timing. The alignment is
+backend-independent: ASR tokens and the narration draft are normalized
+before a character-level alignment, so tokens with or without punctuation,
+with or without spaces, and Chinese or Arabic numerals all align (Chinese
+numeral runs are converted to Arabic digits).
 
 Inputs:
   --transcript   transcribe/transcript.json — the stable ASR schema: a list
@@ -65,7 +65,7 @@ Outputs (paths from --units-output / --timeline-output):
   subtitle-units.json : {"version": 1, "units": [...], "summary": {...}}
     each unit: {index, text, begin_ms, end_ms, begin_s, end_s, fallback,
     paragraph} — the text / begin_s / end_s fields keep the existing
-    downstream contract of the old calibrate-transcript units.
+    downstream subtitle-unit contract.
   timeline.json : {"version": 1, "total_s", "paragraphs": [{index, begin_s,
     end_s}]}; with --scene-plan a "scenes" list [{scene_id, begin_s, end_s}]
     (scene boundaries derived from each scene's paragraph coverage) and a
@@ -238,7 +238,7 @@ def load_transcript(path: str) -> list[Word]:
     return words
 
 
-# --- normalization (number handling reused from retired calibrate-transcript) ----
+# --- normalization (Chinese numeral runs -> Arabic digits) ----
 
 
 def parse_chinese_number(text: str) -> int | None:

@@ -6,10 +6,10 @@ Two modes, selected by environment:
   Mode 1 — Explicit VLM (when VLM_API_KEY is set):
     Calls any OpenAI-compatible /chat/completions endpoint.
     Required env: VLM_API_KEY, VLM_BASE_URL, VLM_MODEL.
-    Example (Qwen-VL via DashScope OpenAI-compatible endpoint):
-      export VLM_API_KEY="$DASHSCOPE_API_KEY"
-      export VLM_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
-      export VLM_MODEL="qwen-vl-max"
+    Example (any OpenAI-compatible VLM endpoint):
+      export VLM_API_KEY="..."
+      export VLM_BASE_URL="https://<host>/v1"
+      export VLM_MODEL="<model id>"
 
   Mode 2 — Delegate to agent (when VLM_API_KEY is unset):
     Emits a `delegate_to_agent` directive (no API call, no base64 in stdout).
@@ -20,7 +20,7 @@ Two modes, selected by environment:
 Usage:
   python3 vision-analyze.py --prompt "Describe content and rate quality 1-10" \
       --images frame_001.jpg frame_002.jpg https://example.com/img.jpg \
-      [--model qwen-vl-max] [--detail low|high|auto]
+      [--model <model>] [--detail low|high|auto]
 
 Output convention:
   stdout: single JSON object

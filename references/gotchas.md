@@ -137,9 +137,9 @@ Phase 6 只能引用 Phase 5 产出的 `material-catalog.json`。如果 catalog 
 
 修复：设置 `VLM_API_KEY` / `VLM_BASE_URL` / `VLM_MODEL` 后重跑；如果没有 VLM，用 `view` 工具检查图片并手写分析结果。
 
-## 16. `WARN: cue not found for scene X`
+## 16. `warning: cue not found for scene ...`
 
-场景规划的 cue 锚点在对齐后的文本里找不到，通常是大小写、标点、TTS 文本与 transcript 不一致。
+场景规划的 cue 锚点在对齐后的文本里找不到（`scripts/align-narration.py` 的 stderr 日志），通常是大小写、标点、TTS 文本与 transcript 不一致。找不到的 cue 会被跳过并记 warning，不阻塞流程。
 
 修复：从实际 `transcribe/transcript.json` / 显示稿文本中挑 cue，避免凭 `narration.txt` 原文硬配。
 
