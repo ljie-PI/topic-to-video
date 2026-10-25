@@ -2,117 +2,58 @@
 
 ## 输入
 
-`transcribe/subtitle-units.json` + `transcribe/timeline.json`（时间轴，含 scene 起止）+ `material-catalog.json` + `scene-plan.json`（叙事层场景规划，仅作参考）+ `fonts/`（Phase 8 预置）+ 主 agent 写的 `composition-handoff.md` 与物化到工作区 `references/` 的固定参考文档。
+Phase 7 的 `voice_clone/narration.mp3` + Phase 8 的 `transcribe/subtitle-units.json` / `transcribe/timeline.json` + `material-catalog.json`（若 `fetch_materials = false` 则无）+ `scene-plan.json`（叙事层场景规划，仅作参考）+ `script.txt` + `inputs.json`（design / layout / template）+ 主 agent 写的 `composition-handoff.md` 与物化到工作区的委派包、modules 副本和预置字体。
 
 ## 输出
 
-`composition/renders/final.mp4` + `composition/DESIGN.md` + `composition/qa-report.json` / `qa-history.md`。
+`composition/storyboard.md` + `composition/index.html` + `composition/compositions/` + `composition/renders/final.mp4`。
 
 ## 完成判据
 
-`composition/renders/final.mp4` 存在且非空；sanity check 与 Visual QA 按 stage protocol 完成且无未处理 finding。
+`composition/renders/final.mp4` 存在且非空；`composition/index.html` 与 `composition/compositions/` 存在；`npx hyperframes check` 无错误；`check-composition` 的 verdict 为 pass；storyboard 的每个 scene 都标注了所用的 content 区域。
 
 ## 下一步
 
-Phase 10（检查与混音）：在成片上混入 BGM 得到最终交付文件。
+Phase 10（检查与混音）：在成片上混入 BGM 得到最终交付文件。渲染后的 QA 流程由后续批次（#77）重写，本 phase 到 final.mp4 为止。
 
 ---
 
-从这一步开始，composition 交由一个使用 `hyperframes`、`hyperframes-cli` 与 `hyperframes-animation` skills 的 coding sub-agent 负责执行；需要 FLIP / path / mask / SVG / 3D keyframes 时按需加载 `hyperframes-keyframes`，最终实现可按项目需要使用 `gsap`、`animejs`、`waapi`、`css-animations`、`lottie`、`three` 或 `typegpu` 等 runtime。Tailwind 只作为静态布局 / 样式支持，不是 animation/effect adapter。`topic-to-video` 主 agent 只负责准备上游资源、写 `composition-handoff.md`、物化固定 rules / layout routing / animation routing / stage protocol / design references、调用 sub-agent，并按 stage protocol 执行 sanity-check / Visual QA / feedback loop。
+本 phase 整体委派给 coding agent 完成：storyboard、画面组装、渲染前自查与渲染由 composition agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认 claude-code；派发 prompt 只有一句话，让对方读 handoff）。composition agent 使用 `hyperframes`、`hyperframes-cli` 与 `hyperframes-animation` skills；主 agent 不读委派包里的基础指令。
 
-#### 9.1 — 写 `composition-handoff.md`
+#### 9.1 — 物化到工作区
 
-从 `references/composition-handoff-template.md` 出发，写出 `{work_dir}/{topic_name}/composition-handoff.md`，填入项目 metadata、实际输入路径、来自 Phase 1 的 style hint，以及从用户输入 / follow-up feedback / `style-prompt.md` 提取的 `User-derived Customized Rules`。Customized rules 必须可执行，不能只写抽象审美词。
+主 agent 做四步准备，全部落到 `{work_dir}/{topic_name}/` 下：
 
-同时把固定 references 复制到项目工作区，供 sub-agent 从磁盘读取本地副本：
+1. **委派包**：复制 `references/delegation/conventions.md` 与 `references/delegation/composition/`（基础指令 + handoff 模板）→ `{work_dir}/{topic_name}/references/delegation/`，保持相对路径不变。
+2. **modules 库**：复制整个 `modules/` 目录（**不含 `examples/`**）→ `{work_dir}/{topic_name}/modules/`。modules 内部的相对路径不变，`modules.md`、design / layout / pattern / component 文档与机器可读的区域定义 JSON 都以相同路径出现在工作区。
+3. **所选模块资源**：按各模块文档把所选 design 的 textures、所用组件的图片 / HTML、模板资源复制进 composition 工程（如 `composition/assets/textures/`、`composition/compositions/`、`composition/assets/brand/`）；复制清单见 `modules/modules.md` 的「组装一支视频」与所选模块各自的文档。
+4. **字体预置**（由所选 design 决定）：如果 `{work_dir}/{topic_name}/composition/assets/fonts/` 还没含所选 design 的 `.woff2` 与 CSS，运行：
 
-- 必需：`references/composition-rules.md` → `{work_dir}/{topic_name}/references/composition-rules.md`
-- 必需：`references/layout-routing.md` → `{work_dir}/{topic_name}/references/layout-routing.md`
-- 必需：`references/animation-routing.md` → `{work_dir}/{topic_name}/references/animation-routing.md`
-- 必需：`references/composition-stage-protocol.md` → `{work_dir}/{topic_name}/references/composition-stage-protocol.md`
-- 所选 Design：`modules/designs/<theme>/<theme>.md`（`default` / `dawn` / `moon` / `github` / `producthunt`；token 契约见 `modules/designs/designs.md`）→ `{work_dir}/{topic_name}/references/`
+   ```bash
+   bash scripts/fonts-download.sh {work_dir}/{topic_name}/composition/assets/fonts \
+     --theme modules/designs/<inputs.json 的 design 字段>
+   ```
 
-`composition-handoff.md` 只记录项目变量、实际输入路径、style hint、animation / effect constraints、customized rules、conflict notes 和 project-specific overrides；固定输入解释与 layout hard rules 来自 `references/composition-rules.md`，layout presentation 软路由来自 `references/layout-routing.md`，动画候选与 runtime 软路由来自 `references/animation-routing.md`，stage 执行协议来自 `references/composition-stage-protocol.md`，不得复制 / 摘要 / 覆盖。
+#### 9.2 — 写 `composition-handoff.md`
 
-Legacy fallback：旧项目若只有 `{work_dir}/{topic_name}/composition-brief.md`，主 agent 必须先把它迁移 / 归一化为 `composition-handoff.md`，再调用 sub-agent；sub-agent 仍统一读取 `composition-handoff.md`。
+按 `references/delegation/composition/handoff-template.md` 写出 `{work_dir}/{topic_name}/composition-handoff.md`：填入 Coding Agent（`inputs.json` 的 `coding_agent`，默认 claude-code）、Inputs（上述输入的实际路径）、Outputs、Required References（基础指令 → `modules/modules.md` → 所选 design 文档 → 所选 layout 的 json + 文档 → 模板 / pattern / 组件文档，全部指向 9.1 物化的工作区副本）、Additional Instructions（实际存在的 `composition-instructions.md`，旧项目的 `style-prompt.md` 视为其中一部分；没有写 None）。
 
-#### 9.2 — 调用一个 coding sub-agent
+#### 9.3 — 委派 composition agent
 
-如果用户 query 指定了 coding agent / 委派目标，优先使用该目标；否则使用当前客户端 / runtime 原生的 sub-agent 或委派工具。prompt 要简短，且应让 sub-agent 自己从磁盘读 `composition-handoff.md`、`references/composition-rules.md`、`references/layout-routing.md`、`references/animation-routing.md`、`references/composition-stage-protocol.md` 和指定的 `modules/designs/<theme>/<theme>.md`。
-
-Prompt 示例：
+按 `references/delegation/conventions.md` 派发，prompt 一句话：
 
 ```text
-读取当前工作区的以下文件：
-- composition-handoff.md
-- references/composition-rules.md
-- references/layout-routing.md
-- references/animation-routing.md
-- references/composition-stage-protocol.md
-- handoff 指定的 modules/designs/<theme>/<theme>.md（如有）
-
-如果必需文件缺失，停止并反馈主 agent。
-
-使用 hyperframes 和 hyperframes-cli skills 完成 scene 切分、素材映射、
-composition authoring、HTML/CSS、pre-render self-audit、
-lint/inspect、HTML-to-video render。
-
-Animation / effect 选择：
-- 先执行 `references/composition-rules.md` R18 和 `references/animation-routing.md` 的语义选择流程，不得从 runtime 名称反推动画设计；
-- authoring 前加载 hyperframes-animation，读取 `rules-index.md`、`blueprints-index.md`、`transitions/overview.md`、`transitions/catalog.md`、`techniques.md`，以当前 skill 索引作为能力 source of truth；
-- 涉及 shared element / FLIP、path、mask、SVG morph/draw、DOM 3D、Three.js / WebGL keyframes 时加载 hyperframes-keyframes；
-- 每个 scene 先确定 semantic intent、primary subject、signature mechanism、transcript triggers 与 transition / continuity，再选择最小合适 runtime；
-- handoff 的 requested mechanism / required runtime / asset / forbidden effect 是项目约束；preferred runtime 不是强制。无明确要求时不得由主 agent 代选；required runtime 与 R18、资产或环境不兼容时，在 authoring 前停止并反馈 handoff conflict；
-- GSAP 默认用于 timeline / stagger / SVG / camera choreography；CSS animations / WAAPI 用于简单有限 keyframes；Anime.js 仅在明确适合时使用；Lottie 需要本地 Lottie / dotLottie 资产；Three.js 用于真实 3D / camera / GLTF / shader；TypeGPU 用于明确的 WebGPU / WGSL 需求且环境必须支持；
-- tailwind 只用于静态 layout / style utility，不负责 render-critical motion timing；
-- 确定候选后只加载实际使用的 rule / blueprint / adapter；不得为了覆盖更多 skill 无意义混用 runtime；
-- 在 composition/DESIGN.md 记录每个 scene 的 considered / selected effects、runtime、narration triggers、continuity strategy、proof times 和选择原因。
-
-严格遵守 references/composition-rules.md：
-- Scope and Required References
-先建立 scene inventory，再按 references/layout-routing.md 的 authority / fallback definitions / input alignment / resolution order / global density and degradation 解析 role；读取当前 scene 命中的 material、layout role、orientation、visual role（如有）以及最终 presentation / `cross_aspect_strategy` sections。按 `material × layout_role × visual_role × orientation` 选择最终 layout presentation；缺失 role 用声明的 fallback；`scene-plan.json` 是叙事层参考：可以合并或拆分视觉 scene、改选素材和 pattern，偏离之处写明理由；不得虚构 visual role 或随意改写上游 role。catalog source figure / table / chart 必须保留来源结构；只有 structured `data_table` / `chart` visual unit 可只保留 primary rows / columns / points。portrait / vertical 中不得把 landscape horizontal flow / side rail / multi-column grid 直接套到结构型 unit。
-
-严格遵守 references/composition-stage-protocol.md：
-- Phase 8.3 — Pre-render Self-Audit Rules
-- Phase 8.4 — HTML-to-video Render Rules
-
-完成后返回 final.mp4 路径、ffprobe duration 和文件大小。
+读取 {work_dir}/{topic_name}/composition-handoff.md 并按它执行；完成后报告产物路径。
 ```
 
-如果环境里没有原生 sub-agent 工具，仅当 CLI fallback 能把上面那段 prompt 原样传过去、并让 coding sub-agent 自己去读 `composition-handoff.md`、`references/composition-rules.md`、`references/layout-routing.md`、`references/animation-routing.md`、`references/composition-stage-protocol.md` 与指定的 `modules/designs/<theme>/<theme>.md` 时，才可以接受。
+被委派的 agent 自己从磁盘读 handoff 与 Required References 列出的文件（含工作区的委派包与 modules 副本）；主 agent 不在 prompt 里复述指令内容，也**不要**在主 agent 的会话里驱动 composition authoring 或手工 patch `composition/index.html`。
 
-**不要**在主 agent 的会话里驱动 composition authoring 或手工 patch `composition/index.html`。
+#### 9.4 — 主 agent 校验
 
-#### 9.3 — Pre-render self-audit
+composition agent 报告完成后，主 agent 逐项校验（不修改产物，不合格就把 findings 反馈回去限定范围修复）：
 
-由 sub-agent 在首次 HTML-to-video render 前执行。要求见 `references/composition-stage-protocol.md` 的 **Phase 8.3 — Pre-render Self-Audit Rules**；结果必须写入 `composition/DESIGN.md`。
+1. **产物齐全**：`composition/storyboard.md`、`composition/index.html`、非空的 `composition/compositions/`、`composition/renders/final.mp4` 都存在。
+2. **渲染前自查通过**：sub-agent 报告的 `npx hyperframes check` 无错误、`check-composition` verdict 为 pass（命令见 composition handoff 模板的渲染前自查一节；可直接重跑核验，或核验其报告的 verdict）。
+3. **storyboard 区域标注**：每个 scene 都写明了所用的 content 区域（抽查）。
 
-渲染前先运行确定性 DOM 检查：
-
-```bash
-python3 scripts/check-composition.py {work_dir}/{topic_name}/composition \
-  --layout modules/layouts/<inputs.json 的 layout 字段>.json \
-  --design-doc modules/designs/<inputs.json 的 design 字段>/<design>.md \
-  --subtitle-units {work_dir}/{topic_name}/transcribe/subtitle-units.json \
-  --timeline {work_dir}/{topic_name}/transcribe/timeline.json
-```
-
-它在每个 scene 的开头 / 中点 / 结尾检查：越出 content 区域、侵入 reserved 区域（reserved 区域只放各自对应的组件）、文字溢出、img / video 加载失败、字体未加载、字号低于 design 下限、当前字幕与字幕单元不一致。findings 带 scene_id，只修相关 scene；全部修完再渲染。
-
-#### 9.4 — HTML-to-video render
-
-按 `references/composition-stage-protocol.md` 的 **Phase 8.4 — HTML-to-video Render Rules** 执行。
-
-#### 9.5 — Sanity check
-
-sub-agent 返回后，主 agent 按 `references/composition-stage-protocol.md` 的 **Phase 8.5 — Sanity Check Rules** 验证 `composition/renders/final.mp4`。如果有异常，把症状反馈给 HyperFrames sub-agent；主 agent 不手工 patch HTML。
-
-#### 9.6 — Post-render Visual QA
-
-sanity-check 通过后，主 agent 按 `references/composition-stage-protocol.md` 的 **Phase 8.6 — Post-Render Visual QA Rules** 对 final.mp4 跑视觉 QA，并生成 `composition/qa-report.json` / `composition/qa-history.md`。
-
-#### 9.7 — QA feedback loop
-
-按 `references/composition-stage-protocol.md` 的 **Phase 8.7 — QA Feedback Loop** 决定进入 Phase 10、反馈 sub-agent 限定范围重渲，或触发止损交还用户。
-
-规则与 QA 覆盖关系见 `references/composition-stage-protocol.md` 的 **Rule Coverage Matrix**。
+全部通过后进入 Phase 10。

@@ -13,7 +13,7 @@
 | 系统 Google Chrome | 各平台（Linux / macOS / Windows）自动检测；也可通过 `CHROME_PATH` 环境变量或 `--chrome-path` 指定。自动启动并使用位于 `{work_dir}/chrome_profile` 的共享 profile |
 | `yt-dlp` | 放在 PATH 上——`scripts/video-download.py` 需要 |
 | `VLM_*`（可选） | 同时设 `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` 即可启用显式视觉模型；未设置时 `vision-analyze.py` 会回退到 agent 自己的 `view` 工具 |
-| sub-agent 支持（Phase 9 composition） | 优先使用当前客户端原生的 sub-agent / 委派工具。仅当用一句短 prompt 让 agent 自己读 `composition-handoff.md`、工作区本地 `references/composition-rules.md`、`references/layout-routing.md`、`references/animation-routing.md` 与 `references/composition-stage-protocol.md` 时，CLI fallback 才可接受 |
+| sub-agent 支持（Phase 9 composition） | 优先使用当前客户端原生的 sub-agent / 委派工具。仅当用一句短 prompt 让 agent 自己读 `composition-handoff.md` 与工作区里物化的委派包（`references/delegation/composition/`）和 modules 副本时，CLI fallback 才可接受 |
 | `hyperframes` + `hyperframes-cli` + `hyperframes-animation` skills（Phase 9 composition） | 由 composition sub-agent 加载；`hyperframes-animation` 的当前索引用于必需的动画能力发现，涉及 FLIP / path / mask / SVG / 3D keyframes 时按需加载 `hyperframes-keyframes`。sub-agent 的 HyperFrames CLI 间接依赖 Node.js；主 agent 自身不写 `composition/index.html`。文档：https://hyperframes.heygen.com/quickstart |
 
 ## TTS / ASR（后端由环境变量选择）
@@ -47,7 +47,7 @@ TTS 与 ASR 的输入输出格式固定，后端可换：只要新后端满足�
 | 语言 | 解说语言 | 中文 |
 | 视觉素材 | 是否联网搜索图片 / 视频片段来丰富场景 | 是 |
 
-> 也可以在项目工作区放一份 `style-prompt.md`（自由文本），它会覆盖默认风格推断，并作为 style hint 传给下游 composition。
+> 也可以在项目工作区放一份 `style-prompt.md`（自由文本），它会覆盖默认风格推断，并作为 composition 项目指令的一部分传给下游 composition agent（叠加顺序见 `references/delegation/conventions.md`）。
 
 ### 工作流（状态脚本驱动的 10 个 phase）
 
@@ -62,8 +62,8 @@ TTS 与 ASR 的输入输出格式固定，后端可换：只要新后端满足�
 | 5 | 视觉分析 + 建立素材 catalog |
 | 6 | 撰写解说脚本、匹配场景素材、规划屏幕文本块 |
 | 7 | TTS 配音（后端由环境变量选择） |
-| 8 | 词级 ASR + 字幕对齐 + 字体预置 |
-| 9 | HyperFrames composition handoff + sub-agent 渲染 |
+| 8 | 词级 ASR + 字幕对齐 |
+| 9 | composition handoff + sub-agent 组装与渲染（字体在准备阶段按所选 design 预置） |
 | 10 | 混入背景音乐 |
 
 ### 输出
@@ -87,7 +87,7 @@ pytest
 
 ## Visual Styles
 
-下面这些风格条目是给 composition handoff 的风格路由提示，不是 composition 实现规范；最终设计由 HyperFrames sub-agent 决定。
+下面这些风格条目是 Phase 1 选择 design 的参考；选定后 composition 的颜色、字体、动效只取该 design 的 token，最终画面由 composition sub-agent 决定。
 
 | 风格 | 参考文件 | 字体 | 适用场景 |
 |------|---------|------|---------|
