@@ -2,7 +2,7 @@
 
 ## 输入
 
-`transcribe/subtitle-units.json` + `transcribe/transcript.json`（时间轴）+ `material-catalog.json` + `scene-material-suggestions.json` + `scene-text-plan.json` + `fonts/`（Phase 8 预置）+ 主 agent 写的 `composition-handoff.md` 与物化到工作区 `references/` 的固定参考文档。
+`transcribe/subtitle-units.json` + `transcribe/timeline.json`（时间轴，含 scene 起止）+ `material-catalog.json` + `scene-plan.json`（叙事层场景规划，仅作参考）+ `fonts/`（Phase 8 预置）+ 主 agent 写的 `composition-handoff.md` 与物化到工作区 `references/` 的固定参考文档。
 
 ## 输出
 
@@ -70,7 +70,7 @@ Animation / effect 选择：
 
 严格遵守 references/composition-rules.md：
 - Scope and Required References
-先建立 scene inventory，再按 references/layout-routing.md 的 authority / fallback definitions / input alignment / resolution order / global density and degradation 解析 role；读取当前 scene 命中的 material、layout role、orientation、visual role（如有）以及最终 presentation / `cross_aspect_strategy` sections。按 `material × layout_role × visual_role × orientation` 选择最终 layout presentation；缺失 role 用声明的 fallback；`scene-material-suggestions.json` 存在时，scene 缺少素材 assignment 且未显式 `no_match: true`，或 `no_match` 与素材 assignment 并存，均须停止；整个 suggestions 文件缺失时，inferred `no_match` 必须有 handoff / 权威输入证据；同时拒绝不完整 continuation metadata，不得虚构 visual role 或随意改写上游 role。catalog source figure / table / chart 必须保留来源结构；只有 structured `data_table` / `chart` visual unit 可只保留 primary rows / columns / points。portrait / vertical 中不得把 landscape horizontal flow / side rail / multi-column grid 直接套到结构型 unit。
+先建立 scene inventory，再按 references/layout-routing.md 的 authority / fallback definitions / input alignment / resolution order / global density and degradation 解析 role；读取当前 scene 命中的 material、layout role、orientation、visual role（如有）以及最终 presentation / `cross_aspect_strategy` sections。按 `material × layout_role × visual_role × orientation` 选择最终 layout presentation；缺失 role 用声明的 fallback；`scene-plan.json` 是叙事层参考：可以合并或拆分视觉 scene、改选素材和 pattern，偏离之处写明理由；不得虚构 visual role 或随意改写上游 role。catalog source figure / table / chart 必须保留来源结构；只有 structured `data_table` / `chart` visual unit 可只保留 primary rows / columns / points。portrait / vertical 中不得把 landscape horizontal flow / side rail / multi-column grid 直接套到结构型 unit。
 
 严格遵守 references/composition-stage-protocol.md：
 - Phase 8.3 — Pre-render Self-Audit Rules
@@ -86,6 +86,18 @@ Animation / effect 选择：
 #### 9.3 — Pre-render self-audit
 
 由 sub-agent 在首次 HTML-to-video render 前执行。要求见 `references/composition-stage-protocol.md` 的 **Phase 8.3 — Pre-render Self-Audit Rules**；结果必须写入 `composition/DESIGN.md`。
+
+渲染前先运行确定性 DOM 检查：
+
+```bash
+python3 scripts/check-composition.py {work_dir}/{topic_name}/composition \
+  --layout modules/layouts/<inputs.json 的 layout 字段>.json \
+  --design-doc modules/designs/<inputs.json 的 design 字段>/<design>.md \
+  --subtitle-units {work_dir}/{topic_name}/transcribe/subtitle-units.json \
+  --timeline {work_dir}/{topic_name}/transcribe/timeline.json
+```
+
+它在每个 scene 的开头 / 中点 / 结尾检查：越出 content 区域、侵入 reserved 区域（reserved 区域只放各自对应的组件）、文字溢出、img / video 加载失败、字体未加载、字号低于 design 下限、当前字幕与字幕单元不一致。findings 带 scene_id，只修相关 scene；全部修完再渲染。
 
 #### 9.4 — HTML-to-video render
 

@@ -1,18 +1,18 @@
 # Phase 6 — 脚本与场景规划（委派给 coding agent）
 
-本 phase 包含四个步骤：`Phase 6.1 — 撰写显示稿与词表` 产出 `script.txt`（显示稿）和 `tts-lexicon.json`（词表）；`Phase 6.1b — 生成朗读稿` 由 `scripts/make-narration.py` 根据显示稿和词表确定性生成 `narration.txt`（朗读稿，TTS 输入）；`Phase 6.2 — 场景-素材匹配建议` 基于脚本和 `material-catalog.json` 产出 `scene-material-suggestions.json`；`Phase 6.3 — 屏幕文本块规划` 基于已匹配素材产出 `scene-text-plan.json`。
+本 phase 整体委派给 coding agent 完成：旁白（显示稿 + 词表）与叙事层场景规划由 script agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认 claude-code；派发 prompt 只有一句话，让对方读 handoff）。
 
 ## 输入
 
-Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（若 `fetch_materials = false` 则没有 catalog，按"无素材"路径写纯旁白）+ 用户偏好的切入角度与时长。
+Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（若 `fetch_materials = false` 则没有 catalog，按“无素材”路径写纯旁白）+ `inputs.json`（目标时长、语言、input_mode、所选模板）+ 模板旁白要求（`modules/templates/<template>/narration.md`，如有）+ 项目指令 `narration-instructions.md`（如有）。
 
 ## 输出
 
-`script.txt`（非空，显示稿）+ `tts-lexicon.json`（非空 JSON map，显示形式 → 朗读形式）+ `narration.txt`（非空，由 make-narration 生成，格式与 TTS 现有输入一致）+ `scene-material-suggestions.json`（非空列表）+ `scene-text-plan.json`（非空列表，每个 scene 有 `visual_text_units`）。
+`script.txt`（非空，显示稿）+ `tts-lexicon.json`（非空 JSON map，显示形式 → 朗读形式）+ `narration.txt`（非空，由 make-narration 生成）+ `narration-offsets.json`（偏移表）+ `scene-plan.json`（叙事层场景规划，非空列表）。
 
 ## 完成判据
 
-五个产物都通过状态脚本的校验（`script.txt` / `narration.txt` 存在非空；`tts-lexicon.json` 是可解析的非空 JSON map，键值都是非空字符串；两个 scene JSON 是非空列表）；字数与目标时长的偏差在 ±15% 以内；场景规划覆盖 `script.txt` 的全部段落；素材引用都存在于 catalog 中。校验通过后，把旁白和场景摘要交给用户确认，再进入 TTS。
+全部产物都通过状态脚本的校验（`script.txt` / `narration.txt` 存在非空；`tts-lexicon.json` 是可解析的非空 JSON map，键值都是非空字符串；`scene-plan.json` 是非空列表，每个 scene 有 `scene_id` 和非空 `paragraphs`）；字数与目标时长的偏差在 ±15% 以内；场景规划覆盖 `script.txt` 的全部段落；素材引用都存在于 catalog 中。校验通过后，把旁白和场景摘要交给用户确认，再进入 TTS。
 
 ## 下一步
 
@@ -20,352 +20,30 @@ Phase 7（TTS）：只对 `narration.txt` 配音。
 
 ---
 
-## Phase 6.1 — 撰写显示稿与词表
+## Phase 6.1 — 委派 script agent
 
-**输入：** Phase 3 的研究 brief（`research-brief.md`）+ Phase 5 的 `material-catalog.json` + 用户偏好的切入角度与时长。某段自然依赖某个具体视觉素材时，在正文里顺带提到对应的 catalog slug 或资源。**不要**在这里设计 HyperFrames 的 scene、卡片、时间轴或 `info_units`；scene 切分和视觉结构归 Phase 9 的 HyperFrames sub-agent。
+**主 agent 不读委派包里的基础指令**（`references/delegation/script/base-instructions.md` 只给被委派的 agent 读）。主 agent 做三件事：
 
-**显示稿与朗读稿分离：** 本阶段手写两份产物，TTS 朗读稿由脚本生成：
+1. 按 `references/delegation/script/handoff-template.md` 写出 `{work_dir}/{topic_name}/script-handoff.md`：填入 Coding Agent（`inputs.json` 的 `coding_agent`，默认 claude-code）、Inputs（research-brief / material-catalog / inputs.json 的实际路径）、Outputs、Required References（基础指令 → 模板旁白要求 → 项目指令，按叠加顺序）、Additional Instructions（实际存在的指令文件，没有写 None）。
+2. 按 `references/delegation/conventions.md` 派发，prompt 一句话：
 
-- **`script.txt`（显示稿）**：字幕和画面使用的文本。品牌名、数字、年份一律写**原始写法**（`OpenHuman`、`NVIDIA`、`2026 年`、`5%`），保证字幕和画面专业、准确。
-- **`tts-lexicon.json`（词表）**：JSON map，显示形式 → 朗读形式。TTS 念不顺的写法全部在这里声明改写，例如 `"NVIDIA": "英伟达"`、`"OpenHuman": "Open Human"`、`"2026 年": "二零二六年"`、`"5%": "百分之五"`。
-- **`narration.txt`（朗读稿）**：**不要手写**。由 `scripts/make-narration.py` 按词表做确定性替换生成（规则：每个位置最长显示形式优先匹配，平局按显示形式字符串排序），格式与 TTS 现有输入一致；同时输出 `narration-offsets.json` 偏移表，把朗读稿逐字映射回显示稿（Phase 8 字幕按显示稿呈现时用）。
+   ```text
+   读取 {work_dir}/{topic_name}/script-handoff.md 并按它执行；完成后报告产物路径。
+   ```
 
-目标：
+3. script agent 返回后做 **Phase 6.2 的确定性校验**。
 
-**Paper mode 解说结构**（当 `input_mode = "paper"`）：见 `references/phases/02-paper-parse.md` 的「论文模式解说结构」——论文模式的旁白结构、figure / table 引用规则都在那里，本文档不再重复。
+## Phase 6.2 — 主 agent 校验与用户确认
 
-- 只使用**研究 brief 中的事实**——每个数字、人名、日期和引文都要可追溯。
-- 在有用的地方引用收集到的素材，并为每个 scene 标注推荐的视觉资源。
-- 3-10 分钟、`speech_rate=1.4` 下约 **7.5 字符/秒** → `3min ≈ 1350 chars`、`5min ≈ 2250 chars`、`10min ≈ 4500 chars`（按显示稿字数估算）。
-- 段间用空行分隔，每段约对应一个 scene = **5-8 秒音频**（在 `speech_rate=1.4` / 7.5 字符/秒下约 37-60 字符/段）。按目标时长伸缩，参考量：3min ≈ 23-36 段、5min ≈ 38-60 段、10min ≈ 75-120 段。
+script agent 报告完成后，主 agent 逐项校验（不修改产物，不合格就打回）：
 
-**词表与显示稿的写法要求**（原来的 TTS 写法规则现在约束这两份产物，朗读稿由替换规则保证）：
+1. **产物齐全**：`script.txt`、`tts-lexicon.json`、`narration.txt`、`narration-offsets.json`、`scene-plan.json` 都存在且非空（状态脚本也会校验）。
+2. **字数 ±15%**：`script.txt` 总字数（去掉空白）与目标时长的换算偏差在 ±15% 以内。换算：`speech_rate=1.4` 下约 7.5 字符/秒（3min ≈ 1350、5min ≈ 2250、10min ≈ 4500）。
+3. **段落全覆盖**：`scene-plan.json` 所有 scene 的 `paragraphs` 并集恰好覆盖 `script.txt` 的全部段落（1 起编号，无遗漏、无越界）。
+4. **素材引用有效**：`material-catalog.json` 存在时，`scene-plan.json` 里所有 `material_candidates[].ref` 都能在 catalog 中找到对应素材 id 或 `selected_clips` 的 `<video_id>:<start>-<end>` 引用；引用了不存在的素材即不合格。
 
-- 数字在**朗读形式**里用中文字符（表示年份的 `二零二六`，表示大数字的 `一万零三百六十五`）；显示稿保留阿拉伯数字写法，并在词表里声明映射。
-- **英文复合品牌名里的数字展开为单词**，写进词表。
-    - `X2Y` → `X to Y`（`"Idea2Video": "Idea to Video"`、`"Text2Image": "Text to Image"`）
-    - `X4Y` → `X for Y`（`"Search4U": "Search for you"`）
-    - 显示稿 / 字幕 / 画面仍写原品牌名 `Idea2Video`，只有朗读形式写展开。
-- **大小写混排品牌名按空格读** —— 词表里 `"OpenHuman": "Open Human"`、`"AutoCameo": "Auto Cameo"`，避免被读成首字母拼读。显示稿保留原写法。
-- 英文专有名词保留原文（`Anthropic`、`Claude Code`、`Boris`），通常不需要词表条目。
-- **TTS 朗读效果差的常见英文品牌 / 机构名改用中文**，写进词表。例如 `"NVIDIA": "英伟达"`。显示稿 / 字幕中仍保留原写法。
-- 英文多个单词之间的连字符、下划线、斜杠或反斜杠等改成空格（`"GPT-5": "GPT 5"`、`"Claude_Code": "Claude Code"`）。
-- 数字周围的符号在朗读形式里用中文表示（`"5%": "百分之五"`、`"-3": "负 3"`、`"~100": "约 100"`、`"200+": "200 多"`）。
-- **显示稿和朗读形式都避免全角中文冒号 `：`。** 改用破折号 `——`、用逗号断句或者改写。示例：`某品牌：日均消耗一百万` → `某品牌 —— 日均消耗一百万`。
-- 词表条目重叠时（如同时有 `2026` 和 `2026 年`），**最长显示形式优先**匹配；写词表时优先用带上下文的长条目（`2026 年`）避免歧义。
-- **不要在旁白里引导网页链接。** 禁止“链接放在下面”“点击下方链接”“见简介链接”等说法。
-- 如果用户想要社媒风格，最后一段可用“点赞、关注、收藏，下期见”。
+全部通过后，把旁白和场景摘要（每个 scene 的 `scene_id` + `intent`）交给用户确认；用户确认前不要进入 Phase 7。
 
-存到 `script.txt` 和 `tts-lexicon.json`。
+## Phase 6.3 — 朗读稿生成归属
 
-## Phase 6.1b — 生成朗读稿
-
-显示稿和词表写完后，运行：
-
-```bash
-python3 scripts/make-narration.py \
-  --script {work_dir}/{topic_name}/script.txt \
-  --lexicon {work_dir}/{topic_name}/tts-lexicon.json \
-  --output-dir {work_dir}/{topic_name}/
-```
-
-产出 `narration.txt`（朗读稿，可直接交给 Phase 7 的 TTS 脚本，不需要任何修改）和 `narration-offsets.json`（偏移表）。不要手改 `narration.txt`；要改就改显示稿或词表后重新生成。
-
-## Phase 6.2 — 场景-素材匹配建议
-
-`narration.txt` 生成后，在进入 Phase 7（TTS）之前，主 agent inline 完成此步骤（无需 sub-agent）。
-
-**输入：** `script.txt`（段落以显示稿为准）+ `material-catalog.json`
-
-**步骤：**
-
-1. 把 `script.txt` 按空行切分为段落，按顺序处理（段落结构与 `narration.txt` 一一对应，屏幕文本以显示稿写法为准）。
-2. 对每个段落，通读其旁白文本，遍历 `material-catalog.json` 中所有图片和视频 clip 的 `semantic_description`、`width` / `height`、`ratio_bucket`、`layout_affordance` 和可选 `focal_region`，对每个候选素材给出 1-10 的匹配分与理由（理由要对应旁白的具体内容，不要泛泛而谈）。对 `tall` / `ultra-tall` 素材，后续 `layout_role` 应优先围绕 `viewport_reveal` 和已记录的重点区域选择。
-3. **全局唯一分配**：每个素材（图片 / 视频 clip）最多分配给一个段落。按匹配分做全局贪心分配——分数最高的 (段落, 素材) 配对先定，已被占用的素材不再分配给其他段落；每个段落最终最多得到一个主素材。多素材对比 scene 可额外占用对比素材，但必须写入 `material_refs` 并把数组内每个素材都视为已占用。例外：连续同素材合并或相邻 `media_continuation` 可沿用同一素材作为稳定视觉锚点；拆成多个相邻 scene 时，group 起点标注 `continuation_group_id`，后续 continuation scene 同时标注 `continuation_group_id` 和 `continuation_of`。
-4. 为已分配素材选择 `layout_role`。极端比例素材或多素材对比 scene 必须写出 `layout_reason`。`tall` / `ultra-tall` 素材优先选择 key-region-aware `viewport_reveal`，并引用 catalog 的 `focal_region`、start / mid / end 关键区域说明或 avoid-region；讲多个局部时可拆成相邻 `media_continuation` scenes。可选角色：`video_first`、`media_first`、`media_continuation`、`viewport_reveal`、`band`、`detail_callout`、`comparison_pair`、`comparison_sequence`。普通 scene 使用 `material_ref`；同一 scene 内的 `comparison_pair` 或 carousel / 分时 `comparison_sequence` 使用 `material_refs`。
-5. 段落在 catalog 中没有可用素材（候选分均较低，或合适素材已被占用且无次优）时，显式标记 `"no_match": true`，**不复用已被占用的素材**，留给纯文字 scene。如果该段只是延续解释上一 scene 的同一主素材，优先标记为 `"layout_role": "media_continuation"` 并沿用该素材作为视觉锚点，而不是普通 `no_match`。
-6. **连续同素材合并 / `media_continuation`**：相邻段落分配到同一素材（同一图片，或同一视频的同一 clip）且旁白都在讲该素材时，优先合并为一个 extended scene；merged single scene 只需要多个 `text_beats`，不需要 `continuation_group_id` / `continuation_of`。按句子节奏、局部强调或屏幕文本密度拆分时，输出相邻 `media_continuation` scene：group 起点标注 `continuation_group_id`，但不写 `continuation_of`；后续 scene 使用相同 `continuation_group_id`，并用 `continuation_of` 指向 group 起点的 `scene_index`。`media_continuation` scene 必须让主素材稳定显示，不得让图片 / 视频长时间消失后再出现。
-7. 顺序编号最终 scene（`scene_1`, `scene_2`, ...）并输出 `scene-material-suggestions.json`，结构如下：
-
-```json
-[
-  {
-    "scene_index": 1,
-    "material_ref": "img_001",
-    "layout_role": "media_first",
-    "continuation_group_id": "fig_img_001_walkthrough",
-    "layout_reason": "清晰横向大图适合作为主视觉，文本应少量辅助而不是压缩图片",
-    "reason": "图中展示了 X，与旁白提到的 Y 直接对应",
-    "text_beats": [
-      {"narration_excerpt": "前 20 字..."},
-      {"narration_excerpt": "前 20 字..."}
-    ]
-  },
-  {
-    "scene_index": 2,
-    "material_ref": "img_001",
-    "layout_role": "media_continuation",
-    "continuation_group_id": "fig_img_001_walkthrough",
-    "continuation_of": 1,
-    "layout_reason": "继续解释同一张技术图，主图保持稳定，只刷新解释文本和局部强调",
-    "reason": "这一段继续讲 img_001 中的第二个关键模块",
-    "text_beats": [
-      {"narration_excerpt": "..."}
-    ]
-  },
-  {
-    "scene_index": 3,
-    "material_ref": "2MJDdzSXL74:12.0-18.5",
-    "layout_role": "video_first",
-    "layout_reason": "该片段是核心演示，需要最大化视频可视区域",
-    "reason": "该片段演示了 Z 流程，配合旁白对 Z 的描述",
-    "text_beats": [
-      {"narration_excerpt": "..."}
-    ]
-  },
-  {
-    "scene_index": 4,
-    "material_ref": "img_010",
-    "material_refs": ["img_010", "img_011"],
-    "layout_role": "comparison_pair",
-    "layout_reason": "两张截图需要同屏对比，material_refs[0] 作为 primary material",
-    "reason": "旁白在比较两个界面的差异",
-    "text_beats": [
-      {"narration_excerpt": "..."}
-    ]
-  },
-  {
-    "scene_index": 5,
-    "no_match": true,
-    "material_ref": null,
-    "text_beats": [
-      {"narration_excerpt": "..."}
-    ]
-  }
-]
-```
-
-**约束：**
-
-- 每个素材（图片 / 视频 clip）最多用于一个 scene，不复用；`material_refs` 中每个素材都算已占用。连续同素材合并或相邻 `media_continuation` 是例外。merged single scene 不需要 continuation 字段；拆成相邻 scene 时，group 起点只需要 `continuation_group_id`，后续 continuation scene 的 `continuation_of` 指向 group 起点的 `scene_index`，并保持视觉连续。
-- `no_match` 的 scene 不强行填素材；Phase 6.3 会为它规划更高密度的纯排版信息图 / 文本块，Phase 9 再据此实现。
-- `layout_role` 是 Phase 9 的布局决策输入，不是固定模板。`media_first` / `video_first` 仍可有少量文本配合；`viewport_reveal` 必须保留关键区域可见；同一 scene 内的 `comparison_pair` 必须用 2 个 `material_refs`，`comparison_sequence` 只用于同一 scene 内的 carousel / 分时多素材展示，必须用 2 个以上 `material_refs`。若对比内容拆成多个 scene，拆出的每个 scene 使用自己的真实主角色（如 `media_first` / `video_first` / `viewport_reveal` / `detail_callout`），不标为 `comparison_sequence`，并在 `layout_reason` 说明它属于同一对比序列。若同时保留 `material_ref`，它必须等于 `material_refs[0]`。
-- `media_continuation` 允许相邻 scene 沿用同一素材作为稳定视觉锚点，只刷新解释文本、局部强调或 `focal_region`；不得把它当作素材复用违规。它主要用于论文 figure、技术架构图、UI 截图、流程图等需要围绕同一图讲多个点的场景。
-- 合并 scene 中素材展示可超 8s，但 `text_beats` 仍按原每 5-8s 节奏刷新。
-
-输出到 `scene-material-suggestions.json`（与 `narration.txt` 同级）。
-
-## Phase 6.3 — 屏幕文本块规划
-
-屏幕文本密度取决于已匹配素材的 `layout_role`、尺寸、比例和语义。`media_first` / `video_first` scene 不是无文本，而是主媒体优先、少量文本辅助；如果文本会压缩或遮挡主媒体，应分时出现、降级、外置，或生成相邻 `media_continuation` scene。竖图 / 竖视频在横屏中形成 side panel 时，文本规划不能只给一个短标题导致大留白；要么规划足够的短 callout / data units 填满侧栏，要么减少侧栏并改用 `viewport_reveal` / `detail_callout`。
-
-Phase 6.3 在 Phase 6.2 之后、Phase 7（TTS）之前执行。它不重新匹配素材，也不设计 HyperFrames HTML / CSS / 坐标 / 动画；只把已写入的旁白段落和已匹配素材转成结构化的非字幕屏幕文本建议，供 Phase 9 HyperFrames sub-agent 读取、实现和审计。
-
-**输入：**
-
-- `script.txt`（显示稿，段落划分依据）
-- `scene-material-suggestions.json`
-- `material-catalog.json`
-
-**输出：** `scene-text-plan.json`
-
-**目标：**
-
-1. 让每个 scene 都有清晰的屏幕信息意图，而不是只靠 Phase 9 从旁白临场猜。
-2. 让 `no_match` scene 主动变成纯排版信息图，而不是退化成单个大标题卡。
-3. 让有素材 scene 生成素材外置的解释文本、callout、data block 或标签，避免遮挡 catalog 素材。
-4. 给 Phase 9 提供可记录、可 QA 的 `visual_text_units`，但不越权规定最终 layout。
-
-**`scene-text-plan.json` schema：**
-
-```json
-[
-  {
-    "scene_index": 3,
-    "material_ref": null,
-    "no_match": true,
-    "scene_intent": "用纯排版解释从主题到视频的处理链路。",
-    "density_hint": "high",
-    "visual_text_units": [
-      {
-        "unit_id": "scene_3_unit_1",
-        "source_text_beat_index": 0,
-        "narration_excerpt": "用户输入主题后，系统先做调研，再写脚本，最后交给 HyperFrames 渲染。",
-        "visual_role": "process_flow",
-        "domain_hint": "technical_explainer",
-        "template_hint": "pipeline_steps",
-        "display_text": "从主题到视频的四步链路",
-        "supporting_points": [
-          {"label": "输入", "detail": "主题 / URL / 文本"},
-          {"label": "调研", "detail": "Deep Research + web search"},
-          {"label": "脚本", "detail": "narration.txt + text beats"},
-          {"label": "渲染", "detail": "HyperFrames composition"}
-        ],
-        "priority": "primary",
-        "timing_hint": "appear_with_sentence"
-      }
-    ]
-  }
-]
-```
-
-字段说明：
-
-| 字段 | 作用 |
-| --- | --- |
-| `scene_index` | 对齐 `scene-material-suggestions.json` 的 scene |
-| `material_ref` / `material_refs` / `no_match` | 透传 Phase 6.2 结果，沿用 `scene-material-suggestions.json` 的字段名；`material_refs` 只用于多素材对比，`material_ref` 保持为 primary / 单素材入口 |
-| `layout_role` | 透传 Phase 6.2 的布局角色：`video_first` / `media_first` / `media_continuation` / `viewport_reveal` / `band` / `detail_callout` / `comparison_pair` / `comparison_sequence`；用于控制文本密度和素材展示策略 |
-| `scene_intent` | 这场景屏幕信息要帮助观众理解什么 |
-| `density_hint` | `low` / `medium` / `high`，影响非字幕信息元素数量 |
-| `visual_text_units[]` | 每个建议出现的文本块 / callout / data block / 图示信息单元 |
-| `visual_role` | 通用视觉角色，例如 `title` / `callout` / `data_block` / `metric_strip` / `list` / `feature_grid` / `process_flow` / `architecture_diagram` / `network_graph` / `timeline` / `comparison_matrix` / `code_block` / `terminal_block` / `file_tree` / `state_machine` / `annotated_media` / `quote` / `definition` / `qa` / `pros_cons` / `section_divider` |
-| `domain_hint` | 可选领域：`github_repo` / `product_hunt` / `paper_reading` / `code_explainer` / `technical_explainer` / `general` |
-| `template_hint` | 可选模板提示，例如 `repo_identity_card`、`repo_metrics`、`launch_stats`、`paper_method_pipeline`、`api_sequence` |
-| `display_text` | 面向屏幕的短文本，不等同于 TTS 旁白原文 |
-| `supporting_points` | 列表项、流程节点、架构组件、关系节点或数据字段 |
-| `priority` | `primary` / `secondary` / `decorative` |
-| `timing_hint` | 与旁白句子的相对出现关系；最终秒级 timing 由 Phase 9 结合 ASR 决定 |
-
-生成的屏幕文字不要显示原始网页链接；需要标来源时用“官方文档”“GitHub”、产品名、repo 名或论文名，URL 只保留在 metadata / catalog 中。
-
-**Role alignment contract：**
-
-- `layout_role` 是 scene / 素材展示策略，来源是 Phase 6.2 的 `scene-material-suggestions.json`；Phase 6.3 只透传，不重新决定。
-- `visual_role` 是单个 `visual_text_units[]` 的信息形态。
-- `domain_hint` 只说明内容领域，不参与素材占比或安全区计算。
-- `template_hint` 是弱语义提示，不是模板 ID；与 `visual_role`、数据 shape 或输出朝向冲突时忽略。
-- Phase 6.3 负责把大表是否拆成多个 `chart` units 规划清楚；Phase 9 只实现已有 `data_table` / `chart` units，只在有 `data_table` / numeric 数据时使用 chart，否则不凭空发明 chart。
-- Phase 9 必须先按 `scene_index` join Phase 6.2 和 Phase 6.3，再组合读取 `layout_role`、素材比例、输出朝向、`visual_text_units[]` 和 density / shape，决定最终布局呈现方式。
-
-**通用 `visual_role`：**
-
-| `visual_role` | 适用内容 | 常见 `supporting_points` | 出场 |
-| --- | --- | --- | --- |
-| `leaderboard` | 排名、Top N、榜单、周榜、产品榜、repo 榜 | rank、name、metric、why it matters、optional material ref | 整体出现，逐个高亮 |
-| `product_card` | 产品 / repo / paper / 项目身份卡 | name、tagline、category、metric、CTA | 整体 |
-| `big_number` | 单个关键数字、hero stat、冲击性指标 | value、unit、label、context | 整体 |
-| `data_table` | 成本表、硬件表、benchmark 表、pricing 表、结构化多行多列表格 | columns、rows、highlighted cells、summary | 逐个 |
-| `chart` | 趋势、分布、数值对比、benchmark、成本 / 速度 / 占比可视化 | chart_type、series、axis labels、highlighted points、summary | 逐个 |
-| `timeline` | 发布时间线、版本演进、研究脉络、产品发布节奏、项目历史 | 时间点、事件、影响 | 逐个 |
-| `process_flow` | 步骤、pipeline、用户旅程、处理链路、方法流程 | step label、输入、输出 | 逐个 |
-| `architecture_diagram` | 系统结构、模块分层、技术栈、论文方法组件 | 模块、层、数据流 | 逐个 |
-| `network_graph` | 依赖关系、生态、人物 / 组织关系、repo 关联、引用关系 | 节点、边、关系类型 | 逐个 |
-| `comparison_matrix` | 竞品对比、before / after、方法对比、优缺点 | 维度、选项、差异 | 逐个 |
-| `pros_cons` | 单一主体的正反两面：推荐 / 避免、利 / 弊、正确 / 错误、do / don't | positives、negatives、label | 逐个 |
-| `data_block` | stars、upvotes、benchmark、成本、速度、增长率、排名 | label、value、unit、context | 整体 |
-| `metric_strip` | 多个轻量指标并列展示 | 指标名、数值、变化 | 逐个 |
-| `list` | 功能点、卖点、限制、适用场景、takeaways | item label、detail | 逐个 |
-| `feature_grid` | 产品功能、repo 能力、技术模块能力 | feature name、benefit、proof | 逐个 |
-| `callout` | 关键结论、风险、反常识、注意事项、亮点 | claim、reason、evidence | 整体 |
-| `definition` | 术语 / 概念 + 释义、展开说明 | term、definition、example / note | 整体 |
-| `qa` | 问答 / FAQ：问题 + 回答 | question、answer、note | 逐个 |
-| `code_block` | API 示例、配置、核心函数、diff 前后对比 | language、snippet、highlight | 逐个 |
-| `terminal_block` | 安装命令、运行输出、CLI 工作流 | command、output、status | 逐个 |
-| `file_tree` | repo 结构、项目目录、论文代码组织 | path、purpose | 逐个 |
-| `state_machine` | 状态流转、任务生命周期、agent loop、错误恢复 | state、transition、trigger | 逐个 |
-| `annotated_media` | 图片 / 截图 / figure 上打点、箭头、标注 + 外置解释（论文 figure 为其一） | marker / pin、label、why it matters | 逐个 |
-| `quote` | 用户评价、论文结论、作者观点、产品 tagline | quote、source | 整体 |
-| `section_divider` | 章节分隔 / 转场标题卡（长视频分段） | chapter label、kicker、index | 整体 |
-
-`出场` 列：逐个 = 条目 / 节点 / 行 / 标注随对应旁白逐个出现，禁止 unit 首次出现时一次性全亮；整体 = 整体出现即可。
-
-**通用触发规则：**
-
-这些规则覆盖不依赖特定领域的基础语义；领域专项触发规则可以继续细化 `domain_hint` / `template_hint`。
-
-1. 旁白出现“第一、第二、然后、最后、步骤、链路、流程” → `process_flow`。
-2. 旁白出现“过去、现在、未来、从 X 到 Y、演进、版本、发布、时间线、历史、阶段、里程碑” → `timeline`。
-3. 旁白解释“系统、模块、层、pipeline、输入输出、组件” → `architecture_diagram`。
-4. 旁白解释“关系、依赖、生态、传播、连接、谁影响谁” → `network_graph`。
-5. 旁白有多个并列点、功能点、限制或 takeaway，每项仅 item + 一行 detail → `list`；每项有独立标题 + benefit + proof → `feature_grid`。
-6. Top N、排名、榜单、周榜、产品榜、repo 榜 → `leaderboard`。
-7. 产品身份、repo 身份、paper identity、Product Hunt item → `product_card` 或现有 `title`。
-8. 单个关键数字、hero stat、成本 / 速度 / 显存 / 排名作为 hook → `big_number`。
-9. 表格、pricing、benchmark table、hardware matrix、cost table → `data_table`。
-10. 趋势、benchmark curve、成本对比、速度对比、占比、分布 → `chart`。
-11. 大表中出现多个独立数值维度，且旁白分别讨论这些维度 → 可拆成多个 `chart` units。
-12. 旁白包含数字、比例、排名、增长、成本、时长、性能、分数 → `data_block` 或 `metric_strip`；如果是单个冲击性数字，用 `big_number`。
-13. 旁白出现“相比、对比、before/after、旧方案/新方案、优缺点、取舍、vs” → `comparison_matrix`。
-14. 旁白出现命令、安装、运行、日志、输出、终端、CLI → `terminal_block`。
-15. 旁白出现代码、函数、API、配置、diff、片段、参数 → `code_block`。
-16. 旁白出现目录、文件、路径、package、模块文件组织 → `file_tree`。
-17. 旁白出现状态、生命周期、重试、失败恢复、状态流转、agent loop → `state_machine`。
-18. 旁白引用用户评价、作者原话、论文结论、tagline 或明确引文 → `quote`。
-19. 旁白是关键判断、风险、反常识、结论 → `callout`。
-20. 已匹配素材是图表 / table / figure 时，优先生成外置信息区和解释 callout，不覆盖素材。
-21. 已匹配素材是视频 clip 时，生成简短标签 / 状态说明，不做过重图示阻挡主体；若 `layout_role = "video_first"`，文本应控制为短标签、关键数字或一句短结论。
-22. `no_match` scene 应至少生成 2-4 个 `visual_text_units`，避免 Phase 9 退化成单个大标题卡。
-23. `layout_role = "media_first"` 时，生成 1 个短标题 / 标签 + 0-2 个短 callout 或 data point；不得生成压缩主图的大段文本。横屏竖图 / 竖视频优先建议 key-region-aware `viewport_reveal`，不要用侧栏填充来维持窄竖图完整适配。`media_continuation` 仅用于句子节奏、局部强调或多段解释。
-24. `layout_role = "media_continuation"` 时，文本应承接上一 scene，只刷新解释重点或局部强调；主素材必须在相邻 scene 中保持稳定显示。
-25. `layout_role = "viewport_reveal"` 或带独立文本列的 split 场景，文本列规划 ≥3-4 个 unit 且每个带 detail / value，使文本填满列宽与列高，不只放标题 + 短标签；units 应对应 reveal 的 start / mid / end 关键区域。
-26. 旁白出现“所谓、指的是、定义为、即、名词解释、概念” → `definition`。
-27. 旁白是“问题 → 回答”、FAQ、常见疑问、Q&A → `qa`。
-28. 旁白出现“优点 / 缺点、利弊、该做 / 不该做、推荐 / 避免、do / don't”，针对单一主体的正反两面 → `pros_cons`；多选项多维度对比仍用 `comparison_matrix`。
-29. 长视频出现章节切换、“接下来、第 N 部分、下一章” → `section_divider`。
-
-**领域专项触发规则：**
-
-GitHub repo 解析 / GitHub 项目介绍：
-
-1. 出现 `owner/repo`、仓库名、GitHub、开源、stars、forks、issues、PR、license、release → `domain_hint = "github_repo"`。
-2. 仓库身份 / 一句话用途 → `visual_role = "title"`，`template_hint = "repo_identity_card"`。
-3. stars / forks / contributors / issues / releases / commits → `visual_role = "metric_strip"` 或 `data_block`，`template_hint = "repo_metrics"`。
-4. 语言、框架、依赖、技术栈 → `visual_role = "architecture_diagram"` 或 `network_graph`，`template_hint = "language_stack"` / `"dependency_graph"`。
-5. 安装、quickstart、命令行 → `visual_role = "terminal_block"`，`template_hint = "quickstart_command"`。
-6. 目录、核心文件、monorepo、packages → `visual_role = "file_tree"`。
-7. issue → PR → merge、CI、release → `visual_role = "process_flow"`，`template_hint = "contribution_flow"`。
-8. 项目历史、版本、最近更新 → `visual_role = "timeline"`，`template_hint = "release_timeline"`。
-
-Product Hunt 产品介绍：
-
-1. 出现 Product Hunt、launch、upvote、maker、rank、product、tagline → `domain_hint = "product_hunt"`。
-2. 产品一句话价值 → `visual_role = "title"`，`template_hint = "product_card"`。
-3. upvotes、排名、今日榜单、增长 → `visual_role = "data_block"` 或 `metric_strip`，`template_hint = "launch_stats"`。
-4. 目标用户、使用场景 → `visual_role = "list"`，`template_hint = "audience_segments"`。
-5. 功能点、卖点 → `visual_role = "list"` 或 `comparison_matrix`，`template_hint = "feature_grid"`。
-6. 价格、套餐、免费 / 付费 → `visual_role = "comparison_matrix"`，`template_hint = "pricing_cards"`。
-7. 竞品 / 替代方案 → `visual_role = "comparison_matrix"`，`template_hint = "competitor_comparison"`。
-8. 注册、试用、CTA → `visual_role = "callout"`，`template_hint = "cta_card"`。
-
-论文阅读 / paper mode：
-
-1. 论文标题、作者、会议、年份 → `visual_role = "title"`，`template_hint = "paper_identity"`。
-2. 问题、motivation、gap、SOTA 局限 → `visual_role = "callout"` 或 `comparison_matrix`，`template_hint = "problem_gap"`。
-3. method、approach、pipeline、framework、algorithm → `visual_role = "process_flow"` 或 `architecture_diagram`，`template_hint = "paper_method_pipeline"`。
-4. ablation、benchmark、accuracy、latency、score、table → `visual_role = "data_block"` 或 `comparison_matrix`，`template_hint = "results_summary"`。
-5. 匹配素材是论文 figure → `visual_role = "annotated_media"`，外置信息区解释 figure，不覆盖图本身。
-6. 匹配素材是论文 table → `visual_role = "data_block"` / `comparison_matrix`，提取最重要 1-3 个结论，不重画完整表格。
-7. related work / citations / lineage → `visual_role = "timeline"` 或 `network_graph`，`template_hint = "research_lineage"`。
-8. limitation / future work → `visual_role = "list"`、`callout` 或 `pros_cons`，`template_hint = "limitations"`。
-
-代码与技术讲解：
-
-1. 函数、API、SDK、配置、代码片段 → `visual_role = "code_block"`，`template_hint = "highlighted_snippet"`。
-2. 命令、安装、运行、日志、测试输出 → `visual_role = "terminal_block"`，`template_hint = "cli_trace"`。
-3. 请求、响应、鉴权、数据库、队列、缓存 → `visual_role = "process_flow"` 或 `architecture_diagram`，`template_hint = "api_sequence"` / `"system_stack"`。
-4. 状态、生命周期、retry、失败恢复、agent loop → `visual_role = "state_machine"`。
-5. 依赖、包、服务关系、调用链 → `visual_role = "network_graph"`，`template_hint = "dependency_graph"`。
-6. 性能、耗时、成本、吞吐、错误率 → `visual_role = "data_block"`，`template_hint = "performance_metrics"`。
-7. before / after、旧方案 / 新方案、tradeoff → `visual_role = "comparison_matrix"` 或 `pros_cons`，`template_hint = "before_after"` / `"tradeoff_matrix"`。
-
-**选择优先级：**
-
-1. 有明确素材 figure / table / screenshot：先生成素材相关外置信息区，避免挡住素材。
-2. 有数字：至少生成一个 `data_block` 或 `metric_strip`。
-3. 有步骤 / pipeline：优先 `process_flow`。
-4. 有模块 / 系统：优先 `architecture_diagram`。
-5. 有实体关系：优先 `network_graph`。
-6. 有时间顺序：优先 `timeline`。
-7. 只是并列卖点：用 `list` / `feature_grid`。
-8. 只是结论或风险：用 `callout`。
-9. 有术语需要解释：用 `definition`。
-10. 有问答结构：用 `qa`。
-11. 单一主体正反 / 利弊：用 `pros_cons`。
-12. 长视频章节切换：用 `section_divider`。
-
-每个 scene 不应无限堆角色：
-
-- 有素材 scene：1 个 primary unit + 1-2 个 secondary units。
-- `no_match` scene：2-4 个 units，其中至少 1 个多元素 / 结构型 role（`leaderboard` / `data_table` / `chart` / `timeline` / `process_flow` / `architecture_diagram` / `network_graph` / `comparison_matrix` / `pros_cons` / `metric_strip` / `list` / `feature_grid` / `qa` / `code_block` / `terminal_block` / `file_tree` / `state_machine` / `annotated_media`）。
-- 密集技术 scene：允许 4-6 个 units，但 Phase 9 可为了安全布局降级 secondary / decorative units。
+`narration.txt` 与 `narration-offsets.json` 由 **script agent** 在委派任务内作为最后一步生成（handoff 的 Outputs 已列出 `scripts/make-narration.py` 命令；生成是确定性的）。主 agent 不运行 make-narration，只在校验（6.2）里确认这两份产物存在且非空。不要手改 `narration.txt`；要改就改显示稿或词表，然后让 script agent 重新生成（改了显示稿需重新过一遍 6.2 校验与用户确认）。

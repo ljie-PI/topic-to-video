@@ -475,6 +475,44 @@ def test_timeline_cue_seconds_with_scene_plan(tmp_path: Path):
     assert any('s2' in warning for warning in result['summary']['warnings'])
 
 
+def test_timeline_scene_seconds_with_scene_plan(tmp_path: Path):
+    transcript = [
+        {
+            'begin': 0,
+            'end': 1200,
+            'text': '第一段内容。',
+            'words': [
+                {'text': '第', 'begin': 0, 'end': 300},
+                {'text': '一', 'begin': 300, 'end': 600},
+                {'text': '段', 'begin': 600, 'end': 900},
+                {'text': '内容', 'begin': 900, 'end': 1200},
+            ],
+        },
+        {
+            'begin': 1200,
+            'end': 2500,
+            'text': '第二段内容。',
+            'words': [
+                {'text': '第二段内容', 'begin': 1200, 'end': 2500},
+            ],
+        },
+    ]
+    scene_plan = [
+        {'scene_id': 's1', 'paragraphs': [1], 'cues': []},
+        {'scene_id': 's2', 'paragraphs': [1, 2], 'cues': []},
+        {'scene_id': 's3', 'paragraphs': [99], 'cues': []},  # 无对齐段落：警告并跳过
+    ]
+    proc, result, _, timeline_data = make_workspace(
+        tmp_path, '第一段内容。\n\n第二段内容。', {}, transcript, scene_plan=scene_plan
+    )
+    assert proc.returncode == 0
+    assert timeline_data['scenes'] == [
+        {'scene_id': 's1', 'begin_s': 0.0, 'end_s': 1.2},
+        {'scene_id': 's2', 'begin_s': 0.0, 'end_s': 2.5},
+    ]
+    assert any('s3' in warning for warning in result['summary']['warnings'])
+
+
 # --- CLI seam -------------------------------------------------------------------
 
 

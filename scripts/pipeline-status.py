@@ -149,15 +149,6 @@ def check_text_product(ws: Path, relpath: str) -> CheckResult:
     return result
 
 
-def check_json_list_product(ws: Path, relpath: str) -> CheckResult:
-    result, data = read_json_product(ws, relpath)
-    if not result.ok:
-        return result
-    if not isinstance(data, list) or not data:
-        return CheckResult(STATUS_CORRUPT, 'JSON root is not a non-empty list')
-    return OK
-
-
 def check_dict_entries_product(ws: Path, relpath: str) -> CheckResult:
     """For JSON objects that must carry a non-empty `entries` list
     (harvest manifest, material catalog)."""
@@ -229,6 +220,26 @@ def check_lexicon_product(ws: Path, relpath: str) -> CheckResult:
             return CheckResult(
                 STATUS_CORRUPT, f'lexicon entries must be non-empty strings, got {key!r}: {value!r}'
             )
+    return OK
+
+
+def check_scene_plan_product(ws: Path, relpath: str) -> CheckResult:
+    """scene-plan.json: a non-empty JSON list of scenes; each scene has a
+    scene_id and a non-empty paragraphs list (narrative-level plan from the
+    delegated script agent)."""
+    result, data = read_json_product(ws, relpath)
+    if not result.ok:
+        return result
+    if not isinstance(data, list) or not data:
+        return CheckResult(STATUS_CORRUPT, 'JSON root is not a non-empty list')
+    for index, scene in enumerate(data):
+        if not isinstance(scene, dict):
+            return CheckResult(STATUS_CORRUPT, f'scene {index} is not an object')
+        if not scene.get('scene_id'):
+            return CheckResult(STATUS_CORRUPT, f'scene {index} missing scene_id')
+        paragraphs = scene.get('paragraphs')
+        if not isinstance(paragraphs, list) or not paragraphs:
+            return CheckResult(STATUS_CORRUPT, f'scene {index} missing paragraphs')
     return OK
 
 
@@ -337,8 +348,7 @@ PHASES: list[dict[str, Any]] = [
             'script.txt': check_text_product,
             'tts-lexicon.json': check_lexicon_product,
             'narration.txt': check_text_product,
-            'scene-material-suggestions.json': check_json_list_product,
-            'scene-text-plan.json': check_json_list_product,
+            'scene-plan.json': check_scene_plan_product,
         },
     },
     {

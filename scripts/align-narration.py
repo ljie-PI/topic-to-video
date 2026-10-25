@@ -67,9 +67,10 @@ Outputs (paths from --units-output / --timeline-output):
     paragraph} — the text / begin_s / end_s fields keep the existing
     downstream contract of the old calibrate-transcript units.
   timeline.json : {"version": 1, "total_s", "paragraphs": [{index, begin_s,
-    end_s}]}; with --scene-plan a "cues" list [{scene_id, cue, begin_s,
-    end_s}] is added (cues that cannot be located are reported as warnings
-    and omitted).
+    end_s}]}; with --scene-plan a "scenes" list [{scene_id, begin_s, end_s}]
+    (scene boundaries derived from each scene's paragraph coverage) and a
+    "cues" list [{scene_id, cue, begin_s, end_s}] are added (scenes / cues
+    that cannot be located are reported as warnings and omitted).
 
 Output convention:
   stdout : one JSON object
@@ -710,7 +711,41 @@ def merge_short_units(
     return units, merged_count
 
 
-# --- timeline cues -----------------------------------------------------------------
+# --- timeline scenes and cues ------------------------------------------------------
+
+
+def locate_scenes(
+    scene_plan: list[dict[str, Any]],
+    atoms_by_paragraph: dict[int, list[Atom]],
+    warnings: list[str],
+) -> list[dict[str, Any]]:
+    """Scene begin/end seconds, derived from each scene's paragraph coverage."""
+    scenes: list[dict[str, Any]] = []
+    for scene in scene_plan:
+        if not isinstance(scene, dict):
+            continue
+        scene_id = scene.get('scene_id') or scene.get('id')
+        paragraphs = scene.get('paragraphs') or []
+        begins: list[int] = []
+        ends: list[int] = []
+        for paragraph in paragraphs:
+            atoms = atoms_by_paragraph.get(int(paragraph), [])
+            if atoms:
+                begins.append(min(atom.begin_ms for atom in atoms))
+                ends.append(max(atom.end_ms for atom in atoms))
+        if not begins:
+            warning = f'scene {scene_id!r} covers no aligned paragraphs; missing from timeline'
+            warnings.append(warning)
+            log(f'warning: {warning}')
+            continue
+        scenes.append(
+            {
+                'scene_id': scene_id,
+                'begin_s': round(min(begins) / 1000, 3),
+                'end_s': round(max(ends) / 1000, 3),
+            }
+        )
+    return scenes
 
 
 def locate_cues(
@@ -878,11 +913,13 @@ def align(args: argparse.Namespace) -> dict[str, Any]:
     paragraphs, total_s = build_timeline(atoms_by_paragraph, len(spans), warnings)
 
     cues: list[dict[str, Any]] = []
+    scenes: list[dict[str, Any]] = []
     if args.scene_plan:
         with open(args.scene_plan, encoding='utf-8') as file:
             scene_plan = json.load(file)
         if not isinstance(scene_plan, list):
             raise ValueError('scene plan root must be a list')
+        scenes = locate_scenes(scene_plan, atoms_by_paragraph, warnings)
         cues = locate_cues(scene_plan, atoms_by_paragraph, warnings)
 
     return {
@@ -891,6 +928,7 @@ def align(args: argparse.Namespace) -> dict[str, Any]:
             'version': 1,
             'total_s': total_s,
             'paragraphs': paragraphs,
+            **({'scenes': scenes} if args.scene_plan else {}),
             **({'cues': cues} if args.scene_plan else {}),
         },
         'summary': {

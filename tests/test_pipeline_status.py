@@ -31,30 +31,14 @@ INPUTS = {
 
 RESEARCH_BRIEF = '# research brief\n\n## Key facts (verified)\n- fact [source]\n'
 
-SCENE_SUGGESTIONS = [
+SCENE_PLAN = [
     {
-        'scene_index': 1,
-        'material_ref': 'img_001',
-        'layout_role': 'media_first',
-        'reason': '匹配旁白',
-        'text_beats': [{'narration_excerpt': '前 20 字'}],
-    }
-]
-
-SCENE_TEXT_PLAN = [
-    {
-        'scene_index': 1,
-        'material_ref': 'img_001',
-        'scene_intent': '展示主视觉',
-        'density_hint': 'low',
-        'visual_text_units': [
-            {
-                'unit_id': 'scene_1_unit_1',
-                'visual_role': 'title',
-                'display_text': '标题',
-                'priority': 'primary',
-            }
-        ],
+        'scene_id': 'scene_1',
+        'paragraphs': [1, 2],
+        'intent': '开场与背景',
+        'facts': [],
+        'material_candidates': [],
+        'cues': [],
     }
 ]
 
@@ -137,8 +121,7 @@ def complete_through_script(ws: Path, **inputs_overrides) -> None:
     write_text(ws / 'script.txt', '第一段显示稿。\n\n第二段显示稿。\n')
     write_json(ws / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
     write_text(ws / 'narration.txt', '第一段旁白。\n\n第二段旁白。\n')
-    write_json(ws / 'scene-material-suggestions.json', SCENE_SUGGESTIONS)
-    write_json(ws / 'scene-text-plan.json', SCENE_TEXT_PLAN)
+    write_json(ws / 'scene-plan.json', SCENE_PLAN)
 
 
 def complete_through_tts(ws: Path, **inputs_overrides) -> None:
@@ -270,6 +253,36 @@ def test_missing_narration_txt_falls_back_to_phase_6(tmp_path: Path):
     result = parse_result(proc)
     assert result['next_phase']['id'] == '6-script-scene-plan'
     assert 'narration.txt' in result['missing_products']
+
+
+# --- phase 6 product: scene-plan.json -------------------------------------------
+
+
+def test_missing_scene_plan_falls_back_to_phase_6(tmp_path: Path):
+    complete_through_script(tmp_path)
+    (tmp_path / 'scene-plan.json').unlink()
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'scene-plan.json' in result['missing_products']
+
+
+def test_corrupt_scene_plan_falls_back_to_phase_6(tmp_path: Path):
+    complete_through_script(tmp_path)
+    write_text(tmp_path / 'scene-plan.json', '{"scene_id": ')  # 截断 JSON
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'scene-plan.json' in result['corrupt_products']
+
+
+def test_scene_plan_missing_paragraphs_falls_back_to_phase_6(tmp_path: Path):
+    complete_through_script(tmp_path)
+    write_json(tmp_path / 'scene-plan.json', [{'scene_id': 'scene_1'}])
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'scene-plan.json' in result['corrupt_products']
 
 
 def test_deleted_product_falls_back(tmp_path: Path):
