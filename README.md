@@ -8,18 +8,9 @@
 
 把本仓库（整个目录）复制或软链到你使用的客户端的 skills 目录即可，例如 Claude Code 的 `~/.claude/skills/topic-to-video/`。之后用自然语言触发（见下），无需记任何命令。
 
-### 环境依赖（一次性配置）
+### 环境依赖
 
-| 工具 | 说明 |
-|------|------|
-| Python 3 + venv | 项目内 `.venv`；跑脚本前 `source .venv/bin/activate` |
-| TTS / ASR 后端 | 后端由环境变量选择；各后端的 Python 包、环境变量与硬件要求见 `scripts/voice-clone.py --help` 和 `scripts/transcribe.py --help` |
-| `ffmpeg` / `ffprobe` | 音频探测与抽帧（PATH 上） |
-| `playwright` | `pip install playwright`（**不要**执行 `playwright install chromium`，项目通过 CDP 接管系统 Chrome） |
-| 系统 Google Chrome | 自动检测；也可用 `CHROME_PATH` / `--chrome-path` 指定 |
-| `yt-dlp` | 视频下载（PATH 上） |
-| `VLM_*`（可选） | 同时设置 `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` 启用显式视觉模型；未设置时视觉分析委派回 agent 自己的看图能力 |
-| Gemini 登录（Phase 3 调研） | 调研脚本驱动你已登录的 Chrome；登录状态自检见 `references/phases/03-research.md` |
+一次性配置清单在 [SKILL.md](SKILL.md) 的「工具与依赖」一节（系统工具、Chrome、可选视觉模型、Gemini 登录）；TTS / ASR 后端的包与环境变量见两个脚本自己的 `--help`。
 
 ## 使用
 
