@@ -103,4 +103,4 @@ python3 scripts/mix-bgm.py \
   --output {work_dir}/{topic_name}/composition/renders/final_with_bgm.mp4
 ```
 
-混音脚本逻辑保持不变：一次 ffmpeg pass 循环 `--bgm`（默认 `assets/bgm.mp3`，24 秒可循环片段）填满整个视频时长、以 `--bgm-volume`（默认线性增益 `0.03`）垫在解说底下、`-c:v copy` 不重编码视频流。如需换曲或调音量用 `--bgm` / `--bgm-volume`。**BGM 混的是修复轮之后的 `final.mp4`**——QA 通过后才生成最终交付文件。
+混音脚本逻辑保持不变：一次 ffmpeg pass 循环 `--bgm`（默认 `resources/bgm.mp3`，24 秒可循环片段）填满整个视频时长、以 `--bgm-volume`（默认线性增益 `0.03`）垫在解说底下、`-c:v copy` 不重编码视频流。如需换曲或调音量用 `--bgm` / `--bgm-volume`。**BGM 混的是修复轮之后的 `final.mp4`**——QA 通过后才生成最终交付文件。

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Mix a background-music track onto a finished video.
 
-Single ffmpeg pass: load the bundled `assets/bgm.mp3` (a 24-second loopable
+Single ffmpeg pass: load the bundled `resources/bgm.mp3` (a 24-second loopable
 clip that ships with the skill), loop it to cover the video, and mix it under
 the existing narration. The narration stays at full volume; the BGM is
 attenuated by `--bgm-volume` (default 0.03).
@@ -32,9 +32,9 @@ from typing import Optional
 
 TOOL_NAME = 'mix-bgm'
 
-# Bundled BGM lives at <skill_root>/assets/bgm.mp3. The path is derived
+# Bundled BGM lives at <skill_root>/resources/bgm.mp3. The path is derived
 # from __file__ so the script works from any CWD.
-DEFAULT_BGM_PATH = Path(__file__).resolve().parent.parent / 'assets' / 'bgm.mp3'
+DEFAULT_BGM_PATH = Path(__file__).resolve().parent.parent / 'resources' / 'bgm.mp3'
 
 
 def log(message: str) -> None:
