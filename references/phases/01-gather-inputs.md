@@ -24,7 +24,7 @@
 
 ## 完成判据
 
-`inputs.json` 存在、非空、JSON 可解析，且上表字段齐全（`fetch_materials` 必须是布尔）。
+`inputs.json` 存在、非空、JSON 可解析，且上表字段齐全（`fetch_materials` 必须是布尔；`qa_level` 可缺省，缺省视为 `standard`，填写时必须是三档之一）。
 
 ## 下一步
 

@@ -31,7 +31,7 @@ Usage:
 Output convention:
   stdout: single JSON object
     success:  {"success": true, "video": ..., "duration_s": ...,
-               "findings": [{"scene_id", "check", "issue", "time_s"}],
+               "findings": [{"scene_id", "check", "issue", "time_s", "frame"}],
                "verdict": "pass" | "fail"}
     error:    {"success": false, "error": "..."}
   stderr: human-readable progress lines prefixed with `[check-render]`
@@ -48,6 +48,8 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from timeline_scenes import normalize_scenes, scene_ranges
 
 TOOL_NAME = 'check-render'
 
@@ -169,26 +171,17 @@ def load_orientation(inputs_path: Path) -> str | None:
     return orientation if isinstance(orientation, str) else None
 
 
-def load_scene_ranges(timeline_path: Path | None) -> list[tuple[str, float, float]]:
-    """Optional scene time ranges from timeline.json: [{scene_id, begin_s, end_s}]."""
+def load_timeline_scene_ranges(timeline_path: Path | None) -> list[tuple[str, float, float]]:
+    """Optional scene time ranges from timeline.json (shared lenient reader)."""
     if timeline_path is None:
         return []
     data = json.loads(Path(timeline_path).read_text(encoding='utf-8'))
     if not isinstance(data, dict):
         raise ValueError(f'{timeline_path} is not a JSON object')
-    raw_scenes = data.get('scenes')
-    if not isinstance(raw_scenes, list):
-        return []
-    ranges = []
-    for index, scene in enumerate(raw_scenes):
-        if not isinstance(scene, dict):
-            continue
-        scene_id = scene.get('scene_id') or scene.get('id') or f'scene_{index + 1}'
-        begin = scene.get('begin_s', scene.get('start_s'))
-        end = scene.get('end_s')
-        if isinstance(begin, (int, float)) and isinstance(end, (int, float)) and end > begin:
-            ranges.append((str(scene_id), float(begin), float(end)))
-    return ranges
+    scenes, warnings = normalize_scenes(data)
+    for warning in warnings:
+        log(f'timeline scenes: {warning}')
+    return scene_ranges(scenes)
 
 
 def map_time_to_scene(scene_ranges: list[tuple[str, float, float]], time_s: float) -> str | None:
@@ -239,7 +232,10 @@ def parse_intervals(stderr_text: str) -> tuple[list[tuple[float, float]], list[t
     black_intervals = []
     freeze_starts: list[float] = []
     freeze_ends: list[float] = []
+    line_count = 0
+    unmatched_count = 0
     for line in stderr_text.splitlines():
+        line_count += 1
         black_start = BLACK_START_RE.search(line)
         if black_start:
             black_end = BLACK_END_RE.search(line)
@@ -254,10 +250,25 @@ def parse_intervals(stderr_text: str) -> tuple[list[tuple[float, float]], list[t
         freeze_end = FREEZE_END_RE.search(line)
         if freeze_end:
             freeze_ends.append(float(freeze_end.group(1)))
-    freeze_intervals: list[tuple[float, float | None]] = []
-    for index, start in enumerate(freeze_starts):
-        end = freeze_ends[index] if index < len(freeze_ends) else None
-        freeze_intervals.append((start, end))
+            continue
+        if 'black' in line or 'freeze' in line:
+            unmatched_count += 1
+    # Pair starts with ends in order; a start whose end never arrived (freeze
+    # running into EOF) keeps None and is clamped to the container duration.
+    if len(freeze_starts) != len(freeze_ends):
+        log(
+            f'warning: {len(freeze_starts)} freeze_start line(s) but {len(freeze_ends)} '
+            f'freeze_end line(s); unpaired starts are clamped to the video end'
+        )
+    freeze_intervals: list[tuple[float, float | None]] = [
+        (start, freeze_ends[index] if index < len(freeze_ends) else None)
+        for index, start in enumerate(freeze_starts)
+    ]
+    log(
+        f'detection log parsed: {len(black_intervals)} black interval(s), '
+        f'{len(freeze_intervals)} freeze interval(s), {unmatched_count} unmatched '
+        f'black/freeze line(s) out of {line_count} log lines'
+    )
     return black_intervals, freeze_intervals
 
 
@@ -371,7 +382,7 @@ def main() -> int:
         if orientation not in LANDSCAPE_ORIENTATIONS | PORTRAIT_ORIENTATIONS:
             log(f'orientation {orientation!r} not recognized; skipping orientation check')
             orientation = None
-        scene_ranges = load_scene_ranges(Path(args.timeline).expanduser().resolve() if args.timeline else None)
+        scene_ranges = load_timeline_scene_ranges(Path(args.timeline).expanduser().resolve() if args.timeline else None)
 
         findings = check_container(probe, orientation)
         stderr_text = run_detection_pass(video_path.resolve(), args.black_threshold, args.freeze_threshold)
@@ -380,6 +391,10 @@ def main() -> int:
                 stderr_text, probe['container_duration_s'], args.freeze_threshold, scene_ranges
             )
         )
+        # Deterministic findings carry no frame reference; qa-report.json
+        # requires the frame key on every finding, so default it to null.
+        for finding in findings:
+            finding.setdefault('frame', None)
 
         verdict = 'fail' if findings else 'pass'
         log(f'checks complete: {len(findings)} finding(s), verdict={verdict}')

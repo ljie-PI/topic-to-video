@@ -453,12 +453,23 @@ def test_no_fetch_full_run(tmp_path: Path):
 def test_inputs_json_missing_required_field_falls_back(tmp_path: Path):
     complete_through_research(tmp_path)
     inputs = dict(INPUTS)
-    del inputs['qa_level']
+    del inputs['design']
     write_json(tmp_path / 'inputs.json', inputs)
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
     assert result['next_phase']['id'] == '1-gather-inputs'
     assert 'inputs.json' in result['corrupt_products']
+
+
+def test_missing_qa_level_defaults_to_standard(tmp_path: Path):
+    complete_through_research(tmp_path)
+    inputs = dict(INPUTS)
+    del inputs['qa_level']
+    write_json(tmp_path / 'inputs.json', inputs)
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '4-material-harvest'
+    assert 'inputs.json' not in result['corrupt_products']
 
 
 def test_invalid_qa_level_is_corrupt_inputs(tmp_path: Path):
@@ -519,6 +530,19 @@ def test_qa_report_with_extra_keys_is_corrupt(tmp_path: Path):
     write_json(
         tmp_path / 'qa' / 'qa-report.json',
         {'findings': [], 'verdict': 'pass', 'qa_level': 'standard'},
+    )
+    proc = run_cli(str(tmp_path))
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '10-check-mix'
+    assert 'qa/qa-report.json' in result['corrupt_products']
+
+
+def test_qa_report_finding_missing_frame_is_corrupt(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    write_blob(tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4')
+    write_json(
+        tmp_path / 'qa' / 'qa-report.json',
+        {'findings': [{'scene_id': 's1', 'check': 'freeze', 'issue': 'frozen'}], 'verdict': 'pass'},
     )
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)

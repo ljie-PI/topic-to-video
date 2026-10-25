@@ -46,12 +46,13 @@ INPUTS_REQUIRED_FIELDS = [
     'layout',
     'coding_agent',
     'fetch_materials',
-    'qa_level',
 ]
 
-PAPER_MODES = {'paper'}
-
+# qa_level is optional: absent means the standard tier. When present it must
+# be one of the three enum values.
 QA_LEVELS = {'quick', 'standard', 'strict'}
+
+PAPER_MODES = {'paper'}
 
 
 @dataclass
@@ -179,7 +180,7 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
         ), None
     if not isinstance(data['fetch_materials'], bool):
         return CheckResult(STATUS_CORRUPT, 'field fetch_materials is not a boolean'), None
-    if data['qa_level'] not in QA_LEVELS:
+    if 'qa_level' in data and data['qa_level'] not in QA_LEVELS:
         return CheckResult(
             STATUS_CORRUPT,
             f'field qa_level must be one of quick / standard / strict, got {data["qa_level"]!r}',
@@ -327,7 +328,7 @@ def check_qa_report(ws: Path, relpath: str) -> CheckResult:
     for index, finding in enumerate(data['findings']):
         if not isinstance(finding, dict):
             return CheckResult(STATUS_CORRUPT, f'finding {index} is not an object')
-        for field in ('scene_id', 'check', 'issue'):
+        for field in ('scene_id', 'check', 'issue', 'frame'):
             if field not in finding:
                 return CheckResult(STATUS_CORRUPT, f'finding {index} missing {field}')
     if data['verdict'] not in ('pass', 'handed_off'):

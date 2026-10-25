@@ -156,6 +156,10 @@ def test_black_segment_found_and_mapped_to_scene(workspace: Path):
     assert black[0]['scene_id'] == 'middle'  # black starts at 4.0s, inside scene [4.0, 5.5)
     assert black[0]['time_s'] == pytest.approx(4.0, abs=0.2)
     assert '1.5' in black[0]['issue']
+    # qa-report schema requires the frame key on every finding; deterministic
+    # findings carry frame null alongside time_s.
+    assert 'frame' in black[0]
+    assert black[0]['frame'] is None
 
 
 def test_black_tail_found(workspace: Path):

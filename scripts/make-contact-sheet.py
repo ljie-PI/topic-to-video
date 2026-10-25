@@ -43,6 +43,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from timeline_scenes import normalize_scenes
+
 TOOL_NAME = 'make-contact-sheet'
 
 FFMPEG_TIMEOUT_SECONDS = 300
@@ -123,32 +125,20 @@ def probe_duration(video_path: Path) -> float:
 
 
 def load_scenes(timeline_path: Path) -> list[dict[str, object]]:
+    """Scene list from timeline.json (shared lenient reader).
+
+    Invalid scenes are skipped with a warning; only a completely empty
+    result is an error, since there would be nothing to build sheets from.
+    """
     data = json.loads(timeline_path.read_text(encoding='utf-8'))
     if not isinstance(data, dict):
         raise ValueError(f'{timeline_path} is not a JSON object')
-    scenes = data.get('scenes')
-    if not isinstance(scenes, list) or not scenes:
-        raise ValueError(f'{timeline_path} has no scenes list; nothing to build sheets from')
-    normalized = []
-    for index, scene in enumerate(scenes):
-        if not isinstance(scene, dict):
-            raise ValueError(f'scene {index} is not an object')
-        scene_id = scene.get('scene_id') or scene.get('id') or f'scene_{index + 1}'
-        begin = scene.get('begin_s', scene.get('start_s'))
-        end = scene.get('end_s')
-        if not isinstance(begin, (int, float)) or not isinstance(end, (int, float)) or end <= begin:
-            raise ValueError(f'scene {index} ({scene_id}) has no valid begin_s / end_s range')
-        peak = scene.get('peak_s')
-        normalized.append(
-            {
-                'scene_id': str(scene_id),
-                'begin_s': float(begin),
-                'end_s': float(end),
-                'peak_s': float(peak) if isinstance(peak, (int, float)) else None,
-            }
-        )
-    normalized.sort(key=lambda s: s['begin_s'])
-    return normalized
+    scenes, warnings = normalize_scenes(data)
+    for warning in warnings:
+        log(f'timeline scenes: {warning}')
+    if not scenes:
+        raise ValueError(f'{timeline_path} has no valid scenes; nothing to build sheets from')
+    return scenes
 
 
 def clamp_time(time_s: float, duration_s: float) -> float:
@@ -242,10 +232,13 @@ def build_sheets(
     mapping = []
     sheet_count = math.ceil(len(specs) / FRAMES_PER_SHEET)
     for sheet_index in range(sheet_count):
-        chunk = specs[sheet_index * FRAMES_PER_SHEET : (sheet_index + 1) * FRAMES_PER_SHEET]
+        chunk_offset = sheet_index * FRAMES_PER_SHEET
+        chunk = specs[chunk_offset : chunk_offset + FRAMES_PER_SHEET]
+        cells: list[tuple[FrameSpec, Path]] = []
         images = []
         for cell_index, spec in enumerate(chunk):
-            frame_path = frames_dir / f'frame_{sheet_index * FRAMES_PER_SHEET + cell_index + 1:03d}.jpg'
+            frame_path = frames_dir / f'frame_{chunk_offset + cell_index + 1:03d}.jpg'
+            cells.append((spec, frame_path))
             with Image.open(frame_path) as image:
                 images.append(scale_to_width(image.convert('RGB'), CELL_WIDTH_PX))
         cell_height = max(image.height for image in images)
@@ -257,13 +250,13 @@ def build_sheets(
         sheet_path = output_dir / f'sheet_{sheet_index + 1:03d}.jpg'
         sheet.save(sheet_path, quality=FRAME_QUALITY)
         sheet_paths.append(sheet_path)
-        for cell_index, spec in enumerate(chunk):
+        for cell_index, (spec, frame_path) in enumerate(cells):
             mapping.append(
                 {
                     'scene_id': spec.scene_id,
                     'kind': spec.kind,
                     'time_s': round(spec.time_s, 3),
-                    'image': str(frames_dir / f'frame_{sheet_index * FRAMES_PER_SHEET + cell_index + 1:03d}.jpg'),
+                    'image': str(frame_path),
                     'sheet': str(sheet_path),
                     'cell': cell_index,
                 }

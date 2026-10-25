@@ -50,8 +50,16 @@ python3 scripts/make-contact-sheet.py \
   --video {work_dir}/{topic_name}/composition/renders/final.mp4 \
   --timeline {work_dir}/{topic_name}/transcribe/timeline.json \
   --output-dir {work_dir}/{topic_name}/qa \
-  --qa-level <inputs.json 的 qa_level>
+  --qa-level <下表对应值>
 ```
+
+脚本只接受 `standard` / `strict` 两档参数；`inputs.json` 的 `qa_level` 按下表映射（quick 档同样生成拼图给用户过目，只是不做 vision 检查，所以按 standard 抽帧即可）：
+
+| inputs.json 的 qa_level | make-contact-sheet 的 `--qa-level` | 是否做 vision 检查 |
+| --- | --- | --- |
+| `quick`（或未填） | `standard` | 不做 |
+| `standard` | `standard` | 做 |
+| `strict` | `strict` | 做 |
 
 每个 scene 在峰值时刻（timeline scene 的 `peak_s`，缺省取 scene 中点）抽 1 帧，每 4 帧拼一张 2×2 拼图（Pillow 标注 scene_id + 帧类型 + 时间戳），写入 `qa/sheet_NNN.jpg`。strict 档额外帧：**每个 scene 一张入场帧**（scene 起点 + 0.25s）+ **每个切点三张**（切点前 0.4s / 切点 / 切点后 0.4s）。
 
@@ -79,7 +87,7 @@ python3 scripts/make-contact-sheet.py \
 }
 ```
 
-`frame` 填相关 sheet 路径或 null（确定性检查的发现）。`verdict` 为 `fail` 时进入修复轮，规则：
+`frame` 填相关 sheet 路径；确定性检查（check-render）的发现没有对应帧，填 `null`（此类发现同时带 `time_s`，pipeline-status 只校验 `frame` 键存在）。`verdict` 为 `fail` 时进入修复轮，规则：
 
 1. 把 findings 反馈给 composition agent（Phase 9 委派约定），**只改受影响的 scene**；
 2. 重新渲染后**确定性检查全片重跑**；vision 只看受影响 scene 的帧（单独抽帧看即可，不必重拼整组 sheet）；
