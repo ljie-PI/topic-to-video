@@ -2,7 +2,7 @@
 
 ## 输入
 
-`harvest_page/manifest.json`（Phase 4 产出）+ `research-brief.md`（提炼话题 context 摘要）。若 `fetch_materials = false`，本 phase 与 Phase 4 一起跳过。
+`harvest_page/manifest.json`（Phase 4 产出；论文 entry 由 Phase 2 / Phase 3 写入）+ `research-brief.md`（提炼话题 context 摘要）。`fetch_materials = false` 时 Phase 4 跳过：标准模式下本 phase 也一起跳过；论文模式（`input_mode = "paper"`）下本 phase 照常进行，走文末「仅论文素材」路径。
 
 ## 输出
 
@@ -115,3 +115,11 @@ Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产
 - `focal_region` 使用归一化坐标 `{x, y, w, h, reason}` 描述关键区域或应避免遮挡的区域；它不是自动裁切命令，只用于 Phase 8 设计 reveal viewport、半透明文本浮层避让和 QA 检查。
 
 **输出：** `extract_frames/<slug>/<video-name>/`、`vision_analyze/<slug>/`、`material-catalog.json`。
+
+## 仅论文素材（`input_mode = "paper"` 且 `fetch_materials = false`）
+
+Phase 4 被跳过，`harvest_page/manifest.json` 里只有 Phase 2 / Phase 3 写入的论文条目（`source_type: "paper_pdf"`：主论文，加上 Phase 3 解析的相关论文），没有 web 页面、视频和滚动录像。论文自己的 figure / table 是论文模式的**首选**素材，不因为不抓 web 素材而丢掉。流程同上，只是：
+
+- 带 caption 的 figure / table（`paper_metadata.figure_captions` / `table_captions`）直接用 caption 作为 `semantic_description`，`score: 8`，不做视觉分析。
+- 没有 caption 的才按第 3 步跑视觉分析。
+- 论文 entry 没有视频：不抽帧、不解析字幕，也没有 `selected_clips`。

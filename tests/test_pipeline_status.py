@@ -70,7 +70,7 @@ SCENE_PLAN = [
     }
 ]
 
-# Without fetch_materials there is no catalog to refer to.
+# Without a catalog phase (no fetch_materials, not a paper) there is nothing to refer to.
 SCENE_PLAN_NO_MATERIALS = [{**SCENE_PLAN[0], 'material_candidates': []}]
 
 TRANSCRIPT = [
@@ -126,8 +126,23 @@ def complete_through_inputs(ws: Path, **inputs_overrides) -> None:
     write_json(ws / 'inputs.json', inputs)
 
 
+def write_paper_metadata(ws: Path) -> None:
+    """Phase 2's product: the parsed main paper."""
+    write_json(
+        ws / 'harvest_page' / 'main-paper' / 'metadata.json',
+        {
+            'slug': 'main-paper',
+            'success': True,
+            'source_type': 'paper_pdf',
+            'paper_metadata': {'full_markdown_path': 'main-paper/mineru/full.md'},
+        },
+    )
+
+
 def complete_through_research(ws: Path, **inputs_overrides) -> None:
     complete_through_inputs(ws, **inputs_overrides)
+    if inputs_overrides.get('input_mode') == 'paper':
+        write_paper_metadata(ws)
     write_text(ws / 'research-brief.md', RESEARCH_BRIEF)
 
 
@@ -153,8 +168,9 @@ def complete_through_script(ws: Path, **inputs_overrides) -> None:
     write_json(ws / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
     write_text(ws / 'narration.txt', '第一段旁白。\n\n第二段旁白。\n')
     write_json(ws / 'narration-offsets.json', NARRATION_OFFSETS)
-    fetching = {**INPUTS, **inputs_overrides}['fetch_materials']
-    write_json(ws / 'scene-plan.json', SCENE_PLAN if fetching else SCENE_PLAN_NO_MATERIALS)
+    inputs = {**INPUTS, **inputs_overrides}
+    has_catalog = inputs['fetch_materials'] or inputs['input_mode'] == 'paper'
+    write_json(ws / 'scene-plan.json', SCENE_PLAN if has_catalog else SCENE_PLAN_NO_MATERIALS)
 
 
 def complete_through_voice_subtitles(ws: Path, **inputs_overrides) -> None:
@@ -946,6 +962,46 @@ def test_no_fetch_skips_harvest_and_catalog(tmp_path: Path):
     assert '4-material-harvest' in result['skipped_phases']
     assert '5-material-catalog' in result['skipped_phases']
     assert result['next_phase']['id'] == '6-script-scene-plan'
+
+
+def test_paper_mode_without_fetch_skips_harvest_but_builds_the_catalog(tmp_path: Path):
+    complete_through_research(tmp_path, input_mode='paper', fetch_materials=False)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert '4-material-harvest' in result['skipped_phases']
+    assert '5-material-catalog' not in result['skipped_phases']
+    assert result['next_phase']['id'] == '5-material-catalog'
+    assert result['next_phase']['doc'] == 'references/phases/05-material-catalog.md'
+
+
+def test_standard_mode_without_fetch_skips_harvest_and_catalog(tmp_path: Path):
+    complete_through_research(tmp_path, input_mode='standard', fetch_materials=False)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert {'4-material-harvest', '5-material-catalog'} <= set(result['skipped_phases'])
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+
+
+def test_paper_mode_without_fetch_full_run(tmp_path: Path):
+    complete_all(tmp_path, input_mode='paper', fetch_materials=False)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase'] is None
+    assert result['skipped_phases'] == ['4-material-harvest']
+    assert '5-material-catalog' in result['completed_phases']
+
+
+def test_paper_mode_without_fetch_scene_plan_refs_resolve_against_the_catalog(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene('s1', [1, 2], candidates('img_001'))], input_mode='paper', fetch_materials=False
+    )
+    assert detail is None
+    assert '6-script-scene-plan' in result['completed_phases']
+
+
+def test_paper_mode_without_fetch_scene_plan_ref_missing_from_catalog_is_corrupt(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene('s1', [1, 2], candidates('nope_1'))], input_mode='paper', fetch_materials=False
+    )
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert "'nope_1'" in detail, detail
 
 
 def test_no_fetch_full_run(tmp_path: Path):

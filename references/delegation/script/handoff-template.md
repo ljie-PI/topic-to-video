@@ -15,7 +15,7 @@
 
 - 工作区：{work_dir}/{topic_name}/
 - research-brief.md：<是否存在及路径；否写“无（fetch_materials = false 或纯主题）”>
-- material-catalog.json：<是否存在及路径；素材 id 引用格式的定义见 references/phases/05-material-catalog.md>
+- material-catalog.json：<是否存在及路径>
 - inputs.json：目标时长 <duration>、语言 <language>、input_mode <mode>、所选模板 <template 或 无>
 
 ## Outputs

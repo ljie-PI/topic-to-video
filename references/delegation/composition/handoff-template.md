@@ -17,7 +17,7 @@
 - voice_clone/narration.mp3：生成的配音（唯一音频来源，不重生成 TTS）
 - transcribe/subtitle-units.json：字幕单元（text / begin_s / end_s，逐字使用）
 - transcribe/timeline.json：段落与 cue 时间轴（scene 切分与 cue 锚点）
-- material-catalog.json：<路径；fetch_materials = false 时写“无（无素材，画面用纯排版）”>
+- material-catalog.json：<路径；没有 catalog（fetch_materials = false 且不是论文模式）时写“无（无素材，画面用纯排版）”>
 - scene-plan.json：叙事层场景规划（仅作参考，可合并 / 拆分 / 改选）
 - script.txt：显示稿（旁白与屏幕文字的文本来源，不能改）
 - inputs.json：design <design>、layout <layout>、template <template 或 无>、orientation <朝向>

@@ -39,3 +39,34 @@ def test_every_product_checked_by_pipeline_status_is_named_in_the_phase_doc_outp
     section = output_section(REPO_ROOT / phase['doc'])
     missing = [relpath for relpath in phase['products'] if relpath not in section]
     assert not missing, f'{phase["doc"]} "## 输出" does not name: {missing}'
+
+
+def doc_text(relpath: str) -> str:
+    return (REPO_ROOT / relpath).read_text(encoding='utf-8')
+
+
+def test_paper_mode_instructions_live_in_the_phase_or_package_that_uses_them():
+    paper_parse = doc_text('references/phases/02-paper-parse.md')
+    research = doc_text('references/phases/03-research.md')
+    script_base = doc_text('references/delegation/script/base-instructions.md')
+
+    # Phase 3 researches: the paper prompt and the related-paper parse live there.
+    assert '围绕论文《{title}》的背景调研' in research
+    assert '--slug "related-' in research
+    assert 'parse-pdf.py' in research.split('解析相关论文（可选')[1]
+    # The script agent writes the narration: the structure travels with its package.
+    assert 'Takeaway / CTA' in script_base
+    # Phase 2 keeps only the main-paper parse.
+    for moved in ('围绕论文《{title}》的背景调研', 'Takeaway / CTA', 'related-'):
+        assert moved not in paper_parse, f'02-paper-parse.md still holds: {moved}'
+    assert '--slug "main-paper"' in paper_parse
+
+
+def test_phase_4_no_longer_documents_merging_the_parsed_paper():
+    assert 'Paper mode' not in doc_text('references/phases/04-material-harvest.md')
+
+
+def test_phase_5_documents_the_paper_only_path():
+    catalog = doc_text('references/phases/05-material-catalog.md')
+    section = catalog.split('## 仅论文素材')[1]
+    assert 'score: 8' in section and 'caption' in section

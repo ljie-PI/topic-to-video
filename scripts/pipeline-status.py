@@ -293,8 +293,8 @@ def material_ref_problem(ws: Path, refs: list[str]) -> str | None:
     _, inputs = load_inputs(ws)
     if not phase_applies(PHASES_BY_ID['5-material-catalog'], inputs):
         return (
-            'material_candidates must be empty when fetch_materials is false (there is no catalog), '
-            f'got refs {list(dict.fromkeys(refs))}'
+            'material_candidates must be empty when there is no catalog phase '
+            f'(fetch_materials is false and input_mode is not paper), got refs {list(dict.fromkeys(refs))}'
         )
     index = load_catalog_index(ws)
     if index is None:
@@ -649,7 +649,9 @@ def check_qa_report(ws: Path, relpath: str) -> CheckResult:
 
 # --- phase definitions ---------------------------------------------------------
 
-# Each product maps its workspace-relative path to a checker.
+# Each product maps its workspace-relative path to a checker. A phase with a
+# `conditional` key only applies in some workspaces (see phase_applies): 'paper'
+# = paper mode, 'fetch' = fetch_materials, 'fetch_or_paper' = either.
 PHASES: list[dict[str, Any]] = [
     {
         'id': '1-gather-inputs',
@@ -681,7 +683,7 @@ PHASES: list[dict[str, Any]] = [
         'id': '5-material-catalog',
         'title': '素材 catalog',
         'doc': 'references/phases/05-material-catalog.md',
-        'conditional': 'fetch',
+        'conditional': 'fetch_or_paper',
         'products': {'material-catalog.json': check_material_catalog},
     },
     {
@@ -741,11 +743,15 @@ def phase_applies(phase: dict[str, Any], inputs: dict[str, Any] | None) -> bool:
     if inputs is None:
         # inputs.json unreadable: report the full default sequence (standard,
         # with fetching). The next phase will be 1-gather-inputs anyway.
-        return conditional == 'fetch'
+        return conditional in ('fetch', 'fetch_or_paper')
     if conditional == 'paper':
         return inputs.get('input_mode') in PAPER_MODES
     if conditional == 'fetch':
         return bool(inputs.get('fetch_materials'))
+    if conditional == 'fetch_or_paper':
+        # The catalog also holds the paper's own figures and tables, which
+        # exist whether or not web materials are fetched.
+        return bool(inputs.get('fetch_materials')) or inputs.get('input_mode') in PAPER_MODES
     return True
 
 

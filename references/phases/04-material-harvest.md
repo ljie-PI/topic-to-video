@@ -6,7 +6,7 @@
 
 ## 输出
 
-`harvest_page/manifest.json`（v2，`entries` 与 `harvest_batches` 非空）+ `harvest_page/<url-slug>/` 目录；YouTube/Bilibili 条目带 `pending_downloads[]`，`video-download.py --harvest-dir` 会在下载成功后直接更新 manifest。论文 entry 已由 Phase 2 写入同一份 manifest，后续 harvest 不会覆盖它。
+`harvest_page/manifest.json`（v2，`entries` 与 `harvest_batches` 非空）+ `harvest_page/<url-slug>/` 目录；YouTube/Bilibili 条目带 `pending_downloads[]`，`video-download.py --harvest-dir` 会在下载成功后直接更新 manifest。论文 entry 已由 Phase 2 / Phase 3 写入同一份 manifest，后续 harvest 不会覆盖它。
 
 ## 完成判据
 
@@ -14,7 +14,7 @@
 
 ## 下一步
 
-Phase 5（素材 catalog）；若 `fetch_materials = false`，本 phase 与 Phase 5 都跳过，直接进入 Phase 6（脚本与场景规划，按"无素材"路径处理）。
+Phase 5（素材 catalog）；若 `fetch_materials = false`，本 phase 跳过：标准模式下 Phase 5 也跳过，直接进入 Phase 6（脚本与场景规划，按"无素材"路径处理）；论文模式直接进入 Phase 5（仅论文素材）。
 
 ---
 
@@ -66,10 +66,6 @@ scripts/harvest-pages.py \
 默认单 URL 失败继续；传 `--no-continue-on-error` 中断。首次调用启动 1680x1680 Chrome 于 `{work_dir}/chrome_profile`；结束后保留进程供 CDP 复用。
 
 输出：`harvest_page/manifest.json` + `harvest_page/<url-slug>/` 目录（每个 URL 一个）。`manifest.entries[]` 的结构如下——每个渲染页 entry 含有 `text_excerpt`、`metrics`、`images[]`、`videos[]`，以及可选的 `scroll_recording`；YouTube/Bilibili 直链 entry 的 `videos[]` 带有 `download_required: true` 且没有 scroll recording。manifest 顶层还会带一个 **`pending_downloads[]`** —— 列出 harvester 检测到的所有 YouTube/Bilibili URL（不管是直接通过 `--urls` 传入的，还是从页面里发现内嵌的）。
-
-#### Paper mode：保留解析出来的论文
-
-当 `input_mode = "paper"` 时，`parse-pdf.py` 已把论文 entry upsert 到 `harvest_page/manifest.json`。`harvest-pages.py` 每批也只 upsert 本批 entry 并追加 `harvest_batches`，因此重跑或换镜像 URL 不会抹掉论文、其他批次或已完成的下载。后续所有阶段都读同一份统一 manifest。
 
 ### Phase 4.b — 处理 pending video downloads
 

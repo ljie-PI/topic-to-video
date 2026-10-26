@@ -4,7 +4,7 @@
 
 ## 输入
 
-Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（若 `fetch_materials = false` 则没有 catalog，按“无素材”路径写纯旁白）+ `inputs.json`（目标时长、语言、input_mode、所选模板）+ 模板旁白要求（`modules/templates/<template>/narration.md`，如有）+ 项目指令 `narration-instructions.md`（如有）。
+Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（标准模式且 `fetch_materials = false` 时没有 catalog，按“无素材”路径写纯旁白；论文模式总有 catalog）+ `inputs.json`（目标时长、语言、input_mode、所选模板）+ 模板旁白要求（`modules/templates/<template>/narration.md`，如有）+ 项目指令 `narration-instructions.md`（如有）。
 
 ## 输出
 
@@ -17,7 +17,7 @@ Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（若 `fet
 - `script.txt`、`narration.txt` 存在且非空；`script.txt` 的字数（去掉所有空白）与 `inputs.json` 的 `duration`（分钟）× 60 × 7.5 的偏差在 ±15% 以内；
 - `tts-lexicon.json` 是可解析的非空 JSON map，键值都是非空字符串；
 - `narration-offsets.json` 是 `version` 为 1 的 JSON 对象，带 `segments` 列表；
-- `scene-plan.json` 是非空列表，每个 scene 有 `scene_id` 和整数 `paragraphs`；所有 scene 的段落并集恰好是 `script.txt` 的第 1 段到最后一段；`material_candidates[].ref` 都能在 catalog 里解析（素材 id，或 `<video_id>:<start>-<end>` 且与某个 `selected_clips` 的起止相差都不超过 0.01 秒）；`fetch_materials = false` 时没有 catalog，`material_candidates` 必须是空列表。
+- `scene-plan.json` 是非空列表，每个 scene 有 `scene_id` 和整数 `paragraphs`；所有 scene 的段落并集恰好是 `script.txt` 的第 1 段到最后一段；`material_candidates[].ref` 都能在 catalog 里解析（素材 id，或 `<video_id>:<start>-<end>` 且与某个 `selected_clips` 的起止相差都不超过 0.01 秒）；没有 catalog（`fetch_materials = false` 且不是论文模式）时，`material_candidates` 必须是空列表。
 
 通过后，把旁白和场景摘要交给用户确认，再进入 TTS。
 

@@ -18,7 +18,17 @@
 
 ### 论文模式（`input_mode = "paper"`）
 
-叙事结构、figure / table 引用规则见 `references/phases/02-paper-parse.md` 的「论文模式解说结构」，按它执行，本文不重复。
+Phase 6 撰写旁白时，论文模式沿用论文自身的逻辑流，而非通用的主题结构：
+
+1. Hook —— 这篇论文为什么重要 / 它要解决什么问题
+2. Background —— 先前的工作和 SOTA（来自 Deep Research）
+3. Key insight / approach（来自论文摘要 + 引言，引用论文中的 figure）
+4. Method walkthrough（用 `material_ref` 引用论文 figure）
+5. Results（用 `material_ref` 引用论文 table / chart）
+6. Impact 与后续工作（来自 Deep Research）
+7. Takeaway / CTA
+
+论文 figure（`source_type: "paper_pdf"` 条目）是**首选**素材。从 web 抓取的资源作为补充 B-roll。叙述中合适时自然引用图号 / 表号：`"如表一所示..."`。
 
 ### 通用要求
 
@@ -70,7 +80,7 @@ TTS 朗读稿由 `scripts/make-narration.py` 按词表确定性生成，不要�
    - `intent`：这场景要帮观众理解什么。
    - `template_scene` / `pattern_hints`：可选。选了模板时，`cues` 按模板的旁白要求（`modules/templates/<template>/narration.md`）摘录需要的锚点句——这些句子会用来从配音里算出秒数，务必原样取自显示稿。
    - `facts`：这一段旁白依赖的关键事实（数字、实体、列表、代码）。
-   - `material_candidates`：候选素材引用，每项含 `ref`（catalog 素材 id 或 `<video_id>:<start>-<end>` clip 引用）、`score`（1–10）、`reason`。**只是候选，不做排他分配**；同一素材可以被多个 scene 候选。引用的素材 id 必须存在于 `material-catalog.json`；clip 引用必须写成 `<video_id>:<start>-<end>`（秒，数字间不加空格），起止时间要与 `selected_clips` 里的某一项相差不超过 0.01 秒；`fetch_materials = false` 时没有 catalog，留空列表。素材 id 的引用格式见 `references/phases/05-material-catalog.md`。
+   - `material_candidates`：候选素材引用，每项含 `ref`、`score`（1–10）、`reason`。**只是候选，不做排他分配**；同一素材可以被多个 scene 候选。`ref` 的格式（即上面论文结构里说的 `material_ref`）：图片和视频用素材 id，id 必须存在于 `material-catalog.json`；视频 clip 用 `<video_id>:<start>-<end>`，秒数与 `selected_clips` 对应——数字间不加空格，起止时间要与 `selected_clips` 里的某一项相差不超过 0.01 秒。没有 catalog（`fetch_materials = false` 且不是论文模式）时留空列表。
    - **不包含** `layout_role` / `visual_role` / `display_text`——那是 composition 阶段的设计空间。
 
 ## 完成后
