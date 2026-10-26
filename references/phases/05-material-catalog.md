@@ -48,6 +48,7 @@ Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产
    ```bash
    scripts/subtitle-parse.py <subtitle> --keywords '<terms from research brief>'
    ```
+   输出 JSON 的 `entries` 中，每条字幕包含 `text`、`begin_s` / `end_s`（秒）及原始时间戳；无法解析时间戳的 cue 会被跳过并记入 `warnings`，其余字幕正常输出。
 
 3. **视觉分析**：用 `scripts/vision-analyze.py`，传入 `--context-file vision_analyze/topic-context.txt`：
    - 对图片（光栅图和 SVG）：按 URL 聚合图片，每次调用最多放 10 张；同一 URL 超过 10 张时拆成多个 batch，且共享同一话题 context 摘要。prompt 询问"这张图在讲解该话题时可以用来说明什么论点或概念"、视觉风格、1-10 的适配度评分，并根据 `width` / `height` 和画面内容给出布局能力提示：是否适合 `media_first`、`viewport_reveal`、`band`、`detail_callout`、`comparison_pair` 等。对 tall / ultra-tall 素材，写入 `viewport_reveal` affordance，并标注 `focal_region`、start / mid / end 关键区域或 avoid-region；可用 0-1 归一化坐标。
