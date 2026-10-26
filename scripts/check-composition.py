@@ -43,7 +43,7 @@ Output convention:
   stdout: single JSON object
     success: {"success": true, "verdict": "pass"|"fail",
               "scenes_checked": [...], "findings": [...]}
-      each finding: {scene_id, check, detail}
+      each finding: {scene_id, check, issue, time_s, frame}
     error:   {"success": false, "error": "..."}
   stderr: human-readable progress prefixed with [check-composition]
   exit:   0 = run completed (verdict field carries pass/fail),
@@ -64,7 +64,6 @@ from timeline_scenes import normalize_scenes
 
 TOOL_NAME = 'check-composition'
 
-DEFAULT_VIEWPORT = '1920x1080'
 RECT_TOLERANCE_PX = 2.0
 # Minimum overlap (px^2) before an element counts as intruding into a reserved region.
 MIN_INTRUSION_AREA_PX2 = 4.0
@@ -104,8 +103,8 @@ def parse_args() -> argparse.Namespace:
         default='.',
         help='Composition directory, project directory containing composition/, or index.html path.',
     )
-    parser.add_argument('--viewport', default=DEFAULT_VIEWPORT,
-                        help=f'Viewport WxH used for measurement (default {DEFAULT_VIEWPORT}).')
+    parser.add_argument('--viewport', default=None,
+                        help='Viewport WxH used for measurement (default: layout canvas).')
     parser.add_argument('--layout', required=True,
                         help='Layout region definition JSON (modules/layouts/*.json).')
     font = parser.add_argument_group('design minimum font size (one required)')
@@ -124,6 +123,19 @@ def parse_args() -> argparse.Namespace:
                         help='Optional path to also write the JSON report.')
     parser.add_argument('--chrome-path', default=None,
                         help='Path to Chrome executable. Auto-detected if unset.')
+    snapshots = parser.add_mutually_exclusive_group()
+    snapshots.add_argument(
+        '--snapshots-from',
+        default=None,
+        metavar='FILE.JSON',
+        help='test/debug seam: analyze a recorded snapshot list; skips Chrome.',
+    )
+    snapshots.add_argument(
+        '--dump-snapshots',
+        default=None,
+        metavar='FILE.JSON',
+        help='Write the raw Chrome-collected snapshot list for fixtures or debugging.',
+    )
     args = parser.parse_args()
     if args.min_font_size is None and args.design_doc is None:
         parser.error('design minimum font size required: pass --min-font-size or --design-doc')
@@ -161,6 +173,34 @@ def load_layout(path: str) -> Dict[str, Any]:
     if not isinstance(data, dict) or not isinstance(data.get('regions'), list):
         raise ValueError(f'layout file {path} has no regions list')
     return data
+
+
+def layout_viewport(layout: Dict[str, Any]) -> Tuple[int, int]:
+    canvas = layout.get('canvas')
+    if not isinstance(canvas, dict):
+        raise ValueError('layout has no canvas width / height')
+    width, height = canvas.get('width'), canvas.get('height')
+    if not isinstance(width, int) or not isinstance(height, int) or width < 320 or height < 320:
+        raise ValueError('layout canvas width / height must be integers of at least 320px')
+    return width, height
+
+
+def load_snapshot_list(path: str) -> List[Dict[str, Any]]:
+    data = json.loads(Path(path).read_text(encoding='utf-8'))
+    if not isinstance(data, list) or not all(isinstance(snapshot, dict) for snapshot in data):
+        raise ValueError(f'{path} must contain a JSON list of snapshot objects')
+    return data
+
+
+def scenes_from_snapshots(snapshots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    scenes: List[Dict[str, Any]] = []
+    seen = set()
+    for snapshot in snapshots:
+        scene_id = str(snapshot['scene_id'])
+        if scene_id not in seen:
+            scenes.append({'scene_id': scene_id})
+            seen.add(scene_id)
+    return scenes
 
 
 def load_json_object_list(path: Optional[str], key: str, *, required: bool) -> List[Dict[str, Any]]:
@@ -517,13 +557,21 @@ def analyze_snapshot(
     regions: RegionIndex,
     font_floors: Tuple[float, float],
     subtitle_units: List[Dict[str, Any]],
-) -> List[Dict[str, str]]:
+) -> List[Dict[str, Any]]:
     scene_id = snapshot['scene_id']
-    findings: List[Dict[str, str]] = []
+    findings: List[Dict[str, Any]] = []
 
-    def add(check: str, detail: Optional[str]) -> None:
-        if detail:
-            findings.append({'scene_id': scene_id, 'check': check, 'detail': detail})
+    def add(check: str, issue: Optional[str]) -> None:
+        if issue:
+            findings.append(
+                {
+                    'scene_id': scene_id,
+                    'check': check,
+                    'issue': issue,
+                    'time_s': float(snapshot['time']),
+                    'frame': None,
+                }
+            )
 
     elements = snapshot['elements']
 
@@ -552,17 +600,17 @@ def analyze_snapshot(
 # --- report --------------------------------------------------------------------------
 
 
-def dedup_findings(findings: List[Dict[str, str]], scene_order: List[str]) -> List[Dict[str, str]]:
+def dedup_findings(findings: List[Dict[str, Any]], scene_order: List[str]) -> List[Dict[str, Any]]:
     seen = set()
-    unique: List[Dict[str, str]] = []
+    unique: List[Dict[str, Any]] = []
     for finding in findings:
-        key = (finding['scene_id'], finding['check'], finding['detail'])
+        key = (finding['scene_id'], finding['check'], finding['issue'])
         if key in seen:
             continue
         seen.add(key)
         unique.append(finding)
     order = {scene_id: index for index, scene_id in enumerate(scene_order)}
-    unique.sort(key=lambda f: (order.get(f['scene_id'], len(order)), f['check'], f['detail']))
+    unique.sort(key=lambda f: (order.get(f['scene_id'], len(order)), f['check'], f['issue']))
     return unique
 
 
@@ -611,8 +659,9 @@ def build_report(
     subtitle_units: List[Dict[str, Any]],
     viewport: Tuple[int, int],
     warnings: List[str],
+    viewport_mismatch: bool,
 ) -> Dict[str, Any]:
-    findings: List[Dict[str, str]] = []
+    findings: List[Dict[str, Any]] = []
     checked: List[Dict[str, Any]] = []
     snapshot_by_scene: Dict[str, List[Dict[str, Any]]] = {}
     for snapshot in snapshots:
@@ -636,6 +685,7 @@ def build_report(
         'composition_dir': str(composition_dir),
         'layout': str(layout_path),
         'viewport': {'width': viewport[0], 'height': viewport[1]},
+        'viewport_mismatch': viewport_mismatch,
         'min_font_size': font_floors[0],
         'min_ui_font_size': font_floors[1],
         'scenes_checked': checked,
@@ -647,40 +697,65 @@ def build_report(
 def main() -> None:
     args = parse_args()
     try:
-        viewport = parse_viewport(args.viewport)
+        explicit_viewport = parse_viewport(args.viewport) if args.viewport is not None else None
     except ValueError as exc:
         fail(str(exc), exit_code=2)  # invalid argument value
     try:
-        composition_dir, index_path = resolve_composition_path(args.composition)
+        if args.snapshots_from:
+            composition_dir = Path(args.composition).expanduser().resolve()
+            index_path = None
+        else:
+            composition_dir, index_path = resolve_composition_path(args.composition)
     except (ValueError, OSError) as exc:
         fail(str(exc), exit_code=1)
     try:
         layout = load_layout(args.layout)
+        canvas_viewport = layout_viewport(layout)
+        viewport = explicit_viewport or canvas_viewport
+        viewport_mismatch = explicit_viewport is not None and explicit_viewport != canvas_viewport
+        warnings: List[str] = []
+        if viewport_mismatch:
+            warning = (
+                f'explicit viewport {viewport[0]}x{viewport[1]} differs from layout canvas '
+                f'{canvas_viewport[0]}x{canvas_viewport[1]}; using the explicit viewport'
+            )
+            warnings.append(warning)
+            log(f'warning: {warning}')
         font_floors = load_font_floors(args)
         subtitle_units = load_subtitle_units(args.subtitle_units)
         timeline_data = json.loads(Path(args.timeline).read_text(encoding='utf-8')) if args.timeline else {}
         timeline_scenes, timeline_warnings = normalize_scenes(timeline_data)
+        warnings.extend(timeline_warnings)
         for warning in timeline_warnings:
             log(f'timeline scenes: {warning}')
     except (ValueError, OSError, json.JSONDecodeError) as exc:
         fail(str(exc), exit_code=1)
 
     try:
-        # DOM discovery and check snapshots share one isolated browser session.
-        index_url = index_path.as_uri()
-        log(f'Loading {index_url}')
-        with chrome_cdp.launch_isolated(args.chrome_path) as chrome_session:
-            browser = chrome_session.browser
-            page = browser.new_page(viewport={'width': viewport[0], 'height': viewport[1]})
-            page.goto(index_url, wait_until='networkidle', timeout=30000)
-            page.wait_for_timeout(300)
-            scenes = resolve_scenes(page, timeline_scenes)
-            checks = [
-                {'scene_id': scene['scene_id'], 'time': time}
-                for scene in scenes
-                for time in scene_check_times(scene)
-            ]
-            snapshots = page.evaluate(load_snapshot_js(), {'checks': checks})
+        if args.snapshots_from:
+            snapshots = load_snapshot_list(args.snapshots_from)
+            scenes = timeline_scenes or scenes_from_snapshots(snapshots)
+        else:
+            # DOM discovery and check snapshots share one isolated browser session.
+            index_url = index_path.as_uri()
+            log(f'Loading {index_url}')
+            with chrome_cdp.launch_isolated(args.chrome_path) as chrome_session:
+                browser = chrome_session.browser
+                page = browser.new_page(viewport={'width': viewport[0], 'height': viewport[1]})
+                page.goto(index_url, wait_until='networkidle', timeout=30000)
+                page.wait_for_timeout(300)
+                scenes = resolve_scenes(page, timeline_scenes)
+                checks = [
+                    {'scene_id': scene['scene_id'], 'time': time}
+                    for scene in scenes
+                    for time in scene_check_times(scene)
+                ]
+                snapshots = page.evaluate(load_snapshot_js(), {'checks': checks})
+            if args.dump_snapshots:
+                dump_path = Path(args.dump_snapshots).expanduser().resolve()
+                dump_path.parent.mkdir(parents=True, exist_ok=True)
+                dump_path.write_text(json.dumps(snapshots, ensure_ascii=False, indent=2), encoding='utf-8')
+                log(f'Wrote {dump_path}')
 
         regions = RegionIndex(layout)
         report = build_report(
@@ -692,7 +767,8 @@ def main() -> None:
             font_floors,
             subtitle_units,
             viewport,
-            timeline_warnings,
+            warnings,
+            viewport_mismatch,
         )
         if args.output:
             output_path = Path(args.output).expanduser().resolve()

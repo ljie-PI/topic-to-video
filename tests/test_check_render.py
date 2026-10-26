@@ -24,9 +24,9 @@ SCRIPT = REPO_ROOT / 'scripts' / 'check-render.py'
 TIMELINE = {
     'total_s': 7.5,
     'scenes': [
-        {'scene_id': 'intro', 'begin_s': 0.0, 'end_s': 4.0, 'peak_s': 2.0},
+        {'scene_id': 'intro', 'begin_s': 0.0, 'end_s': 4.0},
         {'scene_id': 'middle', 'begin_s': 4.0, 'end_s': 5.5},
-        {'scene_id': 'outro', 'begin_s': 5.5, 'end_s': 7.5, 'peak_s': 6.5},
+        {'scene_id': 'outro', 'begin_s': 5.5, 'end_s': 7.5},
     ],
 }
 

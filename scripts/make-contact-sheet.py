@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Build per-scene contact sheets from a rendered video.
 
-Extracts one frame per scene at the scene's peak moment (timeline.json scene
-`peak_s` when present, otherwise the scene midpoint). qa_level strict adds an
+Extracts one frame per scene at the scene midpoint. qa_level strict adds an
 entrance frame per scene (scene begin + 0.25s) and three frames per cut point
 between consecutive scenes (0.4s before / at / 0.4s after the cut, clamped to
 the video duration).
@@ -17,13 +16,13 @@ sheets. Frame-to-scene mapping is reported on stdout.
 
 Usage:
   python3 make-contact-sheet.py --video composition/renders/final.mp4 \
-      --timeline transcribe/timeline.json [--output-dir qa] \
-      [--qa-level standard|strict]
+      --timeline transcribe/timeline.json --inputs inputs.json [--output-dir qa]
 
 Output convention:
   stdout: single JSON object
     success: {"success": true, "output_dir": ..., "qa_level": ...,
-              "frame_count": N, "sheet_count": M, "sheets": [...],
+              "vision_check_required": bool, "frame_count": N,
+              "sheet_count": M, "sheets": [...],
               "frames": [{"scene_id", "kind", "time_s", "image", "sheet", "cell"}]}
     error:   {"success": false, "error": "..."}
   stderr: human-readable progress lines prefixed with `[make-contact-sheet]`
@@ -50,7 +49,8 @@ FFPROBE_TIMEOUT_SECONDS = 30
 FRAMES_PER_SHEET = 4
 GRID_COLUMNS = 2
 CELL_WIDTH_PX = 640
-FRAME_QUALITY = 3
+FFMPEG_JPEG_QSCALE = 3
+PIL_JPEG_QUALITY = 90
 
 CUT_WINDOW_S = 0.4
 ENTRANCE_OFFSET_S = 0.25
@@ -75,7 +75,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--video', required=True, help='Rendered video file.')
     parser.add_argument('--timeline', required=True, help='timeline.json with a scenes list.')
     parser.add_argument('--output-dir', default='qa', help='Output directory for sheets (default: qa).')
-    parser.add_argument('--qa-level', default='standard', choices=QA_LEVELS, help='standard (default) or strict.')
+    parser.add_argument('--inputs', required=True, help='inputs.json; qa_level controls extraction and vision QA.')
     args = parser.parse_args()
     return args
 
@@ -97,6 +97,16 @@ def load_scenes(timeline_path: Path) -> list[dict[str, object]]:
     return scenes
 
 
+def load_qa_level(inputs_path: Path) -> str:
+    data = json.loads(inputs_path.read_text(encoding='utf-8'))
+    if not isinstance(data, dict):
+        raise ValueError(f'{inputs_path} is not a JSON object')
+    qa_level = data.get('qa_level', 'standard')
+    if qa_level not in ('quick', *QA_LEVELS):
+        raise ValueError(f'{inputs_path} field qa_level must be quick, standard, or strict')
+    return qa_level
+
+
 def clamp_time(time_s: float, duration_s: float) -> float:
     return min(max(time_s, 0.0), max(duration_s - 0.01, 0.0))
 
@@ -107,10 +117,8 @@ def build_frame_specs(scenes: list[dict[str, object]], qa_level: str, duration_s
         scene_id = scene['scene_id']
         begin = scene['begin_s']
         end = scene['end_s']
-        peak = scene['peak_s']
-        if peak is None or not (begin <= peak <= end):
-            peak = (begin + end) / 2
-        specs.append(FrameSpec(scene_id=scene_id, kind='peak', time_s=clamp_time(peak, duration_s)))
+        midpoint = (begin + end) / 2
+        specs.append(FrameSpec(scene_id=scene_id, kind='peak', time_s=clamp_time(midpoint, duration_s)))
         if qa_level == 'strict':
             entrance = clamp_time(begin + ENTRANCE_OFFSET_S, duration_s)
             specs.append(FrameSpec(scene_id=scene_id, kind='entrance', time_s=entrance))
@@ -142,7 +150,7 @@ def extract_frame(video_path: Path, time_s: float, output_path: Path) -> None:
             '-frames:v',
             '1',
             '-q:v',
-            str(FRAME_QUALITY),
+            str(FFMPEG_JPEG_QSCALE),
             str(output_path),
         ],
         timeout=FFMPEG_TIMEOUT_SECONDS,
@@ -169,7 +177,7 @@ def annotate_frame(image_path: Path, spec: FrameSpec) -> None:
     combined = Image.new('RGB', (width, height + strip_height), (0, 0, 0))
     combined.paste(annotation, (0, 0))
     combined.paste(frame, (0, strip_height))
-    combined.save(image_path, quality=FRAME_QUALITY)
+    combined.save(image_path, quality=PIL_JPEG_QUALITY)
 
 
 def scale_to_width(image: Image.Image, width: int) -> Image.Image:
@@ -206,7 +214,7 @@ def build_sheets(
             top = (cell_index // GRID_COLUMNS) * cell_height
             sheet.paste(image, (left, top))
         sheet_path = output_dir / f'sheet_{sheet_index + 1:03d}.jpg'
-        sheet.save(sheet_path, quality=FRAME_QUALITY)
+        sheet.save(sheet_path, quality=PIL_JPEG_QUALITY)
         sheet_paths.append(sheet_path)
         for cell_index, (spec, frame_path) in enumerate(cells):
             mapping.append(
@@ -224,13 +232,17 @@ def build_sheets(
 
 def main() -> int:
     args = parse_args()
-    media.ensure_media_binaries()
     video_path = Path(args.video).expanduser()
     if not video_path.is_file():
         raise FileNotFoundError(f'video file not found: {args.video}')
     timeline_path = Path(args.timeline).expanduser()
     if not timeline_path.is_file():
         raise FileNotFoundError(f'timeline file not found: {args.timeline}')
+    inputs_path = Path(args.inputs).expanduser()
+    if not inputs_path.is_file():
+        raise FileNotFoundError(f'inputs file not found: {args.inputs}')
+    qa_level = load_qa_level(inputs_path.resolve())
+    media.ensure_media_binaries()
     output_dir = Path(args.output_dir).expanduser()
     frames_dir = output_dir / 'frames'
     frames_dir.mkdir(parents=True, exist_ok=True)
@@ -239,8 +251,9 @@ def main() -> int:
 
     duration_s = media.probe_duration(video_path.resolve(), timeout=FFPROBE_TIMEOUT_SECONDS)
     scenes = load_scenes(timeline_path.resolve())
-    specs = build_frame_specs(scenes, args.qa_level, duration_s)
-    log(f'Extracting {len(specs)} frame(s) from {video_path} (qa_level={args.qa_level})...')
+    extraction_level = 'strict' if qa_level == 'strict' else 'standard'
+    specs = build_frame_specs(scenes, extraction_level, duration_s)
+    log(f'Extracting {len(specs)} frame(s) from {video_path} (qa_level={qa_level})...')
     for index, spec in enumerate(specs):
         frame_path = frames_dir / f'frame_{index + 1:03d}.jpg'
         extract_frame(video_path.resolve(), spec.time_s, frame_path)
@@ -252,7 +265,8 @@ def main() -> int:
         {
             'success': True,
             'output_dir': str(output_dir.resolve()),
-            'qa_level': args.qa_level,
+            'qa_level': qa_level,
+            'vision_check_required': qa_level != 'quick',
             'frame_count': len(specs),
             'sheet_count': len(sheet_paths),
             'sheets': [str(path.resolve()) for path in sheet_paths],

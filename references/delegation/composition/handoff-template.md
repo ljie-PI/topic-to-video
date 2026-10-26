@@ -39,7 +39,7 @@
     --design-doc modules/designs/<design>/<design>.md \
     --subtitle-units {work_dir}/{topic_name}/transcribe/subtitle-units.json \
     --timeline {work_dir}/{topic_name}/transcribe/timeline.json
-- 每个 scene 的峰值时刻截一张快照目检
+- 每个 scene 的中点截一张快照目检
 
 ## Required References
 
