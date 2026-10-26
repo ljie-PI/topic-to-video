@@ -9,17 +9,17 @@ Usage:
 import argparse
 import json
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any, Dict, List
+
+import cli
 
 TOOL_NAME = 'video-download'
 
 VIDEO_EXTS = {'.mp4', '.webm', '.mov', '.mkv', '.m4v', '.avi'}
 
 
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
+log = cli.make_logger(TOOL_NAME)
 
 
 def probe_video_dimensions(path: str) -> Dict[str, Any]:
@@ -82,7 +82,7 @@ def probe_video_dimensions(path: str) -> Dict[str, Any]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Download a video and subtitles with yt-dlp.')
+    parser = cli.JsonArgumentParser(TOOL_NAME, description='Download a video and subtitles with yt-dlp.')
     parser.add_argument('--url', required=True, help='Video URL to download')
     parser.add_argument('--output-dir', default='downloads', help='Output directory (default: downloads)')
     parser.add_argument(
@@ -237,4 +237,4 @@ def main() -> int:
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    raise SystemExit(cli.run(main, TOOL_NAME))

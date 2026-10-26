@@ -37,12 +37,10 @@ import json
 import math
 import shutil
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
-
+import cli
 from timeline_scenes import normalize_scenes
 
 TOOL_NAME = 'make-contact-sheet'
@@ -70,24 +68,11 @@ class FrameSpec:
     time_s: float
 
 
-class ArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'Argument error: {message}')
-        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
-        self.exit(2)
-
-
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
-
-
-def print_json(payload: dict[str, object]) -> int:
-    print(json.dumps(payload, ensure_ascii=False))
-    return 0 if payload.get('success') else 1
+log = cli.make_logger(TOOL_NAME)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = ArgumentParser(description='Extract per-scene frames and montage 2x2 contact sheets.')
+    parser = cli.JsonArgumentParser(TOOL_NAME, description='Extract per-scene frames and montage 2x2 contact sheets.')
     parser.add_argument('--video', required=True, help='Rendered video file.')
     parser.add_argument('--timeline', required=True, help='timeline.json with a scenes list.')
     parser.add_argument('--output-dir', default='qa', help='Output directory for sheets (default: qa).')
@@ -199,6 +184,8 @@ def extract_frame(video_path: Path, time_s: float, output_path: Path) -> None:
 
 def annotate_frame(image_path: Path, spec: FrameSpec) -> None:
     """Draw a black annotation strip (scene_id, kind, timestamp) onto the frame."""
+    from PIL import Image, ImageDraw, ImageFont
+
     with Image.open(image_path) as image:
         frame = image.convert('RGB')
     width, height = frame.size
@@ -219,6 +206,8 @@ def annotate_frame(image_path: Path, spec: FrameSpec) -> None:
 
 
 def scale_to_width(image: Image.Image, width: int) -> Image.Image:
+    from PIL import Image
+
     if image.width == width:
         return image
     height = round(image.height * width / image.width)
@@ -228,6 +217,8 @@ def scale_to_width(image: Image.Image, width: int) -> Image.Image:
 def build_sheets(
     frames_dir: Path, specs: list[FrameSpec], output_dir: Path
 ) -> tuple[list[Path], list[dict[str, object]]]:
+    from PIL import Image
+
     sheet_paths = []
     mapping = []
     sheet_count = math.ceil(len(specs) / FRAMES_PER_SHEET)
@@ -292,7 +283,7 @@ def main() -> int:
 
         sheet_paths, mapping = build_sheets(frames_dir, specs, output_dir)
         log(f'Wrote {len(sheet_paths)} sheet(s) to {output_dir}')
-        return print_json(
+        cli.print_json(
             {
                 'success': True,
                 'output_dir': str(output_dir.resolve()),
@@ -303,6 +294,7 @@ def main() -> int:
                 'frames': mapping,
             }
         )
+        return 0
     except subprocess.TimeoutExpired as exc:
         command_name = exc.cmd[0] if isinstance(exc.cmd, list) and exc.cmd else 'command'
         timeout_seconds = getattr(exc, 'timeout', None) or FFMPEG_TIMEOUT_SECONDS
@@ -317,8 +309,9 @@ def main() -> int:
 
 def error_json(message: str) -> int:
     log(message)
-    return print_json({'success': False, 'error': message})
+    cli.print_json({'success': False, 'error': message})
+    return 1
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    raise SystemExit(cli.run(main, TOOL_NAME))

@@ -50,11 +50,12 @@ import argparse
 import json
 import os
 import subprocess
-import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
+
+import cli
 
 TOOL_NAME = 'gemini-deep-research'
 DEFAULT_CDP_URL = 'http://localhost:9222'
@@ -102,15 +103,7 @@ SEL = {
 # I/O helpers
 # ---------------------------------------------------------------------------
 
-class ArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'Argument error: {message}')
-        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
-        self.exit(2)
-
-
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
+log = cli.make_logger(TOOL_NAME)
 
 
 def fail(message: str, exit_code: int = 1, failed_step: Optional[int] = None,
@@ -121,12 +114,12 @@ def fail(message: str, exit_code: int = 1, failed_step: Optional[int] = None,
         obj['failed_step'] = failed_step
     if extra:
         obj.update(extra)
-    print(json.dumps(obj, ensure_ascii=False))
+    cli.print_json(obj)
     raise SystemExit(exit_code)
 
 
 def parse_args() -> argparse.Namespace:
-    p = ArgumentParser(description='Gemini Deep Research automation (Playwright over CDP).')
+    p = cli.JsonArgumentParser(TOOL_NAME, description='Gemini Deep Research automation (Playwright over CDP).')
     p.add_argument('--prompt', default=None, help='Research prompt to submit to Gemini Deep Research.')
     p.add_argument('--output-dir', default=None, help='Directory for report and sources output files.')
     p.add_argument('--self-check', action='store_true',
@@ -464,8 +457,9 @@ def run_self_check(args: argparse.Namespace, browser: Any) -> None:
 def run(args: argparse.Namespace) -> None:
     from playwright.sync_api import sync_playwright
 
-    output_dir = Path(args.output_dir).expanduser()
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = Path(args.output_dir).expanduser() if args.output_dir else None
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
     start = args.start_from_step
 
     with sync_playwright() as pw:
@@ -684,4 +678,4 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(cli.run(main, TOOL_NAME))

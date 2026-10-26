@@ -256,6 +256,27 @@ def test_missing_composition_exits_1(tmp_path: Path):
     assert result['success'] is False
 
 
+def test_invalid_timeline_scene_is_skipped_with_warning(tmp_path: Path):
+    comp = write_composition(
+        tmp_path,
+        [scene('s1', 0.0, 10.0, CLEAN_SCENE)],
+    )
+    timeline = {
+        'scenes': [
+            {'scene_id': 'broken', 'end_s': 5.0},
+            {'scene_id': 's1', 'begin_s': 0.0, 'end_s': 10.0},
+        ]
+    }
+
+    proc, result = run_check(tmp_path, comp, timeline=timeline)
+
+    assert proc.returncode == 0, proc.stderr
+    assert result['success'] is True
+    assert 'Traceback' not in proc.stderr
+    assert any('broken' in warning and 'skipped' in warning for warning in result['warnings'])
+    assert [scene['scene_id'] for scene in result['scenes_checked']] == ['s1']
+
+
 def test_scenes_fall_back_to_dom_roots_without_timeline(tmp_path: Path):
     comp = write_composition(
         tmp_path,

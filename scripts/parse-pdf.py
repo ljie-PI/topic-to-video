@@ -30,7 +30,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 import zipfile
@@ -38,7 +37,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-import requests
+import cli
 
 TOOL_NAME = 'parse-pdf'
 POLL_INTERVAL_S = 5
@@ -50,25 +49,17 @@ API_BASE = 'https://mineru.net/api/v4'
 # I/O helpers
 # ---------------------------------------------------------------------------
 
-class ArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'Argument error: {message}')
-        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
-        self.exit(2)
-
-
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
+log = cli.make_logger(TOOL_NAME)
 
 
 def fail(message: str, exit_code: int = 1) -> None:
     log(message)
-    print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
+    cli.print_json({'success': False, 'error': message})
     raise SystemExit(exit_code)
 
 
 def parse_args() -> argparse.Namespace:
-    p = ArgumentParser(description='MinerU PDF paper parser.')
+    p = cli.JsonArgumentParser(TOOL_NAME, description='MinerU PDF paper parser.')
     group = p.add_mutually_exclusive_group(required=True)
     group.add_argument('--url', help='Public URL to a PDF.')
     group.add_argument('--pdf', help='Local path to a PDF file.')
@@ -99,6 +90,8 @@ def cloud_headers(token: str) -> dict[str, str]:
 
 def cloud_extract_url(url: str, token: str, model_version: str) -> str:
     """Submit a URL extraction task. Returns task_id."""
+    import requests
+
     resp = requests.post(
         f'{API_BASE}/extract/task',
         headers=cloud_headers(token),
@@ -123,6 +116,8 @@ def cloud_extract_url(url: str, token: str, model_version: str) -> str:
 
 def cloud_extract_file(pdf_path: str, token: str, model_version: str) -> str:
     """Upload a local file and submit extraction. Returns task_id."""
+    import requests
+
     filename = os.path.basename(pdf_path)
 
     # Step 1: get pre-signed upload URL
@@ -169,6 +164,8 @@ def cloud_extract_file(pdf_path: str, token: str, model_version: str) -> str:
 
 def cloud_poll(task_id: str, token: str) -> dict[str, Any]:
     """Poll until task is done or timeout. Returns task result data."""
+    import requests
+
     deadline = time.time() + POLL_TIMEOUT_S
     while time.time() < deadline:
         resp = requests.get(
@@ -193,6 +190,8 @@ def cloud_poll(task_id: str, token: str) -> dict[str, Any]:
 
 def cloud_download_zip(task_data: dict[str, Any], dest_dir: str) -> str:
     """Download and unzip cloud result. Returns path to extracted output dir."""
+    import requests
+
     zip_url = task_data.get('full_zip_url')
     if not zip_url:
         raise RuntimeError(f'no full_zip_url in task data: {task_data}')
@@ -252,6 +251,8 @@ def run_local(args: argparse.Namespace) -> tuple:
 
         # If URL, download the PDF first
         if args.url:
+            import requests
+
             log(f'downloading PDF from {args.url}...')
             resp = requests.get(args.url, timeout=120, stream=True)
             resp.raise_for_status()
@@ -567,7 +568,7 @@ def main() -> None:
         'backend': backend,
         'manifest_entry': entry,
     }
-    print(json.dumps(result, ensure_ascii=False))
+    cli.print_json(result)
     log(f'done: {figure_count} figures, {table_count} tables')
 
     # Cleanup temp dirs
@@ -576,4 +577,4 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(cli.run(main, TOOL_NAME))

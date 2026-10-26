@@ -56,9 +56,11 @@ import argparse
 import json
 import os
 import re
-import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+import cli
+from timeline_scenes import normalize_scenes
 
 TOOL_NAME = 'check-composition'
 
@@ -92,20 +94,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 SNAPSHOT_JS_PATH = SCRIPT_DIR / 'check-composition-snapshot.js'
 
 
-class ArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'Argument error: {message}')
-        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
-        self.exit(2)
-
-
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
+log = cli.make_logger(TOOL_NAME)
 
 
 def fail(message: str, exit_code: int = 1) -> None:
     log(message)
-    print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
+    cli.print_json({'success': False, 'error': message})
     raise SystemExit(exit_code)
 
 
@@ -120,7 +114,7 @@ def parse_viewport(value: str) -> Tuple[int, int]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = ArgumentParser(description='Pre-render DOM checks for a composition.')
+    parser = cli.JsonArgumentParser(TOOL_NAME, description='Pre-render DOM checks for a composition.')
     parser.add_argument(
         'composition',
         nargs='?',
@@ -217,21 +211,6 @@ def load_subtitle_units(path: Optional[str]) -> List[Dict[str, Any]]:
         )
     units.sort(key=lambda unit: unit['begin_s'])
     return units
-
-
-def load_timeline_scenes(path: Optional[str]) -> List[Dict[str, Any]]:
-    scenes = []
-    for scene in load_json_object_list(path, 'scenes', required=False):
-        if 'scene_id' not in scene:
-            continue
-        scenes.append(
-            {
-                'scene_id': str(scene['scene_id']),
-                'begin_s': float(scene['begin_s']),
-                'end_s': float(scene['end_s']),
-            }
-        )
-    return scenes
 
 
 def resolve_composition_path(raw_path: str) -> Tuple[Path, Path]:
@@ -670,6 +649,7 @@ def build_report(
     font_floors: Tuple[int, int],
     subtitle_units: List[Dict[str, Any]],
     viewport: Tuple[int, int],
+    warnings: List[str],
 ) -> Dict[str, Any]:
     findings: List[Dict[str, str]] = []
     checked: List[Dict[str, Any]] = []
@@ -699,6 +679,7 @@ def build_report(
         'min_ui_font_size': font_floors[1],
         'scenes_checked': checked,
         'findings': findings,
+        'warnings': warnings,
     }
 
 
@@ -716,7 +697,10 @@ def main() -> None:
         layout = load_layout(args.layout)
         font_floors = load_font_floors(args)
         subtitle_units = load_subtitle_units(args.subtitle_units)
-        timeline_scenes = load_timeline_scenes(args.timeline)
+        timeline_data = json.loads(Path(args.timeline).read_text(encoding='utf-8')) if args.timeline else {}
+        timeline_scenes, timeline_warnings = normalize_scenes(timeline_data)
+        for warning in timeline_warnings:
+            log(f'timeline scenes: {warning}')
     except (ValueError, OSError, json.JSONDecodeError) as exc:
         fail(str(exc), exit_code=1)
 
@@ -759,16 +743,17 @@ def main() -> None:
             font_floors,
             subtitle_units,
             viewport,
+            timeline_warnings,
         )
         if args.output:
             output_path = Path(args.output).expanduser().resolve()
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
             log(f'Wrote {output_path}')
-        print(json.dumps(report, ensure_ascii=False))
+        cli.print_json(report)
     except Exception as exc:
         fail(str(exc), exit_code=1)
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(cli.run(main, TOOL_NAME))

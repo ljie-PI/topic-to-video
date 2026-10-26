@@ -12,11 +12,14 @@ from __future__ import annotations
 
 import importlib.util
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
 
-CHECK_COMPOSITION = Path(__file__).resolve().parent.parent / 'scripts' / 'check-composition.py'
+SCRIPTS_DIR = Path(__file__).resolve().parent.parent / 'scripts'
+sys.path.insert(0, str(SCRIPTS_DIR))
+CHECK_COMPOSITION = SCRIPTS_DIR / 'check-composition.py'
 
 
 def find_chrome() -> str | None:
