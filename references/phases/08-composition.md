@@ -10,7 +10,7 @@ Phase 7 的 `voice_clone/narration.mp3` + `transcribe/subtitle-units.json` / `tr
 
 ## 完成判据
 
-运行 `pipeline-status` 后，Phase 8 不再是 `next_phase`。状态脚本替你判定：`composition/storyboard.md` 非空；`composition/index.html` 存在；`composition/compositions/` 里至少有一个文件；`composition/check-composition.json` 的 `verdict` 为 `pass`；`composition/renders/final.mp4` 存在且非空。状态脚本不判定的两项由主 agent 抽查（见 8.4）：`npx hyperframes check` 无错误；storyboard 的每个 scene 都标注了所用的 content 区域。
+运行 `pipeline-status` 后，Phase 8 不再是 `next_phase`。状态脚本替你判定：`composition/storyboard.md` 非空；`composition/index.html` 存在；`composition/compositions/` 里至少有一个文件；`composition/check-composition.json` 的 `verdict` 为 `pass`，且修改时间不早于 `composition/index.html` 和 `composition/compositions/` 下任一文件（改过画面就要重跑 check-composition 并保存报告）；`composition/renders/final.mp4` 存在且非空。状态脚本不判定的两项由主 agent 抽查（见 8.4）：`npx hyperframes check` 无错误；storyboard 的每个 scene 都标注了所用的 content 区域。
 
 ## 下一步
 

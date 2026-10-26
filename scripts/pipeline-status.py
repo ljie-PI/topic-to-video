@@ -10,28 +10,52 @@ phase.
 
 Phase 6's deterministic rules are checked here too, so no agent computes them
 by hand: script.txt length against inputs.json's duration, scene-plan
-paragraphs against script.txt's paragraphs, and scene-plan material refs
-against the catalog. Phase 8 additionally requires the saved
-check-composition report to say pass.
+paragraphs against script.txt's paragraphs, the scene-plan material refs
+against the catalog, and the character counts recorded in
+narration-offsets.json against script.txt and narration.txt. Phase 8
+additionally requires the saved check-composition report to say pass and not
+to be older than index.html or any file under compositions/.
+
+Stale detection: {workspace}/.pipeline/stamps.json (written only by this
+script) records, for each completed phase, the sha256 fingerprints of the
+upstream files and inputs.json fields it was built from, and of its own
+products. A phase whose upstream changed while its products did not is stale:
+it was built from an older upstream. Phases are judged in order; the first one
+that is missing, corrupt or stale becomes next_phase, and every later
+applicable phase is pending: it is not checked, not stamped and not reported
+as completed. --restamp <phase_id> accepts the current products of a phase as
+built from the current upstream (its products must pass their checks).
 
 Usage:
-  python3 scripts/pipeline-status.py <workspace_dir>
+  python3 scripts/pipeline-status.py <workspace_dir> [--restamp <phase_id>]
 
 workspace_dir is required: the commands in SKILL.md run from the skill root, so
 the current directory is never the project workspace. Project workspaces live
 outside this repo; only the doc paths in the output are repo-relative.
 
-Output: one JSON document on stdout.
+Output: one JSON document on stdout. Besides the legacy completed_phases /
+skipped_phases / missing_products / corrupt_products it carries
+  phases          [{id, status}] for every phase; status is completed,
+                  skipped, missing, corrupt, stale or pending
+  stale_phases, pending_phases
+  next_phase      {id, title, doc, reason, problems}; reason is missing,
+                  corrupt or stale, and a stale phase adds changed_upstream
+                  (the upstream keys whose fingerprint changed)
 Exit codes: 0 = success (a next phase exists, or the pipeline is complete),
-1 = runtime error (workspace unreadable), 2 = invalid arguments.
+1 = runtime error (workspace unreadable or not writable, unusable stamps.json,
+--restamp on a phase whose products do not pass), 2 = invalid arguments.
 """
 from __future__ import annotations
 
 import argparse
+import copy
+import hashlib
 import json
 import math
+import os
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -45,6 +69,13 @@ SKILL_ROOT = Path(__file__).resolve().parent.parent
 STATUS_OK = 'ok'
 STATUS_MISSING = 'missing'
 STATUS_CORRUPT = 'corrupt'
+
+# Phase statuses in the output: a phase whose products are missing or corrupt
+# takes the matching STATUS_ value; the rest are named here.
+PHASE_COMPLETED = 'completed'
+PHASE_SKIPPED = 'skipped'
+PHASE_STALE = 'stale'
+PHASE_PENDING = 'pending'
 
 INPUTS_REQUIRED_FIELDS = [
     'source',
@@ -64,6 +95,18 @@ INPUTS_REQUIRED_FIELDS = [
 QA_LEVELS = {'quick', 'standard', 'strict'}
 
 PAPER_MODES = {'paper'}
+
+# {workspace}/.pipeline/ is this script's own state; only this script writes it.
+# stamps.json records, per completed phase, the fingerprints of the upstream it
+# was built from and of the products it holds.
+STAMPS_PATH = '.pipeline/stamps.json'
+STAMPS_VERSION = 1
+
+# Fingerprint of an upstream file that does not exist (optional upstream).
+ABSENT = 'absent'
+
+# An upstream key "inputs.json#<field>" names one field of inputs.json.
+INPUTS_FIELD_PREFIX = 'inputs.json#'
 
 # Phase 6's length rule: the display draft's non-blank characters must be within
 # +-15% of duration x 60 s x 7.5 chars/s (speech_rate=1.4).
@@ -116,6 +159,16 @@ def parse_args() -> argparse.Namespace:
         description='Scan a topic-to-video workspace and report the next pipeline phase.'
     )
     parser.add_argument('workspace', help='Project workspace directory ({work_dir}/{topic_name}).')
+    parser.add_argument(
+        '--restamp',
+        metavar='PHASE_ID',
+        choices=[phase['id'] for phase in PHASES],
+        help=(
+            "Accept a phase's current products as built from the current upstream: rewrite its "
+            'stamp, then report the status as usual. For a stale phase whose products need no '
+            'regeneration. All products of the phase must pass their checks.'
+        ),
+    )
     return parser.parse_args()
 
 
@@ -438,10 +491,17 @@ def check_lexicon_product(ws: Path, relpath: str) -> CheckResult:
 NARRATION_OFFSETS_VERSION = 1
 
 
+# The character counts make-narration records in the offset table, and the file each one counts.
+OFFSETS_LENGTH_SOURCES = (('script_length', 'script.txt'), ('narration_length', 'narration.txt'))
+
+
 def check_narration_offsets(ws: Path, relpath: str) -> CheckResult:
     """narration-offsets.json: make-narration's offset table, a required input
-    of Phase 7's align-narration. Only the envelope is checked here:
-    {version: 1, segments: [...]}."""
+    of Phase 7's align-narration. The envelope is {version: 1, script_length,
+    narration_length, segments: [...]} with at least one segment; the two
+    lengths must equal the character counts of script.txt and narration.txt as
+    they are now, which catches a script.txt edited without re-running
+    make-narration before Phase 7's align-narration rejects it."""
     result, data = read_json_product(ws, relpath)
     if not result.ok:
         return result
@@ -453,6 +513,19 @@ def check_narration_offsets(ws: Path, relpath: str) -> CheckResult:
         )
     if not isinstance(data.get('segments'), list):
         return CheckResult(STATUS_CORRUPT, 'segments is not a list')
+    if not data['segments']:
+        return CheckResult(STATUS_CORRUPT, 'segments is an empty list')
+    for field, source in OFFSETS_LENGTH_SOURCES:
+        recorded = data.get(field)
+        if isinstance(recorded, bool) or not isinstance(recorded, int):
+            return CheckResult(STATUS_CORRUPT, f'{field} must be an integer, got {recorded!r}')
+        source_result, text = read_nonempty_text(ws, source)
+        if source_result.ok and len(text) != recorded:  # otherwise the source is reported on its own
+            return CheckResult(
+                STATUS_CORRUPT,
+                f'{field} is {recorded} but {source} has {len(text)} characters: {source} and this offset '
+                'table no longer belong together, re-run scripts/make-narration.py',
+            )
     return OK
 
 
@@ -589,26 +662,47 @@ def check_timeline(ws: Path, relpath: str) -> CheckResult:
     return OK
 
 
+def visible_files(directory: Path) -> list[Path]:
+    """The files under `directory` at any depth; hidden ones such as .DS_Store are left out."""
+    return [
+        item
+        for item in directory.rglob('*')
+        if item.is_file() and not any(part.startswith('.') for part in item.relative_to(directory).parts)
+    ]
+
+
 def check_directory_product(ws: Path, relpath: str) -> CheckResult:
-    """A directory holding at least one visible file at any depth (hidden files
-    such as .DS_Store do not count)."""
+    """A directory holding at least one visible file at any depth."""
     path = ws / relpath
     if not path.exists():
         return CheckResult(STATUS_MISSING)
     if not path.is_dir():
         return CheckResult(STATUS_CORRUPT, 'not a directory')
-    has_file = any(
-        item.is_file() and not any(part.startswith('.') for part in item.relative_to(path).parts)
-        for item in path.rglob('*')
-    )
-    if not has_file:
+    if not visible_files(path):
         return CheckResult(STATUS_CORRUPT, 'directory has no files')
     return OK
 
 
+# What check-composition looks at; the saved report must not be older than any of it.
+COMPOSITION_SOURCES = ('composition/index.html', 'composition/compositions')
+
+
+def newest_composition_source(ws: Path) -> Path | None:
+    files: list[Path] = []
+    for relpath in COMPOSITION_SOURCES:
+        path = ws / relpath
+        if path.is_dir():
+            files.extend(visible_files(path))
+        elif path.is_file():
+            files.append(path)
+    return max(files, key=lambda path: path.stat().st_mtime_ns, default=None)
+
+
 def check_composition_report(ws: Path, relpath: str) -> CheckResult:
     """composition/check-composition.json: the saved stdout of the composition
-    agent's last check-composition run; its verdict must be pass."""
+    agent's last check-composition run; its verdict must be pass, and it must
+    not be older than index.html or any file under compositions/ (a pass that
+    predates the last edit says nothing about the current composition)."""
     result, data = read_json_product(ws, relpath)
     if not result.ok:
         return result
@@ -616,6 +710,13 @@ def check_composition_report(ws: Path, relpath: str) -> CheckResult:
         return CheckResult(STATUS_CORRUPT, 'JSON root is not an object')
     if data.get('verdict') != 'pass':
         return CheckResult(STATUS_CORRUPT, f'verdict must be "pass", got {data.get("verdict")!r}')
+    newest = newest_composition_source(ws)
+    if newest is not None and newest.stat().st_mtime_ns > (ws / relpath).stat().st_mtime_ns:
+        return CheckResult(
+            STATUS_CORRUPT,
+            f'older than {newest.relative_to(ws).as_posix()}: the composition changed after check-composition '
+            'last ran, re-run it and save the report',
+        )
     return OK
 
 
@@ -655,6 +756,7 @@ PHASES: list[dict[str, Any]] = [
         'id': '1-gather-inputs',
         'title': '收集输入',
         'doc': 'references/phases/01-gather-inputs.md',
+        'upstream': [],
         'products': {'inputs.json': check_inputs_product},
     },
     {
@@ -662,12 +764,19 @@ PHASES: list[dict[str, Any]] = [
         'title': '解析论文（仅论文模式）',
         'doc': 'references/phases/02-paper-parse.md',
         'conditional': 'paper',
+        'upstream': ['inputs.json#source', 'inputs.json#input_mode'],
         'products': {'harvest_page/main-paper/metadata.json': check_paper_metadata},
     },
     {
         'id': '3-research',
         'title': '主题调研',
         'doc': 'references/phases/03-research.md',
+        'upstream': [
+            'inputs.json#source',
+            'inputs.json#input_mode',
+            'inputs.json#language',
+            'harvest_page/main-paper/metadata.json',  # optional: paper mode only
+        ],
         'products': {'research-brief.md': check_text_product},
     },
     {
@@ -675,6 +784,7 @@ PHASES: list[dict[str, Any]] = [
         'title': '素材抓取（可选）',
         'doc': 'references/phases/04-material-harvest.md',
         'conditional': 'fetch',
+        'upstream': ['research-brief.md'],
         'products': {'harvest_page/manifest.json': check_harvest_manifest},
     },
     {
@@ -682,12 +792,22 @@ PHASES: list[dict[str, Any]] = [
         'title': '素材 catalog',
         'doc': 'references/phases/05-material-catalog.md',
         'conditional': 'fetch',
+        'upstream': ['harvest_page/manifest.json', 'research-brief.md'],
         'products': {'material-catalog.json': check_material_catalog},
     },
     {
         'id': '6-script-scene-plan',
         'title': '脚本与场景规划（委派）',
         'doc': 'references/phases/06-script-scene-plan.md',
+        'upstream': [
+            'research-brief.md',
+            'material-catalog.json',  # optional: absent when fetch_materials is false
+            'inputs.json#duration',
+            'inputs.json#language',
+            'inputs.json#input_mode',
+            'inputs.json#template',
+            'narration-instructions.md',  # optional
+        ],
         'products': {
             'script.txt': check_script_text,
             'tts-lexicon.json': check_lexicon_product,
@@ -700,6 +820,13 @@ PHASES: list[dict[str, Any]] = [
         'id': '7-voice-subtitles',
         'title': '配音与字幕',
         'doc': 'references/phases/07-voice-subtitles.md',
+        'upstream': [
+            'narration.txt',
+            'narration-offsets.json',
+            'script.txt',
+            'scene-plan.json',
+            'inputs.json#layout',
+        ],
         'products': {
             'voice_clone/narration.mp3': check_file_product,
             'transcribe/transcript.json': check_transcript,
@@ -711,6 +838,20 @@ PHASES: list[dict[str, Any]] = [
         'id': '8-composition',
         'title': 'composition（委派）',
         'doc': 'references/phases/08-composition.md',
+        'upstream': [
+            'voice_clone/narration.mp3',
+            'transcribe/subtitle-units.json',
+            'transcribe/timeline.json',
+            'material-catalog.json',  # optional: absent when fetch_materials is false
+            'scene-plan.json',
+            'script.txt',
+            'inputs.json#design',
+            'inputs.json#layout',
+            'inputs.json#template',
+            'inputs.json#orientation',
+            'composition-instructions.md',  # optional
+            'style-prompt.md',  # optional: legacy projects
+        ],
         'products': {
             'composition/storyboard.md': check_text_product,
             'composition/index.html': check_file_product,
@@ -723,6 +864,7 @@ PHASES: list[dict[str, Any]] = [
         'id': '9-check-mix',
         'title': '检查与混音',
         'doc': 'references/phases/09-check-mix.md',
+        'upstream': ['composition/renders/final.mp4', 'inputs.json#qa_level'],
         'products': {
             'composition/renders/final_with_bgm.mp4': check_file_product,
             'qa/qa-report.json': check_qa_report,
@@ -749,6 +891,118 @@ def phase_applies(phase: dict[str, Any], inputs: dict[str, Any] | None) -> bool:
     return True
 
 
+# --- fingerprints and stamps -----------------------------------------------------
+
+
+class Fingerprinter:
+    """sha256 fingerprints of a workspace's files and inputs.json fields.
+
+    One instance serves one run, so a file used by several phases (final.mp4 is
+    a product of Phase 8 and an upstream of Phase 9) is read once.
+    """
+
+    def __init__(self, ws: Path) -> None:
+        self.ws = ws
+        self._files: dict[str, str] = {}
+        _, data = read_json_product(ws, 'inputs.json')
+        self._inputs: dict[str, Any] = data if isinstance(data, dict) else {}
+
+    def file(self, relpath: str) -> str:
+        if relpath not in self._files:
+            path = self.ws / relpath
+            self._files[relpath] = file_sha256(path) if path.is_file() else ABSENT
+        return self._files[relpath]
+
+    def inputs_field(self, name: str) -> str:
+        if name not in self._inputs:
+            return ABSENT
+        return text_sha256(json.dumps(self._inputs[name], sort_keys=True, ensure_ascii=False))
+
+    def upstream(self, phase: dict[str, Any]) -> dict[str, str]:
+        return {
+            key: self.inputs_field(key[len(INPUTS_FIELD_PREFIX):])
+            if key.startswith(INPUTS_FIELD_PREFIX)
+            else self.file(key)
+            for key in phase['upstream']
+        }
+
+    def products(self, phase: dict[str, Any]) -> dict[str, str]:
+        """Fingerprints of the phase's file products; directory products are left out."""
+        return {
+            relpath: self.file(relpath)
+            for relpath in phase['products']
+            if (self.ws / relpath).is_file()
+        }
+
+
+def text_sha256(text: str) -> str:
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+class Stamps:
+    """{ws}/.pipeline/stamps.json: {"version": 1, "phases": {<phase_id>: {upstream, products, stamped_at}}}."""
+
+    def __init__(self, ws: Path) -> None:
+        self.path = ws / STAMPS_PATH
+        self.phases: dict[str, dict[str, Any]] = self._load()
+        self._saved = copy.deepcopy(self.phases)
+
+    def _load(self) -> dict[str, dict[str, Any]]:
+        if not self.path.exists():
+            return {}
+        try:
+            data = json.loads(self.path.read_text(encoding='utf-8'))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(self._unusable(f'invalid JSON: {exc}')) from exc
+        if not isinstance(data, dict) or data.get('version') != STAMPS_VERSION:
+            raise ValueError(self._unusable(f'not a version {STAMPS_VERSION} stamp file'))
+        phases = data.get('phases')
+        if not isinstance(phases, dict):
+            raise ValueError(self._unusable('phases is not an object'))
+        for phase_id, stamp in phases.items():
+            parts = ('upstream', 'products')
+            if not isinstance(stamp, dict) or not all(isinstance(stamp.get(part), dict) for part in parts):
+                raise ValueError(self._unusable(f'the stamp of {phase_id} has no upstream / products objects'))
+        return phases
+
+    def _unusable(self, reason: str) -> str:
+        return (
+            f'{STAMPS_PATH} cannot be used ({reason}); '
+            'delete the .pipeline/ directory to stamp the current files afresh'
+        )
+
+    def get(self, phase_id: str) -> dict[str, Any] | None:
+        return self.phases.get(phase_id)
+
+    def put(self, phase_id: str, upstream: dict[str, str], products: dict[str, str]) -> None:
+        self.phases[phase_id] = {
+            'upstream': upstream,
+            'products': products,
+            'stamped_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+        }
+
+    def save(self) -> None:
+        """Write the file when a stamp changed; atomically, so a crash never leaves half a file."""
+        if self.phases == self._saved:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temp = self.path.with_name(self.path.name + '.tmp')
+        temp.write_text(
+            json.dumps({'version': STAMPS_VERSION, 'phases': self.phases}, indent=2, ensure_ascii=False) + '\n',
+            encoding='utf-8',
+        )
+        os.replace(temp, self.path)
+        self._saved = copy.deepcopy(self.phases)
+
+
 def validate_phase(ws: Path, phase: dict[str, Any]) -> dict[str, CheckResult]:
     """Run every product checker of a phase; returns {relpath: CheckResult}
     for the products that failed."""
@@ -760,47 +1014,122 @@ def validate_phase(ws: Path, phase: dict[str, Any]) -> dict[str, CheckResult]:
     return problems
 
 
-def scan_workspace(ws: Path) -> dict[str, Any]:
-    _, inputs = load_inputs(ws)
+def changed_upstream_keys(stamped: dict[str, str], current: dict[str, str]) -> list[str]:
+    """The upstream keys whose fingerprint differs between a stamp and now, in table order."""
+    keys = [*current, *(key for key in stamped if key not in current)]
+    return [key for key in keys if stamped.get(key) != current.get(key)]
 
-    completed: list[str] = []
-    skipped: list[str] = []
+
+def reconcile_stamp(phase: dict[str, Any], stamps: Stamps, fingerprints: Fingerprinter) -> list[str]:
+    """Compare a phase whose products all pass with its stamp.
+
+    Returns the changed upstream keys when the phase is stale (its upstream changed
+    and its products did not), else an empty list. Brings the stamp up to date when
+    the phase is first seen, when its products were edited, or when it was
+    regenerated after its upstream changed.
+    """
+    upstream = fingerprints.upstream(phase)
+    products = fingerprints.products(phase)
+    stamp = stamps.get(phase['id'])
+    if stamp is None:
+        stamps.put(phase['id'], upstream, products)
+        return []
+    changed = changed_upstream_keys(stamp['upstream'], upstream)
+    if stamp['products'] != products:
+        stamps.put(phase['id'], upstream, products)
+        return []
+    return changed
+
+
+def scan_workspace(ws: Path, stamps: Stamps) -> dict[str, Any]:
+    _, inputs = load_inputs(ws)
+    fingerprints = Fingerprinter(ws)
+
+    statuses: list[dict[str, str]] = []
     missing: list[str] = []
     corrupt: list[str] = []
     next_phase: dict[str, Any] | None = None
 
     for phase in PHASES:
         if not phase_applies(phase, inputs):
-            skipped.append(phase['id'])
+            statuses.append({'id': phase['id'], 'status': PHASE_SKIPPED})
+            continue
+        if next_phase is not None:
+            # An earlier phase is unfinished: nothing after it can be trusted yet.
+            statuses.append({'id': phase['id'], 'status': PHASE_PENDING})
             continue
         problems = validate_phase(ws, phase)
         if not problems:
-            completed.append(phase['id'])
+            changed_upstream = reconcile_stamp(phase, stamps, fingerprints)
+            if not changed_upstream:
+                statuses.append({'id': phase['id'], 'status': PHASE_COMPLETED})
+                continue
+            statuses.append({'id': phase['id'], 'status': PHASE_STALE})
+            next_phase = {
+                'id': phase['id'],
+                'title': phase['title'],
+                'doc': phase['doc'],
+                'reason': PHASE_STALE,
+                'changed_upstream': changed_upstream,
+                'problems': {},
+            }
             continue
         for relpath, result in problems.items():
             if result.status == STATUS_MISSING:
                 missing.append(relpath)
             else:
                 corrupt.append(relpath)
-        if next_phase is None:
-            next_phase = {
-                'id': phase['id'],
-                'title': phase['title'],
-                'doc': phase['doc'],
-                'problems': {relpath: result.detail for relpath, result in problems.items()},
-            }
+        # Missing only when nothing is there to repair; any bad file makes the phase corrupt.
+        all_missing = all(result.status == STATUS_MISSING for result in problems.values())
+        reason = STATUS_MISSING if all_missing else STATUS_CORRUPT
+        statuses.append({'id': phase['id'], 'status': reason})
+        next_phase = {
+            'id': phase['id'],
+            'title': phase['title'],
+            'doc': phase['doc'],
+            'reason': reason,
+            'problems': {relpath: result.detail for relpath, result in problems.items()},
+        }
+
+    def ids_with(status: str) -> list[str]:
+        return [entry['id'] for entry in statuses if entry['status'] == status]
 
     return {
         'success': True,
         'workspace': str(ws.resolve()),
         'input_mode': inputs.get('input_mode') if inputs else None,
         'fetch_materials': inputs.get('fetch_materials') if inputs else None,
-        'completed_phases': completed,
-        'skipped_phases': skipped,
+        'phases': statuses,
+        'completed_phases': ids_with(PHASE_COMPLETED),
+        'skipped_phases': ids_with(PHASE_SKIPPED),
+        'stale_phases': ids_with(PHASE_STALE),
+        'pending_phases': ids_with(PHASE_PENDING),
         'next_phase': next_phase,
         'missing_products': missing,
         'corrupt_products': corrupt,
     }
+
+
+def restamp_phase(ws: Path, phase_id: str, stamps: Stamps) -> dict[str, Any] | None:
+    """Rewrite one phase's stamp from the current files.
+
+    Returns None on success, else the failure payload (nothing is written then).
+    """
+    phase = PHASES_BY_ID[phase_id]
+    _, inputs = load_inputs(ws)
+    if not phase_applies(phase, inputs):
+        return {'success': False, 'error': f'cannot restamp {phase_id}: the phase is skipped for this workspace'}
+    problems = validate_phase(ws, phase)
+    if problems:
+        return {
+            'success': False,
+            'error': f'cannot restamp {phase_id}: its products do not pass their checks',
+            'problems': {relpath: result.detail or result.status for relpath, result in problems.items()},
+        }
+    fingerprints = Fingerprinter(ws)
+    stamps.put(phase_id, fingerprints.upstream(phase), fingerprints.products(phase))
+    log(f'restamped {phase_id}')
+    return None
 
 
 def main() -> int:
@@ -811,7 +1140,15 @@ def main() -> int:
             raise FileNotFoundError(f'workspace does not exist: {ws}')
         if not ws.is_dir():
             raise NotADirectoryError(f'workspace is not a directory: {ws}')
-        result = scan_workspace(ws)
+        stamps = Stamps(ws)
+        if args.restamp:
+            failure = restamp_phase(ws, args.restamp, stamps)
+            if failure is not None:
+                log(f"error: {failure['error']}")
+                print_json(failure)
+                return 1
+        result = scan_workspace(ws, stamps)
+        stamps.save()
         print_json(result)
         if result['next_phase'] is None:
             log('all phases complete')

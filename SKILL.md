@@ -20,12 +20,20 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 **禁止预读其他 phase 文档。** 每次只读 `pipeline-status` 指出的那一份 phase 文档；除此之外不要打开 `references/phases/` 下的任何其他文件。
 
-1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`（工作区目录必填）。它输出一个 JSON：已完成的 phase、下一个 phase、要读的文档、缺失 / 损坏的产物。
+1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`（工作区目录必填）。它输出一个 JSON：已完成的 phase、下一个 phase（`next_phase.reason` 说明原因：缺失 / 损坏 / stale）、要读的文档、缺失 / 损坏的产物。
 2. 只读它指出的那一份 phase 文档（`next_phase.doc`）。
 3. 按该文档执行；文档头部的「输入 / 输出 / 完成判据 / 下一步」是自包含的，不需要查其他 phase 文档。
 4. 回到第 1 步，直到脚本报告 `next_phase` 为 `null`（全部完成）。
 
-续跑与回退都由状态脚本驱动：某个 phase 的产物被删掉或写坏时，脚本会自动回退到那个 phase。用户说 "redo phase N" 时，删掉对应产物再跑状态脚本即可。不要自己扫描工作区猜进度，也不要把 Scratchpad 当进度记录——`inputs.json` 和各 phase 产物才是唯一状态。
+续跑、回退与重做都由状态脚本驱动。状态由三部分组成：`inputs.json`、各 phase 的产物，以及 `.pipeline/`（状态脚本记下的上游指纹，**只由状态脚本写，不要手改**）。
+
+- 某个 phase 的产物被删掉或写坏时，脚本回退到那个 phase（`reason` 为 `missing` / `corrupt`）。
+- 产物齐全，但它依赖的上游在它生成之后变过（比如改了 `script.txt`，或改了 `inputs.json` 的 layout），该 phase 判为 `stale`，`changed_upstream` 列出变化的上游，按它的 phase 文档重做。
+- `next_phase` 之后的 phase 一律是 `pending`：不进 `completed_phases`，也不检查；轮到它们时再判断。
+- 用户说 "redo phase N" 时，删掉对应产物或修改上游，再跑状态脚本。
+- 某个 stale 的 phase 确认不用重新生成（比如确定性的重跑得到了字节完全相同的结果）时，运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --restamp <phase_id>`，让脚本按当前文件重写它的指纹；该 phase 的产物必须全部合格，否则退出码为 1。
+
+不要自己扫描工作区猜进度，也不要把 Scratchpad 当进度记录。
 
 ## 核心护栏
 
@@ -70,7 +78,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 ## 输出约定
 
-所有脚本都把 JSON 输出到 stdout，人类可读 log 输出到 stderr，并使用以下退出码：`0`=成功，`1`=运行时错误，`2`=参数非法。`scripts/pipeline-status.py` 遵循同一约定，它的 JSON 额外携带 `completed_phases` / `next_phase` / `missing_products` / `corrupt_products` ——它是整个流程唯一的续跑入口，取代了过去的人工 checkpoint 表。
+所有脚本都把 JSON 输出到 stdout，人类可读 log 输出到 stderr，并使用以下退出码：`0`=成功，`1`=运行时错误，`2`=参数非法。`scripts/pipeline-status.py` 遵循同一约定，它的 JSON 额外携带 `phases` / `completed_phases` / `stale_phases` / `pending_phases` / `next_phase` / `missing_products` / `corrupt_products` ——它是整个流程唯一的续跑入口，取代了过去的人工 checkpoint 表。
 
 共享 Chrome profile：`{work_dir}/chrome_profile/` —— **不要**删除。
 
@@ -78,7 +86,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 | 脚本 | 用途 | 依赖 |
 | --- | --- | --- |
-| `pipeline-status.py` | 扫描工作区，输出已完成 / 下一个 phase、要读的文档、缺失或损坏的产物 | — |
+| `pipeline-status.py` | 扫描工作区，输出已完成 / 下一个 phase、要读的文档、缺失 / 损坏 / stale 的产物；`--restamp <phase_id>` 接受某个 stale phase 的现有产物 | — |
 | `fonts-download.sh` | 把仓库里预置的 WOFF2 字体（`resources/fonts/<design>/`）装进工程，不联网；`--refresh` 才从 Google Fonts 重新下载（维护用） | — |
 | `voice-clone.py` | TTS：把 `narration.txt` 合成 `voice_clone/narration.mp3`；后端由环境变量选择 | 见脚本顶部说明 |
 | `transcribe.py` | ASR：输出带词级时间戳的 transcript；后端由环境变量选择 | 见脚本顶部说明 |
