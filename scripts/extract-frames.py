@@ -13,11 +13,10 @@ from __future__ import annotations
 
 import argparse
 import math
-import shutil
-import subprocess
 from pathlib import Path
 
 import cli
+import media
 
 FFMPEG_TIMEOUT_SECONDS = 300
 FFPROBE_TIMEOUT_SECONDS = 30
@@ -32,11 +31,6 @@ log = cli.make_logger(TOOL_NAME)
 def print_json(payload: dict[str, object]) -> int:
     cli.print_json(payload)
     return 0 if payload.get('success') else 1
-
-
-def error_json(message: str) -> int:
-    log(message)
-    return print_json({'success': False, 'error': message})
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,11 +49,6 @@ def parse_args() -> argparse.Namespace:
         parser.error('--max-width must be greater than 0')
 
     return args
-
-
-def ensure_binary(name: str) -> None:
-    if shutil.which(name) is None:
-        raise FileNotFoundError(f'{name} is not installed or not available on PATH')
 
 
 def resolve_video_path(raw_path: str) -> Path:
@@ -94,33 +83,6 @@ def remove_existing_frames(output_dir: Path) -> None:
             resolved.unlink()
 
 
-def get_duration_seconds(video_path: Path) -> float:
-    log(f'Probing duration for {video_path}...')
-    result = subprocess.run(
-        [
-            'ffprobe',
-            '-v',
-            'error',
-            '-show_entries',
-            'format=duration',
-            '-of',
-            'default=noprint_wrappers=1:nokey=1',
-            str(video_path),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=FFPROBE_TIMEOUT_SECONDS,
-    )
-    duration_text = result.stdout.strip()
-    if not duration_text:
-        raise ValueError('ffprobe returned an empty duration')
-    duration = float(duration_text)
-    if duration <= 0:
-        raise ValueError(f'Invalid video duration: {duration_text}')
-    return duration
-
-
 def timestamp_to_seconds(value: str | None) -> float:
     if not value:
         return 0.0
@@ -144,7 +106,8 @@ def build_ffmpeg_command(
         interval = 1.0
         filter_expr = f"fps=1,scale='min({args.max_width},iw)':-2"
     else:
-        duration = get_duration_seconds(video_path)
+        log(f'Probing duration for {video_path}...')
+        duration = media.probe_duration(video_path)
         interval = float(max(1, math.floor(duration / args.max_frames)))
         filter_expr = f"fps=1/{interval},scale='min({args.max_width},iw)':-2"
 
@@ -182,44 +145,25 @@ def list_frames(output_dir: Path, start_s: float, interval_s: float) -> list[dic
 
 
 def main() -> int:
-    try:
-        args = parse_args()
-        ensure_binary('ffmpeg')
-        ensure_binary('ffprobe')
-        video_path = resolve_video_path(args.video_path)
-        output_dir = prepare_output_dir(args.output_dir)
-        remove_existing_frames(output_dir)
-        command, interval_s = build_ffmpeg_command(args, video_path, output_dir)
-        start_s = timestamp_to_seconds(args.start_time)
-        log(f'Extracting up to {args.max_frames} frames into {output_dir}...')
-        subprocess.run(
-            command,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=FFMPEG_TIMEOUT_SECONDS,
-        )
-        frames = list_frames(output_dir, start_s, interval_s)
-        log(f'Extracted {len(frames)} frame(s)')
-        return print_json(
-            {
-                'success': True,
-                'output_dir': str(output_dir),
-                'frame_count': len(frames),
-                'interval_s': interval_s,
-                'frames': frames,
-            }
-        )
-    except subprocess.TimeoutExpired as exc:
-        command_name = exc.cmd[0] if isinstance(exc.cmd, list) and exc.cmd else 'command'
-        timeout_seconds = getattr(exc, 'timeout', None) or FFMPEG_TIMEOUT_SECONDS
-        return error_json(f'{command_name} timed out after {int(timeout_seconds)} seconds')
-    except subprocess.CalledProcessError as exc:
-        command_name = exc.cmd[0] if isinstance(exc.cmd, list) and exc.cmd else 'command'
-        stderr = (exc.stderr or exc.stdout or '').strip()
-        return error_json(stderr or f'{command_name} command failed')
-    except Exception as exc:
-        return error_json(str(exc))
+    args = parse_args()
+    video_path = resolve_video_path(args.video_path)
+    output_dir = prepare_output_dir(args.output_dir)
+    remove_existing_frames(output_dir)
+    command, interval_s = build_ffmpeg_command(args, video_path, output_dir)
+    start_s = timestamp_to_seconds(args.start_time)
+    log(f'Extracting up to {args.max_frames} frames into {output_dir}...')
+    media.run_ffmpeg(command[1:], timeout=FFMPEG_TIMEOUT_SECONDS)
+    frames = list_frames(output_dir, start_s, interval_s)
+    log(f'Extracted {len(frames)} frame(s)')
+    return print_json(
+        {
+            'success': True,
+            'output_dir': str(output_dir),
+            'frame_count': len(frames),
+            'interval_s': interval_s,
+            'frames': frames,
+        }
+    )
 
 
 if __name__ == '__main__':

@@ -35,12 +35,11 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import shutil
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 import cli
+import media
 from timeline_scenes import normalize_scenes
 
 TOOL_NAME = 'make-contact-sheet'
@@ -79,34 +78,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--qa-level', default='standard', choices=QA_LEVELS, help='standard (default) or strict.')
     args = parser.parse_args()
     return args
-
-
-def ensure_binary(name: str) -> None:
-    if shutil.which(name) is None:
-        raise FileNotFoundError(f'{name} is not installed or not available on PATH')
-
-
-def probe_duration(video_path: Path) -> float:
-    result = subprocess.run(
-        [
-            'ffprobe',
-            '-v',
-            'error',
-            '-show_entries',
-            'format=duration',
-            '-of',
-            'default=noprint_wrappers=1:nokey=1',
-            str(video_path),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=FFPROBE_TIMEOUT_SECONDS,
-    )
-    duration = float(result.stdout.strip())
-    if duration <= 0:
-        raise ValueError(f'invalid video duration: {result.stdout.strip()}')
-    return duration
 
 
 def load_scenes(timeline_path: Path) -> list[dict[str, object]]:
@@ -158,9 +129,8 @@ def build_frame_specs(scenes: list[dict[str, object]], qa_level: str, duration_s
 
 
 def extract_frame(video_path: Path, time_s: float, output_path: Path) -> None:
-    result = subprocess.run(
+    media.run_ffmpeg(
         [
-            'ffmpeg',
             '-hide_banner',
             '-loglevel',
             'error',
@@ -175,9 +145,6 @@ def extract_frame(video_path: Path, time_s: float, output_path: Path) -> None:
             str(FRAME_QUALITY),
             str(output_path),
         ],
-        check=True,
-        capture_output=True,
-        text=True,
         timeout=FFMPEG_TIMEOUT_SECONDS,
     )
 
@@ -256,61 +223,42 @@ def build_sheets(
 
 
 def main() -> int:
-    try:
-        args = parse_args()
-        ensure_binary('ffmpeg')
-        ensure_binary('ffprobe')
-        video_path = Path(args.video).expanduser()
-        if not video_path.is_file():
-            raise FileNotFoundError(f'video file not found: {args.video}')
-        timeline_path = Path(args.timeline).expanduser()
-        if not timeline_path.is_file():
-            raise FileNotFoundError(f'timeline file not found: {args.timeline}')
-        output_dir = Path(args.output_dir).expanduser()
-        frames_dir = output_dir / 'frames'
-        frames_dir.mkdir(parents=True, exist_ok=True)
-        for stale in frames_dir.glob(FRAME_GLOB):
-            stale.unlink()
+    args = parse_args()
+    video_path = Path(args.video).expanduser()
+    if not video_path.is_file():
+        raise FileNotFoundError(f'video file not found: {args.video}')
+    timeline_path = Path(args.timeline).expanduser()
+    if not timeline_path.is_file():
+        raise FileNotFoundError(f'timeline file not found: {args.timeline}')
+    output_dir = Path(args.output_dir).expanduser()
+    frames_dir = output_dir / 'frames'
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    for stale in frames_dir.glob(FRAME_GLOB):
+        stale.unlink()
 
-        duration_s = probe_duration(video_path.resolve())
-        scenes = load_scenes(timeline_path.resolve())
-        specs = build_frame_specs(scenes, args.qa_level, duration_s)
-        log(f'Extracting {len(specs)} frame(s) from {video_path} (qa_level={args.qa_level})...')
-        for index, spec in enumerate(specs):
-            frame_path = frames_dir / f'frame_{index + 1:03d}.jpg'
-            extract_frame(video_path.resolve(), spec.time_s, frame_path)
-            annotate_frame(frame_path, spec)
+    duration_s = media.probe_duration(video_path.resolve(), timeout=FFPROBE_TIMEOUT_SECONDS)
+    scenes = load_scenes(timeline_path.resolve())
+    specs = build_frame_specs(scenes, args.qa_level, duration_s)
+    log(f'Extracting {len(specs)} frame(s) from {video_path} (qa_level={args.qa_level})...')
+    for index, spec in enumerate(specs):
+        frame_path = frames_dir / f'frame_{index + 1:03d}.jpg'
+        extract_frame(video_path.resolve(), spec.time_s, frame_path)
+        annotate_frame(frame_path, spec)
 
-        sheet_paths, mapping = build_sheets(frames_dir, specs, output_dir)
-        log(f'Wrote {len(sheet_paths)} sheet(s) to {output_dir}')
-        cli.print_json(
-            {
-                'success': True,
-                'output_dir': str(output_dir.resolve()),
-                'qa_level': args.qa_level,
-                'frame_count': len(specs),
-                'sheet_count': len(sheet_paths),
-                'sheets': [str(path.resolve()) for path in sheet_paths],
-                'frames': mapping,
-            }
-        )
-        return 0
-    except subprocess.TimeoutExpired as exc:
-        command_name = exc.cmd[0] if isinstance(exc.cmd, list) and exc.cmd else 'command'
-        timeout_seconds = getattr(exc, 'timeout', None) or FFMPEG_TIMEOUT_SECONDS
-        return error_json(f'{command_name} timed out after {int(timeout_seconds)} seconds')
-    except subprocess.CalledProcessError as exc:
-        command_name = exc.cmd[0] if isinstance(exc.cmd, list) and exc.cmd else 'command'
-        stderr = (exc.stderr or exc.stdout or '').strip()
-        return error_json(stderr or f'{command_name} command failed')
-    except Exception as exc:
-        return error_json(str(exc))
-
-
-def error_json(message: str) -> int:
-    log(message)
-    cli.print_json({'success': False, 'error': message})
-    return 1
+    sheet_paths, mapping = build_sheets(frames_dir, specs, output_dir)
+    log(f'Wrote {len(sheet_paths)} sheet(s) to {output_dir}')
+    cli.print_json(
+        {
+            'success': True,
+            'output_dir': str(output_dir.resolve()),
+            'qa_level': args.qa_level,
+            'frame_count': len(specs),
+            'sheet_count': len(sheet_paths),
+            'sheets': [str(path.resolve()) for path in sheet_paths],
+            'frames': mapping,
+        }
+    )
+    return 0
 
 
 if __name__ == '__main__':

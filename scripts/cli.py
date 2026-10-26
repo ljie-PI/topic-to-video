@@ -38,5 +38,9 @@ def run(main: Callable[[], int | None], tool_name: str) -> int:
         raise
     except Exception as exc:
         print(f'[{tool_name}] error: {exc}', file=sys.stderr)
-        print_json({'success': False, 'error': str(exc)})
+        payload = {'success': False, 'error': str(exc)}
+        stderr_tail = getattr(exc, 'stderr_tail', None)
+        if stderr_tail is not None:
+            payload['stderr_tail'] = stderr_tail
+        print_json(payload)
         return 1

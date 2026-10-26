@@ -54,6 +54,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
+import cli
+import media
+
 TOOL_NAME = 'harvest-pages'
 DEFAULT_CDP_URL = 'http://localhost:9222'
 DEFAULT_PROFILE_DIR = './chrome_profile'
@@ -85,25 +88,17 @@ USER_AGENT = (
 # I/O helpers
 # -----------------------------------------------------------------------------
 
-class ArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'Argument error: {message}')
-        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
-        self.exit(2)
-
-
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
+log = cli.make_logger(TOOL_NAME)
 
 
 def fail(message: str, exit_code: int = 1) -> None:
     log(message)
-    print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
+    cli.print_json({'success': False, 'error': message})
     raise SystemExit(exit_code)
 
 
 def parse_args() -> argparse.Namespace:
-    p = ArgumentParser(description='Batch URL material harvester (Playwright over CDP).')
+    p = cli.JsonArgumentParser(TOOL_NAME, description='Batch URL material harvester (Playwright over CDP).')
     p.add_argument('--urls', required=True, nargs='+', help='One or more URLs to harvest.')
     p.add_argument('--output-dir', required=True, help='Batch output root (per-URL subdirs are created underneath).')
     p.add_argument('--no-scroll-record', dest='scroll_record', action='store_false', default=True,
@@ -606,7 +601,9 @@ def primary_scroll_record(browser, url: str, viewport: Tuple[int, int], scroll_d
 
 def cdp_screencast_record(browser, url: str, viewport: Tuple[int, int], scroll_duration: int,
                           page_load_timeout: int, output_dir: Path) -> Tuple[Optional[Path], Optional[str]]:
-    if not shutil.which('ffmpeg'):
+    try:
+        media.ensure_binary(os.environ.get('FFMPEG_BIN', 'ffmpeg'))
+    except media.MediaToolMissing:
         return None, 'cdp_no_ffmpeg'
     rec_dir = output_dir / 'recording'
     frames_dir = rec_dir / 'frames'
@@ -666,9 +663,9 @@ def cdp_screencast_record(browser, url: str, viewport: Tuple[int, int], scroll_d
         str(out_mp4),
     ]
     try:
-        subprocess.run(cmd, check=True, capture_output=True, timeout=180)
-    except subprocess.CalledProcessError as exc:
-        log(f'  ffmpeg failed: {exc.stderr.decode("utf-8", "replace")[:300]}')
+        media.run_ffmpeg(cmd[1:], timeout=180)
+    except media.FfmpegError as exc:
+        log(f'  ffmpeg failed: {exc.stderr_tail[:300]}')
         return None, 'ffmpeg_failed'
 
     # cleanup frames
@@ -678,20 +675,6 @@ def cdp_screencast_record(browser, url: str, viewport: Tuple[int, int], scroll_d
         pass
 
     return out_mp4, 'cdp_screencast'
-
-
-def probe_duration(path: Path) -> Optional[float]:
-    if not shutil.which('ffprobe'):
-        return None
-    try:
-        out = subprocess.check_output(
-            ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-             '-of', 'default=noprint_wrappers=1:nokey=1', str(path)],
-            timeout=15,
-        )
-        return float(out.decode().strip())
-    except Exception:
-        return None
 
 
 # -----------------------------------------------------------------------------
@@ -872,7 +855,10 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
         if record_path is None:
             log(f'  scroll-record failed ({method}); continuing without recording')
         else:
-            dur = probe_duration(record_path) or float(capped)
+            try:
+                dur = media.probe_duration(record_path)
+            except (media.MediaProbeError, media.MediaToolMissing):
+                dur = float(capped)
             scroll_recording = {
                 'local_path': str(record_path.resolve()),
                 'duration_sec': round(dur, 3),
@@ -1129,11 +1115,11 @@ def main() -> None:
     except Exception as exc:
         log(f'manifest.json save failed: {exc}')
 
-    print(json.dumps(manifest, ensure_ascii=False))
+    cli.print_json(manifest)
     log(f'Done. {succeeded}/{len(items)} entries succeeded.')
     if not batch_success:
         raise SystemExit(1)
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(cli.run(main, TOOL_NAME))
