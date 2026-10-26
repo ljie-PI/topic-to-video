@@ -91,6 +91,7 @@ def test_standard_extracts_one_midpoint_frame_per_scene(workspace: Path):
     assert result['sheet_count'] == math.ceil(3 / 4)
     assert len(result['sheets']) == 1
     for frame in result['frames']:
+        assert frame['kind'] == 'midpoint'
         assert Path(frame['image']).is_file()
         assert Path(frame['sheet']).is_file()
     by_scene = {f['scene_id']: f['time_s'] for f in result['frames']}
@@ -147,7 +148,7 @@ def test_strict_adds_entrance_and_cut_point_frames(workspace: Path):
     assert result['vision_check_required'] is True
     kinds = [f['kind'] for f in result['frames']]
     # 3 midpoints + 3 entrances + 2 cut points x (before/mid/after)
-    assert kinds.count('peak') == 3
+    assert kinds.count('midpoint') == 3
     assert kinds.count('entrance') == 3
     assert kinds.count('cut_before') == 2
     assert kinds.count('cut_mid') == 2

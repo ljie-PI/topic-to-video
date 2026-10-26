@@ -118,7 +118,7 @@ def build_frame_specs(scenes: list[dict[str, object]], qa_level: str, duration_s
         begin = scene['begin_s']
         end = scene['end_s']
         midpoint = (begin + end) / 2
-        specs.append(FrameSpec(scene_id=scene_id, kind='peak', time_s=clamp_time(midpoint, duration_s)))
+        specs.append(FrameSpec(scene_id=scene_id, kind='midpoint', time_s=clamp_time(midpoint, duration_s)))
         if qa_level == 'strict':
             entrance = clamp_time(begin + ENTRANCE_OFFSET_S, duration_s)
             specs.append(FrameSpec(scene_id=scene_id, kind='entrance', time_s=entrance))
