@@ -83,6 +83,20 @@ def test_explicit_ffprobe_overrides_environment(clip: Path, monkeypatch: pytest.
     assert result['width'] == 320
 
 
+def test_ensure_media_binaries_validates_ffmpeg_first(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv('FFMPEG_BIN', '/nonexistent-ffmpeg')
+    monkeypatch.setenv('FFPROBE_BIN', '/nonexistent-ffprobe')
+    with pytest.raises(media.MediaToolMissing, match='/nonexistent-ffmpeg'):
+        media.ensure_media_binaries()
+
+
+def test_ensure_media_binaries_validates_ffprobe(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv('FFMPEG_BIN', shutil.which('ffmpeg'))
+    monkeypatch.setenv('FFPROBE_BIN', '/nonexistent-ffprobe')
+    with pytest.raises(media.MediaToolMissing, match='/nonexistent-ffprobe'):
+        media.ensure_media_binaries()
+
+
 def test_run_ffmpeg_returns_completed_process(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv('FFMPEG_BIN', '/nonexistent')
     result = media.run_ffmpeg(['-version'], ffmpeg=shutil.which('ffmpeg'), timeout=30)

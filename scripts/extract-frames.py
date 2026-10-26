@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import math
-import os
 from pathlib import Path
 
 import cli
@@ -147,8 +146,7 @@ def list_frames(output_dir: Path, start_s: float, interval_s: float) -> list[dic
 
 def main() -> int:
     args = parse_args()
-    media.ensure_binary(os.environ.get('FFMPEG_BIN', 'ffmpeg'))
-    media.ensure_binary(os.environ.get('FFPROBE_BIN', 'ffprobe'))
+    media.ensure_media_binaries()
     video_path = resolve_video_path(args.video_path)
     output_dir = prepare_output_dir(args.output_dir)
     remove_existing_frames(output_dir)

@@ -35,7 +35,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -225,8 +224,7 @@ def build_sheets(
 
 def main() -> int:
     args = parse_args()
-    media.ensure_binary(os.environ.get('FFMPEG_BIN', 'ffmpeg'))
-    media.ensure_binary(os.environ.get('FFPROBE_BIN', 'ffprobe'))
+    media.ensure_media_binaries()
     video_path = Path(args.video).expanduser()
     if not video_path.is_file():
         raise FileNotFoundError(f'video file not found: {args.video}')
