@@ -32,6 +32,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 - `next_phase` 之后的 phase 一律是 `pending`：不进 `completed_phases`，也不检查；轮到它们时再判断。
 - 用户说 "redo phase N" 时，删掉对应产物或修改上游，再跑状态脚本。
 - 某个 stale 的 phase 确认不用重新生成（比如确定性的重跑得到了字节完全相同的结果）时，运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --restamp <phase_id>`，让脚本按当前文件重写它的指纹；该 phase 的产物必须全部合格，否则退出码为 1。
+- 输出里 `stamps_reset` 为 `true` 时，`.pipeline/stamps.json` 已损坏并被隔离为 `stamps.json.quarantined`：脚本不会把任何 phase 标为可信，也不会写回指纹。逐个确认 phase 的产物后，用 `--restamp <phase_id>` 重建对应指纹。
 
 不要自己扫描工作区猜进度，也不要把 Scratchpad 当进度记录。
 

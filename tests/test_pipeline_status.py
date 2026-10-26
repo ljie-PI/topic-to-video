@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from composition_hash import composition_sources_fingerprint
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'pipeline-status.py'
 
@@ -104,7 +106,8 @@ def write_text(path: Path, text: str) -> None:
 
 def write_narration(ws: Path, script: str) -> None:
     """What make-narration produces for `script` with nothing to replace: narration.txt
-    equal to the script, and an offset table of one whole-text segment."""
+    equal to the script, and an offset table of one whole-text segment, including
+    the content hashes make-narration records."""
     length = len(script)
     write_text(ws / 'narration.txt', script)
     write_json(
@@ -113,6 +116,8 @@ def write_narration(ws: Path, script: str) -> None:
             'version': 1,
             'script_length': length,
             'narration_length': length,
+            'script_sha256': hashlib.sha256(script.encode('utf-8')).hexdigest(),
+            'narration_sha256': hashlib.sha256(script.encode('utf-8')).hexdigest(),
             'segments': [{'narration_start': 0, 'narration_end': length, 'script_start': 0, 'script_end': length}],
         },
     )
@@ -828,6 +833,9 @@ def test_compositions_dir_with_a_nested_file_is_accepted(tmp_path: Path):
     (tmp_path / 'composition' / 'compositions' / 'scene_1.html').unlink()
     write_text(tmp_path / 'composition' / 'compositions' / 'scene_1' / 'index.html', '<template></template>')
     os.utime(tmp_path / 'composition' / 'check-composition.json')  # check-composition ran after the edit
+    # And the render ran after the check.
+    mtime = (tmp_path / 'composition' / 'check-composition.json').stat().st_mtime_ns + 10**9
+    os.utime(tmp_path / 'composition' / 'renders' / 'final.mp4', ns=(mtime, mtime))
     result = parse_result(run_cli(str(tmp_path)))
     assert '8-composition' in result['completed_phases']
 
@@ -1267,10 +1275,31 @@ def test_stamp_records_upstream_and_product_fingerprints(tmp_path: Path):
     script = phases['6-script-scene-plan']
     assert script['products']['script.txt'] == sha256_of(SCRIPT_TXT)
     assert script['upstream']['research-brief.md'] == sha256_of(RESEARCH_BRIEF)
-    assert script['upstream']['inputs.json#duration'] == field_sha256('5min')
+    assert script['upstream']['inputs.json#duration'] == field_sha256(5.0)  # "5min" normalizes to 5
     assert script['upstream']['inputs.json#template'] == field_sha256(None)
     assert script['upstream']['material-catalog.json'] == sha256_of((tmp_path / 'material-catalog.json').read_bytes())
     assert script['upstream']['narration-instructions.md'] == 'absent'  # optional upstream that does not exist
+
+
+def test_absent_qa_level_fingerprints_like_the_default(tmp_path: Path):
+    complete_through_research(tmp_path)
+    parse_result(run_cli(str(tmp_path)))
+    upstream = read_stamps(tmp_path)['phases']['3-research']['upstream']
+    assert 'inputs.json#qa_level' not in upstream  # qa_level is not an upstream of Phase 3
+    complete_all(tmp_path)
+    without_default = {key: value for key, value in INPUTS.items() if key != 'qa_level'}
+    write_json(tmp_path / 'inputs.json', without_default)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['stale_phases'] == []  # absent means the standard tier, spelled out or not
+    assert result['next_phase'] is None
+
+
+def test_duration_spelling_variants_fingerprint_alike(tmp_path: Path):
+    settle(tmp_path)  # duration "5min"
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'duration': 5})
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['stale_phases'] == []
+    assert result['next_phase'] is None
 
 
 def test_inputs_field_fingerprint_sorts_keys_and_keeps_non_ascii(tmp_path: Path):
@@ -1396,6 +1425,85 @@ def rewrite_voice_subtitles(ws: Path) -> None:
     write_json(ws / 'transcribe' / 'timeline.json', {**TIMELINE, 'total_s': 2.6})
 
 
+def test_a_partial_redo_keeps_the_phase_stale(tmp_path: Path):
+    # Only re-running align-narration after a script edit must not clear Phase 7's
+    # stale mark: narration.mp3 and transcript.json are still the old build.
+    settle(tmp_path)
+    write_script(tmp_path, EDITED_SCRIPT_TXT)
+    assert parse_result(run_cli(str(tmp_path)))['next_phase']['id'] == '7-voice-subtitles'
+
+    write_json(tmp_path / 'transcribe' / 'subtitle-units.json', {'units': [{'text': '大家好呀', 'begin_s': 0.0, 'end_s': 2.6}]})
+    write_json(tmp_path / 'transcribe' / 'timeline.json', {**TIMELINE, 'total_s': 2.6})
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '7-voice-subtitles'
+    assert result['next_phase']['reason'] == 'stale'
+    assert result['next_phase']['changed_upstream'] == ['narration.txt', 'narration-offsets.json', 'script.txt']
+    # While the phase is stale the stamp keeps the pre-change fingerprints: the
+    # two rebuilt products are NOT recorded until the redo is complete.
+    stamp = read_stamps(tmp_path)['phases']['7-voice-subtitles']
+    assert stamp['upstream']['script.txt'] == sha256_of(SCRIPT_TXT)
+    assert stamp['products']['transcribe/subtitle-units.json'] == sha256_of(
+        json.dumps(SUBTITLE_UNITS, ensure_ascii=False)
+    )
+
+    rewrite_voice_subtitles(tmp_path)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert statuses(result)['7-voice-subtitles'] == 'completed'
+
+
+def test_an_unreadable_optional_upstream_does_not_abort_the_scan(tmp_path: Path):
+    complete_all(tmp_path)
+    style_prompt = tmp_path / 'style-prompt.md'
+    write_text(style_prompt, '## style\n冷色调\n')
+    # First scan stamps Phase 8 with the file's hash.
+    assert parse_result(run_cli(str(tmp_path)))['next_phase'] is None
+
+    style_prompt.chmod(0)
+    # Drop the fingerprint memo so this run must open the file and hit the
+    # permission error (with a warm cache the size + mtime check answers first).
+    (tmp_path / '.pipeline' / 'fpcache.json').unlink()
+    try:
+        proc = run_cli(str(tmp_path))
+    finally:
+        style_prompt.chmod(0o644)
+
+    assert proc.returncode == 0
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '8-composition'
+    assert result['next_phase']['reason'] == 'stale'
+    assert result['next_phase']['changed_upstream'] == ['style-prompt.md']
+
+
+def test_an_upstream_key_missing_from_an_old_stamp_is_not_a_change(tmp_path: Path):
+    # PHASES learned a new upstream key: existing workspaces must not go stale for it.
+    settle(tmp_path)
+    stamps = read_stamps(tmp_path)
+    stamp = stamps['phases']['9-check-mix']
+    del stamp['upstream']['inputs.json#qa_level']
+    write_json(tmp_path / '.pipeline' / 'stamps.json', stamps)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase'] is None
+    assert result['stale_phases'] == []
+
+
+def test_fingerprint_cache_is_written_and_trusted(tmp_path: Path):
+    settle(tmp_path)
+    cache = json.loads((tmp_path / '.pipeline' / 'fpcache.json').read_text(encoding='utf-8'))
+    assert cache['version'] == 1
+    entry = cache['files']['composition/renders/final.mp4']
+    assert set(entry) == {'size', 'mtime_ns', 'sha256'}
+    # A same-size, same-mtime rewrite is trusted without re-hashing (the accepted
+    # trade-off that avoids re-reading every media file on each scan).
+    target = tmp_path / 'composition' / 'renders' / 'final.mp4'
+    target.write_bytes(b'\1' * entry['size'])
+    os.utime(target, ns=(entry['mtime_ns'], entry['mtime_ns']))
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase'] is None
+
+
 def test_editing_the_script_makes_phase_7_stale_and_later_phases_pending(tmp_path: Path):
     settle(tmp_path)
     write_script(tmp_path, EDITED_SCRIPT_TXT)  # the script agent re-ran make-narration
@@ -1404,7 +1512,7 @@ def test_editing_the_script_makes_phase_7_stale_and_later_phases_pending(tmp_pat
 
     assert result['next_phase']['id'] == '7-voice-subtitles'
     assert result['next_phase']['reason'] == 'stale'
-    assert result['next_phase']['changed_upstream'] == ['narration.txt', 'script.txt']
+    assert result['next_phase']['changed_upstream'] == ['narration.txt', 'narration-offsets.json', 'script.txt']
     assert result['next_phase']['problems'] == {}
     assert result['stale_phases'] == ['7-voice-subtitles']
     assert result['pending_phases'] == ['8-composition', '9-check-mix']
@@ -1644,17 +1752,45 @@ def test_restamp_without_a_phase_is_a_usage_error(tmp_path: Path):
         '{"version": 1, "phases": {"1-gather-inputs": {"upstream": {}}}}',
     ],
 )
-def test_unusable_stamps_file_is_a_runtime_error(tmp_path: Path, content: str):
+def test_unusable_stamps_file_is_quarantined_and_reported(tmp_path: Path, content: str):
     complete_all(tmp_path)
     write_text(tmp_path / '.pipeline' / 'stamps.json', content)
 
     proc = run_cli(str(tmp_path))
 
-    assert proc.returncode == 1
+    assert proc.returncode == 0
     result = parse_result(proc)
-    assert result['success'] is False
-    assert '.pipeline/stamps.json' in result['error']
-    assert (tmp_path / '.pipeline' / 'stamps.json').read_text(encoding='utf-8') == content  # left for inspection
+    assert result['stamps_reset'] is True
+    assert not (tmp_path / '.pipeline' / 'stamps.json').exists()
+    # The evidence is kept for inspection, not deleted.
+    assert (tmp_path / '.pipeline' / 'stamps.json.quarantined').read_text(encoding='utf-8') == content
+
+
+def test_quarantined_stamps_are_not_saved_until_they_are_rebuilt(tmp_path: Path):
+    complete_all(tmp_path)
+    write_text(tmp_path / '.pipeline' / 'stamps.json', 'garbage')
+
+    first = parse_result(run_cli(str(tmp_path)))
+    second = parse_result(run_cli(str(tmp_path)))
+
+    for result in (first, second):
+        assert result['stamps_reset'] is True
+        assert not (tmp_path / '.pipeline' / 'stamps.json').exists()
+
+
+def test_restamp_rebuilds_quarantined_stamps(tmp_path: Path):
+    settle(tmp_path)
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'qa_level': 'strict'})
+    write_text(tmp_path / '.pipeline' / 'stamps.json', 'garbage')
+
+    proc = run_cli(str(tmp_path), '--restamp', '9-check-mix')
+
+    assert proc.returncode == 0
+    result = parse_result(proc)
+    assert result['stamps_reset'] is False
+    assert not (tmp_path / '.pipeline' / 'stamps.json.quarantined').exists()
+    assert (tmp_path / '.pipeline' / 'stamps.json').is_file()
+    assert parse_result(run_cli(str(tmp_path)))['next_phase'] is None
 
 
 def test_deleting_the_pipeline_dir_starts_over_from_the_current_files(tmp_path: Path):
@@ -1693,12 +1829,30 @@ def test_script_edited_after_make_narration_sends_phase_6_back(tmp_path: Path):
     assert 'make-narration' in detail
 
 
-def test_script_edited_to_the_same_length_is_not_noticed_by_the_lengths(tmp_path: Path):
-    # Only the characters are counted; the stamps pick this edit up downstream (Phase 7 stale).
+def test_script_edited_to_the_same_length_is_caught_by_the_hash(tmp_path: Path):
+    # The character counts cannot see it, but make-narration records content
+    # hashes in the offset table exactly for this case.
     settle(tmp_path)
     write_text(tmp_path / 'script.txt', EDITED_SCRIPT_TXT)
+    detail = offsets_problem(tmp_path)
+    assert 'script_sha256' in detail and 'script.txt' in detail and 'make-narration' in detail, detail
+
+
+def test_same_length_edit_of_a_legacy_offsets_table_without_hashes_still_passes(tmp_path: Path):
+    # Offsets written before the hashes existed only carry the counts; nothing
+    # stronger can be checked for them (Phase 7 stales via the script.txt upstream).
+    settle(tmp_path)
+    offsets = json.loads((tmp_path / 'narration-offsets.json').read_text(encoding='utf-8'))
+    for field in ('script_sha256', 'narration_sha256'):
+        offsets.pop(field, None)
+    write_json(tmp_path / 'narration-offsets.json', offsets)
+    write_text(tmp_path / 'script.txt', EDITED_SCRIPT_TXT)
+
     result = parse_result(run_cli(str(tmp_path)))
+
     assert statuses(result)['6-script-scene-plan'] == 'completed'
+    assert result['next_phase']['id'] == '7-voice-subtitles'
+    assert result['next_phase']['reason'] == 'stale'
 
 
 def test_narration_edited_after_make_narration_sends_phase_6_back(tmp_path: Path):
@@ -1817,6 +1971,8 @@ def test_rerunning_check_composition_brings_phase_8_back(tmp_path: Path):
     write_json(tmp_path / REPORT, {'success': True, 'verdict': 'pass', 'findings': [], 'scenes_checked': ['scene_1']})
     later = (tmp_path / 'composition' / 'compositions' / 'scene_1.html').stat().st_mtime_ns + 10**9
     os.utime(tmp_path / REPORT, ns=(later, later))
+    # The render ran after the re-check.
+    os.utime(tmp_path / 'composition' / 'renders' / 'final.mp4', ns=(later + 10**9, later + 10**9))
     result = parse_result(run_cli(str(tmp_path)))
 
     assert result['next_phase'] is None
@@ -1840,3 +1996,93 @@ def test_hidden_files_and_the_render_do_not_count_for_the_report_age(tmp_path: P
     result = parse_result(run_cli(str(tmp_path)))
     assert result['corrupt_products'] == []
     assert statuses(result)['8-composition'] == 'completed'
+
+
+def write_report_with_sources_hash(ws: Path) -> None:
+    """A pass report as a current check-composition writes it, sources hash included."""
+    write_json(
+        ws / REPORT,
+        {
+            'success': True,
+            'verdict': 'pass',
+            'findings': [],
+            'sources_sha256': composition_sources_fingerprint(ws / 'composition'),
+        },
+    )
+
+
+def test_report_with_a_sources_hash_ignores_forged_mtime(tmp_path: Path):
+    # The check report carries a content fingerprint: an edit whose mtime was
+    # pushed back below the report's must still invalidate the pass.
+    settle(tmp_path)
+    write_report_with_sources_hash(tmp_path)
+    report_mtime = (tmp_path / REPORT).stat().st_mtime_ns
+    for path in (
+        tmp_path / 'composition' / 'index.html',
+        tmp_path / 'composition' / 'compositions' / 'scene_1.html',
+        tmp_path / 'composition' / 'renders' / 'final.mp4',
+    ):
+        os.utime(path, ns=(report_mtime, report_mtime))
+
+    index = tmp_path / 'composition' / 'index.html'
+    index.write_text(index.read_text(encoding='utf-8') + '\n<!-- edited -->', encoding='utf-8')
+    forged = report_mtime - 10**9  # older than the report: the mtime rule is fooled
+    os.utime(index, ns=(forged, forged))
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '8-composition'
+    assert result['next_phase']['reason'] == 'corrupt'
+    assert 'sources_sha256' in result['next_phase']['problems'][REPORT]
+
+
+def test_report_with_a_matching_sources_hash_passes_despite_newer_source_mtime(tmp_path: Path):
+    # A copy that rewrote every mtime does not force a useless re-check.
+    settle(tmp_path)
+    write_report_with_sources_hash(tmp_path)
+    mtime = (tmp_path / REPORT).stat().st_mtime_ns + 5 * 10**9
+    for path in (
+        tmp_path / 'composition' / 'index.html',
+        tmp_path / 'composition' / 'compositions' / 'scene_1.html',
+        tmp_path / 'composition' / 'renders' / 'final.mp4',
+    ):
+        os.utime(path, ns=(mtime, mtime))
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['corrupt_products'] == []
+    assert statuses(result)['8-composition'] == 'completed'
+
+
+def test_assets_and_storyboard_edits_send_phase_8_back(tmp_path: Path):
+    # Changes under composition/assets/ and to storyboard.md count: the render
+    # predating them means the mp4 does not contain them.
+    settle(tmp_path)
+    asset = tmp_path / 'composition' / 'assets' / 'brand' / 'logo.png'
+    write_blob(asset, size=64)
+    mtime = (tmp_path / 'composition' / 'renders' / 'final.mp4').stat().st_mtime_ns + 5 * 10**9
+    os.utime(asset, ns=(mtime, mtime))
+    # The report itself is fresh (its sources hash covers the asset); only the
+    # render predates the edit.
+    write_report_with_sources_hash(tmp_path)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '8-composition'
+    assert 'final.mp4' in result['next_phase']['problems'][REPORT]
+
+    # Re-render and re-check after the asset edit: back to completed.
+    later = mtime + 10**9
+    os.utime(tmp_path / 'composition' / 'renders' / 'final.mp4', ns=(later, later))
+    write_report_with_sources_hash(tmp_path)
+    os.utime(tmp_path / REPORT, ns=(later + 10**9, later + 10**9))
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase'] is None
+
+
+def test_storyboard_edited_after_the_render_sends_phase_8_back(tmp_path: Path):
+    settle(tmp_path)
+    storyboard = tmp_path / 'composition' / 'storyboard.md'
+    mtime = (tmp_path / 'composition' / 'renders' / 'final.mp4').stat().st_mtime_ns + 5 * 10**9
+    os.utime(storyboard, ns=(mtime, mtime))
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '8-composition'
+    assert 'storyboard.md' in result['next_phase']['problems'][REPORT]

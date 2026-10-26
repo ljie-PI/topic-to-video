@@ -21,8 +21,13 @@ contiguous list of segments covering [0, len(narration)):
 
   {"version": 1,
    "script_length": S, "narration_length": N,
+   "script_sha256": "...", "narration_sha256": "...",
    "segments": [{"narration_start": a, "narration_end": b,
                  "script_start": c, "script_end": d}]}
+
+  The two hashes are the sha256 of the exact script.txt / narration.txt the
+  table was built from; pipeline-status rejects a same-length edit that the
+  character counts alone cannot see.
 
   narration position i maps back to
   script_start + min(i - narration_start, script_end - script_start - 1).
@@ -50,6 +55,7 @@ Output convention:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -191,6 +197,10 @@ def main() -> None:
         'version': OFFSETS_VERSION,
         'script_length': len(script_text),
         'narration_length': len(narration_text),
+        # The script's own bytes: text-mode reading translates newlines, so the
+        # hash must come from the file, not from the decoded text.
+        'script_sha256': hashlib.sha256(script_path.read_bytes()).hexdigest(),
+        'narration_sha256': hashlib.sha256(narration_text.encode('utf-8')).hexdigest(),
         'segments': segments,
     }
     offsets_path.write_text(

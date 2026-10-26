@@ -42,8 +42,13 @@ Inputs:
 Output convention:
   stdout: single JSON object
     success: {"success": true, "verdict": "pass"|"fail",
-              "scenes_checked": [...], "findings": [...]}
+              "scenes_checked": [...], "findings": [...],
+              "sources_sha256": "..."}
       each finding: {scene_id, check, issue, time_s, frame}
+      sources_sha256: fingerprint of the checkable sources (index.html,
+              compositions/, assets/ minus fonts) at run time; pipeline-status
+              compares it on later scans so a saved pass report is invalidated
+              by any edit even when file mtimes were not preserved
     error:   {"success": false, "error": "..."}
   stderr: human-readable progress prefixed with [check-composition]
   exit:   0 = run completed (verdict field carries pass/fail),
@@ -60,6 +65,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import chrome_cdp
 import cli
+from composition_hash import composition_sources_fingerprint
 from timeline_scenes import normalize_scenes
 
 TOOL_NAME = 'check-composition'
@@ -690,6 +696,7 @@ def build_report(
         'min_ui_font_size': font_floors[1],
         'scenes_checked': checked,
         'findings': findings,
+        'sources_sha256': composition_sources_fingerprint(composition_dir),
         'warnings': warnings,
     }
 
