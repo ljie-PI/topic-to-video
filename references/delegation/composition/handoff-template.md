@@ -8,7 +8,8 @@
 
 | 占位符 | 取值 |
 |---|---|
-| `{{topic_name}}` / `{{ws}}` | 工作区目录名 / 工作区绝对路径 |
+| `{{topic_name}}` / `{{ws}}` | 工作区目录名 / 工作区绝对路径（散文里用裸路径） |
+| `{{ws_q}}` / `{{skill_root_q}}` | 上两者的 shell 引号版：**命令行里必须用这一对**（路径可能含空格），散文里不用 |
 | `{{skill_root}}` | skill 根目录的绝对路径 |
 | `{{coding_agent}}` | `inputs.json` 的 `coding_agent` |
 | `{{design}}` / `{{layout}}` / `{{template}}` / `{{orientation}}` | `inputs.json` 的对应字段（`template` 为 null 时写“无”） |
@@ -46,13 +47,13 @@
 
 渲染前自查（全部通过再渲染）：
 
-- cd {{ws}}/composition && npx hyperframes check
-- source {{skill_root}}/.venv/bin/activate && python3 {{skill_root}}/scripts/check-composition.py {{ws}}/composition \
-    --layout {{ws}}/modules/layouts/{{layout}}.json \
-    --design-doc {{ws}}/modules/designs/{{design}}/{{design}}.md \
-    --subtitle-units {{ws}}/transcribe/subtitle-units.json \
-    --timeline {{ws}}/transcribe/timeline.json \
-    --output {{ws}}/composition/check-composition.json
+- cd {{composition_dir_q}} && npx hyperframes check
+- source {{venv_activate_q}} && python3 {{skill_root_q}}/scripts/check-composition.py {{composition_dir_q}} \
+    --layout {{layout_json_q}} \
+    --design-doc {{design_doc_q}} \
+    --subtitle-units {{subtitle_units_q}} \
+    --timeline {{timeline_q}} \
+    --output {{check_report_q}}
 - 每个 scene 的中点截一张快照目检
 
 ## Required References

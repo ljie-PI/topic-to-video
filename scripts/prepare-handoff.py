@@ -26,9 +26,11 @@ Usage:
 
 Output: one JSON document on stdout,
   {"success": true, "handoff_path": "...", "materialized": [...],
-   "fonts": null | {fonts-download output},
+   "fonts": null | {"success": true, "output_dir": "...", "installed": N},
    "dispatch_prompt": "读取 <handoff> 并按它执行；完成后报告产物路径。"}
-materialized lists the package paths this call wrote files into. The main
+materialized lists the package paths this call wrote files into. fonts is a
+summary (the file list is ~100+ paths the main agent has no use for; the full
+fonts-download JSON goes to the delegated agent via the handoff). The main
 agent dispatches dispatch_prompt verbatim. If fonts-download fails the output
 is {"success": false, "error": "...", "fonts": {fonts-download's error JSON}}.
 Exit codes: 0 = success, 1 = runtime error, 2 = invalid arguments.
@@ -38,6 +40,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -55,9 +58,16 @@ STEPS = ['script', 'composition']
 
 DELEGATION = Path('references') / 'delegation'
 
-PLACEHOLDER = re.compile(r'\{\{\s*([a-z_]+)\s*\}\}')
+PLACEHOLDER = re.compile(r'\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}')
 TEMPLATE_BLOCK = re.compile(r'^```markdown\n(.*?)^```$', re.MULTILINE | re.DOTALL)
-NAME = re.compile(r'^[\w-]+$')
+NAME = re.compile(r'[\w-]+')
+
+# The same minutes spellings pipeline-status.py accepts; anything else
+# ("90秒", "1h", "3-5 min") is rejected here too instead of being written
+# into a handoff the pipeline would send back to Phase 1.
+DURATION_MINUTES = re.compile(
+    r'^\s*(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|分钟|分)?\s*$', re.IGNORECASE
+)
 
 INPUTS_FIELDS = ['coding_agent', 'duration', 'language', 'input_mode', 'template', 'design', 'layout', 'orientation', 'fetch_materials']
 
@@ -105,8 +115,25 @@ def load_inputs(ws: Path) -> dict[str, Any]:
         raise ValueError(f'inputs.json is missing fields: {", ".join(missing)}')
     for name in ('design', 'layout', 'template'):
         value = data[name]
-        if value is not None and not (isinstance(value, str) and NAME.match(value)):
+        if value is not None and not (isinstance(value, str) and NAME.fullmatch(value)):
             raise ValueError(f'inputs.json field {name} must be a plain name, got {value!r}')
+    for name in ('coding_agent', 'language', 'input_mode', 'orientation'):
+        value = data[name]
+        if not isinstance(value, str) or not value:
+            raise ValueError(f'inputs.json field {name} must be a non-empty string, got {value!r}')
+    if not isinstance(data['fetch_materials'], bool):
+        raise ValueError(f"inputs.json field fetch_materials must be a boolean, got {data['fetch_materials']!r}")
+    duration = data['duration']
+    if isinstance(duration, bool) or not isinstance(duration, (int, float, str)):
+        raise ValueError(
+            f'inputs.json field duration must be the target length in minutes '
+            f'(a number, or a string like "5min"), got {duration!r}'
+        )
+    if isinstance(duration, str) and not DURATION_MINUTES.match(duration):
+        raise ValueError(
+            f'inputs.json field duration must be the target length in minutes '
+            f'(a number, or a number with a minutes unit such as "5min"), got {duration!r}'
+        )
     return data
 
 
@@ -136,7 +163,9 @@ def copy_missing(source: Path, target: Path, refresh: bool, skip: tuple[str, ...
         if destination.exists() and not refresh:
             continue
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(file, destination)
+        # copyfile, not copy2: source permission bits (a read-only install)
+        # must not turn the workspace copy read-only and break --refresh.
+        shutil.copyfile(file, destination)
         wrote = True
     return wrote
 
@@ -158,15 +187,23 @@ def materialize(ws: Path, step: str, refresh: bool) -> list[str]:
 
 
 def install_fonts(ws: Path, design: str) -> dict[str, Any]:
-    """Run fonts-download.sh for the selected design; returns its JSON output."""
+    """Run fonts-download.sh for the selected design; returns a summary.
+
+    A design removed from the skill is still usable when the workspace holds
+    its copy (pipeline-status accepts the same fallback), so the theme path
+    falls back to <ws>/modules/designs/<design>.
+    """
     target = ws / 'composition' / 'assets' / 'fonts'
+    theme = SKILL_ROOT / 'modules' / 'designs' / design
+    if not theme.is_dir() and (ws / 'modules' / 'designs' / design).is_dir():
+        theme = ws / 'modules' / 'designs' / design
     proc = subprocess.run(
         [
             'bash',
             str(SKILL_ROOT / 'scripts' / 'fonts-download.sh'),
             str(target),
             '--theme',
-            str(SKILL_ROOT / 'modules' / 'designs' / design),
+            str(theme),
         ],
         capture_output=True,
         text=True,
@@ -180,7 +217,12 @@ def install_fonts(ws: Path, design: str) -> dict[str, Any]:
         payload = {'success': False, 'error': proc.stderr.strip()[-500:] or 'fonts-download printed no JSON'}
     if proc.returncode != 0 or payload.get('success') is not True:
         raise FontsError(payload)
-    return payload
+    files = payload.get('files')
+    return {
+        'success': True,
+        'output_dir': payload.get('output_dir', str(target)),
+        'installed': len(files) if isinstance(files, list) else None,
+    }
 
 
 # --- handoff ----------------------------------------------------------------------
@@ -193,12 +235,15 @@ class Plan:
     values fill the step's placeholders; inputs are workspace files the
     handoff reads (they must exist before anything is written); references
     are the package and module files it points at (they must exist once the
-    package is materialized).
+    package is materialized); sources are the skill-side files the package is
+    copied from — validated BEFORE anything is written, so a bad layout or
+    template name fails with the workspace untouched.
     """
 
     values: dict[str, str]
     inputs: list[Path] = field(default_factory=list)
     references: list[Path] = field(default_factory=list)
+    sources: list[Path] = field(default_factory=list)
 
 
 Reference = tuple[str, list[Path]]
@@ -217,7 +262,15 @@ def script_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
     template = inputs['template']
     delegation = ws / DELEGATION
     base = delegation / 'script' / 'base-instructions.md'
+    sources: list[Path] = [SKILL_ROOT / DELEGATION / 'conventions.md', SKILL_ROOT / DELEGATION / 'script']
     references: list[Reference] = [(f'{base}（基础指令：叙事结构、写法要求、产物 schema）', [base])]
+    if inputs['input_mode'] == 'paper':
+        # Paper mode: the base instructions defer to the paper-parse doc, whose
+        # relative path does not resolve from the workspace copy — the handoff
+        # must carry the skill-side absolute path.
+        paper_doc = SKILL_ROOT / 'references' / 'phases' / '02-paper-parse.md'
+        references.append((f'{paper_doc}（论文模式：解析命令与产物契约）', [paper_doc]))
+        sources.append(paper_doc)
     if template:
         template_dir = SKILL_ROOT / 'modules' / 'templates' / template
         if not template_dir.is_dir():
@@ -226,6 +279,7 @@ def script_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
         narration = template_dir / 'narration.md'
         if narration.is_file():
             references.append((f'{narration}（所选模板 {template} 的旁白要求）', [narration]))
+            sources.append(narration)
     plan = Plan(
         values={
             'required_references': numbered([text for text, _ in references]),
@@ -233,15 +287,33 @@ def script_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
         },
         inputs=[ws / 'inputs.json', ws / 'research-brief.md'],
         references=[delegation / 'conventions.md', *(path for _, paths in references for path in paths)],
+        sources=sources,
     )
     if inputs['fetch_materials']:
         catalog_doc = SKILL_ROOT / 'references' / 'phases' / '05-material-catalog.md'
         plan.values['material_catalog'] = f'{ws / "material-catalog.json"}（素材 id 引用格式的定义见 {catalog_doc}）'
         plan.inputs.append(ws / 'material-catalog.json')
         plan.references.append(catalog_doc)
+        plan.sources.append(catalog_doc)
     else:
         plan.values['material_catalog'] = '无（fetch_materials = false，没有素材）'
     return plan
+
+
+def layout_reference(modules: Path, layout: str) -> Reference:
+    """The layout's region definition json (always required) and its doc.
+
+    Some canvases share one doc: portrait-3x4 has only a .json, and
+    portrait.md covers both portrait canvases. The json never falls back — a
+    missing region definition is an error, not a doc-lessness.
+    """
+    layout_json = modules / 'layouts' / f'{layout}.json'
+    layout_doc = modules / 'layouts' / f'{layout}.md'
+    if not layout_doc.is_file() and '-' in layout:
+        shared = modules / 'layouts' / f'{layout.split("-", 1)[0]}.md'
+        if shared.is_file():
+            layout_doc = shared
+    return (f'{layout_json} + {layout_doc}（所选 layout 的区域定义）', [layout_json, layout_doc])
 
 
 def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
@@ -252,19 +324,48 @@ def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
     modules_doc = modules / 'modules.md'
     design_doc = modules / 'designs' / design / f'{design}.md'
     design_contract = modules / 'designs' / 'designs.md'
-    layout_json = modules / 'layouts' / f'{layout}.json'
-    layout_doc = modules / 'layouts' / f'{layout}.md'
+    layout_text, skill_layout_paths = layout_reference(SKILL_ROOT / 'modules', layout)
+    layout_paths = [modules / path.relative_to(SKILL_ROOT / 'modules') for path in skill_layout_paths]
+    layout_item = ' + '.join(str(path) for path in layout_paths)
+    examples = SKILL_ROOT / 'modules' / 'examples'
+
+    def source(skill_path: Path) -> Path:
+        """Where a modules/ reference is validated against: the skill copy,
+        unless the design was removed from the skill and only the workspace
+        copy remains (pipeline-status accepts the same fallback)."""
+        return skill_path if skill_path.exists() else ws / skill_path.relative_to(SKILL_ROOT)
+
+    sources: list[Path] = [
+        SKILL_ROOT / DELEGATION / 'conventions.md',
+        SKILL_ROOT / DELEGATION / 'composition',
+        SKILL_ROOT / 'modules',
+    ]
     references: list[Reference] = [
         (f'{base}（基础指令：输入契约、design、layout 区域、工作顺序）', [base]),
         (f'{modules_doc}（模块库入口与组装约定）', [modules_doc]),
         (f'{design_doc}（所选 design；token 契约见 {design_contract}）', [design_doc, design_contract]),
-        (f'{layout_json} + {layout_doc}（所选 layout 的区域定义）', [layout_json, layout_doc]),
+        (f'{layout_item}（所选 layout 的区域定义）', layout_paths),
     ]
+    sources.extend(
+        source(path)
+        for path in [
+            SKILL_ROOT / 'modules' / 'designs' / design / f'{design}.md',
+            SKILL_ROOT / 'modules' / 'designs' / design / 'fonts.json',
+            *layout_reference(SKILL_ROOT / 'modules', layout)[1],
+        ]
+    )
     if template:
         template_doc = modules / 'templates' / template / f'{template}.md'
         references.append((f'{template_doc}（所选模板的组装说明，及其场景 / 组件文档）', [template_doc]))
+        sources.append(source(SKILL_ROOT / 'modules' / 'templates' / template / f'{template}.md'))
     patterns, components = modules / 'patterns', modules / 'components'
     references.append((f'按 storyboard 需要，自行阅读 {patterns}/、{components}/ 下的文档', [patterns, components]))
+    # The workspace copy has no examples/ (they can be large); the complete
+    # example projects stay in the skill repo and the handoff carries the path.
+    # An empty path list: it is optional reading, never a validation target.
+    references.append(
+        (f'完整示例工程（不在工作区副本，需要时从这里读）：{examples}/，如 github-trending/、jay-actions/', [])
+    )
     plan = Plan(
         values={
             'required_references': numbered([text for text, _ in references]),
@@ -286,6 +387,7 @@ def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
             ws / 'composition' / 'assets' / 'fonts',
             *(path for _, paths in references for path in paths),
         ],
+        sources=sources,
     )
     if inputs['fetch_materials']:
         plan.values['material_catalog'] = str(ws / 'material-catalog.json')
@@ -315,10 +417,27 @@ def fill(template: str, values: dict[str, str]) -> str:
 
 
 def render_handoff(ws: Path, step: str, inputs: dict[str, Any], plan: Plan) -> str:
+    # _q values are shell-quoted FULL paths for use inside commands: a topic
+    # name or skill root with spaces (e.g. "AI Agents 2026") must not split
+    # the line. Prose keeps using the plain {{ws}} / {{skill_root}}.
+    design, layout = inputs['design'], inputs['layout']
     values = {
         'topic_name': ws.name,
         'ws': str(ws),
         'skill_root': str(SKILL_ROOT),
+        'skill_root_q': shlex.quote(str(SKILL_ROOT)),
+        'venv_activate_q': shlex.quote(str(SKILL_ROOT / '.venv' / 'bin' / 'activate')),
+        'composition_dir_q': shlex.quote(str(ws / 'composition')),
+        'layout_json_q': shlex.quote(str(ws / 'modules' / 'layouts' / f'{layout}.json')),
+        'design_doc_q': shlex.quote(
+            str(ws / 'modules' / 'designs' / design / f'{design}.md')
+        ),
+        'subtitle_units_q': shlex.quote(str(ws / 'transcribe' / 'subtitle-units.json')),
+        'timeline_q': shlex.quote(str(ws / 'transcribe' / 'timeline.json')),
+        'check_report_q': shlex.quote(str(ws / 'composition' / 'check-composition.json')),
+        'script_txt_q': shlex.quote(str(ws / 'script.txt')),
+        'lexicon_q': shlex.quote(str(ws / 'tts-lexicon.json')),
+        'output_dir_q': shlex.quote(str(ws)),
         'coding_agent': str(inputs['coding_agent']),
         'duration': duration_text(inputs['duration']),
         'language': str(inputs['language']),
@@ -344,6 +463,10 @@ def main() -> int:
     plan = STEP_PLANS[args.step](ws, inputs)
     text = render_handoff(ws, args.step, inputs, plan)
     require_files(plan.inputs, f'inputs of the {args.step} step')
+    # Validate the skill-side sources before anything is written: a bad layout
+    # or design name must fail with the workspace untouched, like a missing
+    # input does — not after modules/ has been copied into it.
+    require_files(plan.sources, f'skill files the {args.step} handoff is built from')
     materialized = materialize(ws, args.step, args.refresh)
     fonts = None
     if args.step == 'composition':

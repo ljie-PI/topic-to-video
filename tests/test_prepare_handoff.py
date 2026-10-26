@@ -293,12 +293,20 @@ class TestCompositionHandoff:
         prepare(ws, 'composition')
         prepare(ws, 'script')
 
+        checked: set[str] = set()
         for handoff in ('composition-handoff.md', 'script-handoff.md'):
             text = (ws / handoff).read_text(encoding='utf-8').replace('\\\n', ' ')
-            for script, options in re.findall(r'scripts/([\w-]+\.py)((?: +--[\w-]+ +\S+)+)', text):
+            for script, tail in re.findall(r'scripts/([\w-]+\.py)((?: +\S+)+)', text):
                 source = (REPO_ROOT / 'scripts' / script).read_text(encoding='utf-8')
-                for option in re.findall(r'(--[\w-]+)', options):
+                # The tail may start with a positional argument (check-composition's
+                # composition dir), so match option/value pairs anywhere in it.
+                options = re.findall(r'(--[\w-]+) +\S+', tail)
+                assert options, f'{handoff}: scripts/{script} documents no options at all'
+                checked.add(script)
+                for option in options:
                     assert f"'{option}'" in source, f'{handoff}: scripts/{script} has no {option}'
+        assert 'check-composition.py' in checked  # the positional-first command is covered
+        assert 'make-narration.py' in checked
 
     def test_inputs_section_lists_the_catalog_only_when_materials_are_fetched(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition', fetch_materials=False)
@@ -316,15 +324,27 @@ class TestCompositionHandoff:
         body = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))['Required References']
 
         items = re.findall(r'^\d+\. (.+)$', body, flags=re.MULTILINE)
-        assert [sorted(str(p.relative_to(ws)) for p in absolute_paths(item)) for item in items] == [
+
+        def rel(paths: set[Path]) -> list[str]:
+            out = []
+            for path in paths:
+                if path.is_relative_to(ws):
+                    out.append(str(path.relative_to(ws)))
+                else:
+                    out.append(f'skill:{path.relative_to(REPO_ROOT)}')
+            return sorted(out)
+
+        assert [rel(absolute_paths(item)) for item in items] == [
             ['references/delegation/composition/base-instructions.md'],
             ['modules/modules.md'],
             ['modules/designs/designs.md', 'modules/designs/producthunt/producthunt.md'],
             ['modules/layouts/portrait.json', 'modules/layouts/portrait.md'],
             ['modules/templates/github/github.md'],
             ['modules/components', 'modules/patterns'],
+            ['skill:modules/examples'],
         ]
-        assert items[-1].startswith('按 storyboard 需要，自行阅读 ')
+        assert items[-2].startswith('按 storyboard 需要，自行阅读 ')
+        assert 'github-trending' in items[-1] and 'jay-actions' in items[-1]
 
     def test_null_template_drops_the_template_item(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition', template=None)
@@ -332,7 +352,8 @@ class TestCompositionHandoff:
 
         body = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))['Required References']
 
-        assert len(re.findall(r'^\d+\. ', body, flags=re.MULTILINE)) == 5
+        # base, modules.md, design, layout, patterns/components, examples
+        assert len(re.findall(r'^\d+\. ', body, flags=re.MULTILINE)) == 6
         assert 'modules/templates' not in body
 
     def test_additional_instructions_list_the_existing_files(self, tmp_path: Path):
@@ -398,6 +419,9 @@ class TestFonts:
         css = (fonts / 'producthunt-fonts.css').read_text(encoding='utf-8')
         assert result['fonts']['success'] is True
         assert result['fonts']['output_dir'] == str(fonts)
+        # A summary, not the ~100-file list: the main agent only dispatches the prompt.
+        assert result['fonts']['installed'] and result['fonts']['installed'] > 0
+        assert 'files' not in result['fonts']
         for reference in re.findall(r'url\(([^)]+)\)', css):
             assert (fonts / reference).is_file()
 
@@ -515,6 +539,37 @@ class TestFailures:
         assert proc.returncode == 1
         assert 'no-such-layout.json' in result['error']
         assert not (ws / 'composition-handoff.md').exists()
+        # Sources are validated before anything is written.
+        assert not (ws / 'references').exists()
+        assert not (ws / 'modules').exists()
+        assert not (ws / 'composition').exists()
+
+    @pytest.mark.parametrize(
+        'overrides, message',
+        [
+            ({'fetch_materials': 'false'}, 'fetch_materials'),
+            ({'duration': '90秒'}, 'duration'),
+            ({'duration': {'min': 5}}, 'duration'),
+            ({'coding_agent': ''}, 'coding_agent'),
+            ({'language': None}, 'language'),
+        ],
+    )
+    def test_field_types_are_validated(self, tmp_path: Path, overrides: dict, message: str):
+        ws = make_workspace(tmp_path, **overrides)
+
+        proc, result = run_cli(str(ws), 'script')
+
+        assert proc.returncode == 1
+        assert message in result['error']
+
+    def test_a_trailing_newline_in_a_name_is_rejected(self, tmp_path: Path):
+        # `re.match` with $ would let 'github\n' through; fullmatch must not.
+        ws = make_workspace(tmp_path, design='github\n')
+
+        proc, result = run_cli(str(ws), 'script')
+
+        assert proc.returncode == 1
+        assert 'design' in result['error']
 
     @pytest.mark.parametrize('field', ['design', 'layout', 'template'])
     def test_names_in_inputs_cannot_be_paths(self, tmp_path: Path, field: str):
@@ -596,6 +651,92 @@ class TestInputsRendering:
         assert '（目标时长 5 分钟、语言 en、input_mode paper、所选模板 无）' in inputs
 
 
+class TestReviewRoundFixes:
+    """Regressions pinned from the first /code-review round."""
+
+    def test_portrait_3x4_uses_the_shared_portrait_doc(self, tmp_path: Path):
+        # portrait-3x4 has only a .json; portrait.md covers both portrait canvases.
+        ws = make_workspace(tmp_path, 'composition', layout='portrait-3x4', orientation='portrait')
+
+        prepare(ws, 'composition')
+
+        text = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
+        assert f'--layout {ws}/modules/layouts/portrait-3x4.json' in text
+        body = handoff_sections(text)['Required References']
+        assert f'{ws}/modules/layouts/portrait-3x4.json + {ws}/modules/layouts/portrait.md' in body
+
+    def test_paths_with_spaces_are_quoted_in_commands(self, tmp_path: Path):
+        spaced = (tmp_path / 'AI Agents 2026').resolve()
+        ws = (spaced / 'ws' / 'demo-topic').resolve()
+        write(ws / 'inputs.json', json.dumps(INPUTS, ensure_ascii=False))
+        write(ws / 'research-brief.md', '# brief\n')
+        write(ws / 'material-catalog.json', '{"entries": []}')
+        write(ws / 'script.txt', '甲\n\n乙\n')
+        write(ws / 'scene-plan.json', '[]')
+        write(ws / 'voice_clone' / 'narration.mp3')
+        write(ws / 'transcribe' / 'subtitle-units.json', '{"units": []}')
+        write(ws / 'transcribe' / 'timeline.json', '{"paragraphs": []}')
+
+        prepare(ws, 'composition')
+        prepare(ws, 'script')
+
+        composition = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
+        assert f"cd '{ws}/composition' && npx hyperframes check" in composition
+        assert f"--layout '{ws}/modules/layouts/presenter.json'" in composition
+        script = (ws / 'script-handoff.md').read_text(encoding='utf-8')
+        assert f"--script '{ws}/script.txt'" in script
+
+    def test_copies_do_not_inherit_read_only_source_permissions(self, tmp_path: Path, skill_copy: Path):
+        source = skill_copy / 'references' / 'delegation' / 'script' / 'base-instructions.md'
+        source.chmod(0o444)
+        ws = make_workspace(tmp_path)
+
+        prepare(ws, 'script', script=skill_copy / 'scripts' / 'prepare-handoff.py')
+
+        copy = ws / 'references' / 'delegation' / 'script' / 'base-instructions.md'
+        assert copy.stat().st_mode & 0o200  # writable, though the source is read-only
+        copy.write_text('edited', encoding='utf-8')
+        prepare(ws, 'script', '--refresh', script=skill_copy / 'scripts' / 'prepare-handoff.py')
+        assert copy.read_bytes() == source.read_bytes()
+
+    def test_paper_mode_script_handoff_lists_the_paper_parse_doc(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, input_mode='paper')
+
+        prepare(ws, 'script')
+
+        body = handoff_sections((ws / 'script-handoff.md').read_text(encoding='utf-8'))['Required References']
+        assert f'{REPO_ROOT}/references/phases/02-paper-parse.md' in body
+
+    def test_placeholder_names_allow_uppercase_digits_and_hyphens(self, tmp_path: Path, skill_copy: Path):
+        template = skill_copy / 'references' / 'delegation' / 'script' / 'handoff-template.md'
+        template.write_text(
+            template.read_text(encoding='utf-8').replace('## Coding Agent', '## Coding Agent {{Ws2}}'),
+            encoding='utf-8',
+        )
+        ws = make_workspace(tmp_path)
+
+        proc, result = run_cli(str(ws), 'script', script=skill_copy / 'scripts' / 'prepare-handoff.py')
+
+        assert proc.returncode == 1
+        assert 'Ws2' in result['error']  # recognized as a placeholder, reported unreplaced
+
+    def test_a_design_kept_only_in_the_workspace_still_gets_fonts(self, tmp_path: Path, skill_copy: Path):
+        # pipeline-status accepts a design removed from the skill when the
+        # workspace holds its copy; the handoff must not fail at fonts either.
+        (skill_copy / 'modules').unlink()
+        gutted = tmp_path / 'gutted-modules'
+        shutil.copytree(REPO_ROOT / 'modules', gutted, ignore=shutil.ignore_patterns('github', 'examples'))
+        (skill_copy / 'modules').symlink_to(gutted)
+        ws = make_workspace(tmp_path, 'composition', design='github')
+        copied = ws / 'modules' / 'designs' / 'github'
+        shutil.copytree(REPO_ROOT / 'modules' / 'designs' / 'github', copied)
+
+        result = prepare(ws, 'composition', script=skill_copy / 'scripts' / 'prepare-handoff.py')
+
+        assert result['fonts']['success'] is True
+        assert (ws / 'composition' / 'assets' / 'fonts' / 'github-fonts.css').is_file()
+
+
 class TestDelegationDocs:
     """The docs the main agent follows hand it prepare-handoff.py, not a template to fill."""
 
@@ -635,3 +776,24 @@ class TestDelegationDocs:
         assert 'npx hyperframes init composition/' in text
         assert 'composition/assets/fonts/' in text
         assert '用 `npx hyperframes preview` 交给用户看' not in text
+
+    def test_modules_doc_initializes_a_fresh_dir_before_fonts_get_in_the_way(self):
+        text = (REPO_ROOT / 'modules' / 'modules.md').read_text(encoding='utf-8')
+
+        # The init-into-a-fresh-dir workaround comes before the pre-placed-fonts note.
+        assert 'composition-init/' in text
+        assert text.index('composition-init/') < text.index('不用再装')
+
+    def test_base_instructions_no_longer_point_at_a_workspace_relative_paper_doc(self):
+        text = (REPO_ROOT / 'references' / 'delegation' / 'script' / 'base-instructions.md').read_text(
+            encoding='utf-8'
+        )
+
+        assert '02-paper-parse' not in text  # the relative path dies in the workspace copy
+        assert 'Required References' in text
+
+    def test_conventions_scope_the_script_to_script_and_composition(self):
+        text = (REPO_ROOT / 'references' / 'delegation' / 'conventions.md').read_text(encoding='utf-8')
+
+        assert '只支持 `script` 和 `composition`' in text
+        assert '重新运行一次 `prepare-handoff.py`' in text

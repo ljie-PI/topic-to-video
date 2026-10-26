@@ -18,7 +18,7 @@
 
 ### 论文模式（`input_mode = "paper"`）
 
-叙事结构、figure / table 引用规则见 `references/phases/02-paper-parse.md` 的「论文模式解说结构」，按它执行，本文不重复。
+叙事结构、figure / table 引用规则按 handoff 的 Required References 里列出的论文解析文档执行（仅论文模式列出；它只有 skill 侧的绝对路径，工作区里没有副本），本文不重复。
 
 ### 通用要求
 

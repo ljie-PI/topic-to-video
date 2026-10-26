@@ -1,6 +1,6 @@
 # 委派约定（统一）
 
-Phase 5（素材 catalog）、Phase 6（脚本与场景规划）与 Phase 8（composition）这类 context 消耗大的步骤，委派给 coding agent 完成。这些委派步骤共用本约定。
+Phase 6（脚本与场景规划）与 Phase 8（composition）委派给 coding agent 完成，共用本约定。Phase 5（素材 catalog）也按本约定的派发方式委派，但它的 handoff 由主 agent 按 `references/phases/05-material-catalog.md` 组织——`prepare-handoff.py` 只支持 `script` 和 `composition` 两个 step。
 
 ## 委派给谁
 
@@ -31,7 +31,7 @@ Phase 5（素材 catalog）、Phase 6（脚本与场景规划）与 Phase 8（co
 1. **委派包的基础指令**（`references/delegation/<step>/base-instructions.md`）；
 2. **所选模板的指令**：script 步骤读 `modules/templates/<template>/narration.md`（旁白要求）；composition 步骤读模板的组装说明。未选模板则跳过；
 3. **工作区里的项目指令文件**，每步一份：script 步骤读 `<work_dir>/<topic_name>/narration-instructions.md`，composition 步骤读 `<work_dir>/<topic_name>/composition-instructions.md`。旧项目的 `style-prompt.md` 视为 composition 项目指令的一部分，由 composition 步骤读取；
-4. **用户在对话中提出的要求**，由主 agent 追加写入第 3 项对应的项目指令文件（`narration-instructions.md` / `composition-instructions.md`），再委派。
+4. **用户在对话中提出的要求**，由主 agent 追加写入第 3 项对应的项目指令文件（`narration-instructions.md` / `composition-instructions.md`），再委派。**追加必须在运行 `prepare-handoff.py` 之前**：Additional Instructions 在生成 handoff 时计算一次，之后才写的指令不会出现在已生成的 handoff 里——这时重新运行一次 `prepare-handoff.py`（幂等；已物化的副本不会被覆盖）再派发。
 
 项目指令文件都是可选的：不存在就跳过，但 handoff 的 Additional Instructions 一节始终保留，写 None 或实际文件列表。
 
