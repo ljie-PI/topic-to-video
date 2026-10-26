@@ -11,7 +11,7 @@
 - **配音**：只用主 agent 生成的 `voice_clone/narration.mp3`，不重生成 TTS、不用任何其他音频来源；画面与解说的同步以这份音频为最终边界。
 - **字幕**：字幕文本来自 `transcribe/subtitle-units.json` 的字幕单元，逐字使用，不自己改写、不重新断句。字幕单元已按句末标点分段，句内只在 `，；、：——`（含半角 `, ; :`）处断开、绝不在单词或数字中间切断：单元边界不可改动（禁止重新排序、合并或拆分），逐单元原样上屏。
 - **时间**：段落与 cue 的起止秒来自 `transcribe/timeline.json`；scene 切分和 cue 锚点对齐以它为准。
-- **素材**：画面素材只来自 `material-catalog.json`（图片用素材 id、视频 clip 用 `<video_id>:<start>-<end>` 解析到 `local_path`）；视频素材一律静音播放（`<video>` 带 `muted playsinline`）。
+- **素材**：画面素材只来自 `material-catalog.json`（图片用素材 id、视频 clip 用 `<video_id>:<start>-<end>` 解析到 `local_path`）；catalog 沿用 v2 harvest manifest 的路径，所有相对 `local_path` 都以 `{work_dir}/{topic_name}/harvest_page/` 为 base（不是 `composition/` 或当前目录），旧 catalog 的绝对路径原样使用；读取或复制进 composition 前先按此规则解析。视频素材一律静音播放（`<video>` 带 `muted playsinline`）。
 - **字体**：只用主 agent 预置的字体目录（`composition/assets/fonts/`，由所选 design 决定），不依赖系统字体。
 
 ## 二、必须参考 design

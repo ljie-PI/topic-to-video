@@ -34,6 +34,8 @@ Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产
 
 遍历 Phase 4 产出的 `harvest_page/manifest.json["entries"]`。对每一条 entry，在 `{work_dir}/{topic_name}/material-catalog.json` 里建一个 "material entry"。
 
+**路径 base（必须保持一致）：** v2 manifest 里的 `local_path` / `subtitle_path`（包括 `scroll_recording.local_path`）都相对于 `{work_dir}/{topic_name}/harvest_page/`，不是相对于当前目录或 workspace root。调用抽帧、字幕解析和视觉分析工具时，相对路径必须加上这个 `harvest_page/` 前缀；旧 manifest 的绝对路径原样使用。写入 `material-catalog.json` 时仍原样保留 manifest 的相对路径，不改写成绝对路径或其他 base。
+
 **每一条 harvest entry（每个 URL 一条）：**
 
 1. **抽帧**：对 `entry.videos` 里的每个视频，以及 `entry.scroll_recording`（如果有）：
@@ -74,7 +76,7 @@ Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产
       "images": [
         {
           "id": "img_001",
-          "local_path": ".../images/img_001.webp",
+          "local_path": "example/images/img_001.webp",
           "width": 1280, "height": 720,
           "aspect_ratio": 1.7778,
           "ratio_bucket": "wide",
@@ -86,7 +88,7 @@ Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产
       "videos": [
         {
           "id": "2MJDdzSXL74",
-          "local_path": ".../videos/2MJDdzSXL74.webm",
+          "local_path": "example/videos/2MJDdzSXL74.webm",
           "width": 1920, "height": 1080,
           "aspect_ratio": 1.7778,
           "ratio_bucket": "wide",

@@ -60,7 +60,7 @@ def _replace_entries(target: list[dict[str, Any]], entries: list[dict[str, Any]]
 
 
 def load(harvest_dir: str | os.PathLike[str]) -> dict[str, Any]:
-    """Load v2 data or legacy manifests, merging ``manifest_papers.json``."""
+    """Load v2 data, or merge ``manifest_papers.json`` for legacy manifests."""
     root = _root(harvest_dir)
     raw = _read(root / 'manifest.json')
     manifest = _new_manifest()
@@ -68,11 +68,12 @@ def load(harvest_dir: str | os.PathLike[str]) -> dict[str, Any]:
     if not isinstance(entries, list):
         raise ValueError('manifest.json entries must be a list')
     _replace_entries(manifest['entries'], copy.deepcopy(entries))
-    papers = _read(root / 'manifest_papers.json')
-    paper_entries = papers.get('entries', [])
-    if not isinstance(paper_entries, list):
-        raise ValueError('manifest_papers.json entries must be a list')
-    _replace_entries(manifest['entries'], copy.deepcopy(paper_entries))
+    if raw.get('version') != 2:
+        papers = _read(root / 'manifest_papers.json')
+        paper_entries = papers.get('entries', [])
+        if not isinstance(paper_entries, list):
+            raise ValueError('manifest_papers.json entries must be a list')
+        _replace_entries(manifest['entries'], copy.deepcopy(paper_entries))
     batches = raw.get('harvest_batches', [])
     if not isinstance(batches, list):
         raise ValueError('manifest.json harvest_batches must be a list')

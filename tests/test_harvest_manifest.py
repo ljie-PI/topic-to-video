@@ -152,6 +152,25 @@ def test_load_legacy_absolute_paths_and_paper_manifest_then_saves_relative(tmp_p
     assert paper['paper_metadata']['full_markdown_path'] == 'main-paper/mineru/full.md'
 
 
+def test_v2_entries_take_precedence_over_stale_legacy_papers_after_upsert(tmp_path: Path):
+    stale_paper = {
+        'slug': 'main-paper', 'title': 'stale legacy title', 'success': True,
+        'source_type': 'paper_pdf', 'images': [], 'videos': [],
+    }
+    (tmp_path / 'manifest.json').write_text(json.dumps({'entries': []}), encoding='utf-8')
+    (tmp_path / 'manifest_papers.json').write_text(
+        json.dumps({'entries': [stale_paper]}), encoding='utf-8',
+    )
+    harvest_manifest.save(tmp_path, harvest_manifest.load(tmp_path))
+
+    newer_paper = {**stale_paper, 'title': 'new unified title'}
+    harvest_manifest.upsert_entries(tmp_path, [newer_paper])
+    assert read_json(tmp_path / 'manifest.json')['entries'][0]['title'] == 'new unified title'
+
+    reloaded = harvest_manifest.load(tmp_path)
+    assert reloaded['entries'][0]['title'] == 'new unified title'
+
+
 def test_slug_helpers_and_extensions_have_one_owner():
     assert harvest_manifest.slug_for_url('https://Example.com/A Path') == 'example-com-a-path-3b79fb'
     assert harvest_manifest.slug_for_pdf('https://arxiv.org/pdf/My Paper.123.pdf', None) == 'my-paper-123'
