@@ -22,10 +22,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+
+import cli
 
 TOOL_NAME = 'pipeline-status'
 
@@ -78,23 +79,13 @@ OK = CheckResult(STATUS_OK)
 Checker = Callable[[Path, str], CheckResult]
 
 
-class JsonArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'bad arguments: {message}')
-        print_json({'success': False, 'error': message})
-        raise SystemExit(2)
-
-
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
-
-
-def print_json(payload: dict[str, Any]) -> None:
-    print(json.dumps(payload, ensure_ascii=False))
+log = cli.make_logger(TOOL_NAME)
+print_json = cli.print_json
 
 
 def parse_args() -> argparse.Namespace:
-    parser = JsonArgumentParser(
+    parser = cli.JsonArgumentParser(
+        TOOL_NAME,
         description='Scan a topic-to-video workspace and report the next pipeline phase.'
     )
     parser.add_argument(
@@ -163,6 +154,18 @@ def check_dict_entries_product(ws: Path, relpath: str) -> CheckResult:
     entries = data.get('entries')
     if not isinstance(entries, list) or not entries:
         return CheckResult(STATUS_CORRUPT, 'entries is not a non-empty list')
+    return OK
+
+
+def check_harvest_manifest(ws: Path, relpath: str) -> CheckResult:
+    """Phase 4 needs entries and at least one actual web harvest batch."""
+    entries_result = check_dict_entries_product(ws, relpath)
+    if not entries_result.ok:
+        return entries_result
+    _, data = read_json_product(ws, relpath)
+    batches = data.get('harvest_batches')
+    if not isinstance(batches, list) or not batches:
+        return CheckResult(STATUS_CORRUPT, 'harvest_batches is not a non-empty list')
     return OK
 
 
@@ -235,9 +238,8 @@ def check_paper_metadata(ws: Path, relpath: str) -> CheckResult:
     paper_metadata = data.get('paper_metadata')
     if not isinstance(paper_metadata, dict):
         return CheckResult(STATUS_CORRUPT, 'missing paper_metadata')
-    # full_markdown_path is written as an absolute machine-local path by
-    # parse-pdf.py; workspaces move between machines, so only require the
-    # key to be present with a string or null value.
+    # v2 paths are harvest-root-relative; legacy workspaces may hold absolute
+    # paths. Both are valid, as is null when MinerU produced no full markdown.
     if 'full_markdown_path' not in paper_metadata or not (
         isinstance(paper_metadata['full_markdown_path'], str)
         or paper_metadata['full_markdown_path'] is None
@@ -398,7 +400,7 @@ PHASES: list[dict[str, Any]] = [
         'title': '素材抓取（可选）',
         'doc': 'references/phases/04-material-harvest.md',
         'conditional': 'fetch',
-        'products': {'harvest_page/manifest.json': check_dict_entries_product},
+        'products': {'harvest_page/manifest.json': check_harvest_manifest},
     },
     {
         'id': '5-material-catalog',
@@ -541,4 +543,4 @@ def main() -> int:
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(cli.run(main, TOOL_NAME))

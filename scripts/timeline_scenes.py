@@ -16,9 +16,9 @@ from typing import Any
 def normalize_scenes(data: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
     """Normalize timeline.json's optional scenes list.
 
-    Returns (scenes, warnings). Each scene is a dict with scene_id, begin_s,
-    end_s and peak_s (None when absent or not numeric). Results are sorted by
-    begin_s. Missing `scenes` key and invalid entries are reported as
+    Returns (scenes, warnings). Each scene is a dict with exactly scene_id,
+    begin_s, and end_s. Results are sorted by begin_s. Missing `scenes` key
+    and invalid entries are reported as
     warnings / skipped entries, not exceptions.
     """
     warnings: list[str] = []
@@ -31,9 +31,9 @@ def normalize_scenes(data: dict[str, Any]) -> tuple[list[dict[str, Any]], list[s
         if not isinstance(scene, dict):
             warnings.append(f'{label} is not an object; skipped')
             continue
-        scene_id = scene.get('scene_id') or scene.get('id') or f'scene_{index + 1}'
+        scene_id = scene.get('scene_id') or f'scene_{index + 1}'
         label = f'scene {index} ({scene_id})'
-        begin = scene.get('begin_s', scene.get('start_s'))
+        begin = scene.get('begin_s')
         end = scene.get('end_s')
         if (
             not isinstance(begin, (int, float))
@@ -42,13 +42,11 @@ def normalize_scenes(data: dict[str, Any]) -> tuple[list[dict[str, Any]], list[s
         ):
             warnings.append(f'{label} has no valid begin_s / end_s range; skipped')
             continue
-        peak = scene.get('peak_s')
         scenes.append(
             {
                 'scene_id': str(scene_id),
                 'begin_s': float(begin),
                 'end_s': float(end),
-                'peak_s': float(peak) if isinstance(peak, (int, float)) else None,
             }
         )
     scenes.sort(key=lambda s: s['begin_s'])

@@ -124,11 +124,20 @@ def run_cli(*args: str) -> subprocess.CompletedProcess:
     )
 
 
-def run_check(tmp_path: Path, comp: Path, *, units=None, timeline=None) -> tuple:
+def run_check(
+    tmp_path: Path,
+    comp: Path,
+    *,
+    units=None,
+    timeline=None,
+    layout: Path = PRESENTER_LAYOUT,
+    extra_args: tuple[str, ...] = (),
+) -> tuple:
     args = [
         str(comp),
-        '--layout', str(PRESENTER_LAYOUT),
+        '--layout', str(layout),
         '--min-font-size', '22',
+        *extra_args,
     ]
     if units is not None:
         units_path = tmp_path / 'subtitle-units.json'
@@ -171,7 +180,10 @@ def test_dirty_fixture_reports_each_check(tmp_path: Path):
     # s2 is clean: every finding belongs to s1
     assert all(finding['scene_id'] == 's1' for finding in result['findings'])
     for finding in result['findings']:
-        assert finding['detail']
+        assert set(finding) == {'scene_id', 'check', 'issue', 'time_s', 'frame'}
+        assert finding['issue']
+        assert isinstance(finding['time_s'], float)
+        assert finding['frame'] is None
 
 
 def test_out_of_bounds_finding_carries_scene_id(tmp_path: Path):
@@ -256,6 +268,27 @@ def test_missing_composition_exits_1(tmp_path: Path):
     assert result['success'] is False
 
 
+def test_invalid_timeline_scene_is_skipped_with_warning(tmp_path: Path):
+    comp = write_composition(
+        tmp_path,
+        [scene('s1', 0.0, 10.0, CLEAN_SCENE)],
+    )
+    timeline = {
+        'scenes': [
+            {'scene_id': 'broken', 'end_s': 5.0},
+            {'scene_id': 's1', 'begin_s': 0.0, 'end_s': 10.0},
+        ]
+    }
+
+    proc, result = run_check(tmp_path, comp, timeline=timeline)
+
+    assert proc.returncode == 0, proc.stderr
+    assert result['success'] is True
+    assert 'Traceback' not in proc.stderr
+    assert any('broken' in warning and 'skipped' in warning for warning in result['warnings'])
+    assert [scene['scene_id'] for scene in result['scenes_checked']] == ['s1']
+
+
 def test_scenes_fall_back_to_dom_roots_without_timeline(tmp_path: Path):
     comp = write_composition(
         tmp_path,
@@ -322,7 +355,52 @@ def test_ui_text_role_uses_the_ui_minimum(tmp_path: Path):
     assert proc.returncode == 0, proc.stderr
     result = json.loads(proc.stdout)
     assert (result['min_font_size'], result['min_ui_font_size']) == (26, 22)
-    small = [f['detail'] for f in result['findings'] if f['check'] == 'font_size_below_min']
+    small = [f['issue'] for f in result['findings'] if f['check'] == 'font_size_below_min']
     # 23px body text fails the 26px reading minimum; the 23px UI title bar passes.
     assert len(small) == 1
     assert 'body-small' in small[0] and 'reading-text minimum 26px' in small[0]
+
+
+def test_viewport_defaults_to_layout_canvas(tmp_path: Path):
+    comp = write_composition(tmp_path, [scene('s1', 0.0, 10.0, CLEAN_SCENE)])
+    portrait_layout = REPO_ROOT / 'modules' / 'layouts' / 'portrait.json'
+
+    proc, result = run_check(tmp_path, comp, layout=portrait_layout)
+
+    assert proc.returncode == 0, proc.stderr
+    assert result['viewport'] == {'width': 1080, 'height': 1920}
+    assert result['viewport_mismatch'] is False
+
+
+def test_explicit_viewport_mismatch_is_used_and_reported(tmp_path: Path):
+    comp = write_composition(tmp_path, [scene('s1', 0.0, 10.0, CLEAN_SCENE)])
+
+    proc, result = run_check(tmp_path, comp, extra_args=('--viewport', '1280x720'))
+
+    assert proc.returncode == 0, proc.stderr
+    assert result['viewport'] == {'width': 1280, 'height': 720}
+    assert result['viewport_mismatch'] is True
+    assert 'warning' in proc.stderr.lower()
+    assert 'viewport' in proc.stderr.lower()
+    assert any('viewport' in warning for warning in result['warnings'])
+
+
+def test_dump_snapshots_writes_raw_recorded_list(tmp_path: Path):
+    comp = write_composition(tmp_path, [scene('s1', 0.0, 10.0, CLEAN_SCENE)])
+    dump_path = tmp_path / 'recorded' / 'snapshots.json'
+
+    proc, result = run_check(
+        tmp_path,
+        comp,
+        timeline=TIMELINE,
+        extra_args=('--dump-snapshots', str(dump_path)),
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    snapshots = json.loads(dump_path.read_text(encoding='utf-8'))
+    assert isinstance(snapshots, list)
+    assert len(snapshots) == 6
+    assert {snapshot['scene_id'] for snapshot in snapshots} == {'s1', 's2'}
+    assert all(isinstance(snapshot['time'], (int, float)) for snapshot in snapshots)
+    assert all(isinstance(snapshot['elements'], list) for snapshot in snapshots)
+    assert result['success'] is True

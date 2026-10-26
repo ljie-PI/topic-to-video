@@ -4,7 +4,7 @@
 Runs after composition rendering (Phase 9 final.mp4) and replaces any
 whole-film frame sampling. Three families of checks, all deterministic:
 
-  1. ffprobe-level container checks: audio track present; container duration
+  1. Container metadata checks: audio track present; container duration
      vs audio duration deviation <= 0.5s; video resolution matches the
      orientation recorded in inputs.json (landscape: width > height;
      portrait / portrait-3:4: height > width).
@@ -44,11 +44,10 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import shutil
-import subprocess
-import sys
 from pathlib import Path
 
+import cli
+import media
 from timeline_scenes import normalize_scenes, scene_ranges
 
 TOOL_NAME = 'check-render'
@@ -71,29 +70,16 @@ FREEZE_START_RE = re.compile(r'freeze_start[:=]?\s*([0-9.]+)')
 FREEZE_END_RE = re.compile(r'freeze_end[:=]?\s*([0-9.]+)')
 
 
-class ArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'Argument error: {message}')
-        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
-        self.exit(2)
-
-
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
+log = cli.make_logger(TOOL_NAME)
 
 
 def print_json(payload: dict[str, object]) -> int:
-    print(json.dumps(payload, ensure_ascii=False))
+    cli.print_json(payload)
     return 0 if payload.get('success') else 1
 
 
-def error_json(message: str) -> int:
-    log(message)
-    return print_json({'success': False, 'error': message})
-
-
 def parse_args() -> argparse.Namespace:
-    parser = ArgumentParser(description='Deterministic post-render checks (ffprobe, blackdetect, freezedetect).')
+    parser = cli.JsonArgumentParser(TOOL_NAME, description='Deterministic post-render checks (metadata, blackdetect, freezedetect).')
     parser.add_argument('--video', required=True, help='Rendered video file to check.')
     parser.add_argument('--inputs', required=True, help='inputs.json (orientation source).')
     parser.add_argument('--timeline', help='timeline.json; optional scene time ranges for scene_id mapping.')
@@ -115,52 +101,6 @@ def parse_args() -> argparse.Namespace:
     if args.black_threshold <= 0:
         parser.error('--black-threshold must be greater than 0')
     return args
-
-
-def ensure_binary(name: str) -> None:
-    if shutil.which(name) is None:
-        raise FileNotFoundError(f'{name} is not installed or not available on PATH')
-
-
-def probe_video(video_path: Path) -> dict[str, object]:
-    result = subprocess.run(
-        [
-            'ffprobe',
-            '-v',
-            'error',
-            '-show_entries',
-            'format=duration',
-            '-show_entries',
-            'stream=codec_type,width,height,duration',
-            '-of',
-            'json',
-            str(video_path),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=FFPROBE_TIMEOUT_SECONDS,
-    )
-    data = json.loads(result.stdout)
-    streams = data.get('streams') or []
-    video_streams = [s for s in streams if s.get('codec_type') == 'video']
-    audio_streams = [s for s in streams if s.get('codec_type') == 'audio']
-    if not video_streams:
-        raise ValueError(f'no video stream found in {video_path}')
-    video_stream = video_streams[0]
-    format_duration = float((data.get('format') or {}).get('duration') or 0)
-    audio_duration = None
-    if audio_streams:
-        raw = audio_streams[0].get('duration')
-        if raw is not None:
-            audio_duration = float(raw)
-    return {
-        'width': int(video_stream.get('width') or 0),
-        'height': int(video_stream.get('height') or 0),
-        'has_audio': bool(audio_streams),
-        'audio_duration_s': audio_duration,
-        'container_duration_s': format_duration,
-    }
 
 
 def load_orientation(inputs_path: Path) -> str | None:
@@ -205,9 +145,8 @@ def run_detection_pass(video_path: Path, black_threshold: float, freeze_threshol
         f'freezedetect=n={FREEZE_NOISE_THRESHOLD}:d={freeze_threshold}'
     )
     log(f'Running detection pass: {filter_expr}')
-    result = subprocess.run(
+    result = media.run_ffmpeg(
         [
-            'ffmpeg',
             '-hide_banner',
             '-loglevel',
             'info',
@@ -220,9 +159,6 @@ def run_detection_pass(video_path: Path, black_threshold: float, freeze_threshol
             'null',
             '-',
         ],
-        check=True,
-        capture_output=True,
-        text=True,
         timeout=FFMPEG_TIMEOUT_SECONDS,
     )
     return result.stderr
@@ -364,60 +300,56 @@ def check_black_and_freeze(
 
 
 def main() -> int:
-    try:
-        args = parse_args()
-        ensure_binary('ffmpeg')
-        ensure_binary('ffprobe')
-        video_path = Path(args.video).expanduser()
-        if not video_path.is_file():
-            raise FileNotFoundError(f'video file not found: {args.video}')
-        inputs_path = Path(args.inputs).expanduser()
-        if not inputs_path.is_file():
-            raise FileNotFoundError(f'inputs file not found: {args.inputs}')
-        if args.timeline and not Path(args.timeline).expanduser().is_file():
-            raise FileNotFoundError(f'timeline file not found: {args.timeline}')
+    args = parse_args()
+    video_path = Path(args.video).expanduser()
+    if not video_path.is_file():
+        raise FileNotFoundError(f'video file not found: {args.video}')
+    inputs_path = Path(args.inputs).expanduser()
+    if not inputs_path.is_file():
+        raise FileNotFoundError(f'inputs file not found: {args.inputs}')
+    if args.timeline and not Path(args.timeline).expanduser().is_file():
+        raise FileNotFoundError(f'timeline file not found: {args.timeline}')
 
-        probe = probe_video(video_path.resolve())
-        orientation = load_orientation(inputs_path.resolve())
-        if orientation not in LANDSCAPE_ORIENTATIONS | PORTRAIT_ORIENTATIONS:
-            log(f'orientation {orientation!r} not recognized; skipping orientation check')
-            orientation = None
-        scene_ranges = load_timeline_scene_ranges(Path(args.timeline).expanduser().resolve() if args.timeline else None)
+    metadata = media.probe(video_path.resolve(), timeout=FFPROBE_TIMEOUT_SECONDS)
+    if metadata['width'] is None or metadata['height'] is None:
+        raise ValueError(f'no video stream found in {video_path}')
+    probe = {
+        'width': metadata['width'],
+        'height': metadata['height'],
+        'has_audio': metadata['has_audio'],
+        'audio_duration_s': metadata['audio_duration_seconds'],
+        'container_duration_s': metadata['duration_seconds'] or 0.0,
+    }
+    orientation = load_orientation(inputs_path.resolve())
+    if orientation not in LANDSCAPE_ORIENTATIONS | PORTRAIT_ORIENTATIONS:
+        log(f'orientation {orientation!r} not recognized; skipping orientation check')
+        orientation = None
+    scene_ranges = load_timeline_scene_ranges(Path(args.timeline).expanduser().resolve() if args.timeline else None)
 
-        findings = check_container(probe, orientation)
-        stderr_text = run_detection_pass(video_path.resolve(), args.black_threshold, args.freeze_threshold)
-        findings.extend(
-            check_black_and_freeze(
-                stderr_text, probe['container_duration_s'], args.freeze_threshold, scene_ranges
-            )
+    findings = check_container(probe, orientation)
+    stderr_text = run_detection_pass(video_path.resolve(), args.black_threshold, args.freeze_threshold)
+    findings.extend(
+        check_black_and_freeze(
+            stderr_text, probe['container_duration_s'], args.freeze_threshold, scene_ranges
         )
-        # Deterministic findings carry no frame reference; qa-report.json
-        # requires the frame key on every finding, so default it to null.
-        for finding in findings:
-            finding.setdefault('frame', None)
+    )
+    # Deterministic findings carry no frame reference; qa-report.json
+    # requires the frame key on every finding, so default it to null.
+    for finding in findings:
+        finding.setdefault('frame', None)
 
-        verdict = 'fail' if findings else 'pass'
-        log(f'checks complete: {len(findings)} finding(s), verdict={verdict}')
-        return print_json(
-            {
-                'success': True,
-                'video': str(video_path.resolve()),
-                'duration_s': round(probe['container_duration_s'], 3),
-                'findings': findings,
-                'verdict': verdict,
-            }
-        )
-    except subprocess.TimeoutExpired as exc:
-        command_name = exc.cmd[0] if isinstance(exc.cmd, list) and exc.cmd else 'command'
-        timeout_seconds = getattr(exc, 'timeout', None) or FFMPEG_TIMEOUT_SECONDS
-        return error_json(f'{command_name} timed out after {int(timeout_seconds)} seconds')
-    except subprocess.CalledProcessError as exc:
-        command_name = exc.cmd[0] if isinstance(exc.cmd, list) and exc.cmd else 'command'
-        stderr = (exc.stderr or exc.stdout or '').strip()
-        return error_json(stderr or f'{command_name} command failed')
-    except Exception as exc:
-        return error_json(str(exc))
+    verdict = 'fail' if findings else 'pass'
+    log(f'checks complete: {len(findings)} finding(s), verdict={verdict}')
+    return print_json(
+        {
+            'success': True,
+            'video': str(video_path.resolve()),
+            'duration_s': round(probe['container_duration_s'], 3),
+            'findings': findings,
+            'verdict': verdict,
+        }
+    )
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    raise SystemExit(cli.run(main, TOOL_NAME))

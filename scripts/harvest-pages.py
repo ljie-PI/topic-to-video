@@ -19,17 +19,18 @@ extraction and scroll recording do not apply.
 
 Browser model: attaches over CDP (default http://localhost:9222) to a Chrome
 process. If no CDP responder is reachable, auto-launches system Chrome with
---user-data-dir=<profile-dir>. Profile defaults to
-./chrome_profile and is SHARED with
+--user-data-dir=<profile-dir>. The required profile is SHARED with
 gemini-deep-research.py. Chrome is left running on exit so subsequent invocations
-reconnect instantly.
+reconnect instantly. When reusing CDP, explicit launch flags are reported in
+stderr and the manifest's chrome.ignored_flags field.
 
 Usage:
   python3 harvest-pages.py \\
     --urls https://github.com/anthropic/claude-code \\
            https://docs.anthropic.com/claude-code \\
            https://en.wikipedia.org/wiki/Claude_(language_model) \\
-    --output-dir {work_dir}/{topic}/harvest_page/
+    --output-dir {work_dir}/{topic}/harvest_page/ \\
+    --profile-dir {work_dir}/chrome_profile
 
 Output convention:
   stdout : top-level JSON manifest with one entry per URL (also written to
@@ -41,40 +42,24 @@ Output convention:
 
 import argparse
 import base64
-import hashlib
-import json
 import mimetypes
 import os
 import re
 import shutil
-import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
+import chrome_cdp
+import cli
+import harvest_manifest
+import media
+
 TOOL_NAME = 'harvest-pages'
 DEFAULT_CDP_URL = 'http://localhost:9222'
-DEFAULT_PROFILE_DIR = './chrome_profile'
-CHROME_CANDIDATES_LINUX = [
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-]
-CHROME_CANDIDATES_MAC = [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
-]
-CHROME_CANDIDATES_WIN = [
-    os.path.expandvars(r'%ProgramFiles%\Google\Chrome\Application\chrome.exe'),
-    os.path.expandvars(r'%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe'),
-    os.path.expandvars(r'%LocalAppData%\Google\Chrome\Application\chrome.exe'),
-]
-CDP_READY_TIMEOUT_S = 15.0
-CDP_POLL_INTERVAL_S = 0.5
+CHROME_WINDOW_SIZE = '1680,1680'
 USER_AGENT = (
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
     '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
@@ -85,25 +70,17 @@ USER_AGENT = (
 # I/O helpers
 # -----------------------------------------------------------------------------
 
-class ArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'Argument error: {message}')
-        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
-        self.exit(2)
-
-
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
+log = cli.make_logger(TOOL_NAME)
 
 
 def fail(message: str, exit_code: int = 1) -> None:
     log(message)
-    print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
+    cli.print_json({'success': False, 'error': message})
     raise SystemExit(exit_code)
 
 
 def parse_args() -> argparse.Namespace:
-    p = ArgumentParser(description='Batch URL material harvester (Playwright over CDP).')
+    p = cli.JsonArgumentParser(TOOL_NAME, description='Batch URL material harvester (Playwright over CDP).')
     p.add_argument('--urls', required=True, nargs='+', help='One or more URLs to harvest.')
     p.add_argument('--output-dir', required=True, help='Batch output root (per-URL subdirs are created underneath).')
     p.add_argument('--no-scroll-record', dest='scroll_record', action='store_false', default=True,
@@ -124,17 +101,20 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--page-load-timeout', type=int, default=30,
                    help='Per-URL page load timeout in seconds. Default 30.')
     p.add_argument('--cdp-url', default=DEFAULT_CDP_URL, help=f'CDP endpoint (default {DEFAULT_CDP_URL}).')
-    p.add_argument('--profile-dir', default=DEFAULT_PROFILE_DIR,
-                   help=f'Chrome profile dir (default {DEFAULT_PROFILE_DIR}).')
+    p.add_argument('--profile-dir', required=True,
+                   help='Chrome profile dir (required; use the shared work_dir profile).')
     p.add_argument('--chrome-path', default=None,
                    help='Path to Chrome executable. Auto-detected if unset.')
-    p.add_argument('--headless', default='auto', choices=('auto', 'on', 'off'),
-                   help="Chrome headless mode. 'auto' (default) = headless when DISPLAY is unset.")
+    p.add_argument('--headless', default=None, choices=('auto', 'on', 'off'),
+                   help="Chrome headless mode: auto, on, or off (default off).")
     p.add_argument('--no-sandbox', action='store_true', default=None,
                    help='Pass --no-sandbox to Chrome (auto-enabled when running as root or inside a container).')
     p.add_argument('--no-continue-on-error', action='store_true',
                    help='Stop the batch on the first per-URL failure. Default off (best-effort).')
-    return p.parse_args()
+    args = p.parse_args()
+    args.explicit_headless = args.headless
+    args.headless = args.headless or 'off'
+    return args
 
 
 def parse_viewport(s: str) -> Tuple[int, int]:
@@ -142,144 +122,6 @@ def parse_viewport(s: str) -> Tuple[int, int]:
     if not m:
         raise ValueError(f'Invalid --viewport {s!r}, expected WxH (e.g. 1280x720)')
     return int(m.group(1)), int(m.group(2))
-
-
-def slugify_url(url: str) -> str:
-    parsed = urlparse(url)
-    host = (parsed.netloc or 'unknown').lower().replace('.', '-').replace(':', '-')
-    path = (parsed.path or '/').strip('/').lower()
-    path = re.sub(r'[^a-z0-9]+', '-', path).strip('-')[:60]
-    digest = hashlib.sha1(url.encode('utf-8')).hexdigest()[:6]
-    if path:
-        slug = f'{host}-{path}-{digest}'
-    else:
-        slug = f'{host}-{digest}'
-    return slug.strip('-')[:120]
-
-
-# -----------------------------------------------------------------------------
-# CDP / browser setup
-# -----------------------------------------------------------------------------
-
-def _chrome_candidates() -> list:
-    """Return Chrome candidate paths for the current platform."""
-    import platform
-    s = platform.system()
-    if s == 'Darwin':
-        return CHROME_CANDIDATES_MAC
-    elif s == 'Windows':
-        return CHROME_CANDIDATES_WIN
-    return CHROME_CANDIDATES_LINUX
-
-
-def find_chrome(explicit: Optional[str]) -> Optional[str]:
-    if explicit:
-        return explicit if Path(explicit).is_file() else None
-    env_path = os.environ.get('CHROME_PATH')
-    if env_path and Path(env_path).is_file():
-        return env_path
-    for cand in _chrome_candidates():
-        if Path(cand).is_file():
-            return cand
-    return None
-
-
-def cdp_ready(cdp_url: str) -> bool:
-    from urllib import request as urlrequest
-    from urllib import error as urlerror
-    try:
-        with urlrequest.urlopen(f'{cdp_url.rstrip("/")}/json/version', timeout=2.0) as resp:
-            return resp.status == 200
-    except (urlerror.URLError, urlerror.HTTPError, TimeoutError, ConnectionError, OSError):
-        return False
-
-
-def _should_be_headless(headless_mode: str) -> bool:
-    if headless_mode == 'on':
-        return True
-    if headless_mode == 'off':
-        return False
-    return not os.environ.get('DISPLAY')
-
-
-def _should_disable_sandbox(no_sandbox_flag: Optional[bool]) -> bool:
-    if no_sandbox_flag:
-        return True
-    try:
-        if os.geteuid() == 0:
-            return True
-    except AttributeError:
-        pass
-    return Path('/.dockerenv').exists()
-
-
-def launch_chrome(chrome_path: str, cdp_url: str, profile_dir: Path,
-                  headless_mode: str = 'auto',
-                  no_sandbox_flag: Optional[bool] = None) -> subprocess.Popen:
-    parsed = urlparse(cdp_url)
-    port = parsed.port or 9222
-    profile_dir.mkdir(parents=True, exist_ok=True)
-    args = [
-        chrome_path,
-        f'--remote-debugging-port={port}',
-        f'--user-data-dir={profile_dir}',
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--disable-features=Translate',
-    ]
-    if _should_be_headless(headless_mode):
-        args.append('--headless=new')
-        args.append('--disable-gpu')
-    if _should_disable_sandbox(no_sandbox_flag):
-        args.append('--no-sandbox')
-    log(f'Launching Chrome: {chrome_path} (port={port}, profile={profile_dir}, '
-        f'flags={[a for a in args[3:] if a.startswith("--")]})')
-    return subprocess.Popen(
-        args,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        stdin=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-
-
-def wait_for_cdp(cdp_url: str, proc: Optional[subprocess.Popen]) -> None:
-    deadline = time.time() + CDP_READY_TIMEOUT_S
-    while time.time() < deadline:
-        if proc is not None and proc.poll() is not None:
-            fail(
-                f'Chrome exited immediately (code {proc.returncode}). '
-                'Profile may be locked by another Chrome window. '
-                f'Profile path: {DEFAULT_PROFILE_DIR}. '
-                'Close other Chrome instances using this profile, or pass a different --profile-dir.'
-            )
-        if cdp_ready(cdp_url):
-            return
-        time.sleep(CDP_POLL_INTERVAL_S)
-    fail(
-        f'CDP at {cdp_url} did not become ready within {CDP_READY_TIMEOUT_S}s. '
-        'Check that the port is free and Chrome can launch with the given profile.'
-    )
-
-
-def ensure_cdp(args: argparse.Namespace) -> None:
-    """Ensure something is listening on CDP. Auto-launch system Chrome if not."""
-    if cdp_ready(args.cdp_url):
-        log(f'CDP already ready at {args.cdp_url}; reusing existing Chrome')
-        return
-    chrome_path = find_chrome(args.chrome_path)
-    if not chrome_path:
-        fail(
-            'System Chrome not found. Tried: '
-            f'{", ".join(_chrome_candidates())}. '
-            'Install Chrome or pass --chrome-path.'
-        )
-    profile_dir = Path(args.profile_dir).expanduser()
-    proc = launch_chrome(chrome_path, args.cdp_url, profile_dir,
-                         headless_mode=args.headless,
-                         no_sandbox_flag=args.no_sandbox)
-    wait_for_cdp(args.cdp_url, proc)
-    log(f'CDP ready at {args.cdp_url} (chrome pid={proc.pid}; left running on exit)')
 
 
 # -----------------------------------------------------------------------------
@@ -556,7 +398,7 @@ def download_native_video(request_ctx, url: str, dest_dir: Path, index: int, max
         ext = '.mp4'
         parsed = urlparse(url)
         suffix = Path(parsed.path).suffix
-        if suffix in ('.mp4', '.webm', '.mov'):
+        if suffix in harvest_manifest.VIDEO_EXTS:
             ext = suffix
         path = dest_dir / f'native_{index:03d}{ext}'
         path.write_bytes(body)
@@ -570,27 +412,29 @@ def download_native_video(request_ctx, url: str, dest_dir: Path, index: int, max
 # Scroll recording
 # -----------------------------------------------------------------------------
 
-def primary_scroll_record(browser, url: str, viewport: Tuple[int, int], scroll_duration: int,
-                          page_load_timeout: int, output_dir: Path) -> Tuple[Optional[Path], Optional[str]]:
-    rec_dir = output_dir / 'recording'
-    rec_dir.mkdir(parents=True, exist_ok=True)
+def new_harvest_context(browser, viewport: Tuple[int, int], record_dir: Optional[Path] = None):
+    """Create the single context configuration shared by harvest and fallback."""
     vp_w, vp_h = viewport
-    ctx = browser.new_context(
-        viewport={'width': vp_w, 'height': vp_h},
-        user_agent=USER_AGENT,
-        locale='zh-CN',
-        extra_http_headers={'Accept-Language': 'zh-CN,en;q=0.9'},
-        record_video_dir=str(rec_dir),
-        record_video_size={'width': vp_w, 'height': vp_h},
-    )
+    options: Dict[str, Any] = {
+        'viewport': {'width': vp_w, 'height': vp_h},
+        'user_agent': USER_AGENT,
+        'locale': 'zh-CN',
+        'extra_http_headers': {'Accept-Language': 'zh-CN,en;q=0.9'},
+    }
+    if record_dir is not None:
+        record_dir.mkdir(parents=True, exist_ok=True)
+        options.update({
+            'record_video_dir': str(record_dir),
+            'record_video_size': {'width': vp_w, 'height': vp_h},
+        })
+    return browser.new_context(**options)
+
+
+def primary_scroll_record(ctx, page, scroll_duration: int,
+                          output_dir: Path) -> Tuple[Optional[Path], Optional[str]]:
+    """Record the already-loaded harvest page, then flush its video."""
+    rec_dir = output_dir / 'recording'
     try:
-        page = ctx.new_page()
-        page.set_default_timeout(page_load_timeout * 1000)
-        page.goto(url, wait_until='domcontentloaded', timeout=page_load_timeout * 1000)
-        try:
-            page.wait_for_load_state('networkidle', timeout=5000)
-        except Exception:
-            pass
         page.evaluate(SCROLL_RECORD_JS, scroll_duration * 1000)
     finally:
         ctx.close()  # flushes the .webm
@@ -606,24 +450,22 @@ def primary_scroll_record(browser, url: str, viewport: Tuple[int, int], scroll_d
 
 def cdp_screencast_record(browser, url: str, viewport: Tuple[int, int], scroll_duration: int,
                           page_load_timeout: int, output_dir: Path) -> Tuple[Optional[Path], Optional[str]]:
-    if not shutil.which('ffmpeg'):
+    try:
+        media.ensure_binary(os.environ.get('FFMPEG_BIN', 'ffmpeg'))
+    except media.MediaToolMissing:
         return None, 'cdp_no_ffmpeg'
     rec_dir = output_dir / 'recording'
     frames_dir = rec_dir / 'frames'
     frames_dir.mkdir(parents=True, exist_ok=True)
     vp_w, vp_h = viewport
 
-    ctx = browser.new_context(
-        viewport={'width': vp_w, 'height': vp_h},
-        user_agent=USER_AGENT,
-        locale='zh-CN',
-        extra_http_headers={'Accept-Language': 'zh-CN,en;q=0.9'},
-    )
+    ctx = new_harvest_context(browser, viewport)
     frame_idx = [0]
     try:
         page = ctx.new_page()
         page.set_default_timeout(page_load_timeout * 1000)
         page.goto(url, wait_until='domcontentloaded', timeout=page_load_timeout * 1000)
+        log(f'loaded {url}')
         try:
             page.wait_for_load_state('networkidle', timeout=5000)
         except Exception:
@@ -666,9 +508,9 @@ def cdp_screencast_record(browser, url: str, viewport: Tuple[int, int], scroll_d
         str(out_mp4),
     ]
     try:
-        subprocess.run(cmd, check=True, capture_output=True, timeout=180)
-    except subprocess.CalledProcessError as exc:
-        log(f'  ffmpeg failed: {exc.stderr.decode("utf-8", "replace")[:300]}')
+        media.run_ffmpeg(cmd[1:], timeout=180)
+    except media.FfmpegError as exc:
+        log(f'  ffmpeg failed: {exc.stderr_tail[:300]}')
         return None, 'ffmpeg_failed'
 
     # cleanup frames
@@ -678,20 +520,6 @@ def cdp_screencast_record(browser, url: str, viewport: Tuple[int, int], scroll_d
         pass
 
     return out_mp4, 'cdp_screencast'
-
-
-def probe_duration(path: Path) -> Optional[float]:
-    if not shutil.which('ffprobe'):
-        return None
-    try:
-        out = subprocess.check_output(
-            ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-             '-of', 'default=noprint_wrappers=1:nokey=1', str(path)],
-            timeout=15,
-        )
-        return float(out.decode().strip())
-    except Exception:
-        return None
 
 
 # -----------------------------------------------------------------------------
@@ -706,23 +534,31 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
     images_dir.mkdir(parents=True, exist_ok=True)
     videos_dir.mkdir(parents=True, exist_ok=True)
 
-    vp_w, vp_h = viewport
-    ctx = browser.new_context(
-        viewport={'width': vp_w, 'height': vp_h},
-        user_agent=USER_AGENT,
-        locale='zh-CN',
-        extra_http_headers={'Accept-Language': 'zh-CN,en;q=0.9'},
-    )
+    record_dir = slug_dir / 'recording' if args.scroll_record else None
+    ctx = new_harvest_context(browser, viewport, record_dir=record_dir)
     metrics = {}
     title = ''
     text_excerpt = ''
     images_meta: List[Dict[str, Any]] = []
     videos_meta: List[Dict[str, Any]] = []
     scroll_recording: Optional[Dict[str, Any]] = None
+    primary_error: Optional[Exception] = None
     try:
-        page = ctx.new_page()
+        try:
+            page = ctx.new_page()
+        except Exception as exc:
+            if not args.scroll_record:
+                raise
+            # Playwright video needs its own ffmpeg. Preserve the historical
+            # CDP fallback when that optional binary is unavailable.
+            primary_error = exc
+            log(f'  primary scroll-record raised ({type(exc).__name__}: {exc})')
+            ctx.close()
+            ctx = new_harvest_context(browser, viewport)
+            page = ctx.new_page()
         page.set_default_timeout(args.page_load_timeout * 1000)
         page.goto(url, wait_until='domcontentloaded', timeout=args.page_load_timeout * 1000)
+        log(f'loaded {url}')
         try:
             page.wait_for_load_state('networkidle', timeout=5000)
         except Exception:
@@ -821,7 +657,7 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
             meta: Dict[str, Any] = {'url': v['url'], 'platform': v['platform']}
             if v['platform'] in ('youtube', 'bilibili'):
                 # External platform: list the URL; agent calls video-download.py
-                # in a follow-up step (see SKILL.md Phase 3.b).
+                # in a follow-up step (see SKILL.md Phase 4.b).
                 meta['download_required'] = True
                 meta['suggested_output_dir'] = str(videos_dir.resolve())
                 log(f'  external video listed (download_required): {v["url"]}')
@@ -833,52 +669,65 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
                     meta['downloaded'] = True
                     meta['local_path'] = str(local.resolve())
                     meta['id'] = local.stem
+                    try:
+                        probed = media.probe(local)
+                    except (media.MediaProbeError, media.MediaToolMissing) as exc:
+                        log(f'  native video probe failed: {exc}')
+                        probed = {'width': None, 'height': None, 'duration_seconds': None}
+                    meta.update({
+                        'width': probed['width'],
+                        'height': probed['height'],
+                        'duration_seconds': probed['duration_seconds'],
+                    })
                 else:
                     meta['download_required'] = False
                     meta['downloaded'] = False
                     meta['error'] = 'native download failed'
             videos_meta.append(meta)
 
-        # close context BEFORE scroll-record (record needs its own context)
+        if args.scroll_record:
+            capped = min(60, max(5, args.scroll_duration))
+            # Extraction and Playwright recording share this page and context.
+            # Only a recording failure may open a fallback context and reload.
+            record_path: Optional[Path] = None
+            method = 'not-attempted'
+            if primary_error is None:
+                try:
+                    record_path, method = primary_scroll_record(ctx, page, capped, slug_dir)
+                except Exception as exc:
+                    log(f'  primary scroll-record raised ({type(exc).__name__}: {exc})')
+                    record_path, method = None, f'{type(exc).__name__}'
+            else:
+                method = f'{type(primary_error).__name__}'
+            if record_path is None:
+                log(f'  primary scroll-record failed ({method}); trying CDP screencast fallback')
+                try:
+                    record_path, method = cdp_screencast_record(
+                        browser, url, viewport, capped, args.page_load_timeout, slug_dir
+                    )
+                except Exception as exc:
+                    log(f'  CDP fallback raised ({type(exc).__name__}: {exc})')
+                    record_path, method = None, f'{type(exc).__name__}'
+            if record_path is None:
+                log(f'  scroll-record failed ({method}); continuing without recording')
+            else:
+                try:
+                    dur = media.probe_duration(record_path)
+                except (media.MediaProbeError, media.MediaToolMissing):
+                    dur = float(capped)
+                scroll_recording = {
+                    'local_path': str(record_path.resolve()),
+                    'duration_seconds': round(dur, 3),
+                    'width': viewport[0],
+                    'height': viewport[1],
+                    'method': method,
+                }
+                log(f'  scroll-record OK via {method}: {record_path}')
     finally:
         try:
             ctx.close()
         except Exception:
             pass
-
-    if args.scroll_record:
-        capped = min(60, max(5, args.scroll_duration))
-        # Each recorder gets its own try/except so a primary-recorder
-        # exception still allows the CDP fallback to run, and the
-        # already-collected images/videos survive in either case.
-        record_path: Optional[Path] = None
-        method = 'not-attempted'
-        try:
-            record_path, method = primary_scroll_record(
-                browser, url, viewport, capped, args.page_load_timeout, slug_dir
-            )
-        except Exception as exc:
-            log(f'  primary scroll-record raised ({type(exc).__name__}: {exc})')
-            record_path, method = None, f'{type(exc).__name__}'
-        if record_path is None:
-            log(f'  primary scroll-record failed ({method}); trying CDP screencast fallback')
-            try:
-                record_path, method = cdp_screencast_record(
-                    browser, url, viewport, capped, args.page_load_timeout, slug_dir
-                )
-            except Exception as exc:
-                log(f'  CDP fallback raised ({type(exc).__name__}: {exc})')
-                record_path, method = None, f'{type(exc).__name__}'
-        if record_path is None:
-            log(f'  scroll-record failed ({method}); continuing without recording')
-        else:
-            dur = probe_duration(record_path) or float(capped)
-            scroll_recording = {
-                'local_path': str(record_path.resolve()),
-                'duration_sec': round(dur, 3),
-                'method': method,
-            }
-            log(f'  scroll-record OK via {method}: {record_path}')
 
     entry = {
         'url': url,
@@ -931,7 +780,7 @@ def partition_urls(
             bad_urls.append({'url': u, 'error': f'unsupported URL scheme {scheme!r}; only http(s) is allowed'})
             log(f'  reject: {u} (scheme={scheme!r} — only http/https allowed)')
             continue
-        s = slugify_url(u)
+        s = harvest_manifest.slug_for_url(u)
         base, n = s, 2
         while s in used_slugs:
             s = f'{base}-{n}'
@@ -939,45 +788,6 @@ def partition_urls(
         used_slugs.add(s)
         items.append((u, s, detect_watchable_platform(u)))
     return items, bad_urls
-
-
-def aggregate_pending_downloads(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Collect every external video URL that still needs yt-dlp into a flat list
-    so the agent can iterate one array instead of nested-looping
-    `entries[].videos[]`.
-
-    Deduplicate by canonical URL. The same clip is frequently embedded on
-    multiple pages of the same batch (homepage + GitHub README is a common
-    pattern); downloading it twice into two per-slug directories wastes
-    bandwidth and risks yt-dlp rate-limiting. The first occurrence's
-    `suggested_output_dir` wins; additional referrers go into
-    `also_referenced_by` so Phase 3.b can fan out the `local_path` update to
-    every metadata.json that points at the same clip.
-    """
-    pending: List[Dict[str, Any]] = []
-    index: Dict[str, int] = {}
-    for e in entries:
-        if not e.get('success'):
-            continue
-        for v in e.get('videos', []) or []:
-            if not v.get('download_required'):
-                continue
-            url_key = v.get('url', '')
-            if not url_key:
-                continue
-            if url_key in index:
-                pending[index[url_key]].setdefault('also_referenced_by', []).append(
-                    e.get('slug', '')
-                )
-                continue
-            index[url_key] = len(pending)
-            pending.append({
-                'url': url_key,
-                'platform': v.get('platform', ''),
-                'suggested_output_dir': v.get('suggested_output_dir', ''),
-                'source_slug': e.get('slug', ''),
-            })
-    return pending
 
 
 def main() -> None:
@@ -1016,26 +826,32 @@ def main() -> None:
     entries: List[Dict[str, Any]] = []
     succeeded = 0
 
-    pw = None
+    chrome_session = None
     browser = None
+    chrome_metadata = {
+        'cdp_url': args.cdp_url,
+        'reused': False,
+        'ignored_flags': [],
+    }
     if needs_chrome:
         if sync_playwright is None:
             fail(
                 'playwright not installed; run: pip install playwright '
                 '(no `playwright install chromium` needed — uses system Chrome over CDP)'
             )
-        # ensure Chrome is up on CDP
-        ensure_cdp(args)
-        from playwright.sync_api import sync_playwright as _sp
-        pw = _sp().start()
         try:
-            browser = pw.chromium.connect_over_cdp(args.cdp_url)
+            chrome_session = chrome_cdp.attach_or_launch(
+                args.cdp_url,
+                args.profile_dir,
+                headless=args.explicit_headless,
+                window_size=CHROME_WINDOW_SIZE,
+                no_sandbox=args.no_sandbox,
+                chrome_path=args.chrome_path,
+            )
         except Exception as exc:
-            try:
-                pw.stop()
-            except Exception:
-                pass
-            fail(f'connect_over_cdp({args.cdp_url}) failed: {exc}')
+            fail(str(exc))
+        browser = chrome_session.browser
+        chrome_metadata = chrome_session.metadata()
         log(f'Connected to Chrome over CDP ({args.cdp_url})')
     else:
         log('No URL requires browser rendering — skipping Chrome/CDP setup.')
@@ -1047,7 +863,7 @@ def main() -> None:
             try:
                 if platform is not None:
                     # Short-circuit: no Playwright navigation. The agent will call
-                    # video-download.py for the URL listed in `videos[]` (see SKILL.md Phase 3.b).
+                    # video-download.py for the URL listed in `videos[]` (see SKILL.md Phase 4.b).
                     videos_dir = slug_dir / 'videos'
                     videos_dir.mkdir(parents=True, exist_ok=True)
                     canonical = normalize_youtube(url) if platform == 'youtube' else url
@@ -1074,15 +890,6 @@ def main() -> None:
                 log(f'  fatal per-URL error: {exc}')
                 entry = {'url': url, 'slug': slug, 'success': False, 'error': str(exc)}
 
-            # write per-URL metadata
-            try:
-                (slug_dir / 'metadata.json').write_text(
-                    json.dumps(entry, ensure_ascii=False, indent=2),
-                    encoding='utf-8',
-                )
-            except Exception as exc:
-                log(f'  metadata.json save failed: {exc}')
-
             if entry.get('success'):
                 succeeded += 1
             entries.append(entry)
@@ -1091,49 +898,44 @@ def main() -> None:
                 log('--no-continue-on-error set; stopping batch')
                 break
     finally:
-        if browser is not None:
+        if chrome_session is not None:
             try:
-                browser.close()  # detach the Playwright client (does NOT kill Chrome — we connected over CDP)
-            except Exception:
-                pass
-        if pw is not None:
-            try:
-                pw.stop()
+                chrome_session.close()
             except Exception:
                 pass
 
-    # Aggregate pending external downloads across the batch (deduplicated by
-    # canonical URL). See aggregate_pending_downloads docstring.
-    pending_downloads = aggregate_pending_downloads(entries)
+    saved = harvest_manifest.upsert_entries(output_dir, entries)
+    saved = harvest_manifest.record_harvest_batch(output_dir, {
+        'urls': [entry['url'] for entry in entries],
+        'succeeded': succeeded,
+        'failed': len(entries) - succeeded,
+        'rejected': bad_urls,
+    })
+    by_slug = {entry.get('slug'): entry for entry in saved['entries']}
+    batch_entries = [by_slug[entry['slug']] for entry in entries]
+    pending_downloads = harvest_manifest.pending_downloads(batch_entries)
 
     batch_success = succeeded > 0
-    manifest = {
+    result = {
         'success': batch_success,
         'output_dir': str(output_dir),
         'batch_size': len(items),
         'succeeded': succeeded,
-        'entries': entries,
+        'chrome': chrome_metadata,
+        'entries': batch_entries,
     }
     if bad_urls:
-        manifest['rejected'] = bad_urls
+        result['rejected'] = bad_urls
     if pending_downloads:
-        manifest['pending_downloads'] = pending_downloads
+        result['pending_downloads'] = pending_downloads
     if not batch_success:
-        manifest['error'] = 'All URLs failed; see entries[].error for details.'
+        result['error'] = 'All URLs failed; see entries[].error for details.'
 
-    try:
-        (output_dir / 'manifest.json').write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2),
-            encoding='utf-8',
-        )
-    except Exception as exc:
-        log(f'manifest.json save failed: {exc}')
-
-    print(json.dumps(manifest, ensure_ascii=False))
+    cli.print_json(result)
     log(f'Done. {succeeded}/{len(items)} entries succeeded.')
     if not batch_success:
         raise SystemExit(1)
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(cli.run(main, TOOL_NAME))

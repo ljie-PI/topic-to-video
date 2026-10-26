@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -28,6 +29,7 @@ SCRIPTS = REPO_ROOT / 'scripts'
 TTS_QWEN = SCRIPTS / 'tts_qwen.py'
 NARRATE = SCRIPTS / 'narrate.py'
 TEXT_ALIGN = SCRIPTS / 'text_align.py'
+VOICE_CLONE = SCRIPTS / 'voice-clone.py'
 
 # Input env vars that must not leak from the host into a test run. The
 # prefixes cover TTS_* (incl. TTS_DETECT_*), ALIGN*, NARRATE_* and VOICE_REF.
@@ -75,6 +77,79 @@ def test_log_latency_writes_to_stderr_only():
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout == ''
     assert '[latency] x:' in proc.stderr
+
+
+@pytest.mark.usefixtures('require_ffmpeg')
+def test_voice_clone_honors_ffprobe_override_and_preserves_duration_output(tmp_path: Path):
+    audio = tmp_path / 'source.mp3'
+    subprocess.run(
+        [
+            'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
+            '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1',
+            '-c:a', 'libmp3lame', str(audio),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    fake_package = tmp_path / 'fake_package'
+    tts_package = fake_package / 'dashscope' / 'audio'
+    tts_package.mkdir(parents=True)
+    (fake_package / 'dashscope' / '__init__.py').write_text('', encoding='utf-8')
+    (tts_package / '__init__.py').write_text('', encoding='utf-8')
+    (tts_package / 'tts_v2.py').write_text(
+        'import os\n'
+        'from pathlib import Path\n'
+        'class SpeechSynthesizer:\n'
+        '    def __init__(self, **kwargs):\n'
+        '        pass\n'
+        '    def call(self, text):\n'
+        "        return Path(os.environ['FAKE_DASHSCOPE_AUDIO']).read_bytes()\n"
+        '    def get_last_request_id(self):\n'
+        "        return 'test-request'\n"
+        '    def get_first_package_delay(self):\n'
+        '        return 0\n',
+        encoding='utf-8',
+    )
+
+    probe_marker = tmp_path / 'probe-invoked'
+    probe_wrapper = tmp_path / 'ffprobe-wrapper'
+    probe_wrapper.write_text(
+        f'#!{sys.executable}\n'
+        'import os\n'
+        'from pathlib import Path\n'
+        'import subprocess\n'
+        'import sys\n'
+        "Path(os.environ['FFPROBE_MARKER']).write_text('invoked', encoding='utf-8')\n"
+        f'raise SystemExit(subprocess.call([{shutil.which("ffprobe")!r}, *sys.argv[1:]]))\n',
+        encoding='utf-8',
+    )
+    probe_wrapper.chmod(0o755)
+    narration_text = tmp_path / 'narration.txt'
+    narration_text.write_text('Hello world.', encoding='utf-8')
+
+    proc = run_cli(
+        VOICE_CLONE,
+        '--backend', 'dashscope',
+        '--input-file', str(narration_text),
+        '--output-dir', str(tmp_path / 'output'),
+        env={
+            'DASHSCOPE_API_KEY': 'test-key',
+            'COSYVOICE_VOICE_ID': 'test-voice',
+            'FAKE_DASHSCOPE_AUDIO': str(audio),
+            'FFPROBE_BIN': str(probe_wrapper),
+            'FFPROBE_MARKER': str(probe_marker),
+            'PYTHONPATH': str(fake_package),
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    result = parse_stdout(proc)
+    assert result['success'] is True
+    assert result['duration_s'] == pytest.approx(1.0, abs=0.1)
+    assert probe_marker.read_text(encoding='utf-8') == 'invoked'
 
 
 # --- text_align.py exit / JSON contract ---------------------------------------

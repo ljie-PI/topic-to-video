@@ -49,7 +49,7 @@ ffprobe -v error -show_entries format=duration \
   {work_dir}/{topic_name}/voice_clone/narration.mp3
 ```
 
-- 后端由环境选择，参数和依赖（参考音色、Python 包、硬件要求等）见 `scripts/voice-clone.py --help`。拿不准当前机器会选哪个后端时先跑 `python3 scripts/voice-clone.py --resolve-backend`。
+- 后端由环境选择，参数和依赖（参考音色、Python 包、硬件要求等）见 `scripts/voice-clone.py` 的顶部说明。拿不准当前机器会选哪个后端时先跑 `python3 scripts/voice-clone.py --resolve-backend`。
 - **mlx**（arm64 Mac）：合成后直接用 mlx-audio ForcedAligner 对齐朗读稿原文并写出 transcript.json（该后端默认出 transcript，不需要 `--emit-transcript`；aligner 不可用时告警并跳过，用户需按 7.2 的回退路径补 transcript）。
 - **qwen3tts**（CUDA）：`--emit-transcript` 让 torch Qwen3-ForcedAligner 可用时同样直对齐出 transcript.json；aligner 不可导入时脚本只在 stderr 警告、不写 transcript.json —— 这时跑全 ASR：
 
@@ -58,7 +58,7 @@ ffprobe -v error -show_entries format=duration \
     {work_dir}/{topic_name}/voice_clone/narration.mp3 \
     {work_dir}/{topic_name}/transcribe/transcript.json
   ```
-- **dashscope**（云端兜底）：没有本地 aligner，合成后总是跑上面这条 transcribe.py（auto 会选 dashscope ASR）。transcribe.py 的后端选择与依赖见 `scripts/transcribe.py --help`。
+- **dashscope**（云端兜底）：没有本地 aligner，合成后总是跑上面这条 transcribe.py（auto 会选 dashscope ASR）。transcribe.py 的后端选择与依赖见 `scripts/transcribe.py` 的顶部说明。
 
 脚本编写规范：
 - 解说内容只放在 `narration.txt` 里。
@@ -79,7 +79,7 @@ python3 scripts/align-narration.py \
 
 字幕宽度直接取自所选 layout 的区域定义：`--layout` 读取 JSON 里的 `caption` 段（`width_px` / `font_size_px` / `max_lines`，如 `presenter` 的 1166px / 36px / 1 行、`portrait` 的 940px / 42px / 2 行），每行宽度上限按现有公式 `int(width_px / font_size_px)` 折算成 CJK 单位。layout 名从 `inputs.json` 的 `layout` 字段取，映射到 `modules/layouts/<layout>.json`（本 phase 由主 agent 显式传入；不做自动查找，design/layout 的自动接线归 composition 阶段）。显式的 `--width` / `--font-size` / `--max-lines` 仍然可用（与 `--layout` 同传时 layout 优先；两者都不传是参数错误）。如果存在带 `cues` 的 `scene-plan.json`，追加 `--scene-plan {work_dir}/{topic_name}/scene-plan.json`，cue 的秒数会写进 `timeline.json`；没有场景规划时 `timeline.json` 只含段落起止。
 
-对齐规则：字幕文本以显示稿 `script.txt` 为准，transcript 只提供时间。脚本先把 transcript token 和朗读稿归一化（标点 / 空格 / 大小写不敏感，中文数字与阿拉伯数字等价）再做字符级对齐，然后通过偏移表映射回显示稿，品牌名和数字按显示形式出现。transcript 有而朗读稿没有的内容保留 transcript 文本，并在该字幕单元上标记 `fallback: true`；TTS 漏读的内容没有音频可依，会被丢弃并在 stderr / summary 里警告。分段先按句末标点切，超宽时在逗号、分号、顿号、冒号、破折号处断开，不在英文单词或数字内部断开，过短尾段均衡重切，不足 0.6 秒的单元并入相邻单元。详见 `scripts/align-narration.py --help`。
+对齐规则：字幕文本以显示稿 `script.txt` 为准，transcript 只提供时间。脚本先把 transcript token 和朗读稿归一化（标点 / 空格 / 大小写不敏感，中文数字与阿拉伯数字等价）再做字符级对齐，然后通过偏移表映射回显示稿，品牌名和数字按显示形式出现。transcript 有而朗读稿没有的内容保留 transcript 文本，并在该字幕单元上标记 `fallback: true`；TTS 漏读的内容没有音频可依，会被丢弃并在 stderr / summary 里警告。分段先按句末标点切，超宽时在逗号、分号、顿号、冒号、破折号处断开，不在英文单词或数字内部断开，过短尾段均衡重切，不足 0.6 秒的单元并入相邻单元。详见 `scripts/align-narration.py` 的顶部说明。
 
 产物：
 

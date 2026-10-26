@@ -7,84 +7,24 @@ Usage:
 """
 
 import argparse
-import json
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
+import cli
+import harvest_manifest
+import media
+
 TOOL_NAME = 'video-download'
 
-VIDEO_EXTS = {'.mp4', '.webm', '.mov', '.mkv', '.m4v', '.avi'}
-
-
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
-
-
-def probe_video_dimensions(path: str) -> Dict[str, Any]:
-    """Run ffprobe to read width/height/duration of the first video stream.
-
-    Returns a dict with keys path, width, height, duration_seconds. Width/height
-    are None if ffprobe is unavailable or the file is not a probeable video.
-    """
-    result: Dict[str, Any] = {
-        'path': path,
-        'width': None,
-        'height': None,
-        'duration_seconds': None,
-    }
-    try:
-        completed = subprocess.run(
-            [
-                'ffprobe',
-                '-v', 'error',
-                '-select_streams', 'v:0',
-                '-show_entries', 'stream=width,height:format=duration',
-                '-of', 'json',
-                path,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-    except FileNotFoundError:
-        log('ffprobe not on PATH; skipping dimension probe')
-        return result
-    except subprocess.TimeoutExpired:
-        log(f'ffprobe timed out for {path}')
-        return result
-    if completed.returncode != 0:
-        log(f'ffprobe failed for {path}: {(completed.stderr or "").strip()[:200]}')
-        return result
-    try:
-        info = json.loads(completed.stdout or '{}')
-    except json.JSONDecodeError:
-        log(f'ffprobe returned non-JSON for {path}')
-        return result
-    streams = info.get('streams') or []
-    if streams:
-        stream = streams[0]
-        width = stream.get('width')
-        height = stream.get('height')
-        if isinstance(width, int) and isinstance(height, int) and width > 0 and height > 0:
-            result['width'] = width
-            result['height'] = height
-    duration_str = ((info.get('format') or {}).get('duration')) or ''
-    try:
-        duration = float(duration_str)
-        if duration > 0:
-            result['duration_seconds'] = duration
-    except (TypeError, ValueError):
-        pass
-    return result
+log = cli.make_logger(TOOL_NAME)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Download a video and subtitles with yt-dlp.')
+    parser = cli.JsonArgumentParser(TOOL_NAME, description='Download a video and subtitles with yt-dlp.')
     parser.add_argument('--url', required=True, help='Video URL to download')
-    parser.add_argument('--output-dir', default='downloads', help='Output directory (default: downloads)')
+    parser.add_argument('--output-dir', default=None, help='Output directory (default: pending manifest directory, or downloads)')
+    parser.add_argument('--harvest-dir', default=None, help='harvest_page directory to update after download')
     parser.add_argument(
         '--subtitles-only',
         action='store_true',
@@ -95,7 +35,10 @@ def parse_args() -> argparse.Namespace:
         default='200M',
         help='Max video size for yt-dlp (default: 200M)',
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.subtitles_only and args.harvest_dir:
+        parser.error('--subtitles-only cannot be used with --harvest-dir')
+    return args
 
 
 def tail_text(text: str, limit: int = 4000) -> str:
@@ -142,6 +85,8 @@ def build_command(args: argparse.Namespace, output_dir: Path) -> List[str]:
         'yt-dlp',
         '--write-subs',
         '--write-auto-subs',
+        '--convert-subs',
+        'srt',
         '--sub-langs',
         'en,zh',
         '--output',
@@ -157,9 +102,21 @@ def build_command(args: argparse.Namespace, output_dir: Path) -> List[str]:
 
 def main() -> int:
     args = parse_args()
-    output_dir = Path(args.output_dir).expanduser().resolve()
+    harvest_dir = Path(args.harvest_dir).expanduser().resolve() if args.harvest_dir else None
 
     try:
+        if args.output_dir:
+            output_dir = Path(args.output_dir).expanduser().resolve()
+        elif harvest_dir is not None:
+            pending = next(
+                (item for item in harvest_manifest.load(harvest_dir)['pending_downloads'] if item.get('url') == args.url),
+                None,
+            )
+            if pending is None or not pending.get('suggested_output_dir'):
+                raise ValueError('--output-dir is required when the URL has no pending suggested_output_dir')
+            output_dir = harvest_manifest.resolve(harvest_dir, pending['suggested_output_dir']).resolve()
+        else:
+            output_dir = Path('downloads').resolve()
         if output_dir.exists() and not output_dir.is_dir():
             raise ValueError(f'Output path is not a directory: {output_dir}')
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -185,7 +142,7 @@ def main() -> int:
         if completed.returncode != 0:
             error_message = detect_common_issue(combined_output)
             log(f'yt-dlp failed: {error_message}')
-            print(json.dumps({'success': False, 'error': error_message}, ensure_ascii=False))
+            cli.print_json({'success': False, 'error': error_message})
             return 1
 
         files = collect_changed_files(output_dir, before_stats)
@@ -195,9 +152,27 @@ def main() -> int:
 
         videos_info = []
         if not args.subtitles_only:
-            video_paths = [p for p in files if Path(p).suffix.lower() in VIDEO_EXTS]
+            video_paths = [p for p in files if Path(p).suffix.lower() in harvest_manifest.VIDEO_EXTS]
             for video_path in video_paths:
-                info = probe_video_dimensions(video_path)
+                info: Dict[str, Any] = {
+                    'path': video_path,
+                    'width': None,
+                    'height': None,
+                    'duration_seconds': None,
+                }
+                try:
+                    probed = media.probe(video_path)
+                except media.MediaToolMissing:
+                    log('media probe binary not on PATH; skipping dimension probe')
+                except media.MediaProbeError as exc:
+                    log(str(exc))
+                else:
+                    duration = probed['duration_seconds']
+                    info.update({
+                        'width': probed['width'],
+                        'height': probed['height'],
+                        'duration_seconds': duration if duration is not None and duration > 0 else None,
+                    })
                 if info['width'] and info['height']:
                     log(f'  probed {Path(video_path).name}: {info["width"]}x{info["height"]}')
                 videos_info.append(info)
@@ -209,11 +184,14 @@ def main() -> int:
             'videos': videos_info,
             'stdout_tail': tail_text(combined_output),
         }
-        print(json.dumps(result, ensure_ascii=False))
+        if harvest_dir is not None:
+            harvest_manifest.apply_download(harvest_dir, args.url, result)
+            result['manifest_updated'] = True
+        cli.print_json(result)
         return 0
     except FileNotFoundError:
         log('yt-dlp is not installed or not available on PATH.')
-        print(json.dumps({'success': False, 'error': 'yt-dlp is not installed or not available on PATH.'}, ensure_ascii=False))
+        cli.print_json({'success': False, 'error': 'yt-dlp is not installed or not available on PATH.'})
         return 1
     except subprocess.TimeoutExpired as exc:
         output = '\n'.join(
@@ -223,18 +201,9 @@ def main() -> int:
         )
         message = f'yt-dlp timed out after {exc.timeout} seconds. {tail_text(output)}'.strip()
         log(message)
-        print(
-            json.dumps(
-                {'success': False, 'error': message},
-                ensure_ascii=False,
-            )
-        )
-        return 1
-    except Exception as exc:
-        log(f'error: {exc}')
-        print(json.dumps({'success': False, 'error': str(exc)}, ensure_ascii=False))
+        cli.print_json({'success': False, 'error': message})
         return 1
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    raise SystemExit(cli.run(main, TOOL_NAME))

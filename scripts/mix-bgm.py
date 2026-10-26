@@ -24,11 +24,10 @@ Output convention:
   exit   : 0 success, 1 runtime error, 2 invalid arguments
 """
 import argparse
-import json
-import subprocess
-import sys
 from pathlib import Path
-from typing import Optional
+
+import cli
+import media
 
 TOOL_NAME = 'mix-bgm'
 
@@ -37,23 +36,11 @@ TOOL_NAME = 'mix-bgm'
 DEFAULT_BGM_PATH = Path(__file__).resolve().parent.parent / 'resources' / 'bgm.mp3'
 
 
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
-
-
-def print_json(payload: dict) -> None:
-    print(json.dumps(payload, ensure_ascii=False))
-
-
-class JsonArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'bad arguments: {message}')
-        print_json({'success': False, 'error': message})
-        raise SystemExit(2)
+log = cli.make_logger(TOOL_NAME)
 
 
 def parse_args() -> argparse.Namespace:
-    p = JsonArgumentParser(description='Mix a BGM track onto a video with ffmpeg.')
+    p = cli.JsonArgumentParser(TOOL_NAME, description='Mix a BGM track onto a video with ffmpeg.')
     p.add_argument('--video', required=True, help='Input video (must already contain narration audio).')
     p.add_argument('--bgm', default=str(DEFAULT_BGM_PATH),
                    help=f'BGM mp3 to loop under the narration. Default: bundled '
@@ -61,38 +48,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--bgm-volume', type=float, default=0.03,
                    help='Linear gain for BGM, 0.0-1.0. Default 0.03.')
     p.add_argument('--output', required=True, help='Output video path.')
-    p.add_argument('--ffmpeg', default='ffmpeg', help='ffmpeg binary path. Default `ffmpeg`.')
-    p.add_argument('--ffprobe', default='ffprobe', help='ffprobe binary path. Default `ffprobe`.')
+    p.add_argument('--ffmpeg', default=None, help='ffmpeg binary path. Overrides FFMPEG_BIN.')
+    p.add_argument('--ffprobe', default=None, help='ffprobe binary path. Overrides FFPROBE_BIN.')
     args = p.parse_args()
     if not 0.0 <= args.bgm_volume <= 1.0:
         p.error(f'--bgm-volume must be within [0.0, 1.0] (got {args.bgm_volume})')
     return args
-
-
-def probe_duration(ffprobe: str, path: Path) -> Optional[float]:
-    try:
-        out = subprocess.check_output(
-            [ffprobe, '-v', 'error', '-show_entries', 'format=duration',
-             '-of', 'default=noprint_wrappers=1:nokey=1', str(path)],
-            timeout=15,
-        )
-        return float(out.decode().strip())
-    except Exception as exc:
-        log(f'ffprobe failed for {path}: {exc}')
-        return None
-
-
-def run_ffmpeg(cmd: list, label: str) -> None:
-    """Run an ffmpeg command and surface stderr on failure."""
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        stderr_tail = (result.stderr or '').strip().splitlines()
-        # keep the last ~20 lines so the error stays useful but the
-        # JSON payload doesn't explode
-        tail = '\n'.join(stderr_tail[-20:]) if stderr_tail else '(no stderr)'
-        raise RuntimeError(
-            f'ffmpeg failed during {label} (exit={result.returncode}): {tail}'
-        )
 
 
 def mux_bgm(ffmpeg: str, video: Path, bgm: Path, volume: float, output: Path) -> None:
@@ -122,49 +83,37 @@ def mux_bgm(ffmpeg: str, video: Path, bgm: Path, volume: float, output: Path) ->
         str(output),
     ]
     log(f'mux bgm (volume={volume}): {video} + {bgm} -> {output}')
-    run_ffmpeg(cmd, 'mux')
+    media.run_ffmpeg(cmd[1:], ffmpeg=ffmpeg, timeout=300)
 
 
 def main() -> int:
-    try:
-        args = parse_args()
+    args = parse_args()
 
-        video = Path(args.video).expanduser().resolve()
-        bgm = Path(args.bgm).expanduser().resolve()
-        output = Path(args.output).expanduser().resolve()
+    video = Path(args.video).expanduser().resolve()
+    bgm = Path(args.bgm).expanduser().resolve()
+    output = Path(args.output).expanduser().resolve()
 
-        if not video.is_file():
-            raise FileNotFoundError(f'--video not found: {video}')
-        if not bgm.is_file():
-            raise FileNotFoundError(
-                f'--bgm not found: {bgm}. The skill ships a default at '
-                f'{DEFAULT_BGM_PATH}; if that file is missing, regenerate it or '
-                f'pass --bgm /path/to/your.mp3.'
-            )
+    if not video.is_file():
+        raise FileNotFoundError(f'--video not found: {video}')
+    if not bgm.is_file():
+        raise FileNotFoundError(
+            f'--bgm not found: {bgm}. The skill ships a default at '
+            f'{DEFAULT_BGM_PATH}; if that file is missing, regenerate it or '
+            f'pass --bgm /path/to/your.mp3.'
+        )
 
-        mux_bgm(args.ffmpeg, video, bgm, args.bgm_volume, output)
-        out_dur = probe_duration(args.ffprobe, output)
-        if out_dur is None:
-            raise RuntimeError(
-                f'could not probe duration of {output}; ffprobe may be missing '
-                f'or the output is unreadable'
-            )
+    mux_bgm(args.ffmpeg, video, bgm, args.bgm_volume, output)
+    out_dur = media.probe_duration(output, ffprobe=args.ffprobe)
 
-        log(f'wrote {output} ({(output.stat().st_size / 1024 / 1024):.2f} MB, {out_dur}s)')
-        print_json({
-            'success': True,
-            'output_path': str(output),
-            'bgm_path': str(bgm),
-            'duration_s': out_dur,
-        })
-        return 0
-    except SystemExit:
-        raise
-    except Exception as exc:
-        log(f'error: {exc}')
-        print_json({'success': False, 'error': str(exc)})
-        return 1
+    log(f'wrote {output} ({(output.stat().st_size / 1024 / 1024):.2f} MB, {out_dur}s)')
+    cli.print_json({
+        'success': True,
+        'output_path': str(output),
+        'bgm_path': str(bgm),
+        'duration_s': out_dur,
+    })
+    return 0
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(cli.run(main, TOOL_NAME))

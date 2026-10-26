@@ -4,26 +4,26 @@ ffmpeg / ffprobe, a system Chrome and the playwright package are required
 dependencies of the skill (see SKILL.md). Tests that need them never skip:
 a missing dependency makes exactly those tests fail with a message naming
 what to install, while unrelated tests still run. Chrome is located with
-check-composition.py's own find_chrome (CHROME_PATH, then the platform's
-standard install paths), so the tests accept exactly the browsers the scripts
-accept.
+chrome_cdp.find_chrome (CHROME_PATH, then the platform's standard install
+paths), so the tests accept exactly the browsers the scripts accept.
 """
 from __future__ import annotations
 
 import importlib.util
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
 
-CHECK_COMPOSITION = Path(__file__).resolve().parent.parent / 'scripts' / 'check-composition.py'
+SCRIPTS_DIR = Path(__file__).resolve().parent.parent / 'scripts'
+sys.path.insert(0, str(SCRIPTS_DIR))
+
+import chrome_cdp
 
 
 def find_chrome() -> str | None:
-    spec = importlib.util.spec_from_file_location('check_composition', CHECK_COMPOSITION)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.find_chrome(None)
+    return chrome_cdp.find_chrome(None)
 
 
 @pytest.fixture(scope='session')

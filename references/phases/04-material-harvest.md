@@ -6,11 +6,11 @@
 
 ## 输出
 
-`harvest_page/manifest.json`（`entries` 非空）+ `harvest_page/<url-slug>/` 目录；YouTube/Bilibili 条目带 `pending_downloads[]`，下载后应用 `apply-video-download-result.py`。论文模式下解析出的论文（`manifest_papers.json`）在本 phase 并入统一 manifest。
+`harvest_page/manifest.json`（v2，`entries` 与 `harvest_batches` 非空）+ `harvest_page/<url-slug>/` 目录；YouTube/Bilibili 条目带 `pending_downloads[]`，`video-download.py --harvest-dir` 会在下载成功后直接更新 manifest。论文 entry 已由 Phase 2 写入同一份 manifest，后续 harvest 不会覆盖它。
 
 ## 完成判据
 
-`harvest_page/manifest.json` 存在、非空、JSON 可解析且 `entries` 为非空列表；`pending_downloads[]` 已逐项顺序处理（失败项保留 `download_required: true`）。
+`harvest_page/manifest.json` 存在、非空、JSON 可解析且 `entries` 与 `harvest_batches` 为非空列表（只有论文 entry 不算完成 web harvest）；`pending_downloads[]` 已逐项顺序处理（失败项保留 `download_required: true`）。
 
 ## 下一步
 
@@ -67,38 +67,21 @@ scripts/harvest-pages.py \
 
 输出：`harvest_page/manifest.json` + `harvest_page/<url-slug>/` 目录（每个 URL 一个）。`manifest.entries[]` 的结构如下——每个渲染页 entry 含有 `text_excerpt`、`metrics`、`images[]`、`videos[]`，以及可选的 `scroll_recording`；YouTube/Bilibili 直链 entry 的 `videos[]` 带有 `download_required: true` 且没有 scroll recording。manifest 顶层还会带一个 **`pending_downloads[]`** —— 列出 harvester 检测到的所有 YouTube/Bilibili URL（不管是直接通过 `--urls` 传入的，还是从页面里发现内嵌的）。
 
-#### Paper mode：把解析出来的论文并入 manifest
+#### Paper mode：保留解析出来的论文
 
-当 `input_mode = "paper"` 时，`parse-pdf.py` 会把论文 entry 写到 `harvest_page/manifest_papers.json`（独立于 web harvest manifest）。`harvest-pages.py` 跑完（或被跳过）后，将其合并：
-
-```bash
-scripts/merge-paper-manifest.py \
-  --harvest-dir {work_dir}/{topic_name}/harvest_page/
-```
-
-合并之后，`manifest.json` 同时包含论文来源 entry（`source_type: "paper_pdf"`）和 web 来源 entry。后续所有阶段都读同一份统一 manifest。
+当 `input_mode = "paper"` 时，`parse-pdf.py` 已把论文 entry upsert 到 `harvest_page/manifest.json`。`harvest-pages.py` 每批也只 upsert 本批 entry 并追加 `harvest_batches`，因此重跑或换镜像 URL 不会抹掉论文、其他批次或已完成的下载。后续所有阶段都读同一份统一 manifest。
 
 ### Phase 4.b — 处理 pending video downloads
 
 `harvest-pages.py` 是纯发现工具：它会内联下载原生 HTML5 `<video>` 片段（因为这些需要页面的 cookie / referer），但对 YouTube 和 Bilibili 只**列出** URL。agent 必须对 `pending_downloads[]` 的每一项调用 `video-download.py` 真正去下：
 
 ```bash
-# 对 manifest.pending_downloads 里的每一项：
-scripts/video-download.py \
-  --url "<item.url>" \
-  --output-dir "<item.suggested_output_dir>"
+# 对 manifest.pending_downloads 里的每一项（每项只运行这一条命令）：
+scripts/video-download.py --url "<item.url>" --harvest-dir {work_dir}/{topic_name}/harvest_page/
 ```
 
 规则：
 - **顺序执行**，不并行 —— yt-dlp 并行时容易被限速 / 限 IP。
-- 直接用 `item.suggested_output_dir`；它就是 `harvest_page/<source_slug>/videos/`，下载下来的文件会落到与原生视频同一目录。
-- 每次下载成功后，把 JSON 结果应用到 `manifest.json` 和对应的 `metadata.json`：
-  ```bash
-  scripts/apply-video-download-result.py \
-    --harvest-dir {work_dir}/{topic_name}/harvest_page/ \
-    --source-slug "<item.source_slug>" \
-    --url "<item.url>" \
-    --result-json /path/to/video-download-result.json
-  ```
-  这一步会将 `download_required` 置为 `false`、加上 `local_path` 和可选的 `subtitle_path`、把 `id` 设为下载文件的 stem，并把更新同步扩散到所有 `also_referenced_by` slug。
+- 不传 `--output-dir` 时自动使用该项的 `suggested_output_dir`，下载到 `harvest_page/<source_slug>/videos/`。
+- 下载成功会自动将 `download_required` 置为 `false`、加上相对 `local_path` 和可选的 `subtitle_path`、把 `id` 设为下载文件的 stem，写入媒体宽高和时长，并同步 manifest、所有引用 entry 及其 `metadata.json`。
 - 如果 `video-download.py` 返回 `{"success": false}`（地区封锁、年龄限制、410 等），保留 `download_required: true` 并跳过它——Phase 5 会忽略它。如果该话题正好依赖这段 clip，用 `web_search` 找一个被转发的镜像，并用新 URL 重跑 `harvest-pages.py`。

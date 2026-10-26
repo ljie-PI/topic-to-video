@@ -30,15 +30,14 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 import zipfile
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
-import requests
+import cli
+import harvest_manifest
 
 TOOL_NAME = 'parse-pdf'
 POLL_INTERVAL_S = 5
@@ -50,25 +49,17 @@ API_BASE = 'https://mineru.net/api/v4'
 # I/O helpers
 # ---------------------------------------------------------------------------
 
-class ArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'Argument error: {message}')
-        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
-        self.exit(2)
-
-
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
+log = cli.make_logger(TOOL_NAME)
 
 
 def fail(message: str, exit_code: int = 1) -> None:
     log(message)
-    print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
+    cli.print_json({'success': False, 'error': message})
     raise SystemExit(exit_code)
 
 
 def parse_args() -> argparse.Namespace:
-    p = ArgumentParser(description='MinerU PDF paper parser.')
+    p = cli.JsonArgumentParser(TOOL_NAME, description='MinerU PDF paper parser.')
     group = p.add_mutually_exclusive_group(required=True)
     group.add_argument('--url', help='Public URL to a PDF.')
     group.add_argument('--pdf', help='Local path to a PDF file.')
@@ -76,17 +67,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--slug', default=None, help='Slug for output subdirectory (auto-derived if omitted).')
     p.add_argument('--model-version', default='vlm', help='MinerU model version (default: vlm).')
     return p.parse_args()
-
-
-def derive_slug(url: str | None, pdf_path: str | None) -> str:
-    """Derive a slug from URL or filename: lowercase alphanumeric + hyphens."""
-    if url:
-        parsed = urlparse(url)
-        base = Path(parsed.path).stem or 'paper'
-    else:
-        base = Path(pdf_path).stem
-    slug = re.sub(r'[^a-z0-9]+', '-', base.lower()).strip('-')
-    return slug[:80] or 'paper'
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +79,8 @@ def cloud_headers(token: str) -> dict[str, str]:
 
 def cloud_extract_url(url: str, token: str, model_version: str) -> str:
     """Submit a URL extraction task. Returns task_id."""
+    import requests
+
     resp = requests.post(
         f'{API_BASE}/extract/task',
         headers=cloud_headers(token),
@@ -123,6 +105,8 @@ def cloud_extract_url(url: str, token: str, model_version: str) -> str:
 
 def cloud_extract_file(pdf_path: str, token: str, model_version: str) -> str:
     """Upload a local file and submit extraction. Returns task_id."""
+    import requests
+
     filename = os.path.basename(pdf_path)
 
     # Step 1: get pre-signed upload URL
@@ -169,6 +153,8 @@ def cloud_extract_file(pdf_path: str, token: str, model_version: str) -> str:
 
 def cloud_poll(task_id: str, token: str) -> dict[str, Any]:
     """Poll until task is done or timeout. Returns task result data."""
+    import requests
+
     deadline = time.time() + POLL_TIMEOUT_S
     while time.time() < deadline:
         resp = requests.get(
@@ -193,6 +179,8 @@ def cloud_poll(task_id: str, token: str) -> dict[str, Any]:
 
 def cloud_download_zip(task_data: dict[str, Any], dest_dir: str) -> str:
     """Download and unzip cloud result. Returns path to extracted output dir."""
+    import requests
+
     zip_url = task_data.get('full_zip_url')
     if not zip_url:
         raise RuntimeError(f'no full_zip_url in task data: {task_data}')
@@ -252,6 +240,8 @@ def run_local(args: argparse.Namespace) -> tuple:
 
         # If URL, download the PDF first
         if args.url:
+            import requests
+
             log(f'downloading PDF from {args.url}...')
             resp = requests.get(args.url, timeout=120, stream=True)
             resp.raise_for_status()
@@ -325,15 +315,18 @@ def process_mineru_output(
     pdf_path: str | None,
 ) -> dict[str, Any]:
     """Process MinerU output into harvest-compatible format. Returns manifest entry."""
+    from PIL import Image
+
     output_path = Path(output_dir)
-    work_dir = output_path.parent  # parent of harvest_page
     slug_dir = output_path / slug
     images_dir = slug_dir / 'images'
     images_dir.mkdir(parents=True, exist_ok=True)
 
-    # Archive raw MinerU output
-    mineru_archive = work_dir / 'mineru_output' / slug
-    mineru_archive.mkdir(parents=True, exist_ok=True)
+    # Keep the complete raw MinerU output beside the entry it produced.
+    mineru_archive = slug_dir / 'mineru'
+    if Path(mineru_dir).resolve() != mineru_archive.resolve():
+        shutil.copytree(mineru_dir, mineru_archive, dirs_exist_ok=True)
+    mineru_dir = str(mineru_archive)
 
     # Find key files
     content_list_path = find_content_list(mineru_dir)
@@ -346,13 +339,11 @@ def process_mineru_output(
     if full_md_path:
         with open(full_md_path, 'r', encoding='utf-8', errors='replace') as f:
             md_text = f.read()
-        shutil.copy2(full_md_path, mineru_archive / 'full.md')
 
     content_list: list[dict[str, Any]] = []
     if content_list_path:
         with open(content_list_path, 'r', encoding='utf-8', errors='replace') as f:
             content_list = json.load(f)
-        shutil.copy2(content_list_path, mineru_archive / 'content_list.json')
 
     title = extract_title(md_text)
     abstract = extract_abstract(md_text)
@@ -418,12 +409,15 @@ def process_mineru_output(
         dest_path = images_dir / dest_name
         shutil.copy2(src_path, dest_path)
 
-        local_path = str(dest_path.resolve())
+        with Image.open(dest_path) as image:
+            width, height = image.size
         meta: dict[str, Any] = {
             'id': file_id,
-            'local_path': local_path,
+            'local_path': dest_path.relative_to(output_path).as_posix(),
             'type': img_type,
             'caption': caption,
+            'width': width,
+            'height': height,
         }
         if item_type == 'table':
             table_body = item.get('table_body', '')
@@ -435,8 +429,8 @@ def process_mineru_output(
     entry_url = source_url or ''
     if not entry_url and pdf_path:
         entry_url = Path(pdf_path).resolve().as_uri()
-    full_md_archive = mineru_archive / 'full.md'
-    full_md_rel = str(full_md_archive.resolve()) if full_md_archive.exists() else None
+    full_md_archive = Path(full_md_path) if full_md_path else None
+    full_md_rel = full_md_archive.relative_to(output_path).as_posix() if full_md_archive else None
     entry: dict[str, Any] = {
         'url': entry_url,
         'slug': slug,
@@ -456,38 +450,13 @@ def process_mineru_output(
         'scroll_recording': None,
     }
 
-    # Write per-slug metadata.json
-    (slug_dir / 'metadata.json').write_text(
-        json.dumps(entry, ensure_ascii=False, indent=2),
-        encoding='utf-8',
-    )
-
     return entry
 
 
 def update_manifest(output_dir: str, entry: dict[str, Any]) -> dict[str, Any]:
-    """Read/create manifest_papers.json and upsert entry by slug. Returns full manifest."""
-    manifest_path = os.path.join(output_dir, 'manifest_papers.json')
-    manifest: dict[str, Any] = {
-        'success': True,
-        'entries': [],
-        'pending_downloads': [],
-    }
-    if os.path.exists(manifest_path):
-        try:
-            with open(manifest_path, 'r', encoding='utf-8') as f:
-                manifest = json.load(f)
-        except Exception as exc:
-            log(f'warning: failed to read existing manifest: {exc}')
-
-    # Dedup by slug (replace existing entry on re-run)
-    manifest['entries'] = [e for e in manifest['entries'] if e.get('slug') != entry['slug']]
-    manifest['entries'].append(entry)
-    manifest['success'] = any(e.get('success') for e in manifest['entries'])
-
-    with open(manifest_path, 'w', encoding='utf-8') as f:
-        json.dump(manifest, f, ensure_ascii=False, indent=2)
-    log(f'manifest_papers.json updated ({len(manifest["entries"])} entries)')
+    """Upsert through the shared v2 manifest writer."""
+    manifest = harvest_manifest.upsert_entries(output_dir, [entry])
+    log(f'manifest.json updated ({len(manifest["entries"])} entries)')
     return manifest
 
 
@@ -505,7 +474,7 @@ def main() -> None:
     output_dir = os.path.abspath(args.output_dir)
     os.makedirs(output_dir, exist_ok=True)
 
-    slug = args.slug or derive_slug(args.url, args.pdf)
+    slug = args.slug or harvest_manifest.slug_for_pdf(args.url, args.pdf)
     if '/' in slug or '\\' in slug or '..' in slug:
         fail(f'invalid slug (contains path separators or ..): {slug}', exit_code=2)
     log(f'slug={slug} output_dir={output_dir}')
@@ -567,7 +536,7 @@ def main() -> None:
         'backend': backend,
         'manifest_entry': entry,
     }
-    print(json.dumps(result, ensure_ascii=False))
+    cli.print_json(result)
     log(f'done: {figure_count} figures, {table_count} tables')
 
     # Cleanup temp dirs
@@ -576,4 +545,4 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(cli.run(main, TOOL_NAME))

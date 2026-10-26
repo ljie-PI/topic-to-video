@@ -78,6 +78,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
 
 import backend_select as bs
+import cli
+import media
 from backend_select import BackendUnavailableError, UnknownBackendError
 
 # Reduce CUDA allocator fragmentation so long narrations don't OOM on smaller
@@ -85,6 +87,7 @@ from backend_select import BackendUnavailableError, UnknownBackendError
 # setdefault leaves any user-provided value untouched.
 os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')
 
+TOOL_NAME = 'voice-clone'
 DASHSCOPE_MODEL = "cosyvoice-v3.5-plus"
 DEFAULT_QWEN3TTS_MODEL = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
 DEFAULT_REF_ASR_MODEL = "Qwen/Qwen3-ASR-1.7B"
@@ -179,23 +182,13 @@ def reference_text_env() -> str | None:
     return os.environ.get('TTS_REF_TEXT') or os.environ.get('VOXCPM_REF_TEXT')
 
 
-def print_json(payload: dict[str, object]) -> None:
-    print(json.dumps(payload, ensure_ascii=False))
-
-
-def log(message: str) -> None:
-    print(f'[voice-clone] {message}', file=sys.stderr)
-
-
-class JsonArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'bad arguments: {message}')
-        print_json({'success': False, 'error': message})
-        raise SystemExit(2)
+print_json = cli.print_json
+log = cli.make_logger(TOOL_NAME)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = JsonArgumentParser(
+    parser = cli.JsonArgumentParser(
+        TOOL_NAME,
         description='Synthesize cloned-voice narration.',
         epilog=(
             'key env vars: TTS_BACKEND (default auto), TTS_REF_WAV / TTS_REF_TEXT, '
@@ -292,29 +285,7 @@ def read_input_text(input_file: str | None) -> str:
 
 
 def detect_duration_seconds(audio_path: Path) -> float:
-    result = subprocess.run(
-        [
-            'ffprobe',
-            '-v',
-            'error',
-            '-show_entries',
-            'format=duration',
-            '-of',
-            'default=noprint_wrappers=1:nokey=1',
-            str(audio_path),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    duration_text = result.stdout.strip()
-    if not duration_text:
-        raise ValueError('ffprobe returned an empty duration for narration audio')
-    duration_s = float(duration_text)
-    if duration_s <= 0:
-        raise ValueError(f'Invalid narration duration: {duration_text}')
-    return round(duration_s, 3)
+    return round(media.probe_duration(audio_path, timeout=30), 3)
 
 
 def _reference_text_from_raw(raw: str) -> str:
@@ -788,57 +759,50 @@ def resolve_backend_cli(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    args = parse_args()
+    if args.resolve_backend:
+        return resolve_backend_cli(args)
+
     try:
-        args = parse_args()
-        if args.resolve_backend:
-            return resolve_backend_cli(args)
+        backend_name, _source, _probes = resolve_backend_name(args.backend)
+    except (UnknownBackendError, BackendUnavailableError) as exc:
+        return bs.backend_error_response(exc, log=log, print_json=print_json)
+    backend_cls = BACKENDS[backend_name]
 
-        try:
-            backend_name, _source, _probes = resolve_backend_name(args.backend)
-        except (UnknownBackendError, BackendUnavailableError) as exc:
-            return bs.backend_error_response(exc, log=log, print_json=print_json)
-        backend_cls = BACKENDS[backend_name]
+    input_text = read_input_text(args.input_file)
 
-        input_text = read_input_text(args.input_file)
+    output_dir = Path(args.output_dir).expanduser()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = (output_dir / 'narration.mp3').resolve()
 
-        output_dir = Path(args.output_dir).expanduser()
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = (output_dir / 'narration.mp3').resolve()
+    # One transcript emission site for every backend: synthesize() returns
+    # the audio kept for alignment (mlx's pre-mp3 wav), the backend's
+    # transcript capability decides whether this run emits one, and
+    # cleanup() releases that audio in all cases.
+    backend = backend_cls(args)
+    transcript_path = backend.transcript_path(output_path)
+    try:
+        alignment_audio = backend.synthesize(input_text, output_path)
+        if backend.wants_transcript(args.emit_transcript):
+            backend.emit_transcript(
+                input_text, output_path, transcript_path, alignment_audio
+            )
+    finally:
+        backend.cleanup()
 
-        # One transcript emission site for every backend: synthesize() returns
-        # the audio kept for alignment (mlx's pre-mp3 wav), the backend's
-        # transcript capability decides whether this run emits one, and
-        # cleanup() releases that audio in all cases.
-        backend = backend_cls(args)
-        transcript_path = backend.transcript_path(output_path)
-        try:
-            alignment_audio = backend.synthesize(input_text, output_path)
-            if backend.wants_transcript(args.emit_transcript):
-                backend.emit_transcript(
-                    input_text, output_path, transcript_path, alignment_audio
-                )
-        finally:
-            backend.cleanup()
-
-        duration_s = detect_duration_seconds(output_path)
-        log(f'wrote {output_path}')
-        payload: dict[str, object] = {
-            'success': True,
-            'backend': backend_name,
-            'output_path': str(output_path),
-            'duration_s': duration_s,
-        }
-        if transcript_path.is_file():
-            payload['transcript_path'] = str(transcript_path.resolve())
-        print_json(payload)
-        return 0
-    except SystemExit:
-        raise
-    except Exception as exc:
-        log(f'error: {exc}')
-        print_json({'success': False, 'error': str(exc)})
-        return 1
+    duration_s = detect_duration_seconds(output_path)
+    log(f'wrote {output_path}')
+    payload: dict[str, object] = {
+        'success': True,
+        'backend': backend_name,
+        'output_path': str(output_path),
+        'duration_s': duration_s,
+    }
+    if transcript_path.is_file():
+        payload['transcript_path'] = str(transcript_path.resolve())
+    print_json(payload)
+    return 0
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(cli.run(main, TOOL_NAME))

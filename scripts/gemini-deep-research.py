@@ -4,10 +4,10 @@
 Submits a research prompt to Google Gemini's Deep Research feature and waits
 for the full report.  Browser model: attaches over CDP (default
 http://localhost:9222) to a Chrome process.  If no CDP responder is reachable,
-auto-launches system Chrome with --user-data-dir=<profile-dir>.  Profile
-defaults to ./chrome_profile and is SHARED with other
-tools (harvest-pages, etc.).  Chrome is left running on exit so subsequent
-invocations reconnect instantly.
+auto-launches system Chrome with --user-data-dir=<profile-dir>. The required
+profile is SHARED with other tools (harvest-pages, etc.). Chrome is left running
+on exit so subsequent invocations reconnect instantly. When reusing CDP, explicit
+launch flags are reported in stderr and the output's chrome.ignored_flags field.
 
 The automation ALWAYS opens a brand-new browser tab for its work and never
 navigates any tab the user already had open.
@@ -22,17 +22,17 @@ and is also embedded in the failure JSON ("session_url") of any later error
 (e.g. timeout).  To resume from the wait-for-completion step after a timeout
 or interruption, re-run with the saved URL:
 
-  python3 gemini-deep-research.py \\
-    --prompt "..." --output-dir ... \\
-    --start-from-step 9 \\
-    --page-url "$(python3 -c 'import json;print(json.load(open("STATE_FILE"))["session_url"])')"
+  python3 gemini-deep-research.py --output-dir ... --resume \\
+    --profile-dir {work_dir}/chrome_profile
 
 Usage:
   python3 gemini-deep-research.py \\
     --prompt "关于量子计算的全面综述" \\
-    --output-dir ./quantum_computing/
+    --output-dir ./quantum_computing/ \\
+    --profile-dir {work_dir}/chrome_profile
 
-  python3 gemini-deep-research.py --self-check
+  python3 gemini-deep-research.py --self-check \\
+    --profile-dir {work_dir}/chrome_profile
 
 Output convention:
   stdout : single JSON object
@@ -48,35 +48,16 @@ Output convention:
 
 import argparse
 import json
-import os
-import subprocess
-import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+
+import chrome_cdp
+import cli
 
 TOOL_NAME = 'gemini-deep-research'
 DEFAULT_CDP_URL = 'http://localhost:9222'
-DEFAULT_PROFILE_DIR = './chrome_profile'
-CHROME_CANDIDATES_LINUX = [
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-]
-CHROME_CANDIDATES_MAC = [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
-]
-CHROME_CANDIDATES_WIN = [
-    os.path.expandvars(r'%ProgramFiles%\Google\Chrome\Application\chrome.exe'),
-    os.path.expandvars(r'%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe'),
-    os.path.expandvars(r'%LocalAppData%\Google\Chrome\Application\chrome.exe'),
-]
-CDP_READY_TIMEOUT_S = 15.0
-CDP_POLL_INTERVAL_S = 0.5
+CHROME_WINDOW_SIZE = '1680,1680'
 
 GEMINI_URL = 'https://gemini.google.com/app'
 
@@ -102,15 +83,7 @@ SEL = {
 # I/O helpers
 # ---------------------------------------------------------------------------
 
-class ArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'Argument error: {message}')
-        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
-        self.exit(2)
-
-
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
+log = cli.make_logger(TOOL_NAME)
 
 
 def fail(message: str, exit_code: int = 1, failed_step: Optional[int] = None,
@@ -121,25 +94,27 @@ def fail(message: str, exit_code: int = 1, failed_step: Optional[int] = None,
         obj['failed_step'] = failed_step
     if extra:
         obj.update(extra)
-    print(json.dumps(obj, ensure_ascii=False))
+    cli.print_json(obj)
     raise SystemExit(exit_code)
 
 
 def parse_args() -> argparse.Namespace:
-    p = ArgumentParser(description='Gemini Deep Research automation (Playwright over CDP).')
+    p = cli.JsonArgumentParser(TOOL_NAME, description='Gemini Deep Research automation (Playwright over CDP).')
     p.add_argument('--prompt', default=None, help='Research prompt to submit to Gemini Deep Research.')
     p.add_argument('--output-dir', default=None, help='Directory for report and sources output files.')
     p.add_argument('--self-check', action='store_true',
                    help='Only verify login state and Deep Research entry; submit no prompt.')
     p.add_argument('--state-file', default=None,
                    help='State file for the session URL (default <output-dir>/gemini_deep_research_state.json).')
+    p.add_argument('--resume', action='store_true',
+                   help='Resume step 9 using session_url from the state file; --prompt is optional.')
     p.add_argument('--cdp-url', default=DEFAULT_CDP_URL,
                    help=f'CDP endpoint (default {DEFAULT_CDP_URL}).')
-    p.add_argument('--profile-dir', default=DEFAULT_PROFILE_DIR,
-                   help=f'Chrome profile dir (default {DEFAULT_PROFILE_DIR}).')
+    p.add_argument('--profile-dir', required=True,
+                   help='Chrome profile dir (required; use the shared work_dir profile).')
     p.add_argument('--chrome-path', default=None,
                    help='Path to Chrome executable. Auto-detected if unset.')
-    p.add_argument('--headless', default='off', choices=('auto', 'on', 'off'),
+    p.add_argument('--headless', default=None, choices=('auto', 'on', 'off'),
                    help="Chrome headless mode. Default 'off' — this script needs a real logged-in Chrome session.")
     p.add_argument('--no-sandbox', action='store_true', default=None,
                    help='Pass --no-sandbox to Chrome (auto-enabled when running as root or inside a container).')
@@ -151,140 +126,33 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--page-url', default=None,
                    help='Existing Gemini conversation URL to resume from.')
     args = p.parse_args()
+    args.explicit_headless = args.headless
+    args.headless = args.headless or 'off'
     if not args.self_check:
-        missing = [name for name, value in (('--prompt', args.prompt), ('--output-dir', args.output_dir))
-                   if not value]
+        required = [('--output-dir', args.output_dir)]
+        if not args.resume:
+            required.append(('--prompt', args.prompt))
+        missing = [name for name, value in required if not value]
         if missing:
             p.error(f'the following arguments are required (unless --self-check): {", ".join(missing)}')
     return args
 
 
-# ---------------------------------------------------------------------------
-# CDP / browser setup  (mirrors harvest-pages.py)
-# ---------------------------------------------------------------------------
-
-def _chrome_candidates() -> list:
-    """Return Chrome candidate paths for the current platform."""
-    import platform
-    s = platform.system()
-    if s == 'Darwin':
-        return CHROME_CANDIDATES_MAC
-    elif s == 'Windows':
-        return CHROME_CANDIDATES_WIN
-    return CHROME_CANDIDATES_LINUX
-
-
-def find_chrome(explicit: Optional[str]) -> Optional[str]:
-    if explicit:
-        return explicit if Path(explicit).is_file() else None
-    env_path = os.environ.get('CHROME_PATH')
-    if env_path and Path(env_path).is_file():
-        return env_path
-    for cand in _chrome_candidates():
-        if Path(cand).is_file():
-            return cand
-    return None
-
-
-def cdp_ready(cdp_url: str) -> bool:
-    from urllib import request as urlrequest
-    from urllib import error as urlerror
-    try:
-        with urlrequest.urlopen(f'{cdp_url.rstrip("/")}/json/version', timeout=2.0) as resp:
-            return resp.status == 200
-    except (urlerror.URLError, urlerror.HTTPError, TimeoutError, ConnectionError, OSError):
-        return False
-
-
-def _should_be_headless(headless_mode: str) -> bool:
-    if headless_mode == 'on':
-        return True
-    if headless_mode == 'off':
-        return False
-    return not os.environ.get('DISPLAY')
-
-
-def _should_disable_sandbox(no_sandbox_flag: Optional[bool]) -> bool:
-    if no_sandbox_flag:
-        return True
-    try:
-        if os.geteuid() == 0:
-            return True
-    except AttributeError:
-        pass
-    return Path('/.dockerenv').exists()
-
-
-def launch_chrome(chrome_path: str, cdp_url: str, profile_dir: Path,
-                  headless_mode: str = 'auto',
-                  no_sandbox_flag: Optional[bool] = None) -> subprocess.Popen:
-    parsed = urlparse(cdp_url)
-    port = parsed.port or 9222
-    profile_dir.mkdir(parents=True, exist_ok=True)
-    args = [
-        chrome_path,
-        f'--remote-debugging-port={port}',
-        f'--user-data-dir={profile_dir}',
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--disable-features=Translate',
-        '--window-size=1680,1680',
-    ]
-    if _should_be_headless(headless_mode):
-        args.append('--headless=new')
-        args.append('--disable-gpu')
-    if _should_disable_sandbox(no_sandbox_flag):
-        args.append('--no-sandbox')
-    log(f'Launching Chrome: {chrome_path} (port={port}, profile={profile_dir}, '
-        f'flags={[a for a in args[3:] if a.startswith("--")]})')
-    return subprocess.Popen(
-        args,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        stdin=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-
-
-def wait_for_cdp(cdp_url: str, proc: Optional[subprocess.Popen],
-                 profile_dir: Optional[Path] = None) -> None:
-    deadline = time.time() + CDP_READY_TIMEOUT_S
-    while time.time() < deadline:
-        if proc is not None and proc.poll() is not None:
-            profile_msg = str(profile_dir) if profile_dir else DEFAULT_PROFILE_DIR
-            fail(
-                f'Chrome exited immediately (code {proc.returncode}). '
-                'Profile may be locked by another Chrome window. '
-                f'Profile path: {profile_msg}. '
-                'Close other Chrome instances using this profile, or pass a different --profile-dir.'
-            )
-        if cdp_ready(cdp_url):
-            return
-        time.sleep(CDP_POLL_INTERVAL_S)
-    fail(
-        f'CDP at {cdp_url} did not become ready within {CDP_READY_TIMEOUT_S}s. '
-        'Check that the port is free and Chrome can launch with the given profile.'
-    )
-
-
-def ensure_cdp(args: argparse.Namespace) -> None:
-    """Ensure something is listening on CDP. Auto-launch system Chrome if not."""
-    if cdp_ready(args.cdp_url):
-        log(f'CDP already ready at {args.cdp_url}; reusing existing Chrome')
+def apply_resume_state(args: argparse.Namespace) -> None:
+    if not args.resume:
         return
-    chrome_path = find_chrome(args.chrome_path)
-    if not chrome_path:
-        fail(
-            'System Chrome not found. Tried: '
-            f'{", ".join(_chrome_candidates())}. '
-            'Install Chrome or pass --chrome-path.'
-        )
-    profile_dir = Path(args.profile_dir).expanduser()
-    proc = launch_chrome(chrome_path, args.cdp_url, profile_dir,
-                         headless_mode=args.headless,
-                         no_sandbox_flag=args.no_sandbox)
-    wait_for_cdp(args.cdp_url, proc, profile_dir)
-    log(f'CDP ready at {args.cdp_url} (chrome pid={proc.pid}; left running on exit)')
+    state_path = Path(args.state_file).expanduser() if args.state_file else (
+        Path(args.output_dir).expanduser() / 'gemini_deep_research_state.json'
+    )
+    try:
+        state = json.loads(state_path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f'Could not read resume state file {state_path}: {exc}')
+    session_url = state.get('session_url') if isinstance(state, dict) else None
+    if not isinstance(session_url, str) or not session_url.strip():
+        fail(f'Resume state file {state_path} does not contain session_url')
+    args.start_from_step = 9
+    args.page_url = session_url
 
 
 # ---------------------------------------------------------------------------
@@ -423,7 +291,7 @@ def extract_sources(page: Any) -> List[Dict[str, str]]:
 # Main automation flow
 # ---------------------------------------------------------------------------
 
-def run_self_check(args: argparse.Namespace, browser: Any) -> None:
+def run_self_check(args: argparse.Namespace, browser: Any, chrome_metadata: Dict[str, Any]) -> None:
     """Verify login state + Deep Research entry only; submit nothing.
 
     Always works in a freshly opened tab so the user's existing tabs are
@@ -453,7 +321,7 @@ def run_self_check(args: argparse.Namespace, browser: Any) -> None:
         except Exception as e:
             fail(f'Self-check failed: Deep Research entry not reachable: {e}', failed_step=3)
 
-        print(json.dumps({'success': True, 'self_check': True}, ensure_ascii=False))
+        cli.print_json({'success': True, 'self_check': True, 'chrome': chrome_metadata})
     finally:
         try:
             page.close()
@@ -462,29 +330,30 @@ def run_self_check(args: argparse.Namespace, browser: Any) -> None:
 
 
 def run(args: argparse.Namespace) -> None:
-    from playwright.sync_api import sync_playwright
-
-    output_dir = Path(args.output_dir).expanduser()
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = Path(args.output_dir).expanduser() if args.output_dir else None
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
     start = args.start_from_step
 
-    with sync_playwright() as pw:
-        # Step 1: Connect to Chrome via CDP (always ensure CDP is ready)
-        log('Step 1: Connecting to Chrome via CDP...')
-        try:
-            ensure_cdp(args)
-        except SystemExit:
-            raise
-        except Exception as e:
-            fail(f'Step 1 failed: could not connect to Chrome: {e}', failed_step=1)
+    # Step 1: Connect to Chrome via CDP (always ensure CDP is ready)
+    log('Step 1: Connecting to Chrome via CDP...')
+    try:
+        chrome_session = chrome_cdp.attach_or_launch(
+            args.cdp_url,
+            args.profile_dir,
+            headless=args.explicit_headless,
+            window_size=CHROME_WINDOW_SIZE,
+            no_sandbox=args.no_sandbox,
+            chrome_path=args.chrome_path,
+        )
+    except Exception as e:
+        fail(f'Step 1 failed: could not connect to Chrome: {e}', failed_step=1)
 
-        try:
-            browser = pw.chromium.connect_over_cdp(args.cdp_url)
-        except Exception as e:
-            fail(f'Step 1 failed: CDP connect error: {e}', failed_step=1)
-
+    with chrome_session:
+        browser = chrome_session.browser
+        chrome_metadata = chrome_session.metadata()
         if args.self_check:
-            run_self_check(args, browser)
+            run_self_check(args, browser, chrome_metadata)
             return
 
         # Track the session URL once the prompt has been submitted, so every
@@ -660,14 +529,15 @@ def run(args: argparse.Namespace) -> None:
             log(f'Report written to {report_path} ({len(report_md)} chars)')
             log(f'Sources written to {sources_path} ({len(sources)} sources)')
 
-            print(json.dumps({
+            cli.print_json({
                 'success': True,
                 'report_path': str(report_path),
                 'sources_path': str(sources_path),
                 'report_length': len(report_md),
                 'source_count': len(sources),
                 'session_url': session['session_url'],
-            }, ensure_ascii=False))
+                'chrome': chrome_metadata,
+            })
         except SystemExit:
             raise
         except Exception as e:
@@ -680,8 +550,9 @@ def run(args: argparse.Namespace) -> None:
 
 def main() -> None:
     args = parse_args()
+    apply_resume_state(args)
     run(args)
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(cli.run(main, TOOL_NAME))

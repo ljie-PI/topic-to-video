@@ -72,14 +72,14 @@ python3 scripts/parse-pdf.py \
 
 需要环境变量 `MINERU_API_TOKEN`（来自 `.env`）。token 缺失或云端失败时会自动 fallback 到本地 `mineru` CLI。
 
-读取输出的 JSON。它提供 `title`、`abstract`、`full_markdown_path`（完整论文的解析 markdown）。这些会喂给 Phase 3 的 Deep Research prompt。
+读取输出的 JSON。它提供 `title`、`abstract`、`full_markdown_path`（完整论文的解析 markdown，相对于 `harvest_page/`；旧工作区也可能是绝对路径）。这些会喂给 Phase 3 的 Deep Research prompt。
 
 重要的输出字段：
 - `manifest_entry.source_type = "paper_pdf"`
 - `manifest_entry.paper_metadata.full_markdown_path` —— 完整解析文本
 - `manifest_entry.paper_metadata.figure_captions` —— figure 描述
 - `manifest_entry.paper_metadata.table_captions` —— table 描述
-- `manifest_papers.json` 会更新到 harvest 输出目录下，并在 Phase 4（素材抓取）中并入 `manifest.json`。
+- 论文 entry 会立即 upsert 到统一的 `manifest.json`，并同步 `<slug>/metadata.json`；原始 MinerU 输出保存在 `<slug>/mineru/`。
 
 **永远不要单凭自己的训练数据写脚本。** 用户给了 PDF 或论文 URL 时，必须先解析主论文，再把论文 figure / table 并入统一素材流。
 

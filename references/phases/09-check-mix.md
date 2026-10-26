@@ -49,25 +49,19 @@ python3 scripts/check-render.py \
 python3 scripts/make-contact-sheet.py \
   --video {work_dir}/{topic_name}/composition/renders/final.mp4 \
   --timeline {work_dir}/{topic_name}/transcribe/timeline.json \
-  --output-dir {work_dir}/{topic_name}/qa \
-  --qa-level <下表对应值>
+  --inputs {work_dir}/{topic_name}/inputs.json \
+  --output-dir {work_dir}/{topic_name}/qa
 ```
 
-脚本只接受 `standard` / `strict` 两档参数；`inputs.json` 的 `qa_level` 按下表映射（quick 档同样生成拼图给用户过目，只是不做 vision 检查，所以按 standard 抽帧即可）：
+脚本直接读取 `inputs.json` 的 `qa_level`：缺省、`quick`、`standard` 都按 standard 抽帧，`strict` 按 strict 抽帧；输出 JSON 的 `vision_check_required` 在 quick 档为 `false`，其余为 `true`。quick 档同样生成拼图给用户过目，只是不做 vision 检查。
 
-| inputs.json 的 qa_level | make-contact-sheet 的 `--qa-level` | 是否做 vision 检查 |
-| --- | --- | --- |
-| `quick`（或未填） | `standard` | 不做 |
-| `standard` | `standard` | 做 |
-| `strict` | `strict` | 做 |
-
-每个 scene 在峰值时刻（timeline scene 的 `peak_s`，缺省取 scene 中点）抽 1 帧，每 4 帧拼一张 2×2 拼图（Pillow 标注 scene_id + 帧类型 + 时间戳），写入 `qa/sheet_NNN.jpg`。strict 档额外帧：**每个 scene 一张入场帧**（scene 起点 + 0.25s）+ **每个切点三张**（切点前 0.4s / 切点 / 切点后 0.4s）。
+每个 scene 在 scene 中点抽 1 帧，每 4 帧拼一张 2×2 拼图（Pillow 标注 scene_id + 帧类型 + 时间戳），写入 `qa/sheet_NNN.jpg`。strict 档额外帧：**每个 scene 一张入场帧**（scene 起点 + 0.25s）+ **每个切点三张**（切点前 0.4s / 切点 / 切点后 0.4s）。
 
 **vision 成本**：contact sheet 按 4 帧一张组织，vision 以 sheet 为单位调用——一支约 40 scene 的片子，standard 档抽 40 帧 ≈ `ceil(40/4)` = 10 张 sheet，vision 调用 ≈ 10 次，正好是 scene 数的四分之一。
 
-#### 9.3 — vision 检查（standard 及以上，主 agent 执行）
+#### 9.3 — vision 检查（`vision_check_required` 为 true 时，主 agent 执行）
 
-主 agent 自己逐张看 `qa/sheet_NNN.jpg`（用 `view` 工具；sheet 同时交给用户过目），每张只回答 4 项：
+看 9.2 输出 JSON 的 `vision_check_required` 决定是否执行本节；为 `false` 时跳过。为 `true` 时，主 agent 自己逐张看 `qa/sheet_NNN.jpg`（用 `view` 工具；sheet 同时交给用户过目），每张只回答 4 项：
 
 1. 渲染是否完整（无缺帧、无渲染中断导致的残帧）；
 2. 画面与旁白是否相符；
@@ -82,12 +76,12 @@ python3 scripts/make-contact-sheet.py \
 
 ```json
 {
-  "findings": [{"scene_id": "scene_3", "check": "black_screen", "issue": "...", "frame": "qa/sheet_001.jpg"}],
+  "findings": [{"scene_id": "scene_3", "check": "black_screen", "issue": "...", "time_s": 12.5, "frame": null}],
   "verdict": "pass"
 }
 ```
 
-`frame` 填相关 sheet 路径；确定性检查（check-render）的发现没有对应帧，填 `null`（此类发现同时带 `time_s`，pipeline-status 只校验 `frame` 键存在）。`verdict` 为 `fail` 时进入修复轮，规则：
+所有 finding 统一为 `{"scene_id": str, "check": str, "issue": str, "time_s": float|null, "frame": str|null}`。确定性检查（check-render / check-composition）的 finding 原样拷进 qa-report；vision 检查的 finding 由主 agent 按同样形状写。`time_s` 填检测或快照时刻，没有对应时刻填 `null`；vision finding 的 `frame` 填相关 sheet 路径，确定性检查的 `frame` 为 `null`。`verdict` 为 `fail` 时进入修复轮，规则：
 
 1. 把 findings 反馈给 composition agent（Phase 8 委派约定），**只改受影响的 scene**；
 2. 重新渲染后**确定性检查全片重跑**；vision 只看受影响 scene 的帧（单独抽帧看即可，不必重拼整组 sheet）；
