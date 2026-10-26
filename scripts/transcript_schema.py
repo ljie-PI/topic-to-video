@@ -17,8 +17,7 @@ The repo has two aligner flavours:
 This module owns the one grouping algorithm (token-anchored kept-character
 quotas, so no word timing is ever dropped or duplicated) and the two thin
 adapters :func:`transcript_from_mlx_alignment` /
-:func:`transcript_from_torch_alignment`. The scripts keep their public
-``transcript_from_alignment`` / ``segment_into_sentences`` names as wrappers.
+:func:`transcript_from_torch_alignment`, which the scripts call directly.
 """
 
 from __future__ import annotations
