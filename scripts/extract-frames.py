@@ -146,7 +146,7 @@ def list_frames(output_dir: Path, start_s: float, interval_s: float) -> list[dic
 
 def main() -> int:
     args = parse_args()
-    media.ensure_media_binaries(require_ffprobe=not (args.start_time or args.end_time))
+    media.ensure_media_binaries(require_duration_probe=not (args.start_time or args.end_time))
     video_path = resolve_video_path(args.video_path)
     output_dir = prepare_output_dir(args.output_dir)
     remove_existing_frames(output_dir)

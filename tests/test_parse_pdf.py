@@ -34,7 +34,9 @@ if os.environ.get('FAKE_MINERU_NESTED'):
 '''
 
 
-def test_local_mineru_upserts_v2_manifest_with_dimensions_and_relative_paths(tmp_path: Path):
+def install_fake_mineru(
+    tmp_path: Path, **env_overrides: str,
+) -> tuple[Path, Path, dict[str, str]]:
     fake_bin = tmp_path / 'bin'
     fake_bin.mkdir()
     mineru = fake_bin / 'mineru'
@@ -46,6 +48,12 @@ def test_local_mineru_upserts_v2_manifest_with_dimensions_and_relative_paths(tmp
     env = dict(os.environ)
     env.pop('MINERU_API_TOKEN', None)
     env['PATH'] = f'{fake_bin}{os.pathsep}{env["PATH"]}'
+    env.update(env_overrides)
+    return pdf, harvest_dir, env
+
+
+def test_local_mineru_upserts_v2_manifest_with_dimensions_and_relative_paths(tmp_path: Path):
+    pdf, harvest_dir, env = install_fake_mineru(tmp_path)
 
     proc = subprocess.run(
         [sys.executable, str(SCRIPT), '--pdf', str(pdf), '--output-dir', str(harvest_dir)],
@@ -83,18 +91,7 @@ def test_local_mineru_upserts_v2_manifest_with_dimensions_and_relative_paths(tmp
 
 
 def test_nested_mineru_full_markdown_keeps_a_resolvable_relative_path(tmp_path: Path):
-    fake_bin = tmp_path / 'bin'
-    fake_bin.mkdir()
-    mineru = fake_bin / 'mineru'
-    mineru.write_text(FAKE_MINERU, encoding='utf-8')
-    mineru.chmod(0o755)
-    pdf = tmp_path / 'paper.pdf'
-    pdf.write_bytes(b'%PDF-1.4\n%%EOF\n')
-    harvest_dir = tmp_path / 'harvest_page'
-    env = dict(os.environ)
-    env.pop('MINERU_API_TOKEN', None)
-    env['PATH'] = f'{fake_bin}{os.pathsep}{env["PATH"]}'
-    env['FAKE_MINERU_NESTED'] = '1'
+    pdf, harvest_dir, env = install_fake_mineru(tmp_path, FAKE_MINERU_NESTED='1')
 
     proc = subprocess.run(
         [sys.executable, str(SCRIPT), '--pdf', str(pdf), '--output-dir', str(harvest_dir)],
