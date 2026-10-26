@@ -42,8 +42,6 @@ Output convention:
 
 import argparse
 import base64
-import hashlib
-import json
 import mimetypes
 import os
 import re
@@ -56,6 +54,7 @@ from urllib.parse import urlparse
 
 import chrome_cdp
 import cli
+import harvest_manifest
 import media
 
 TOOL_NAME = 'harvest-pages'
@@ -126,16 +125,8 @@ def parse_viewport(s: str) -> Tuple[int, int]:
 
 
 def slugify_url(url: str) -> str:
-    parsed = urlparse(url)
-    host = (parsed.netloc or 'unknown').lower().replace('.', '-').replace(':', '-')
-    path = (parsed.path or '/').strip('/').lower()
-    path = re.sub(r'[^a-z0-9]+', '-', path).strip('-')[:60]
-    digest = hashlib.sha1(url.encode('utf-8')).hexdigest()[:6]
-    if path:
-        slug = f'{host}-{path}-{digest}'
-    else:
-        slug = f'{host}-{digest}'
-    return slug.strip('-')[:120]
+    """Backward-compatible name for the shared URL slug helper."""
+    return harvest_manifest.slug_for_url(url)
 
 
 # -----------------------------------------------------------------------------
@@ -412,7 +403,7 @@ def download_native_video(request_ctx, url: str, dest_dir: Path, index: int, max
         ext = '.mp4'
         parsed = urlparse(url)
         suffix = Path(parsed.path).suffix
-        if suffix in ('.mp4', '.webm', '.mov'):
+        if suffix in harvest_manifest.VIDEO_EXTS:
             ext = suffix
         path = dest_dir / f'native_{index:03d}{ext}'
         path.write_bytes(body)
@@ -671,7 +662,7 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
             meta: Dict[str, Any] = {'url': v['url'], 'platform': v['platform']}
             if v['platform'] in ('youtube', 'bilibili'):
                 # External platform: list the URL; agent calls video-download.py
-                # in a follow-up step (see SKILL.md Phase 3.b).
+                # in a follow-up step (see SKILL.md Phase 4.b).
                 meta['download_required'] = True
                 meta['suggested_output_dir'] = str(videos_dir.resolve())
                 log(f'  external video listed (download_required): {v["url"]}')
@@ -683,6 +674,16 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
                     meta['downloaded'] = True
                     meta['local_path'] = str(local.resolve())
                     meta['id'] = local.stem
+                    try:
+                        probed = media.probe(local)
+                    except (media.MediaProbeError, media.MediaToolMissing) as exc:
+                        log(f'  native video probe failed: {exc}')
+                        probed = {'width': None, 'height': None, 'duration_seconds': None}
+                    meta.update({
+                        'width': probed['width'],
+                        'height': probed['height'],
+                        'duration_seconds': probed['duration_seconds'],
+                    })
                 else:
                     meta['download_required'] = False
                     meta['downloaded'] = False
@@ -721,7 +722,9 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
                     dur = float(capped)
                 scroll_recording = {
                     'local_path': str(record_path.resolve()),
-                    'duration_sec': round(dur, 3),
+                    'duration_seconds': round(dur, 3),
+                    'width': viewport[0],
+                    'height': viewport[1],
                     'method': method,
                 }
                 log(f'  scroll-record OK via {method}: {record_path}')
@@ -802,7 +805,7 @@ def aggregate_pending_downloads(entries: List[Dict[str, Any]]) -> List[Dict[str,
     pattern); downloading it twice into two per-slug directories wastes
     bandwidth and risks yt-dlp rate-limiting. The first occurrence's
     `suggested_output_dir` wins; additional referrers go into
-    `also_referenced_by` so Phase 3.b can fan out the `local_path` update to
+    `also_referenced_by` so Phase 4.b can fan out the `local_path` update to
     every metadata.json that points at the same clip.
     """
     pending: List[Dict[str, Any]] = []
@@ -904,7 +907,7 @@ def main() -> None:
             try:
                 if platform is not None:
                     # Short-circuit: no Playwright navigation. The agent will call
-                    # video-download.py for the URL listed in `videos[]` (see SKILL.md Phase 3.b).
+                    # video-download.py for the URL listed in `videos[]` (see SKILL.md Phase 4.b).
                     videos_dir = slug_dir / 'videos'
                     videos_dir.mkdir(parents=True, exist_ok=True)
                     canonical = normalize_youtube(url) if platform == 'youtube' else url
@@ -931,15 +934,6 @@ def main() -> None:
                 log(f'  fatal per-URL error: {exc}')
                 entry = {'url': url, 'slug': slug, 'success': False, 'error': str(exc)}
 
-            # write per-URL metadata
-            try:
-                (slug_dir / 'metadata.json').write_text(
-                    json.dumps(entry, ensure_ascii=False, indent=2),
-                    encoding='utf-8',
-                )
-            except Exception as exc:
-                log(f'  metadata.json save failed: {exc}')
-
             if entry.get('success'):
                 succeeded += 1
             entries.append(entry)
@@ -954,35 +948,34 @@ def main() -> None:
             except Exception:
                 pass
 
-    # Aggregate pending external downloads across the batch (deduplicated by
-    # canonical URL). See aggregate_pending_downloads docstring.
-    pending_downloads = aggregate_pending_downloads(entries)
+    saved = harvest_manifest.upsert_entries(output_dir, entries)
+    saved = harvest_manifest.record_harvest_batch(output_dir, {
+        'urls': [entry['url'] for entry in entries],
+        'succeeded': succeeded,
+        'failed': len(entries) - succeeded,
+        'rejected': bad_urls,
+    })
+    by_slug = {entry.get('slug'): entry for entry in saved['entries']}
+    batch_entries = [by_slug[entry['slug']] for entry in entries]
+    pending_downloads = aggregate_pending_downloads(batch_entries)
 
     batch_success = succeeded > 0
-    manifest = {
+    result = {
         'success': batch_success,
         'output_dir': str(output_dir),
         'batch_size': len(items),
         'succeeded': succeeded,
         'chrome': chrome_metadata,
-        'entries': entries,
+        'entries': batch_entries,
     }
     if bad_urls:
-        manifest['rejected'] = bad_urls
+        result['rejected'] = bad_urls
     if pending_downloads:
-        manifest['pending_downloads'] = pending_downloads
+        result['pending_downloads'] = pending_downloads
     if not batch_success:
-        manifest['error'] = 'All URLs failed; see entries[].error for details.'
+        result['error'] = 'All URLs failed; see entries[].error for details.'
 
-    try:
-        (output_dir / 'manifest.json').write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2),
-            encoding='utf-8',
-        )
-    except Exception as exc:
-        log(f'manifest.json save failed: {exc}')
-
-    cli.print_json(manifest)
+    cli.print_json(result)
     log(f'Done. {succeeded}/{len(items)} entries succeeded.')
     if not batch_success:
         raise SystemExit(1)

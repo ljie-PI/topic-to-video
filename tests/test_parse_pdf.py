@@ -1,0 +1,98 @@
+"""Local MinerU subprocess tests for parse-pdf.py; no network or API token."""
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SCRIPT = REPO_ROOT / 'scripts' / 'parse-pdf.py'
+
+FAKE_MINERU = r'''#!/usr/bin/env python3
+import base64
+import json
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+pdf = Path(args[args.index('-p') + 1])
+out = Path(args[args.index('-o') + 1]) / pdf.stem / 'auto'
+(out / 'images').mkdir(parents=True)
+(out / 'full.md').write_text('# Fixture Paper\n\n# Abstract\nA local fixture.\n', encoding='utf-8')
+(out / f'{pdf.stem}_content_list.json').write_text(json.dumps([
+    {'type': 'image', 'img_path': 'images/fig1.png', 'image_caption': ['Figure 1']},
+]), encoding='utf-8')
+(out / 'images' / 'fig1.png').write_bytes(base64.b64decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk'
+    '+A8AAQUBAScY42YAAAAASUVORK5CYII='
+))
+'''
+
+
+def test_local_mineru_upserts_v2_manifest_with_dimensions_and_relative_paths(tmp_path: Path):
+    fake_bin = tmp_path / 'bin'
+    fake_bin.mkdir()
+    mineru = fake_bin / 'mineru'
+    mineru.write_text(FAKE_MINERU, encoding='utf-8')
+    mineru.chmod(0o755)
+    pdf = tmp_path / 'paper.pdf'
+    pdf.write_bytes(b'%PDF-1.4\n%%EOF\n')
+    harvest_dir = tmp_path / 'harvest_page'
+    env = dict(os.environ)
+    env.pop('MINERU_API_TOKEN', None)
+    env['PATH'] = f'{fake_bin}{os.pathsep}{env["PATH"]}'
+
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPT), '--pdf', str(pdf), '--output-dir', str(harvest_dir)],
+        capture_output=True, text=True, env=env, timeout=60, check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(proc.stdout)
+    assert result['backend'] == 'local_pipeline'
+    manifest = json.loads((harvest_dir / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['version'] == 2
+    assert len(manifest['entries']) == 1
+    entry = manifest['entries'][0]
+    assert entry['slug'] == 'paper'
+    assert entry['paper_metadata']['full_markdown_path'] == 'paper/mineru/full.md'
+    assert entry['images'][0]['local_path'] == 'paper/images/img_001.png'
+    assert entry['images'][0]['width'] == 1
+    assert entry['images'][0]['height'] == 1
+    assert json.loads((harvest_dir / 'paper' / 'metadata.json').read_text(encoding='utf-8')) == entry
+    assert (harvest_dir / 'paper' / 'mineru' / 'full.md').is_file()
+    assert (harvest_dir / 'paper' / 'mineru' / 'images' / 'fig1.png').is_file()
+    assert not (harvest_dir / 'manifest_papers.json').exists()
+    assert not (tmp_path / 'mineru_output').exists()
+
+    def check_paths(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key in {'local_path', 'subtitle_path', 'suggested_output_dir', 'full_markdown_path'} and isinstance(item, str):
+                    assert not Path(item).is_absolute(), (key, item)
+                check_paths(item)
+        elif isinstance(value, list):
+            for item in value:
+                check_paths(item)
+    check_paths(manifest)
+
+
+def test_nested_mineru_full_markdown_keeps_a_resolvable_relative_path(tmp_path: Path):
+    spec = importlib.util.spec_from_file_location('parse_pdf', SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    nested = tmp_path / 'raw' / 'nested'
+    nested.mkdir(parents=True)
+    (nested / 'full.md').write_text('# Nested Paper\n', encoding='utf-8')
+    harvest_dir = tmp_path / 'harvest_page'
+
+    entry = module.process_mineru_output(
+        str(tmp_path / 'raw'), str(harvest_dir), 'paper', 'https://example.com/paper.pdf', None,
+    )
+
+    relative = entry['paper_metadata']['full_markdown_path']
+    assert relative == 'paper/mineru/nested/full.md'
+    assert (harvest_dir / relative).is_file()

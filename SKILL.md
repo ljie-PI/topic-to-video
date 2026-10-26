@@ -94,8 +94,6 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 | `harvest-pages.py` | 批量 URL 抓取（图片 / 视频 / 滚动） | `playwright`、系统 Chrome |
 | `video-download.py` | YouTube/Bilibili 下载 | `yt-dlp` |
 | `mix-bgm.py` | 把 BGM 混入视频 | `ffmpeg` |
-| `merge-paper-manifest.py` | 把论文解析 manifest 条目并入 harvest manifest | — |
-| `apply-video-download-result.py` | 把 yt-dlp 下载结果应用到 manifest metadata | — |
 
 **系统依赖：** `ffmpeg`、`playwright`（`pip install playwright`，**不要**执行 `playwright install chromium`）、系统 Chrome（自动检测）、`yt-dlp`、带 venv 的 `python3`。
 

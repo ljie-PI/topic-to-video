@@ -13,12 +13,10 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import cli
+import harvest_manifest
 import media
 
 TOOL_NAME = 'video-download'
-
-VIDEO_EXTS = {'.mp4', '.webm', '.mov', '.mkv', '.m4v', '.avi'}
-
 
 log = cli.make_logger(TOOL_NAME)
 
@@ -26,7 +24,8 @@ log = cli.make_logger(TOOL_NAME)
 def parse_args() -> argparse.Namespace:
     parser = cli.JsonArgumentParser(TOOL_NAME, description='Download a video and subtitles with yt-dlp.')
     parser.add_argument('--url', required=True, help='Video URL to download')
-    parser.add_argument('--output-dir', default='downloads', help='Output directory (default: downloads)')
+    parser.add_argument('--output-dir', default=None, help='Output directory (default: pending manifest directory, or downloads)')
+    parser.add_argument('--harvest-dir', default=None, help='harvest_page directory to update after download')
     parser.add_argument(
         '--subtitles-only',
         action='store_true',
@@ -84,6 +83,8 @@ def build_command(args: argparse.Namespace, output_dir: Path) -> List[str]:
         'yt-dlp',
         '--write-subs',
         '--write-auto-subs',
+        '--convert-subs',
+        'srt',
         '--sub-langs',
         'en,zh',
         '--output',
@@ -99,9 +100,21 @@ def build_command(args: argparse.Namespace, output_dir: Path) -> List[str]:
 
 def main() -> int:
     args = parse_args()
-    output_dir = Path(args.output_dir).expanduser().resolve()
+    harvest_dir = Path(args.harvest_dir).expanduser().resolve() if args.harvest_dir else None
 
     try:
+        if args.output_dir:
+            output_dir = Path(args.output_dir).expanduser().resolve()
+        elif harvest_dir is not None:
+            pending = next(
+                (item for item in harvest_manifest.load(harvest_dir)['pending_downloads'] if item.get('url') == args.url),
+                None,
+            )
+            if pending is None or not pending.get('suggested_output_dir'):
+                raise ValueError('--output-dir is required when the URL has no pending suggested_output_dir')
+            output_dir = harvest_manifest.resolve(harvest_dir, pending['suggested_output_dir']).resolve()
+        else:
+            output_dir = Path('downloads').resolve()
         if output_dir.exists() and not output_dir.is_dir():
             raise ValueError(f'Output path is not a directory: {output_dir}')
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -137,7 +150,7 @@ def main() -> int:
 
         videos_info = []
         if not args.subtitles_only:
-            video_paths = [p for p in files if Path(p).suffix.lower() in VIDEO_EXTS]
+            video_paths = [p for p in files if Path(p).suffix.lower() in harvest_manifest.VIDEO_EXTS]
             for video_path in video_paths:
                 info: Dict[str, Any] = {
                     'path': video_path,
@@ -169,7 +182,10 @@ def main() -> int:
             'videos': videos_info,
             'stdout_tail': tail_text(combined_output),
         }
-        print(json.dumps(result, ensure_ascii=False))
+        if harvest_dir is not None:
+            harvest_manifest.apply_download(harvest_dir, args.url, result)
+            result['manifest_updated'] = True
+        cli.print_json(result)
         return 0
     except FileNotFoundError:
         log('yt-dlp is not installed or not available on PATH.')

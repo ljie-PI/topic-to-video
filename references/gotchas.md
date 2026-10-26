@@ -75,31 +75,6 @@ YouTube/Bilibili 经 yt-dlp 并行下载时容易被限速。
 
 修复：顺序遍历 `manifest.pending_downloads[]`（Phase 4.b 的步骤）。如果下载因地区封锁、年龄限制、410 或限速失败，保留 `download_required: true`；Phase 5（素材 catalog）会忽略尚未解决的 clip。
 
-## 8. 将视频下载结果应用到 manifest
-
-下载视频本身还不够。Phase 4 会把下载结果应用到 `manifest.json` 和每个 slug 的 `metadata.json`，Phase 5（素材 catalog）会读这份 manifest——跳过这一步，catalog 就看不到本地文件路径。
-
-修复：每次 `video-download.py` 成功后，应用结果：
-
-```bash
-scripts/apply-video-download-result.py \
-  --harvest-dir {work_dir}/{topic_name}/harvest_page/ \
-  --source-slug "<item.source_slug>" \
-  --url "<item.url>" \
-  --result-json /path/to/video-download-result.json
-```
-
-## 9. 将解析出的论文并入 harvest manifest
-
-`parse-pdf.py` 写入的是 `manifest_papers.json`，不是统一的 `manifest.json`。
-
-修复：论文解析和 web 抓取都完成后，运行：
-
-```bash
-scripts/merge-paper-manifest.py \
-  --harvest-dir {work_dir}/{topic_name}/harvest_page/
-```
-
 ## 10. 剥掉视频片段的原始音轨
 
 素材视频本身可能包含解说、音乐或 UI 音效。最终视频里，唯一的解说人声只能是 `voice_clone/narration.mp3`。

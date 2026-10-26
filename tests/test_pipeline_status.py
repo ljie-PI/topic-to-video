@@ -104,7 +104,10 @@ def complete_through_harvest(ws: Path, **inputs_overrides) -> None:
     complete_through_research(ws, **inputs_overrides)
     write_json(
         ws / 'harvest_page' / 'manifest.json',
-        {'entries': [{'slug': 'example', 'images': [], 'videos': []}]},
+        {
+            'entries': [{'slug': 'example', 'images': [], 'videos': []}],
+            'harvest_batches': [{'at': '2026-01-01T00:00:00Z', 'urls': ['https://example.com'], 'succeeded': 1, 'failed': 0, 'rejected': []}],
+        },
     )
 
 
@@ -442,6 +445,23 @@ def test_paper_parse_product_validated(tmp_path: Path):
     result = parse_result(proc)
     assert '2-paper-parse' in result['completed_phases']
     assert result['next_phase']['id'] == '3-research'
+
+
+def test_paper_only_manifest_without_harvest_batches_does_not_complete_phase_4(tmp_path: Path):
+    complete_through_research(tmp_path, input_mode='paper', fetch_materials=True)
+    paper = {
+        'slug': 'main-paper', 'success': True, 'source_type': 'paper_pdf',
+        'paper_metadata': {'full_markdown_path': 'main-paper/mineru/full.md'},
+        'images': [], 'videos': [],
+    }
+    write_json(tmp_path / 'harvest_page' / 'main-paper' / 'metadata.json', paper)
+    write_json(tmp_path / 'harvest_page' / 'manifest.json', {'version': 2, 'entries': [paper]})
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert '2-paper-parse' in result['completed_phases']
+    assert result['next_phase']['id'] == '4-material-harvest'
+    assert '4-material-harvest' not in result['completed_phases']
 
 
 def test_standard_mode_skips_paper_parse(tmp_path: Path):
