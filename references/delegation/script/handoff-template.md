@@ -14,7 +14,7 @@
 ## Inputs
 
 - 工作区：{work_dir}/{topic_name}/
-- research-brief.md：<是否存在及路径；否写“无（fetch_materials = false 或纯主题）”>
+- research-brief.md：<路径；Phase 3 无条件执行，brief 一定存在，写实际路径>
 - material-catalog.json：<是否存在及路径>
 - inputs.json：目标时长 <duration>、语言 <language>、input_mode <mode>、所选模板 <template 或 无>
 

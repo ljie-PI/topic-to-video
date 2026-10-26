@@ -29,7 +29,7 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
      --profile-dir {work_dir}/chrome_profile
    ```
    - 自检只验证登录状态和 Deep Research 入口，不提交任何 prompt。输出 `{"success": true, "self_check": true}` 才算通过。
-   - **自检失败（未登录或入口失效，失败 JSON 带 `failed_step`）→ 不要重试提交，直接回退到人工 `web_search` 流程**（下面的 step 5-6 变成主路径），把 Gemini 的问题告诉用户。
+   - **自检失败（未登录或入口失效，失败 JSON 带 `failed_step`）→ 不要重试提交，直接回退到人工 `web_search` 流程**（下面的 step 4-5 变成主路径），把 Gemini 的问题告诉用户。
 3. **跑 Gemini Deep Research。** 这是主要的研究主干。
    - 论文模式（`input_mode = "paper"`）时，用文末「论文模式」小节里基于解析论文的 prompt 替换下面的标准 prompt。
 
@@ -50,8 +50,13 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
      scripts/gemini-deep-research.py --output-dir {work_dir}/{topic_name}/ --resume \
        --profile-dir {work_dir}/chrome_profile
      ```
-   - **如果它失败了（selector timeout、运行时错误或其他步骤失败）：** 检查错误 JSON 里的 `failed_step` —— 提交前（step ≤ 6）的失败可以用 `--start-from-step N` 重试；提交后的失败用上一条的续跑命令。如果重试仍不通，回退到人工 `web_search` 流程（下面的 step 5-6 变成主路径），但不要让整个项目卡在消费级 Gemini UI 上。
-4. **解析相关论文（可选，仅论文模式）。** 如果调研（Deep Research 的第 7 条回答）指出了 1-2 篇有可用 PDF URL 的高相关论文（例如 arXiv）；Deep Research 没跑成时，等第 6 步的 `web_search` 找到相关论文后再回来补做本步：
+   - **如果它失败了（selector timeout、运行时错误或其他步骤失败）：** 检查错误 JSON 里的 `failed_step` —— 提交前（step ≤ 6）的失败可以用 `--start-from-step N` 重试；提交后的失败用上一条的续跑命令。如果重试仍不通，回退到人工 `web_search` 流程（下面的 step 4-5 变成主路径），但不要让整个项目卡在消费级 Gemini UI 上。
+4. **找空缺。** 不论 Gemini 跑没跑成功，检查：哪些数字、人名、日期或技术细节缺失或没核实？列出来。
+5. **做有针对性的搜索。** 用 `web_search` 对每个空缺搜一下 —— 一般：Gemini 跑成功的话 2-4 次（填空），没跑则 3-6 次（完整研究）。示例：
+   - "Boris Cherny Anthropic interview Sequoia 2026" → 确认姓名、日期、引文
+   - "Claude Code MCP launch date" → 日期细节
+   - "GPU vs CPU AI training memory bandwidth" → 技术数字
+6. **解析相关论文（可选，仅论文模式）。** 如果调研（Deep Research 的第 7 条回答，或第 5 步 `web_search` 的结果）指出了 1-2 篇有可用 PDF URL 的高相关论文（例如 arXiv），在这一步解析：
 
    ```bash
    python3 scripts/parse-pdf.py \
@@ -61,12 +66,8 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
    ```
    - 最多解析 2 篇。用户说"只看主论文"或没识别出明显相关工作，则跳过。
    - 这一步不受 `fetch_materials` 影响：相关论文的 figure / table 同样写进 manifest，供 Phase 5 使用。
-   - 读相关论文解析出的 markdown，把结论（它的方法 / 结果与主论文的关系）写进 `research-brief.md`。
-5. **找空缺。** 不论 Gemini 跑没跑成功，检查：哪些数字、人名、日期或技术细节缺失或没核实？列出来。
-6. **做有针对性的搜索。** 用 `web_search` 对每个空缺搜一下 —— 一般：Gemini 跑成功的话 2-4 次（填空），没跑则 3-6 次（完整研究）。示例：
-   - "Boris Cherny Anthropic interview Sequoia 2026" → 确认姓名、日期、引文
-   - "Claude Code MCP launch date" → 日期细节
-   - "GPU vs CPU AI training memory bandwidth" → 技术数字
+   - **相关论文的素材 id 带 slug 前缀**（如 `related-foo_img_001`），主论文是裸 id（`img_001`），不会冲突。
+   - 读相关论文解析出的 markdown（`harvest_page/related-<short-name>/metadata.json` 的 `paper_metadata.full_markdown_path`，相对 `harvest_page/`），把结论（它的方法 / 结果与主论文的关系）写进 `research-brief.md`。
 7. **合成研究 brief，落盘为 `research-brief.md`。** 格式：
    ```
    ## Key facts (verified)
@@ -104,7 +105,7 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
 
 ## 论文模式
 
-`input_mode = "paper"` 时，跑 Gemini Deep Research（step 3）把标准研究 prompt 替换为基于解析论文的版本：
+`input_mode = "paper"` 时，跑 Gemini Deep Research（step 3）把标准研究 prompt 替换为基于解析论文的版本。`{title}` 和 `{abstract}` 从磁盘读 `harvest_page/main-paper/metadata.json`：顶层 `title` 和 `paper_metadata.abstract`（都是 parse-pdf 写出的字段；恢复会话或开新会话后 stdout 已不存在，必须从这个文件取）：
 
 ```
 "围绕论文《{title}》的背景调研：

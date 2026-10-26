@@ -418,6 +418,32 @@ def check_paper_metadata(ws: Path, relpath: str) -> CheckResult:
     return OK
 
 
+def check_paper_manifest(ws: Path, relpath: str) -> CheckResult:
+    """harvest_page/manifest.json in paper mode: parse-pdf upserts the main
+    paper's entry into the shared manifest, and Phase 5 builds the catalog
+    from that manifest — a workspace parsed before the manifest existed (or
+    whose manifest lost the entry) would otherwise sail into Phase 5 with
+    nothing to catalog."""
+    result, data = read_json_product(ws, relpath)
+    if not result.ok:
+        return result
+    if not isinstance(data, dict):
+        return CheckResult(STATUS_CORRUPT, 'JSON root is not an object')
+    entries = data.get('entries')
+    if not isinstance(entries, list) or not entries:
+        return CheckResult(STATUS_CORRUPT, 'entries is not a non-empty list')
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get('slug') == 'main-paper':
+            if entry.get('source_type') != 'paper_pdf':
+                return CheckResult(STATUS_CORRUPT, 'the main-paper entry is not source_type "paper_pdf"')
+            return OK
+    return CheckResult(
+        STATUS_CORRUPT,
+        'no entry with slug main-paper: run scripts/parse-pdf.py --slug main-paper before Phase 5 '
+        'reads this manifest',
+    )
+
+
 def check_lexicon_product(ws: Path, relpath: str) -> CheckResult:
     """tts-lexicon.json: a non-empty JSON object mapping display forms to
     reading forms (both non-empty strings)."""
@@ -649,47 +675,81 @@ def check_qa_report(ws: Path, relpath: str) -> CheckResult:
 
 # --- phase definitions ---------------------------------------------------------
 
-# Each product maps its workspace-relative path to a checker. A phase with a
-# `conditional` key only applies in some workspaces (see phase_applies): 'paper'
-# = paper mode, 'fetch' = fetch_materials, 'fetch_or_paper' = either.
+# Each product maps its workspace-relative path to a checker. A phase that
+# only applies in some workspaces carries an `applies(inputs)` predicate and
+# an `applies_by_default` fallback for when inputs.json cannot be read (the
+# default sequence is reported then: standard, with fetching — the next phase
+# is 1-gather-inputs anyway). Keep the predicate and the fallback next to the
+# phase so a new conditional phase cannot drift apart from them.
+def _applies_always(inputs: dict[str, Any]) -> bool:
+    return True
+
+
+def _applies_when_paper(inputs: dict[str, Any]) -> bool:
+    return inputs.get('input_mode') in PAPER_MODES
+
+
+def _applies_when_fetch(inputs: dict[str, Any]) -> bool:
+    return bool(inputs.get('fetch_materials'))
+
+
+def _applies_fetch_or_paper(inputs: dict[str, Any]) -> bool:
+    # The catalog also holds the paper's own figures and tables, which exist
+    # whether or not web materials are fetched.
+    return bool(inputs.get('fetch_materials')) or inputs.get('input_mode') in PAPER_MODES
+
+
+APPLICABILITY: dict[str, tuple[Callable[[dict[str, Any]], bool], bool]] = {
+    'always': (_applies_always, True),
+    'paper': (_applies_when_paper, False),
+    'fetch': (_applies_when_fetch, True),
+    'fetch_or_paper': (_applies_fetch_or_paper, True),
+}
+
 PHASES: list[dict[str, Any]] = [
     {
         'id': '1-gather-inputs',
         'title': '收集输入',
         'doc': 'references/phases/01-gather-inputs.md',
+        'applies': 'always',
         'products': {'inputs.json': check_inputs_product},
     },
     {
         'id': '2-paper-parse',
         'title': '解析论文（仅论文模式）',
         'doc': 'references/phases/02-paper-parse.md',
-        'conditional': 'paper',
-        'products': {'harvest_page/main-paper/metadata.json': check_paper_metadata},
+        'applies': 'paper',
+        'products': {
+            'harvest_page/main-paper/metadata.json': check_paper_metadata,
+            'harvest_page/manifest.json': check_paper_manifest,
+        },
     },
     {
         'id': '3-research',
         'title': '主题调研',
         'doc': 'references/phases/03-research.md',
+        'applies': 'always',
         'products': {'research-brief.md': check_text_product},
     },
     {
         'id': '4-material-harvest',
         'title': '素材抓取（可选）',
         'doc': 'references/phases/04-material-harvest.md',
-        'conditional': 'fetch',
+        'applies': 'fetch',
         'products': {'harvest_page/manifest.json': check_harvest_manifest},
     },
     {
         'id': '5-material-catalog',
         'title': '素材 catalog',
         'doc': 'references/phases/05-material-catalog.md',
-        'conditional': 'fetch_or_paper',
+        'applies': 'fetch_or_paper',
         'products': {'material-catalog.json': check_material_catalog},
     },
     {
         'id': '6-script-scene-plan',
         'title': '脚本与场景规划（委派）',
         'doc': 'references/phases/06-script-scene-plan.md',
+        'applies': 'always',
         'products': {
             'script.txt': check_script_text,
             'tts-lexicon.json': check_lexicon_product,
@@ -702,6 +762,7 @@ PHASES: list[dict[str, Any]] = [
         'id': '7-voice-subtitles',
         'title': '配音与字幕',
         'doc': 'references/phases/07-voice-subtitles.md',
+        'applies': 'always',
         'products': {
             'voice_clone/narration.mp3': check_file_product,
             'transcribe/transcript.json': check_transcript,
@@ -713,6 +774,7 @@ PHASES: list[dict[str, Any]] = [
         'id': '8-composition',
         'title': 'composition（委派）',
         'doc': 'references/phases/08-composition.md',
+        'applies': 'always',
         'products': {
             'composition/storyboard.md': check_text_product,
             'composition/index.html': check_file_product,
@@ -725,6 +787,7 @@ PHASES: list[dict[str, Any]] = [
         'id': '9-check-mix',
         'title': '检查与混音',
         'doc': 'references/phases/09-check-mix.md',
+        'applies': 'always',
         'products': {
             'composition/renders/final_with_bgm.mp4': check_file_product,
             'qa/qa-report.json': check_qa_report,
@@ -737,22 +800,13 @@ PHASES_BY_ID = {phase['id']: phase for phase in PHASES}
 
 
 def phase_applies(phase: dict[str, Any], inputs: dict[str, Any] | None) -> bool:
-    conditional = phase.get('conditional')
-    if conditional is None:
-        return True
+    applies, applies_by_default = APPLICABILITY[phase['applies']]
     if inputs is None:
-        # inputs.json unreadable: report the full default sequence (standard,
-        # with fetching). The next phase will be 1-gather-inputs anyway.
-        return conditional in ('fetch', 'fetch_or_paper')
-    if conditional == 'paper':
-        return inputs.get('input_mode') in PAPER_MODES
-    if conditional == 'fetch':
-        return bool(inputs.get('fetch_materials'))
-    if conditional == 'fetch_or_paper':
-        # The catalog also holds the paper's own figures and tables, which
-        # exist whether or not web materials are fetched.
-        return bool(inputs.get('fetch_materials')) or inputs.get('input_mode') in PAPER_MODES
-    return True
+        # inputs.json unreadable: report the phase sequence the default
+        # workspace (standard, with fetching) would take. The next phase will
+        # be 1-gather-inputs anyway.
+        return applies_by_default
+    return applies(inputs)
 
 
 def validate_phase(ws: Path, phase: dict[str, Any]) -> dict[str, CheckResult]:

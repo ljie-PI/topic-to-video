@@ -52,10 +52,25 @@ def test_paper_mode_instructions_live_in_the_phase_or_package_that_uses_them():
 
     # Phase 3 researches: the paper prompt and the related-paper parse live there.
     assert '围绕论文《{title}》的背景调研' in research
-    assert '--slug "related-' in research
-    assert 'parse-pdf.py' in research.split('解析相关论文（可选')[1]
+    # The prompt placeholders come from disk (metadata.json), not from a past stdout.
+    assert '{title}' in research and '{abstract}' in research
+    assert 'harvest_page/main-paper/metadata.json' in research
+    # The related-paper step is linear — web_search (step 5) runs before it and
+    # feeds it — so the Deep-Research-failure path cannot skip back and miss it.
+    related_at = research.index('解析相关论文（可选')
+    assert research.index('做有针对性的搜索') < related_at < research.index('合成研究 brief')
+    related_section = research[related_at:research.index('合成研究 brief')]
+    assert '--slug "related-' in related_section
+    assert 'parse-pdf.py' in related_section
+    assert '最多解析 2 篇' in related_section
+    assert 'full_markdown_path' in related_section
+    # Related-paper material ids carry the slug prefix: no collision with the main paper.
+    assert 'related-foo_img_001' in research
     # The script agent writes the narration: the structure travels with its package.
     assert 'Takeaway / CTA' in script_base
+    # The catalog schema has no source_type field: paper entries are told apart by slug.
+    assert 'source_type: "paper_pdf" 条目' not in script_base
+    assert 'main-paper' in script_base and 'related-foo_img_001' in script_base
     # Phase 2 keeps only the main-paper parse.
     for moved in ('围绕论文《{title}》的背景调研', 'Takeaway / CTA', 'related-'):
         assert moved not in paper_parse, f'02-paper-parse.md still holds: {moved}'
@@ -70,3 +85,8 @@ def test_phase_5_documents_the_paper_only_path():
     catalog = doc_text('references/phases/05-material-catalog.md')
     section = catalog.split('## 仅论文素材')[1]
     assert 'score: 8' in section and 'caption' in section
+    # An empty caption means no caption: those figures go through the VLM step.
+    assert '空字符串' in catalog
+    # Paper tables are often tall: layout hints are derived, not invented.
+    assert 'viewport_reveal' in section
+    assert 'focal_region' in section

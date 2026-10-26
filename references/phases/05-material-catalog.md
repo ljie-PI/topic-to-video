@@ -58,7 +58,7 @@ Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产
    - **Mode 1（显式 VLM）：** 若已设置 `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` → 直接走 OpenAI 兼容的调用，话题 context 摘要作为 system prompt 或 user prompt 前缀注入。
    - **Mode 2（主 agent 直接分析）：** 否则 → 脚本返回 `delegate_to_agent`、图片路径列表和 `context`（话题摘要原文）。此时由**主 agent 自身的多模态视觉能力**（Read 图片文件，让模型直接看图）完成分析——使用与主 agent 其他推理相同的模型，不调用任何外部工具。分析时使用返回的 `context`，与 Mode 1 保持一致，产出同样格式的 `semantic_description` 和 `score`，并手动写入 `material-catalog.json`。
 
-   **Paper-origin entries（`source_type: "paper_pdf"`）：** 直接把 PDF caption（`paper_metadata.figure_captions` / `table_captions`）作为 `semantic_description`，默认 `score: 8`。只对没有 caption 的论文素材跑 VLM。
+   **Paper-origin entries（manifest 里 `source_type: "paper_pdf"` 的 entry；写进 catalog 后按 slug 辨认——`main-paper` 是主论文，`related-*` 是相关论文，catalog schema 没有 `source_type` 字段）：** 直接把 PDF caption（`paper_metadata.figure_captions` / `table_captions`）作为 `semantic_description`，默认 `score: 8`。**caption 为空字符串等同没有 caption**——parse-pdf 对每个图表 id 都写条目，没抽到标题的是 `''`：这种走下面的 VLM 步骤，不要写空的 `semantic_description`（状态脚本会判 corrupt）。带 caption 的条目不做视觉分析。
 
 4. **组合**：把 `entry.text_excerpt` + 图片描述 + 各帧描述合成 catalog entry。**关键：** 对每个视频，写一份 `selected_clips` 列表，元素形如 `{start, end, reason, frame_paths[]}` —— 这些就是 Phase 6（场景规划的 `material_candidates`）和 Phase 8（composition）会引用的片段。
 
@@ -118,8 +118,10 @@ Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产
 
 ## 仅论文素材（`input_mode = "paper"` 且 `fetch_materials = false`）
 
-Phase 4 被跳过，`harvest_page/manifest.json` 里只有 Phase 2 / Phase 3 写入的论文条目（`source_type: "paper_pdf"`：主论文，加上 Phase 3 解析的相关论文），没有 web 页面、视频和滚动录像。论文自己的 figure / table 是论文模式的**首选**素材，不因为不抓 web 素材而丢掉。流程同上，只是：
+Phase 4 被跳过，`harvest_page/manifest.json` 里只有 Phase 2 / Phase 3 写入的论文条目（`main-paper`，加上 Phase 3 解析的相关论文），没有 web 页面、视频和滚动录像。论文自己的 figure / table 是论文模式的**首选**素材，不因为不抓 web 素材而丢掉。流程与上文相同（抽帧 / 字幕步骤对论文 entry 是空操作：论文 entry 没有视频、没有 `selected_clips`），只有视觉分析一步按第 3 步的 Paper-origin 规则：带非空 caption 的 figure / table 直接用 caption 作为 `semantic_description`、`score: 8`，**不做视觉分析**；caption 缺失或为空的才跑 VLM。
 
-- 带 caption 的 figure / table（`paper_metadata.figure_captions` / `table_captions`）直接用 caption 作为 `semantic_description`，`score: 8`，不做视觉分析。
-- 没有 caption 的才按第 3 步跑视觉分析。
-- 论文 entry 没有视频：不抽帧、不解析字幕，也没有 `selected_clips`。
+布局提示字段按论文素材的特点处理：
+
+- 论文图片都带 `width` / `height`（parse-pdf 用 PIL 实测写入 manifest），`aspect_ratio` / `ratio_bucket` 直接按上文的公式推导；个别缺失写 `null` 而不是省略字段。
+- 论文里的表格常常很高（`tall` / `ultra-tall`）：`layout_affordance` 写 `["viewport_reveal"]`，与上文 tall 素材的规则一致。
+- 跳过了视觉分析的条目没有 VLM 给出的焦点信息：`focal_region` 写 `null`（或按表格内容人工标注），不要编造。

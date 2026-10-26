@@ -19,6 +19,13 @@ LOCAL_REFERENCE = re.compile(r'`((?:references|modules)/[^`]+)`')
 PLACEHOLDER_CHARACTERS = frozenset('<{*')
 
 
+def test_doc_globs_match_at_least_one_file():
+    # Parametrized over these lists, an empty glob silently runs zero tests.
+    assert DOC_FILES, 'no doc files matched'
+    assert DELEGATION_DOCS, 'no delegation docs found'
+    assert PHASE_DOCS, 'no phase docs found'
+
+
 def logical_lines(path: Path) -> Iterator[tuple[int, str]]:
     """Join backslash-continued shell commands into single logical lines."""
     pending = ''

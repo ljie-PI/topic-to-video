@@ -36,7 +36,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 0. **写之前先调研。** Phase 3 是强制的。每个论断都通过 Gemini Deep Research + `web_search` 落地。
    ↳ DO NOT：调研之前写脚本；没有明确条件就跳过 Gemini；用户给了 PDF 还跳过 Phase 2；用训练数据描述一篇论文。
 1. **素材 catalog / vision 分析在 Phase 5，不是 Phase 6。** Phase 6 只引用 catalog 写脚本、匹配场景素材并规划屏幕文本块。
-   ↳ DO NOT：catalog 还没建就写解说或场景-素材匹配；跳过 vision-analyze。
+   ↳ DO NOT：catalog 还没建就写解说或场景-素材匹配；跳过 vision-analyze（论文模式下带 caption 的图表按 Phase 5 规则直接用 caption、不做 VLM，是设计行为，不算跳过）。
 
 ### TTS / ASR
 
