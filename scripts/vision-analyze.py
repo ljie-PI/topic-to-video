@@ -221,33 +221,27 @@ def run_mode_vlm(args, api_key):
     )
 
     log('Vision analysis completed')
-    print(json.dumps(
-        {
-            'success': True,
-            'mode': 'vlm',
-            'analysis': analysis,
-            'model': model,
-            'image_count': len(args.images),
-        },
-        ensure_ascii=False,
-    ))
+    cli.print_json({
+        'success': True,
+        'mode': 'vlm',
+        'analysis': analysis,
+        'model': model,
+        'image_count': len(args.images),
+    })
 
 
 def run_mode_delegate(args):
     local, remote = split_images(args.images)
     log(f'Mode: delegate_to_agent; local={len(local)} remote={len(remote)}')
-    print(json.dumps(
-        {
-            'success': True,
-            'mode': 'delegate_to_agent',
-            'instruction': DELEGATE_INSTRUCTION,
-            'prompt': args.prompt,
-            'context': args.context,
-            'images': {'local': local, 'remote': remote},
-            'image_count': len(args.images),
-        },
-        ensure_ascii=False,
-    ))
+    cli.print_json({
+        'success': True,
+        'mode': 'delegate_to_agent',
+        'instruction': DELEGATE_INSTRUCTION,
+        'prompt': args.prompt,
+        'context': args.context,
+        'images': {'local': local, 'remote': remote},
+        'image_count': len(args.images),
+    })
 
 
 def main() -> None:
@@ -264,17 +258,10 @@ def main() -> None:
 
     api_key = os.environ.get('VLM_API_KEY')
 
-    try:
-        if api_key:
-            run_mode_vlm(args, api_key)
-        else:
-            run_mode_delegate(args)
-    except SystemExit:
-        raise
-    except FileNotFoundError as exc:
-        fail(str(exc))
-    except Exception as exc:
-        fail(str(exc))
+    if api_key:
+        run_mode_vlm(args, api_key)
+    else:
+        run_mode_delegate(args)
 
 
 if __name__ == '__main__':

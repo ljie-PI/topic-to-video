@@ -41,9 +41,10 @@ def _executable(override: str | None, env_name: str, default: str) -> str:
     return ensure_binary(name)
 
 
-def ensure_media_binaries() -> None:
+def ensure_media_binaries(*, require_ffprobe: bool = True) -> None:
     _executable(None, 'FFMPEG_BIN', 'ffmpeg')
-    _executable(None, 'FFPROBE_BIN', 'ffprobe')
+    if require_ffprobe:
+        _executable(None, 'FFPROBE_BIN', 'ffprobe')
 
 
 def _float_or_none(value: Any) -> float | None:

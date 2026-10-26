@@ -124,11 +124,6 @@ def parse_viewport(s: str) -> Tuple[int, int]:
     return int(m.group(1)), int(m.group(2))
 
 
-def slugify_url(url: str) -> str:
-    """Backward-compatible name for the shared URL slug helper."""
-    return harvest_manifest.slug_for_url(url)
-
-
 # -----------------------------------------------------------------------------
 # Page-level helpers (run inside Playwright contexts)
 # -----------------------------------------------------------------------------
@@ -785,7 +780,7 @@ def partition_urls(
             bad_urls.append({'url': u, 'error': f'unsupported URL scheme {scheme!r}; only http(s) is allowed'})
             log(f'  reject: {u} (scheme={scheme!r} — only http/https allowed)')
             continue
-        s = slugify_url(u)
+        s = harvest_manifest.slug_for_url(u)
         base, n = s, 2
         while s in used_slugs:
             s = f'{base}-{n}'
@@ -793,45 +788,6 @@ def partition_urls(
         used_slugs.add(s)
         items.append((u, s, detect_watchable_platform(u)))
     return items, bad_urls
-
-
-def aggregate_pending_downloads(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Collect every external video URL that still needs yt-dlp into a flat list
-    so the agent can iterate one array instead of nested-looping
-    `entries[].videos[]`.
-
-    Deduplicate by canonical URL. The same clip is frequently embedded on
-    multiple pages of the same batch (homepage + GitHub README is a common
-    pattern); downloading it twice into two per-slug directories wastes
-    bandwidth and risks yt-dlp rate-limiting. The first occurrence's
-    `suggested_output_dir` wins; additional referrers go into
-    `also_referenced_by` so Phase 4.b can fan out the `local_path` update to
-    every metadata.json that points at the same clip.
-    """
-    pending: List[Dict[str, Any]] = []
-    index: Dict[str, int] = {}
-    for e in entries:
-        if not e.get('success'):
-            continue
-        for v in e.get('videos', []) or []:
-            if not v.get('download_required'):
-                continue
-            url_key = v.get('url', '')
-            if not url_key:
-                continue
-            if url_key in index:
-                pending[index[url_key]].setdefault('also_referenced_by', []).append(
-                    e.get('slug', '')
-                )
-                continue
-            index[url_key] = len(pending)
-            pending.append({
-                'url': url_key,
-                'platform': v.get('platform', ''),
-                'suggested_output_dir': v.get('suggested_output_dir', ''),
-                'source_slug': e.get('slug', ''),
-            })
-    return pending
 
 
 def main() -> None:
@@ -957,7 +913,7 @@ def main() -> None:
     })
     by_slug = {entry.get('slug'): entry for entry in saved['entries']}
     batch_entries = [by_slug[entry['slug']] for entry in entries]
-    pending_downloads = aggregate_pending_downloads(batch_entries)
+    pending_downloads = harvest_manifest.pending_downloads(batch_entries)
 
     batch_success = succeeded > 0
     result = {

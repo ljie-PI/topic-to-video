@@ -38,7 +38,6 @@ from typing import Any
 
 import cli
 import harvest_manifest
-from PIL import Image
 
 TOOL_NAME = 'parse-pdf'
 POLL_INTERVAL_S = 5
@@ -68,11 +67,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--slug', default=None, help='Slug for output subdirectory (auto-derived if omitted).')
     p.add_argument('--model-version', default='vlm', help='MinerU model version (default: vlm).')
     return p.parse_args()
-
-
-def derive_slug(url: str | None, pdf_path: str | None) -> str:
-    """Backward-compatible name for the shared PDF slug helper."""
-    return harvest_manifest.slug_for_pdf(url, pdf_path)
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +315,8 @@ def process_mineru_output(
     pdf_path: str | None,
 ) -> dict[str, Any]:
     """Process MinerU output into harvest-compatible format. Returns manifest entry."""
+    from PIL import Image
+
     output_path = Path(output_dir)
     slug_dir = output_path / slug
     images_dir = slug_dir / 'images'

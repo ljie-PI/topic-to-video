@@ -1,7 +1,6 @@
 """Local MinerU subprocess tests for parse-pdf.py; no network or API token."""
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import subprocess
@@ -14,12 +13,15 @@ SCRIPT = REPO_ROOT / 'scripts' / 'parse-pdf.py'
 FAKE_MINERU = r'''#!/usr/bin/env python3
 import base64
 import json
+import os
 import sys
 from pathlib import Path
 
 args = sys.argv[1:]
 pdf = Path(args[args.index('-p') + 1])
 out = Path(args[args.index('-o') + 1]) / pdf.stem / 'auto'
+if os.environ.get('FAKE_MINERU_NESTED'):
+    out = out / 'nested'
 (out / 'images').mkdir(parents=True)
 (out / 'full.md').write_text('# Fixture Paper\n\n# Abstract\nA local fixture.\n', encoding='utf-8')
 (out / f'{pdf.stem}_content_list.json').write_text(json.dumps([
@@ -81,18 +83,40 @@ def test_local_mineru_upserts_v2_manifest_with_dimensions_and_relative_paths(tmp
 
 
 def test_nested_mineru_full_markdown_keeps_a_resolvable_relative_path(tmp_path: Path):
-    spec = importlib.util.spec_from_file_location('parse_pdf', SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    nested = tmp_path / 'raw' / 'nested'
-    nested.mkdir(parents=True)
-    (nested / 'full.md').write_text('# Nested Paper\n', encoding='utf-8')
+    fake_bin = tmp_path / 'bin'
+    fake_bin.mkdir()
+    mineru = fake_bin / 'mineru'
+    mineru.write_text(FAKE_MINERU, encoding='utf-8')
+    mineru.chmod(0o755)
+    pdf = tmp_path / 'paper.pdf'
+    pdf.write_bytes(b'%PDF-1.4\n%%EOF\n')
     harvest_dir = tmp_path / 'harvest_page'
+    env = dict(os.environ)
+    env.pop('MINERU_API_TOKEN', None)
+    env['PATH'] = f'{fake_bin}{os.pathsep}{env["PATH"]}'
+    env['FAKE_MINERU_NESTED'] = '1'
 
-    entry = module.process_mineru_output(
-        str(tmp_path / 'raw'), str(harvest_dir), 'paper', 'https://example.com/paper.pdf', None,
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPT), '--pdf', str(pdf), '--output-dir', str(harvest_dir)],
+        capture_output=True, text=True, env=env, timeout=60, check=False,
     )
 
-    relative = entry['paper_metadata']['full_markdown_path']
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(proc.stdout)
+    relative = result['manifest_entry']['paper_metadata']['full_markdown_path']
     assert relative == 'paper/mineru/nested/full.md'
     assert (harvest_dir / relative).is_file()
+
+
+def test_invalid_flag_does_not_import_pillow(tmp_path: Path):
+    proc = subprocess.run(
+        [sys.executable, '-S', str(SCRIPT), '--definitely-not-a-flag'],
+        cwd=tmp_path, capture_output=True, text=True, timeout=30, check=False,
+    )
+
+    assert proc.returncode == 2, proc.stderr
+    assert len(proc.stdout.splitlines()) == 1
+    result = json.loads(proc.stdout)
+    assert result['success'] is False
+    assert result['error']
+    assert 'Traceback' not in proc.stderr

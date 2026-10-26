@@ -7,7 +7,6 @@ Usage:
 """
 
 import argparse
-import json
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List
@@ -143,7 +142,7 @@ def main() -> int:
         if completed.returncode != 0:
             error_message = detect_common_issue(combined_output)
             log(f'yt-dlp failed: {error_message}')
-            print(json.dumps({'success': False, 'error': error_message}, ensure_ascii=False))
+            cli.print_json({'success': False, 'error': error_message})
             return 1
 
         files = collect_changed_files(output_dir, before_stats)
@@ -192,7 +191,7 @@ def main() -> int:
         return 0
     except FileNotFoundError:
         log('yt-dlp is not installed or not available on PATH.')
-        print(json.dumps({'success': False, 'error': 'yt-dlp is not installed or not available on PATH.'}, ensure_ascii=False))
+        cli.print_json({'success': False, 'error': 'yt-dlp is not installed or not available on PATH.'})
         return 1
     except subprocess.TimeoutExpired as exc:
         output = '\n'.join(
@@ -202,16 +201,7 @@ def main() -> int:
         )
         message = f'yt-dlp timed out after {exc.timeout} seconds. {tail_text(output)}'.strip()
         log(message)
-        print(
-            json.dumps(
-                {'success': False, 'error': message},
-                ensure_ascii=False,
-            )
-        )
-        return 1
-    except Exception as exc:
-        log(f'error: {exc}')
-        print(json.dumps({'success': False, 'error': str(exc)}, ensure_ascii=False))
+        cli.print_json({'success': False, 'error': message})
         return 1
 
 

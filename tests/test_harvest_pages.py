@@ -185,6 +185,46 @@ def test_local_page_loads_once_and_manifest_contains_image(
             _close_test_chrome(cdp_url)
 
 
+def test_reharvesting_same_direct_video_preserves_applied_download(tmp_path: Path):
+    harvest_dir = tmp_path / 'harvest_page'
+    url = 'https://www.youtube.com/watch?v=shared123'
+    command = [
+        sys.executable, str(SCRIPT), '--urls', url,
+        '--output-dir', str(harvest_dir), '--profile-dir', str(tmp_path / 'unused-profile'),
+    ]
+    first = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+    assert first.returncode == 0, first.stderr
+    slug = harvest_manifest.slug_for_url(url)
+    video_path = harvest_dir / slug / 'videos' / 'shared123.mp4'
+    subtitle_path = harvest_dir / slug / 'videos' / 'shared123.en.srt'
+    harvest_manifest.apply_download(harvest_dir, url, {
+        'files': [str(video_path), str(subtitle_path)],
+        'videos': [{
+            'path': str(video_path), 'width': 1280, 'height': 720, 'duration_seconds': 2.5,
+        }],
+    })
+
+    second = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+
+    assert second.returncode == 0, second.stderr
+    batch = json.loads(second.stdout)
+    downloaded = batch['entries'][0]['videos'][0]
+    assert downloaded['download_required'] is False
+    assert downloaded['downloaded'] is True
+    assert downloaded['local_path'] == f'{slug}/videos/shared123.mp4'
+    assert downloaded['subtitle_path'] == f'{slug}/videos/shared123.en.srt'
+    assert downloaded['id'] == 'shared123'
+    assert downloaded['width'] == 1280
+    assert downloaded['height'] == 720
+    assert downloaded['duration_seconds'] == 2.5
+    assert 'pending_downloads' not in batch
+    manifest = json.loads((harvest_dir / 'manifest.json').read_text(encoding='utf-8'))
+    assert len(manifest['entries']) == 1
+    assert manifest['entries'][0] == batch['entries'][0]
+    assert manifest['pending_downloads'] == []
+    assert len(manifest['harvest_batches']) == 2
+
+
 def test_direct_video_batches_upsert_without_erasing_papers(tmp_path: Path):
     harvest_dir = tmp_path / 'harvest_page'
     harvest_manifest.upsert_entries(harvest_dir, [{

@@ -90,6 +90,29 @@ def test_later_batches_preserve_papers_and_applied_downloads(tmp_path: Path):
     assert [item['url'] for item in manifest['pending_downloads']] == ['https://youtu.be/second123']
 
 
+def test_same_slug_upsert_refreshes_metadata_and_allows_explicit_video_updates(tmp_path: Path):
+    entry = web_entry(tmp_path, 'one')
+    harvest_manifest.upsert_entries(tmp_path, [entry])
+    video_path = tmp_path / 'one' / 'videos' / 'old.mp4'
+    harvest_manifest.apply_download(tmp_path, URL, {
+        'files': [str(video_path)],
+        'videos': [{'path': str(video_path), 'width': 640, 'height': 360, 'duration_seconds': 1.0}],
+    })
+    refreshed = web_entry(tmp_path, 'one')
+    refreshed['title'] = 'refreshed harvest title'
+    refreshed['videos'][0]['width'] = 1920
+
+    harvest_manifest.upsert_entries(tmp_path, [refreshed])
+
+    saved = harvest_manifest.load(tmp_path)['entries'][0]
+    assert saved['title'] == 'refreshed harvest title'
+    assert saved['videos'][0]['download_required'] is False
+    assert saved['videos'][0]['downloaded'] is True
+    assert saved['videos'][0]['local_path'] == 'one/videos/old.mp4'
+    assert saved['videos'][0]['height'] == 360
+    assert saved['videos'][0]['width'] == 1920
+
+
 def test_apply_download_fans_out_to_all_references_and_mirrors(tmp_path: Path):
     harvest_manifest.upsert_entries(tmp_path, [web_entry(tmp_path, 'one'), web_entry(tmp_path, 'two')])
     before = harvest_manifest.load(tmp_path)

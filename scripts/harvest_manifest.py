@@ -79,7 +79,7 @@ def load(harvest_dir: str | os.PathLike[str]) -> dict[str, Any]:
         raise ValueError('manifest.json harvest_batches must be a list')
     manifest['harvest_batches'] = copy.deepcopy(batches)
     manifest['updated_at'] = raw.get('updated_at', '')
-    manifest['pending_downloads'] = _pending_downloads(manifest['entries'])
+    manifest['pending_downloads'] = pending_downloads(manifest['entries'])
     return manifest
 
 
@@ -108,7 +108,7 @@ def _normalize_paths(value: Any, root: Path) -> Any:
     return value
 
 
-def _pending_downloads(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def pending_downloads(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     pending: list[dict[str, Any]] = []
     by_url: dict[str, dict[str, Any]] = {}
     for entry in entries:
@@ -189,7 +189,7 @@ def save(
     saved = _new_manifest()
     saved['entries'] = _normalize_paths(copy.deepcopy(manifest.get('entries', [])), root)
     saved['harvest_batches'] = copy.deepcopy(manifest.get('harvest_batches', []))
-    saved['pending_downloads'] = _pending_downloads(saved['entries'])
+    saved['pending_downloads'] = pending_downloads(saved['entries'])
     saved['updated_at'] = _now()
     normalized_slugs = {
         normalized.get('slug')
@@ -231,11 +231,38 @@ def save(
     return saved
 
 
+def _preserve_completed_downloads(
+    existing: dict[str, Any], incoming: dict[str, Any],
+) -> dict[str, Any]:
+    """Refresh harvest metadata without turning completed videos back into pending."""
+    previous_videos = {
+        video.get('url'): video
+        for video in existing.get('videos', []) or []
+        if video.get('url') and video.get('downloaded') and video.get('download_required') is False
+    }
+    for video in incoming.get('videos', []) or []:
+        previous = previous_videos.get(video.get('url'))
+        if previous is None or video.get('local_path'):
+            continue
+        video['download_required'] = False
+        video['downloaded'] = True
+        for field in ('local_path', 'subtitle_path', 'id', 'width', 'height', 'duration_seconds'):
+            if field in previous:
+                video.setdefault(field, previous[field])
+    return incoming
+
+
 def upsert_entries(
     harvest_dir: str | os.PathLike[str], entries: list[dict[str, Any]],
 ) -> dict[str, Any]:
     manifest = load(harvest_dir)
-    _replace_entries(manifest['entries'], copy.deepcopy(entries))
+    existing_by_slug = {entry.get('slug'): entry for entry in manifest['entries']}
+    merged = [
+        _preserve_completed_downloads(existing_by_slug[entry.get('slug')], copy.deepcopy(entry))
+        if entry.get('slug') in existing_by_slug else copy.deepcopy(entry)
+        for entry in entries
+    ]
+    _replace_entries(manifest['entries'], merged)
     return save(harvest_dir, manifest, dirty_slugs={entry.get('slug', '') for entry in entries})
 
 

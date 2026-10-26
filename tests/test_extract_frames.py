@@ -16,19 +16,24 @@ SCRIPT = REPO_ROOT / 'scripts' / 'extract-frames.py'
 FRAME_NAME = re.compile(r'frame_t(\d{4}\.\d{2})s\.jpg')
 
 
-def test_frames_have_timestamped_names_and_absolute_timed_paths(tmp_path: Path):
-    video = tmp_path / 'input.mp4'
+@pytest.fixture
+def video(tmp_path: Path) -> Path:
+    path = tmp_path / 'input.mp4'
     subprocess.run(
         [
             'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
             '-f', 'lavfi', '-i', 'testsrc=duration=4:size=160x120:rate=25',
-            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(video),
+            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(path),
         ],
         check=True,
         capture_output=True,
         text=True,
         timeout=30,
     )
+    return path
+
+
+def test_frames_have_timestamped_names_and_absolute_timed_paths(tmp_path: Path, video: Path):
     output_dir = tmp_path / 'frames'
 
     proc = subprocess.run(
@@ -60,20 +65,9 @@ def test_frames_have_timestamped_names_and_absolute_timed_paths(tmp_path: Path):
     ('start_time', 'end_time'),
     [('00:00:01.50', '00:00:03.50'), ('00:01.50', '00:03.50')],
 )
-def test_frame_timestamps_include_the_start_time(tmp_path: Path, start_time: str, end_time: str):
-    video = tmp_path / 'input.mp4'
-    subprocess.run(
-        [
-            'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
-            '-f', 'lavfi', '-i', 'testsrc=duration=4:size=160x120:rate=25',
-            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(video),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-
+def test_frame_timestamps_include_the_start_time(
+    tmp_path: Path, video: Path, start_time: str, end_time: str,
+):
     proc = subprocess.run(
         [
             sys.executable, str(SCRIPT), str(video), str(tmp_path / 'frames'),
@@ -94,20 +88,8 @@ def test_frame_timestamps_include_the_start_time(tmp_path: Path, start_time: str
 
 @pytest.mark.parametrize('binary_env', ['FFMPEG_BIN', 'FFPROBE_BIN'])
 def test_missing_media_binary_preserves_existing_frames(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, binary_env: str
+    tmp_path: Path, video: Path, monkeypatch: pytest.MonkeyPatch, binary_env: str
 ):
-    video = tmp_path / 'input.mp4'
-    subprocess.run(
-        [
-            'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
-            '-f', 'lavfi', '-i', 'testsrc=duration=4:size=160x120:rate=25',
-            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(video),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
     output_dir = tmp_path / 'frames'
     output_dir.mkdir()
     existing = output_dir / 'frame_existing.jpg'
@@ -120,6 +102,46 @@ def test_missing_media_binary_preserves_existing_frames(
         text=True,
         timeout=60,
         check=False,
+    )
+
+    assert proc.returncode == 1
+    assert existing.read_bytes() == b'pre-existing frame'
+
+
+def test_explicit_window_does_not_require_ffprobe(
+    tmp_path: Path, video: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv('FFPROBE_BIN', '/nonexistent')
+
+    proc = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), str(video), str(tmp_path / 'frames'),
+            '--start-time', '00:00:01', '--end-time', '00:00:03', '--max-frames', '2',
+        ],
+        capture_output=True, text=True, timeout=60, check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(proc.stdout)
+    assert result['success'] is True
+    assert result['frame_count'] == 2
+
+
+def test_explicit_window_missing_ffmpeg_preserves_existing_frames(
+    tmp_path: Path, video: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    output_dir = tmp_path / 'frames'
+    output_dir.mkdir()
+    existing = output_dir / 'frame_existing.jpg'
+    existing.write_bytes(b'pre-existing frame')
+    monkeypatch.setenv('FFMPEG_BIN', '/nonexistent')
+
+    proc = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), str(video), str(output_dir),
+            '--start-time', '00:00:01', '--end-time', '00:00:03',
+        ],
+        capture_output=True, text=True, timeout=60, check=False,
     )
 
     assert proc.returncode == 1
