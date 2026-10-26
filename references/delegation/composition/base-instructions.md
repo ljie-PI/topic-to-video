@@ -28,8 +28,10 @@
 
 ## 工作顺序
 
-1. **写 storyboard**。以 `scene-plan.json` 为起点：可以合并或拆分视觉 scene、改选素材和 pattern；偏离场景规划的地方写明理由；**旁白不能改**（字幕与屏幕文字都以显示稿为准）。
-2. **组装和编写画面**。按 storyboard 用 modules 组装：读 `modules/modules.md` 入口、所选 design / layout 文档、需要的 pattern 文档（`modules/patterns/`，只作建议）与组件文档（`modules/components/`）；动效选择参考 `modules/motion.md`。
+1. **写 storyboard**，分两小步：
+   1. **先选组件**。读 `modules/components/components.md` 的组件目录，再读要用的组件文档。
+   2. **写 storyboard**。开头先写一张「组件使用表」：每个用到的组件一行，写明挂载参数、驱动它的 `window.VIDEO` 数据从哪来（例如 `captions` 来自 `transcribe/subtitle-units.json`）。layout 的 reserved 区要求的组件必须出现在表里；常驻组件不用在每个 scene 里重复写，scene 里只写本 scene 额外用到的组件。然后以 `scene-plan.json` 为起点逐个 scene 写：可以合并或拆分视觉 scene、改选素材和 pattern；偏离场景规划的地方写明理由；**旁白不能改**（字幕与屏幕文字都以显示稿为准）。
+2. **组装和编写画面**。按 storyboard 用 modules 组装：读 `modules/modules.md` 入口、所选 design / layout 文档、需要的 pattern 文档（`modules/patterns/`，只作建议）与组件文档（`modules/components/`）；动效选择参考 `modules/motion.md`。按 storyboard 选定的 design textures、组件和模板资源，由你自己从工作区的 `modules/` 拷进 `composition/`，清单见各模块的文档。
 3. **渲染前自查**，全部通过再渲染：
    - 运行 `npx hyperframes check`，修掉所有错误；
    - 运行 check-composition（命令见 handoff 的 Outputs 一节）：它按 layout 区域定义检查越界、侵入 reserved 区域、文字溢出、资源加载失败、字体未加载、字号低于 design 下限、字幕与字幕单元不一致；每条 finding 的形状为 `{scene_id, check, issue, time_s, frame}`，其中 `time_s` 是快照时刻、`frame` 为 null，只修相关 scene；handoff 的命令用 `--output` 把同一份报告写到 `composition/check-composition.json`（stdout 照常打印，findings 直接看输出）；改过画面就重跑，**最后一次的报告必须保存在这个路径且 verdict 为 pass**（主 agent 的状态脚本读它）；

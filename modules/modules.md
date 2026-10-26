@@ -44,7 +44,7 @@ templates/
   github/project-cover.md, .html          场景：项目封面
   github/brand/                           github-mark-white.svg
 examples/
-  github-trending/                        完整示例工程（27.2 秒），可以直接复制作为起点
+  github-trending/                        完整示例工程（27.2 秒），只在 skill 仓库里，委派场景下工作区没有 examples/
   jay-actions/                            人物动作演示：15 个动作加打字和瞥视逐个演一遍（59.9 秒）
 ```
 
@@ -75,11 +75,11 @@ examples/
 ## 组装一支视频
 
 1. **建工程**：
-   - 复制 `examples/github-trending/` 当起点；
-   - 或者 `npx hyperframes init <目录>` 新建。
+   - 用 `npx hyperframes init composition/` 新建；`examples/` 只存在于 skill 仓库，委派场景下不在工作区；
+   - 委派场景下 `composition/assets/fonts/` 已经预置，而 `init` 不接受非空目录：先在工作区里 `npx hyperframes init composition-init/`，把生成的文件拷进 `composition/`（不要动 `assets/fonts/`），再删掉 `composition-init/`。
 2. **主题**：
    - 把 `designs/<主题>/textures/` 复制到工程的 `assets/textures/`；
-   - 用 skill 根目录的 `bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/<主题>` 把字体装进工程，并在 `index.html` 的 `<head>` 里引入装进去的 CSS；
+   - 用 skill 根目录的 `bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/<主题>` 把字体装进工程，并在 `index.html` 的 `<head>` 里引入装进去的 CSS；委派场景下字体已经由 `prepare-handoff.py` 预置在 `composition/assets/fonts/`，不用再装，直接引入其中的 CSS；
    - 把主题文档里的变量代码放进 `index.html` 的 `:root`；
    - 根节点放一个铺满全屏的 `#ground`，背景用 `var(--ground)`。
 3. **模板**：按 `templates/<类型>/<类型>.md`：
@@ -96,8 +96,8 @@ examples/
    - 数据最好用脚本从字幕和配音生成，参考示例里的 `tools/build-data.mjs`；
    - 嘴型用 `node modules/components/jay/make-envelope.mjs <配音>` 生成。
 7. **检查**：
-   - 跑 `npx hyperframes check`，修掉所有错误；
-   - 用 `npx hyperframes preview` 交给用户看，确认后再 `render`。
+   - `npx hyperframes check` 和 check-composition 都通过后再 `render`，`check` 的错误都要修掉；
+   - 只有人直接操作时才用 `npx hyperframes preview` 给人看，确认后再渲染；委派场景下由 sub-agent 直接渲染。
 
 ## 内容和外观分开
 

@@ -46,7 +46,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 ### 字体与文本
 
-4. **预先 stage 确定性的 WOFF2 字体。** Phase 8 准备阶段按所选 design 用 `scripts/fonts-download.sh` 预置到 composition 工程的 `assets/fonts/`，handoff 指向该目录。
+4. **预先 stage 确定性的 WOFF2 字体。** Phase 8 的 `scripts/prepare-handoff.py` 按所选 design 调用 `scripts/fonts-download.sh`，预置到 composition 工程的 `assets/fonts/`，handoff 指向该目录。
    ↳ DO NOT：让主 agent 处理 composition 的字体 CSS。
 5. **字体实现归 HyperFrames。** Phase 8 sub-agent 使用本地字体，并按 `hyperframes` skill 中的排版规则处理。
 
@@ -58,7 +58,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 ### Composition
 
-8. **Composition 委派给 coding agent。** 主 agent 只写 `composition-handoff.md`，并把 composition 委派包（`references/delegation/composition/`）与 modules（不含 `examples/`）物化到工作区，再按所选 design 预置字体；委派约定与指令叠加顺序见 `references/delegation/conventions.md`。
+8. **Composition 委派给 coding agent。** 主 agent 只运行 `scripts/prepare-handoff.py <ws> composition`：它生成 `composition-handoff.md`，把 composition 委派包（`references/delegation/composition/`）与 modules（不含 `examples/`）物化到工作区，再按所选 design 预置字体；委派约定与指令叠加顺序见 `references/delegation/conventions.md`。
    ↳ DO NOT：手写 `composition/index.html`、挑选低层 animation / effect skill，或在本 session 里修 HyperFrames lint；除非用户明确指定，否则由 Phase 8 sub-agent 选择。
 9. **Scene 设计归 HyperFrames。** 切分、素材映射、布局、视觉层级、动画、lint/inspect 与渲染迭代都发生在 Phase 8。
 
@@ -79,6 +79,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 | 脚本 | 用途 | 依赖 |
 | --- | --- | --- |
 | `pipeline-status.py` | 扫描工作区，输出已完成 / 下一个 phase、要读的文档、缺失或损坏的产物 | — |
+| `prepare-handoff.py` | 委派步骤（script / composition）的准备：物化委派包（composition 另含 modules 与预置字体）、生成 handoff，输出可原样派发的 `dispatch_prompt` | — |
 | `fonts-download.sh` | 把仓库里预置的 WOFF2 字体（`resources/fonts/<design>/`）装进工程，不联网；`--refresh` 才从 Google Fonts 重新下载（维护用） | — |
 | `voice-clone.py` | TTS：把 `narration.txt` 合成 `voice_clone/narration.mp3`；后端由环境变量选择 | 见脚本顶部说明 |
 | `transcribe.py` | ASR：输出带词级时间戳的 transcript；后端由环境变量选择 | 见脚本顶部说明 |

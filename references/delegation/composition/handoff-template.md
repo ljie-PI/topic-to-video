@@ -1,61 +1,67 @@
 # composition-handoff 模板（Phase 8 — composition）
 
-主 agent 复制本模板为 `{work_dir}/{topic_name}/composition-handoff.md`，填好各节，然后按 `references/delegation/conventions.md` 派发：委派 prompt 只有一句话，让被委派的 agent 读本文件。
+`scripts/prepare-handoff.py <ws> composition` 读取本文件里的 markdown 代码块，把 `{{name}}` 占位符换成实际值，写出 `{work_dir}/{topic_name}/composition-handoff.md`；同一次调用还会把委派包和 `modules/`（不含 `examples/`）物化到工作区，并按所选 design 预置字体。主 agent 不手写 handoff；有占位符没被替换时脚本报错退出。
 
 五个小节的标题固定不变；Additional Instructions 没有额外指令时写 `None`，但小节始终保留。
 
+占位符取值（路径全是绝对路径；命令里的 skill 脚本用 skill 根目录的绝对路径，layout / design 指向工作区副本）：
+
+| 占位符 | 取值 |
+|---|---|
+| `{{topic_name}}` / `{{ws}}` | 工作区目录名 / 工作区绝对路径 |
+| `{{skill_root}}` | skill 根目录的绝对路径 |
+| `{{coding_agent}}` | `inputs.json` 的 `coding_agent` |
+| `{{design}}` / `{{layout}}` / `{{template}}` / `{{orientation}}` | `inputs.json` 的对应字段（`template` 为 null 时写“无”） |
+| `{{material_catalog}}` | `fetch_materials` 为真：catalog 的路径；否则“无（无素材，画面用纯排版）” |
+| `{{required_references}}` | 按叠加顺序编号：基础指令 → `modules.md` → design 文档 → layout 的 json 与文档 → 所选模板的文档（`template` 为 null 时省略）→ pattern / 组件目录（固定一句，按 storyboard 需要自行阅读）。全部指向工作区副本 |
+| `{{additional_instructions}}` | 实际存在的 `composition-instructions.md` 和旧项目的 `style-prompt.md`；都没有写 `None` |
+
 ```markdown
-# composition-handoff — <topic_name>
+# composition-handoff — {{topic_name}}
 
 ## Coding Agent
 
-<委派目标，例如 claude-code（默认）；用户点名其他 agent 时写用户指定的>
+{{coding_agent}}
 
 ## Inputs
 
-- 工作区：{work_dir}/{topic_name}/
-- voice_clone/narration.mp3：生成的配音（唯一音频来源，不重生成 TTS）
-- transcribe/subtitle-units.json：字幕单元（text / begin_s / end_s，逐字使用）
-- transcribe/timeline.json：段落与 cue 时间轴（scene 切分与 cue 锚点）
-- material-catalog.json：<路径；fetch_materials = false 时写“无（无素材，画面用纯排版）”>
-- scene-plan.json：叙事层场景规划（仅作参考，可合并 / 拆分 / 改选）
-- script.txt：显示稿（旁白与屏幕文字的文本来源，不能改）
-- inputs.json：design <design>、layout <layout>、template <template 或 无>、orientation <朝向>
-- 字体目录：composition/assets/fonts/（主 agent 已按所选 design 预置，只用它）
+- 工作区：{{ws}}/
+- {{ws}}/voice_clone/narration.mp3：生成的配音（唯一音频来源，不重生成 TTS）
+- {{ws}}/transcribe/subtitle-units.json：字幕单元（text / begin_s / end_s，逐字使用）
+- {{ws}}/transcribe/timeline.json：段落与 cue 时间轴（scene 切分与 cue 锚点）
+- material-catalog.json：{{material_catalog}}
+- {{ws}}/scene-plan.json：叙事层场景规划（仅作参考，可合并 / 拆分 / 改选）
+- {{ws}}/script.txt：显示稿（旁白与屏幕文字的文本来源，不能改）
+- {{ws}}/inputs.json：design {{design}}、layout {{layout}}、template {{template}}、orientation {{orientation}}
+- 字体目录：{{ws}}/composition/assets/fonts/（已按所选 design 预置，只用它）
 
 ## Outputs
 
-写到工作区（{work_dir}/{topic_name}/）：
+写到工作区（{{ws}}/）：
 
-- composition/storyboard.md：storyboard，每个 scene 写明 intent、所用的 content 区域、素材与 pattern 选择；偏离场景规划处写明理由
-- composition/index.html + composition/compositions/：HyperFrames 工程与子合成
-- composition/check-composition.json：check-composition 的报告（下面命令的 `--output` 写出它；最后一次运行的 verdict 必须是 pass）
-- composition/renders/final.mp4：渲染产物
+- {{ws}}/composition/storyboard.md：storyboard，开头是「组件使用表」，每个 scene 写明 intent、所用的 content 区域、素材与 pattern 选择；偏离场景规划处写明理由
+- {{ws}}/composition/index.html + {{ws}}/composition/compositions/：HyperFrames 工程与子合成
+- {{ws}}/composition/check-composition.json：check-composition 的报告（下面命令的 `--output` 写出它；最后一次运行的 verdict 必须是 pass）
+- {{ws}}/composition/renders/final.mp4：渲染产物
 
 渲染前自查（全部通过再渲染）：
 
-- npx hyperframes check
-- python3 scripts/check-composition.py {work_dir}/{topic_name}/composition \
-    --layout modules/layouts/<layout>.json \
-    --design-doc modules/designs/<design>/<design>.md \
-    --subtitle-units {work_dir}/{topic_name}/transcribe/subtitle-units.json \
-    --timeline {work_dir}/{topic_name}/transcribe/timeline.json \
-    --output {work_dir}/{topic_name}/composition/check-composition.json
+- cd {{ws}}/composition && npx hyperframes check
+- source {{skill_root}}/.venv/bin/activate && python3 {{skill_root}}/scripts/check-composition.py {{ws}}/composition \
+    --layout {{ws}}/modules/layouts/{{layout}}.json \
+    --design-doc {{ws}}/modules/designs/{{design}}/{{design}}.md \
+    --subtitle-units {{ws}}/transcribe/subtitle-units.json \
+    --timeline {{ws}}/transcribe/timeline.json \
+    --output {{ws}}/composition/check-composition.json
 - 每个 scene 的中点截一张快照目检
 
 ## Required References
 
-按顺序阅读（叠加顺序与冲突处理见 references/delegation/conventions.md）：
+按顺序阅读（叠加顺序与冲突处理见 {{ws}}/references/delegation/conventions.md）：
 
-1. references/delegation/composition/base-instructions.md（基础指令：输入契约、design、layout 区域、工作顺序）
-2. modules/modules.md（模块库入口与组装约定）
-3. modules/designs/<design>/<design>.md（所选 design；token 契约见 modules/designs/designs.md）
-4. modules/layouts/<layout>.json + modules/layouts/<layout>.md（所选 layout 的区域定义）
-5. <modules/templates/<template>/<template>.md 及其场景 / 组件文档；未选模板则写“无”>
-6. <相关 pattern 文档：modules/patterns/<类>/<pattern>.md，按 storyboard 需要列；没有则写“无”>
-7. <所用组件文档：modules/components/<组件>/<组件>.md；没有则写“无”>
+{{required_references}}
 
 ## Additional Instructions
 
-<实际存在的项目指令文件列表，例如 composition-instructions.md（旧项目的 style-prompt.md 视为其中一部分）；没有就写 None>
+{{additional_instructions}}
 ```
