@@ -23,7 +23,7 @@
 ### 通用要求
 
 - 只使用**研究 brief 中的事实**——每个数字、人名、日期和引文都要可追溯。
-- 3–10 分钟、`speech_rate=1.4` 下约 **7.5 字符/秒** → `3min ≈ 1350 chars`、`5min ≈ 2250 chars`、`10min ≈ 4500 chars`（按显示稿字数估算）。按目标时长伸缩。
+- 3–10 分钟、`speech_rate=1.4` 下约 **7.5 字符/秒** → `3min ≈ 1350 chars`、`5min ≈ 2250 chars`、`10min ≈ 4500 chars`（按显示稿字数估算，去掉所有空白）。按目标时长伸缩：目标字数 = 分钟数 × 450，状态脚本会把偏差超过 ±15% 的显示稿打回。
 - 段间用空行分隔。段落是叙事单元：一个段落讲清一个意思，长短按内容自然伸缩，**不要**按“每段 = 一个 scene / 5–8 秒”硬切——scene 切分由场景规划按语义决定。
 - **不要**设计 HyperFrames 的 scene 卡片、时间轴、布局或屏幕文字；画面设计归 composition 阶段。场景规划只到叙事层（见下）。
 - 不要在旁白里引导网页链接（“链接放在下面”“见简介链接”等）。
@@ -70,9 +70,9 @@ TTS 朗读稿由 `scripts/make-narration.py` 按词表确定性生成，不要�
    - `intent`：这场景要帮观众理解什么。
    - `template_scene` / `pattern_hints`：可选。选了模板时，`cues` 按模板的旁白要求（`modules/templates/<template>/narration.md`）摘录需要的锚点句——这些句子会用来从配音里算出秒数，务必原样取自显示稿。
    - `facts`：这一段旁白依赖的关键事实（数字、实体、列表、代码）。
-   - `material_candidates`：候选素材引用，每项含 `ref`（catalog 素材 id 或 `<video_id>:<start>-<end>` clip 引用）、`score`（1–10）、`reason`。**只是候选，不做排他分配**；同一素材可以被多个 scene 候选。引用的素材 id 必须存在于 `material-catalog.json`；`fetch_materials = false` 时没有 catalog，留空列表。素材 id 的引用格式见 `references/phases/05-material-catalog.md`。
+   - `material_candidates`：候选素材引用，每项含 `ref`（catalog 素材 id 或 `<video_id>:<start>-<end>` clip 引用）、`score`（1–10）、`reason`。**只是候选，不做排他分配**；同一素材可以被多个 scene 候选。引用的素材 id 必须存在于 `material-catalog.json`；clip 引用必须写成 `<video_id>:<start>-<end>`（秒，数字间不加空格），起止时间要与 `selected_clips` 里的某一项相差不超过 0.01 秒；`fetch_materials = false` 时没有 catalog，留空列表。素材 id 的引用格式见 `references/phases/05-material-catalog.md`。
    - **不包含** `layout_role` / `visual_role` / `display_text`——那是 composition 阶段的设计空间。
 
 ## 完成后
 
-运行 `scripts/make-narration.py` 生成 `narration.txt` 与 `narration-offsets.json`（命令见 handoff 的 Outputs 一节），然后向主 agent 报告四个产物路径。主 agent 会做确定性校验（字数 / 段落覆盖 / 素材引用），通过后交给用户确认。
+运行 `scripts/make-narration.py` 生成 `narration.txt` 与 `narration-offsets.json`（命令见 handoff 的 Outputs 一节），然后向主 agent 报告四个产物路径。主 agent 会运行状态脚本做确定性校验（字数 / 段落覆盖 / 素材引用），不通过就把原因交还给你修复，通过后交给用户确认。

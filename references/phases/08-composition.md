@@ -6,11 +6,11 @@ Phase 7 的 `voice_clone/narration.mp3` + `transcribe/subtitle-units.json` / `tr
 
 ## 输出
 
-`composition/storyboard.md` + `composition/index.html` + `composition/compositions/` + `composition/renders/final.mp4`。
+`composition/storyboard.md` + `composition/index.html` + `composition/compositions/` + `composition/check-composition.json`（check-composition 用 `--output` 写出的报告）+ `composition/renders/final.mp4`。
 
 ## 完成判据
 
-`composition/renders/final.mp4` 存在且非空；`composition/index.html` 与 `composition/compositions/` 存在；`npx hyperframes check` 无错误；`check-composition` 的 verdict 为 pass；storyboard 的每个 scene 都标注了所用的 content 区域。
+运行 `pipeline-status` 后，Phase 8 不再是 `next_phase`。状态脚本替你判定：`composition/storyboard.md` 非空；`composition/index.html` 存在；`composition/compositions/` 里至少有一个文件；`composition/check-composition.json` 的 `verdict` 为 `pass`；`composition/renders/final.mp4` 存在且非空。状态脚本不判定的两项由主 agent 抽查（见 8.4）：`npx hyperframes check` 无错误；storyboard 的每个 scene 都标注了所用的 content 区域。
 
 ## 下一步
 
@@ -50,10 +50,10 @@ Phase 9（检查与混音）：渲染后 QA（`check-render.py` 确定性检查 
 
 #### 8.4 — 主 agent 校验
 
-composition agent 报告完成后，主 agent 逐项校验（不修改产物，不合格就把 findings 反馈回去限定范围修复）：
+composition agent 报告完成后：
 
-1. **产物齐全**：`composition/storyboard.md`、`composition/index.html`、非空的 `composition/compositions/`、`composition/renders/final.mp4` 都存在。
-2. **渲染前自查通过**：sub-agent 报告的 `npx hyperframes check` 无错误、`check-composition` verdict 为 pass（命令见 composition handoff 模板的渲染前自查一节；可直接重跑核验，或核验其报告的 verdict）。
-3. **storyboard 区域标注**：每个 scene 都写明了所用的 content 区域（抽查）。
+1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`。
+2. `next_phase` 仍是 Phase 8 时，把 `next_phase.problems`（产物 → 原因）原样反馈给 composition agent，限定范围修复，修完再跑一次。不要自己改产物。
+3. Phase 8 不再是 `next_phase` 后，抽查状态脚本不判定的两项：agent 报告的 `npx hyperframes check` 无错误；storyboard 的每个 scene 都写明了所用的 content 区域。
 
 全部通过后进入 Phase 9。

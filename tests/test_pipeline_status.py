@@ -31,16 +31,47 @@ INPUTS = {
 
 RESEARCH_BRIEF = '# research brief\n\n## Key facts (verified)\n- fact [source]\n'
 
+# duration '5min' -> 5 * 60 * 7.5 = 2250 characters, here as two paragraphs.
+SCRIPT_TXT = '甲' * 1125 + '\n\n' + '乙' * 1125 + '\n'
+
+CATALOG = {
+    'topic_name': 'demo',
+    'entries': [
+        {
+            'slug': 'example',
+            'images': [{'id': 'img_001', 'semantic_description': '架构图，适合讲整体结构'}],
+            'videos': [
+                {
+                    'id': 'vid_001',
+                    'semantic_description': '演示录屏',
+                    'selected_clips': [{'start': 12.0, 'end': 18.5, 'reason': '关键操作', 'frame_paths': []}],
+                }
+            ],
+        }
+    ],
+}
+
+NARRATION_OFFSETS = {'version': 1, 'segments': []}
+
+
+def script_of(chars: int) -> str:
+    """A two-paragraph display draft of exactly `chars` non-blank characters."""
+    first = chars // 2
+    return '甲' * first + '\n\n' + '乙' * (chars - first) + '\n'
+
 SCENE_PLAN = [
     {
         'scene_id': 'scene_1',
         'paragraphs': [1, 2],
         'intent': '开场与背景',
         'facts': [],
-        'material_candidates': [],
+        'material_candidates': [{'ref': 'img_001', 'score': 8, 'reason': '对应开场'}],
         'cues': [],
     }
 ]
+
+# Without fetch_materials there is no catalog to refer to.
+SCENE_PLAN_NO_MATERIALS = [{**SCENE_PLAN[0], 'material_candidates': []}]
 
 TRANSCRIPT = [
     {
@@ -113,18 +144,17 @@ def complete_through_harvest(ws: Path, **inputs_overrides) -> None:
 
 def complete_through_catalog(ws: Path, **inputs_overrides) -> None:
     complete_through_harvest(ws, **inputs_overrides)
-    write_json(
-        ws / 'material-catalog.json',
-        {'topic_name': 'demo', 'entries': [{'slug': 'example', 'images': [], 'videos': []}]},
-    )
+    write_json(ws / 'material-catalog.json', CATALOG)
 
 
 def complete_through_script(ws: Path, **inputs_overrides) -> None:
     complete_through_catalog(ws, **inputs_overrides)
-    write_text(ws / 'script.txt', '第一段显示稿。\n\n第二段显示稿。\n')
+    write_text(ws / 'script.txt', SCRIPT_TXT)
     write_json(ws / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
     write_text(ws / 'narration.txt', '第一段旁白。\n\n第二段旁白。\n')
-    write_json(ws / 'scene-plan.json', SCENE_PLAN)
+    write_json(ws / 'narration-offsets.json', NARRATION_OFFSETS)
+    fetching = {**INPUTS, **inputs_overrides}['fetch_materials']
+    write_json(ws / 'scene-plan.json', SCENE_PLAN if fetching else SCENE_PLAN_NO_MATERIALS)
 
 
 def complete_through_voice_subtitles(ws: Path, **inputs_overrides) -> None:
@@ -138,7 +168,10 @@ def complete_through_voice_subtitles(ws: Path, **inputs_overrides) -> None:
 
 def complete_through_composition(ws: Path, **inputs_overrides) -> None:
     complete_through_voice_subtitles(ws, **inputs_overrides)
+    write_text(ws / 'composition' / 'storyboard.md', '# storyboard\n\n## scene_1\n内容区域：main\n')
     write_text(ws / 'composition' / 'index.html', '<html></html>')
+    write_text(ws / 'composition' / 'compositions' / 'scene_1.html', '<template></template>')
+    write_json(ws / 'composition' / 'check-composition.json', {'success': True, 'verdict': 'pass', 'findings': []})
     write_blob(ws / 'composition' / 'renders' / 'final.mp4')
 
 
@@ -156,6 +189,15 @@ def test_usage_error_exits_2(tmp_path: Path):
     assert proc.returncode == 2
     result = parse_result(proc)
     assert result['success'] is False
+
+
+def test_missing_workspace_argument_exits_2():
+    # The default used to be the cwd, which is the skill root for every command in SKILL.md.
+    proc = run_cli()
+    assert proc.returncode == 2
+    result = parse_result(proc)
+    assert result['success'] is False
+    assert 'workspace' in result['error']
 
 
 def test_nonexistent_workspace_exits_1(tmp_path: Path):
@@ -198,6 +240,77 @@ def test_corrupt_product_falls_back(tmp_path: Path):
     assert result['next_phase']['id'] == '6-script-scene-plan'
     assert 'narration.txt' in result['corrupt_products']
     assert '6-script-scene-plan' not in result['completed_phases']
+
+
+# --- phase 5 product: material-catalog.json items ------------------------------
+
+
+def catalog_with(**changes) -> dict:
+    """The default catalog with its first image replaced by {**image, **changes}."""
+    catalog = json.loads(json.dumps(CATALOG))
+    catalog['entries'][0]['images'][0].update(changes)
+    return catalog
+
+
+def assert_catalog_corrupt(tmp_path: Path, catalog, *detail_parts: str) -> None:
+    complete_through_harvest(tmp_path)
+    write_json(tmp_path / 'material-catalog.json', catalog)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '5-material-catalog'
+    assert 'material-catalog.json' in result['corrupt_products']
+    detail = result['next_phase']['problems']['material-catalog.json']
+    for part in detail_parts:
+        assert part in detail, detail
+
+
+def test_catalog_item_without_semantic_description_is_corrupt(tmp_path: Path):
+    assert_catalog_corrupt(tmp_path, catalog_with(semantic_description=''), 'img_001', 'semantic_description')
+
+
+def test_catalog_item_without_id_is_corrupt(tmp_path: Path):
+    catalog = catalog_with()
+    del catalog['entries'][0]['images'][0]['id']
+    assert_catalog_corrupt(tmp_path, catalog, 'example', 'id')
+
+
+def test_catalog_item_with_non_string_id_is_corrupt(tmp_path: Path):
+    assert_catalog_corrupt(tmp_path, catalog_with(id=7), 'example', 'id')
+
+
+def test_catalog_video_without_description_is_corrupt(tmp_path: Path):
+    catalog = catalog_with()
+    del catalog['entries'][0]['videos'][0]['semantic_description']
+    assert_catalog_corrupt(tmp_path, catalog, 'vid_001', 'semantic_description')
+
+
+def test_catalog_ids_repeating_across_entries_are_accepted(tmp_path: Path):
+    # harvest-pages.py numbers each page's images img_001, img_002, ... from 1,
+    # so two pages of one project legitimately both hold an img_001.
+    catalog = catalog_with()
+    other = json.loads(json.dumps(catalog['entries'][0]))
+    other['slug'] = 'other'
+    catalog['entries'].append(other)
+    complete_through_harvest(tmp_path)
+    write_json(tmp_path / 'material-catalog.json', catalog)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert '5-material-catalog' in result['completed_phases']
+
+
+def test_catalog_images_that_are_not_a_list_are_corrupt(tmp_path: Path):
+    catalog = catalog_with()
+    catalog['entries'][0]['images'] = {'id': 'img_001'}
+    assert_catalog_corrupt(tmp_path, catalog, 'example', 'images')
+
+
+def test_catalog_entry_that_is_not_an_object_is_corrupt(tmp_path: Path):
+    assert_catalog_corrupt(tmp_path, {'entries': ['example']}, 'entry 0')
+
+
+def test_catalog_entry_with_no_items_is_allowed(tmp_path: Path):
+    complete_through_harvest(tmp_path)
+    write_json(tmp_path / 'material-catalog.json', {'entries': [{'slug': 'text-only', 'images': [], 'videos': []}]})
+    result = parse_result(run_cli(str(tmp_path)))
+    assert '5-material-catalog' in result['completed_phases']
 
 
 # --- phase 6 products: script.txt + tts-lexicon.json + narration.txt ------------
@@ -257,6 +370,87 @@ def test_missing_narration_txt_falls_back_to_phase_6(tmp_path: Path):
     assert 'narration.txt' in result['missing_products']
 
 
+def test_missing_narration_offsets_falls_back_to_phase_6(tmp_path: Path):
+    # Phase 7's align-narration needs the offset table, so Phase 6 owns it.
+    complete_through_script(tmp_path)
+    (tmp_path / 'narration-offsets.json').unlink()
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'narration-offsets.json' in result['missing_products']
+
+
+@pytest.mark.parametrize(
+    'offsets',
+    [
+        ['segments'],
+        {'version': 2, 'segments': []},
+        {'segments': []},
+        {'version': 1, 'segments': {}},
+        {'version': 1},
+    ],
+)
+def test_narration_offsets_wrong_shape_falls_back_to_phase_6(tmp_path: Path, offsets):
+    complete_through_script(tmp_path)
+    write_json(tmp_path / 'narration-offsets.json', offsets)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'narration-offsets.json' in result['corrupt_products']
+
+
+def test_truncated_narration_offsets_fall_back_to_phase_6(tmp_path: Path):
+    complete_through_script(tmp_path)
+    write_text(tmp_path / 'narration-offsets.json', '{"version": 1, "segments": [')
+    result = parse_result(run_cli(str(tmp_path)))
+    assert 'narration-offsets.json' in result['corrupt_products']
+
+
+# --- phase 6 check: script.txt length against the target duration ---------------
+#
+# duration 5 min -> 5 * 60 s * 7.5 chars/s = 2250 characters, +-15% = 1912.5 .. 2587.5.
+
+
+@pytest.mark.parametrize('chars', [2700, 1800])
+def test_script_20_percent_off_target_is_corrupt(tmp_path: Path, chars: int):
+    complete_through_script(tmp_path)
+    write_text(tmp_path / 'script.txt', script_of(chars))
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'script.txt' in result['corrupt_products']
+    detail = result['next_phase']['problems']['script.txt']
+    assert str(chars) in detail and '2250' in detail and '20.0%' in detail, detail
+
+
+@pytest.mark.parametrize('chars', [2565, 1935])
+def test_script_14_percent_off_target_is_accepted(tmp_path: Path, chars: int):
+    complete_through_script(tmp_path)
+    write_text(tmp_path / 'script.txt', script_of(chars))
+    result = parse_result(run_cli(str(tmp_path)))
+    assert '6-script-scene-plan' in result['completed_phases']
+
+
+def test_script_length_ignores_whitespace(tmp_path: Path):
+    complete_through_script(tmp_path)
+    # 2250 characters, padded with spaces, full-width spaces and extra blank lines.
+    padded = '甲 ' * 1125 + '\n\n\n　　' + '乙\t' * 1125 + '\n\n'
+    write_text(tmp_path / 'script.txt', padded)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert '6-script-scene-plan' in result['completed_phases']
+
+
+def test_script_length_target_follows_numeric_duration(tmp_path: Path):
+    complete_through_script(tmp_path, duration=1)  # 1 min -> 450 characters
+    result = parse_result(run_cli(str(tmp_path)))
+    assert 'script.txt' in result['corrupt_products']
+    assert '450' in result['next_phase']['problems']['script.txt']
+
+
+def test_script_length_is_not_checked_while_duration_is_invalid(tmp_path: Path):
+    complete_through_script(tmp_path, duration='soon')
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '1-gather-inputs'
+    assert result['corrupt_products'] == ['inputs.json']
+
+
 # --- phase 6 product: scene-plan.json -------------------------------------------
 
 
@@ -285,6 +479,183 @@ def test_scene_plan_missing_paragraphs_falls_back_to_phase_6(tmp_path: Path):
     result = parse_result(proc)
     assert result['next_phase']['id'] == '6-script-scene-plan'
     assert 'scene-plan.json' in result['corrupt_products']
+
+
+# --- phase 6 check: scene-plan paragraphs cover script.txt exactly --------------
+
+THREE_PARAGRAPH_SCRIPT = '甲' * 750 + '\n\n' + '乙' * 750 + '\n\n' + '丙' * 750 + '\n'  # 2250 characters
+
+
+def scene(scene_id: str, paragraphs, candidates=()) -> dict:
+    return {
+        'scene_id': scene_id,
+        'paragraphs': paragraphs,
+        'intent': scene_id,
+        'facts': [],
+        'material_candidates': list(candidates),
+        'cues': [],
+    }
+
+
+def scene_plan_problem(tmp_path: Path, scenes, *, script: str = SCRIPT_TXT, **inputs_overrides) -> tuple[dict, str | None]:
+    """Run a Phase 6 workspace whose scene-plan.json is `scenes`; returns (result, scene-plan detail)."""
+    complete_through_script(tmp_path, **inputs_overrides)
+    write_text(tmp_path / 'script.txt', script)
+    write_json(tmp_path / 'scene-plan.json', scenes)
+    result = parse_result(run_cli(str(tmp_path)))
+    problems = (result['next_phase'] or {}).get('problems', {})
+    return result, problems.get('scene-plan.json')
+
+
+def test_scene_plan_missing_a_paragraph_is_corrupt(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene('s1', [1]), scene('s2', [2])], script=THREE_PARAGRAPH_SCRIPT
+    )
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert 'missing paragraphs [3]' in detail, detail
+
+
+def test_scene_plan_paragraph_beyond_the_script_is_corrupt(tmp_path: Path):
+    result, detail = scene_plan_problem(tmp_path, [scene('s1', [1, 2]), scene('s2', [3, 4])])
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert 'out-of-range paragraphs [3, 4]' in detail, detail
+    assert 'missing' not in detail
+
+
+def test_scene_plan_reports_missing_and_out_of_range_together(tmp_path: Path):
+    _, detail = scene_plan_problem(tmp_path, [scene('s1', [1, 5])], script=THREE_PARAGRAPH_SCRIPT)
+    assert 'missing paragraphs [2, 3]' in detail and 'out-of-range paragraphs [5]' in detail, detail
+
+
+def test_scene_plan_paragraph_zero_is_out_of_range(tmp_path: Path):
+    _, detail = scene_plan_problem(tmp_path, [scene('s1', [0, 1, 2])])
+    assert 'out-of-range paragraphs [0]' in detail, detail
+
+
+@pytest.mark.parametrize('paragraphs', [['1', '2'], [1.5, 2], [True, 2], [None, 1, 2]])
+def test_scene_plan_paragraphs_must_be_integers(tmp_path: Path, paragraphs):
+    result, detail = scene_plan_problem(tmp_path, [scene('s1', paragraphs)])
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert 'scene 0' in detail and 'integer' in detail, detail
+
+
+def test_scene_plan_scenes_may_share_a_paragraph(tmp_path: Path):
+    result, detail = scene_plan_problem(tmp_path, [scene('s1', [1, 2]), scene('s2', [2])])
+    assert detail is None
+    assert '6-script-scene-plan' in result['completed_phases']
+
+
+def test_scene_plan_paragraph_types_are_checked_without_script_txt(tmp_path: Path):
+    complete_through_script(tmp_path)
+    (tmp_path / 'script.txt').unlink()
+    write_json(tmp_path / 'scene-plan.json', [scene('s1', ['1', 2.5])])
+    result = parse_result(run_cli(str(tmp_path)))
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert 'integer' in result['next_phase']['problems']['scene-plan.json']
+
+
+def test_scene_plan_is_not_judged_against_a_missing_script(tmp_path: Path):
+    complete_through_script(tmp_path)
+    (tmp_path / 'script.txt').unlink()
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert set(result['next_phase']['problems']) == {'script.txt'}
+
+
+# --- phase 6 check: scene-plan material refs resolve in the catalog ---------------
+#
+# CATALOG holds image img_001 and video vid_001 with one selected clip 12.0-18.5.
+
+
+def candidates(*refs) -> list[dict]:
+    return [{'ref': ref, 'score': 7, 'reason': 'test'} for ref in refs]
+
+
+@pytest.mark.parametrize(
+    'ref',
+    ['img_001', 'vid_001', 'vid_001:12.0-18.5', 'vid_001:12-18.5', 'vid_001:12.005-18.495'],
+)
+def test_scene_plan_accepts_refs_that_resolve(tmp_path: Path, ref: str):
+    result, detail = scene_plan_problem(tmp_path, [scene('s1', [1, 2], candidates(ref))])
+    assert detail is None
+    assert '6-script-scene-plan' in result['completed_phases']
+
+
+def test_scene_plan_ref_missing_from_catalog_is_corrupt(tmp_path: Path):
+    result, detail = scene_plan_problem(tmp_path, [scene('s1', [1, 2], candidates('img_001', 'img_999'))])
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert "'img_999'" in detail and "'img_001'" not in detail, detail
+
+
+@pytest.mark.parametrize(
+    'ref',
+    [
+        'vid_001:13.0-18.5',  # start differs by 1.0
+        'vid_001:12.0-18.6',  # end differs by 0.1
+        'vid_999:12.0-18.5',  # no such video
+        'img_001:12.0-18.5',  # an image has no clips
+        'vid_001:abc-def',
+        'vid_001:12.0',
+        'vid_001:12.0-18.5-20',
+        'vid_001:',
+        ':12.0-18.5',
+        'vid_001:12.0 - 18.5',  # float() would accept these; the documented form has no spaces
+        'vid_001: 12-18.5',
+        'vid_001:+12-18.5',
+        'vid_001:1_2-18.5',
+    ],
+)
+def test_scene_plan_clip_ref_that_matches_no_selected_clip_is_corrupt(tmp_path: Path, ref: str):
+    result, detail = scene_plan_problem(tmp_path, [scene('s1', [1, 2], candidates(ref))])
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert repr(ref) in detail, detail
+
+
+def test_scene_plan_lists_every_invalid_ref(tmp_path: Path):
+    scenes = [scene('s1', [1], candidates('nope_1')), scene('s2', [2], candidates('img_001', 'nope_2'))]
+    _, detail = scene_plan_problem(tmp_path, scenes)
+    assert "'nope_1'" in detail and "'nope_2'" in detail, detail
+
+
+def test_scene_plan_without_catalog_phase_must_have_no_candidates(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene('s1', [1, 2], candidates('img_001'))], fetch_materials=False
+    )
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert 'fetch_materials' in detail and "'img_001'" in detail, detail
+
+
+def test_scene_plan_without_catalog_phase_and_no_candidates_is_accepted(tmp_path: Path):
+    result, detail = scene_plan_problem(tmp_path, [scene('s1', [1, 2])], fetch_materials=False)
+    assert detail is None
+    assert '6-script-scene-plan' in result['completed_phases']
+
+
+def test_scene_plan_refs_are_not_judged_against_a_missing_catalog(tmp_path: Path):
+    complete_through_script(tmp_path)
+    (tmp_path / 'material-catalog.json').unlink()
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '5-material-catalog'
+    assert 'scene-plan.json' not in result['corrupt_products']
+
+
+def test_scene_plan_refs_are_not_judged_against_a_corrupt_catalog(tmp_path: Path):
+    complete_through_script(tmp_path)
+    write_json(tmp_path / 'material-catalog.json', catalog_with(semantic_description=''))
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '5-material-catalog'
+    assert 'scene-plan.json' not in result['corrupt_products']
+
+
+@pytest.mark.parametrize('bad', ['img_001', {'ref': 'img_001'}, [{'score': 8}], [{'ref': ''}], [{'ref': 7}], ['img_001']])
+def test_scene_plan_malformed_material_candidates_are_corrupt(tmp_path: Path, bad):
+    scenes = [scene('s1', [1, 2])]
+    scenes[0]['material_candidates'] = bad
+    result, detail = scene_plan_problem(tmp_path, scenes)
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert 'scene 0' in detail and 'material_candidates' in detail, detail
 
 
 # --- phase 7 products (配音与字幕): narration.mp3 + transcript + units + timeline
@@ -378,6 +749,100 @@ def test_missing_composition_index_falls_back_to_phase_8(tmp_path: Path):
     assert result['next_phase']['doc'] == 'references/phases/08-composition.md'
     assert 'composition/index.html' in result['missing_products']
     assert '8-composition' not in result['completed_phases']
+
+
+def test_missing_storyboard_falls_back_to_phase_8(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    (tmp_path / 'composition' / 'storyboard.md').unlink()
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '8-composition'
+    assert 'composition/storyboard.md' in result['missing_products']
+
+
+def test_blank_storyboard_falls_back_to_phase_8(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    write_text(tmp_path / 'composition' / 'storyboard.md', ' \n')
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '8-composition'
+    assert 'composition/storyboard.md' in result['corrupt_products']
+
+
+def test_missing_compositions_dir_falls_back_to_phase_8(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    (tmp_path / 'composition' / 'compositions' / 'scene_1.html').unlink()
+    (tmp_path / 'composition' / 'compositions').rmdir()
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '8-composition'
+    assert 'composition/compositions' in result['missing_products']
+
+
+def test_empty_compositions_dir_falls_back_to_phase_8(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    (tmp_path / 'composition' / 'compositions' / 'scene_1.html').unlink()
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '8-composition'
+    assert 'composition/compositions' in result['corrupt_products']
+    assert 'no files' in result['next_phase']['problems']['composition/compositions']
+
+
+def test_compositions_dir_with_only_hidden_files_falls_back_to_phase_8(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    (tmp_path / 'composition' / 'compositions' / 'scene_1.html').unlink()
+    write_text(tmp_path / 'composition' / 'compositions' / '.DS_Store', 'junk')
+    result = parse_result(run_cli(str(tmp_path)))
+    assert 'composition/compositions' in result['corrupt_products']
+
+
+def test_compositions_that_is_a_file_falls_back_to_phase_8(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    (tmp_path / 'composition' / 'compositions' / 'scene_1.html').unlink()
+    (tmp_path / 'composition' / 'compositions').rmdir()
+    write_text(tmp_path / 'composition' / 'compositions', 'not a directory')
+    result = parse_result(run_cli(str(tmp_path)))
+    assert 'composition/compositions' in result['corrupt_products']
+
+
+def test_compositions_dir_with_a_nested_file_is_accepted(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    (tmp_path / 'composition' / 'compositions' / 'scene_1.html').unlink()
+    write_text(tmp_path / 'composition' / 'compositions' / 'scene_1' / 'index.html', '<template></template>')
+    result = parse_result(run_cli(str(tmp_path)))
+    assert '8-composition' in result['completed_phases']
+
+
+def test_missing_check_composition_report_falls_back_to_phase_8(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    (tmp_path / 'composition' / 'check-composition.json').unlink()
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '8-composition'
+    assert 'composition/check-composition.json' in result['missing_products']
+
+
+def test_failing_check_composition_report_falls_back_to_phase_8(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    write_json(
+        tmp_path / 'composition' / 'check-composition.json',
+        {'success': True, 'verdict': 'fail', 'findings': [{'scene_id': 's1', 'check': 'overflow'}]},
+    )
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '8-composition'
+    assert 'composition/check-composition.json' in result['corrupt_products']
+    assert "'fail'" in result['next_phase']['problems']['composition/check-composition.json']
+
+
+@pytest.mark.parametrize('report', [['pass'], {'success': True}, {'verdict': 'PASS'}])
+def test_malformed_check_composition_report_falls_back_to_phase_8(tmp_path: Path, report):
+    complete_through_composition(tmp_path)
+    write_json(tmp_path / 'composition' / 'check-composition.json', report)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert 'composition/check-composition.json' in result['corrupt_products']
+
+
+def test_truncated_check_composition_report_falls_back_to_phase_8(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    write_text(tmp_path / 'composition' / 'check-composition.json', '{"verdict": ')
+    result = parse_result(run_cli(str(tmp_path)))
+    assert 'composition/check-composition.json' in result['corrupt_products']
 
 
 def test_missing_final_mp4_falls_back_to_phase_8(tmp_path: Path):
@@ -537,6 +1002,27 @@ def test_removed_design_accepted_from_workspace_copy(tmp_path: Path):
     result = parse_result(run_cli(str(tmp_path)))
     assert 'inputs.json' not in result['corrupt_products']
     assert result['next_phase']['id'] != '1-gather-inputs'
+
+
+@pytest.mark.parametrize('duration', [5, 7.5, '5min', ' 10 分钟', '3.5', '5 minutes', '2 mins', '4分'])
+def test_duration_in_minutes_is_accepted(tmp_path: Path, duration):
+    complete_through_research(tmp_path, duration=duration)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert 'inputs.json' not in result['corrupt_products']
+    assert result['next_phase']['id'] == '4-material-harvest'
+
+
+@pytest.mark.parametrize(
+    'duration',
+    ['five minutes', '', 'min5', 0, -5, '0min', True, None, [5], '90s', '30秒', '1h', '3-5 min', '5 min left'],
+)
+def test_duration_without_a_minutes_number_is_corrupt_inputs(tmp_path: Path, duration):
+    complete_through_research(tmp_path, duration=duration)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '1-gather-inputs'
+    assert 'inputs.json' in result['corrupt_products']
+    detail = result['next_phase']['problems']['inputs.json']
+    assert 'duration' in detail and '分钟' in detail
 
 
 def test_missing_qa_level_defaults_to_standard(tmp_path: Path):
