@@ -36,7 +36,10 @@ def parse_args() -> argparse.Namespace:
         default='200M',
         help='Max video size for yt-dlp (default: 200M)',
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.subtitles_only and args.harvest_dir:
+        parser.error('--subtitles-only cannot be used with --harvest-dir')
+    return args
 
 
 def tail_text(text: str, limit: int = 4000) -> str:

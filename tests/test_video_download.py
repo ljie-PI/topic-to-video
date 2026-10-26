@@ -27,10 +27,11 @@ if os.environ.get('YTDLP_FAIL'):
 template = args[args.index('--output') + 1]
 video = Path(template.replace('%(id)s', 'fixture').replace('%(ext)s', 'mp4'))
 video.parent.mkdir(parents=True, exist_ok=True)
-subprocess.run([
-    'ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi',
-    '-i', 'testsrc=size=320x240:rate=10', '-t', '1', '-pix_fmt', 'yuv420p', str(video),
-], check=True)
+if '--skip-download' not in args:
+    subprocess.run([
+        'ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi',
+        '-i', 'testsrc=size=320x240:rate=10', '-t', '1', '-pix_fmt', 'yuv420p', str(video),
+    ], check=True)
 subtitle = video.with_name('fixture.en.srt')
 subtitle.write_text('1\n00:00:00,000 --> 00:00:01,000\nfixture\n', encoding='utf-8')
 '''
@@ -85,6 +86,27 @@ def test_harvest_download_uses_suggested_dir_and_updates_manifest_and_mirror(
     assert manifest['pending_downloads'] == []
     mirror = json.loads((harvest_dir / 'source' / 'metadata.json').read_text(encoding='utf-8'))
     assert mirror == manifest['entries'][0]
+
+
+def test_subtitles_only_harvest_is_rejected_before_calling_ytdlp(tmp_path: Path):
+    harvest_dir, env = prepare(tmp_path)
+    before = (harvest_dir / 'manifest.json').read_bytes()
+
+    proc = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), '--url', URL,
+            '--harvest-dir', str(harvest_dir), '--subtitles-only',
+        ],
+        capture_output=True, text=True, env=env, timeout=60, check=False,
+    )
+
+    assert proc.returncode == 2
+    result = json.loads(proc.stdout)
+    assert result['success'] is False
+    assert '--subtitles-only' in result['error']
+    assert '--harvest-dir' in result['error']
+    assert not Path(env['YTDLP_ARGS']).exists()
+    assert (harvest_dir / 'manifest.json').read_bytes() == before
 
 
 def test_failed_download_outputs_json_and_leaves_manifest_unchanged(tmp_path: Path):

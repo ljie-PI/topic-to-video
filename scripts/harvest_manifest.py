@@ -139,13 +139,33 @@ def _pending_downloads(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return pending
 
 
-def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
+def _stage_json(path: Path, payload: dict[str, Any]) -> Path:
+    """Write and fsync a temporary file beside its atomic-rename target."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as stream:
             json.dump(payload, stream, ensure_ascii=False, indent=2)
             stream.write('\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        return Path(temporary)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def _restore_file(path: Path, contents: bytes | None) -> None:
+    if contents is None:
+        path.unlink(missing_ok=True)
+        return
+    fd, temporary = tempfile.mkstemp(prefix=f'.{path.name}.rollback.', suffix='.tmp', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(contents)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
@@ -171,15 +191,43 @@ def save(
     saved['harvest_batches'] = copy.deepcopy(manifest.get('harvest_batches', []))
     saved['pending_downloads'] = _pending_downloads(saved['entries'])
     saved['updated_at'] = _now()
-    _atomic_json(root / 'manifest.json', saved)
-    mirrors = saved['entries'] if dirty_slugs is None else [
-        entry for entry in saved['entries'] if entry.get('slug') in dirty_slugs
-    ]
-    for entry in mirrors:
+    normalized_slugs = {
+        normalized.get('slug')
+        for original, normalized in zip(manifest.get('entries', []), saved['entries'])
+        if original != normalized
+    }
+    effective_dirty = dirty_slugs if dirty_slugs is not None else set()
+    effective_dirty = set(effective_dirty) | normalized_slugs
+    for entry in saved['entries']:
         slug = entry.get('slug')
         if not slug or Path(slug).name != slug or slug in {'.', '..'}:
             raise ValueError(f'invalid entry slug: {slug!r}')
-        _atomic_json(root / slug / 'metadata.json', entry)
+    mirrors = saved['entries'] if dirty_slugs is None else [
+        entry for entry in saved['entries'] if entry.get('slug') in effective_dirty
+    ]
+    targets = [(root / entry['slug'] / 'metadata.json', entry) for entry in mirrors]
+    targets.append((root / 'manifest.json', saved))
+    originals = {path: path.read_bytes() if path.exists() else None for path, _ in targets}
+    staged: dict[Path, Path] = {}
+    replaced: list[Path] = []
+    try:
+        # Serialization and mirror staging must all succeed before any target changes.
+        for path, payload in targets:
+            staged[path] = _stage_json(path, payload)
+        for path, _ in targets:
+            os.replace(staged[path], path)
+            replaced.append(path)
+    except Exception:
+        # Best-effort rollback keeps the manifest and all mirrors on one generation.
+        for path in reversed(replaced):
+            try:
+                _restore_file(path, originals[path])
+            except OSError:
+                pass
+        raise
+    finally:
+        for temporary in staged.values():
+            temporary.unlink(missing_ok=True)
     return saved
 
 

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import harvest_manifest
+import pytest
 
 
 URL = 'https://www.youtube.com/watch?v=shared123'
@@ -152,6 +153,29 @@ def test_load_legacy_absolute_paths_and_paper_manifest_then_saves_relative(tmp_p
     assert paper['paper_metadata']['full_markdown_path'] == 'main-paper/mineru/full.md'
 
 
+def test_upsert_and_batch_flow_migrates_legacy_entry_mirrors(tmp_path: Path):
+    legacy_paper = {
+        'slug': 'main-paper', 'title': 'legacy', 'success': True,
+        'source_type': 'paper_pdf', 'images': [], 'videos': [],
+        'paper_metadata': {'full_markdown_path': str(tmp_path / 'main-paper' / 'mineru' / 'full.md')},
+    }
+    (tmp_path / 'manifest.json').write_text(json.dumps({'entries': [legacy_paper]}), encoding='utf-8')
+    (tmp_path / 'main-paper').mkdir()
+    (tmp_path / 'main-paper' / 'metadata.json').write_text(
+        json.dumps(legacy_paper, ensure_ascii=False, indent=2), encoding='utf-8',
+    )
+
+    harvest_manifest.upsert_entries(tmp_path, [web_entry(tmp_path, 'incoming')])
+    harvest_manifest.record_harvest_batch(tmp_path, {
+        'urls': ['https://example.com/incoming'], 'succeeded': 1, 'failed': 0, 'rejected': [],
+    })
+
+    manifest = read_json(tmp_path / 'manifest.json')
+    paper = next(entry for entry in manifest['entries'] if entry['slug'] == 'main-paper')
+    assert paper['paper_metadata']['full_markdown_path'] == 'main-paper/mineru/full.md'
+    assert read_json(tmp_path / 'main-paper' / 'metadata.json') == paper
+
+
 def test_v2_entries_take_precedence_over_stale_legacy_papers_after_upsert(tmp_path: Path):
     stale_paper = {
         'slug': 'main-paper', 'title': 'stale legacy title', 'success': True,
@@ -169,6 +193,54 @@ def test_v2_entries_take_precedence_over_stale_legacy_papers_after_upsert(tmp_pa
 
     reloaded = harvest_manifest.load(tmp_path)
     assert reloaded['entries'][0]['title'] == 'new unified title'
+
+
+def test_invalid_slug_leaves_original_manifest_and_mirrors_unchanged(tmp_path: Path):
+    harvest_manifest.upsert_entries(tmp_path, [web_entry(tmp_path, 'original')])
+    manifest_path = tmp_path / 'manifest.json'
+    mirror_path = tmp_path / 'original' / 'metadata.json'
+    original_manifest = manifest_path.read_bytes()
+    original_mirror = mirror_path.read_bytes()
+
+    with pytest.raises(ValueError, match='invalid entry slug'):
+        harvest_manifest.upsert_entries(tmp_path, [web_entry(tmp_path, '../escape')])
+
+    assert manifest_path.read_bytes() == original_manifest
+    assert mirror_path.read_bytes() == original_mirror
+
+
+def test_mirror_rename_failure_rolls_back_manifest_and_all_mirrors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    original_entries = [web_entry(tmp_path, 'one'), web_entry(tmp_path, 'two')]
+    harvest_manifest.upsert_entries(tmp_path, original_entries)
+    paths = [
+        tmp_path / 'manifest.json',
+        tmp_path / 'one' / 'metadata.json',
+        tmp_path / 'two' / 'metadata.json',
+    ]
+    original_bytes = {path: path.read_bytes() for path in paths}
+    real_replace = harvest_manifest.os.replace
+    mirror_renames = 0
+    failed = False
+
+    def fail_second_mirror_rename(source, destination):
+        nonlocal mirror_renames, failed
+        if Path(destination).name == 'metadata.json' and not failed:
+            mirror_renames += 1
+            if mirror_renames == 2:
+                failed = True
+                raise OSError('injected mirror rename failure')
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(harvest_manifest.os, 'replace', fail_second_mirror_rename)
+    updated_entries = [{**entry, 'title': 'updated'} for entry in original_entries]
+    with pytest.raises(OSError, match='injected mirror rename failure'):
+        harvest_manifest.upsert_entries(tmp_path, updated_entries)
+
+    assert mirror_renames == 2
+    for path in paths:
+        assert path.read_bytes() == original_bytes[path]
 
 
 def test_slug_helpers_and_extensions_have_one_owner():
