@@ -187,3 +187,24 @@ def test_missing_video_exits_1(workspace: Path):
     assert proc.returncode == 1
     result = parse_result(proc)
     assert result['success'] is False
+
+
+@pytest.mark.parametrize('binary_env', ['FFMPEG_BIN', 'FFPROBE_BIN'])
+def test_missing_media_binary_preserves_existing_frames(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch, binary_env: str
+):
+    output_dir = workspace / 'qa'
+    frames_dir = output_dir / 'frames'
+    frames_dir.mkdir(parents=True)
+    existing = frames_dir / 'frame_existing.jpg'
+    existing.write_bytes(b'pre-existing frame')
+    monkeypatch.setenv(binary_env, '/nonexistent')
+
+    proc = run_cli(
+        '--video', str(workspace / 'final.mp4'),
+        '--timeline', str(workspace / 'timeline.json'),
+        '--output-dir', str(output_dir),
+    )
+
+    assert proc.returncode == 1
+    assert existing.read_bytes() == b'pre-existing frame'

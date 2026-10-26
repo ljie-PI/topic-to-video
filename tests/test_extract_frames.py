@@ -90,3 +90,37 @@ def test_frame_timestamps_include_the_start_time(tmp_path: Path, start_time: str
     result = json.loads(proc.stdout)
     assert [frame['t_s'] for frame in result['frames']] == [1.5, 2.5]
     assert result['interval_s'] == 1.0
+
+
+@pytest.mark.parametrize('binary_env', ['FFMPEG_BIN', 'FFPROBE_BIN'])
+def test_missing_media_binary_preserves_existing_frames(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, binary_env: str
+):
+    video = tmp_path / 'input.mp4'
+    subprocess.run(
+        [
+            'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
+            '-f', 'lavfi', '-i', 'testsrc=duration=4:size=160x120:rate=25',
+            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(video),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    output_dir = tmp_path / 'frames'
+    output_dir.mkdir()
+    existing = output_dir / 'frame_existing.jpg'
+    existing.write_bytes(b'pre-existing frame')
+    monkeypatch.setenv(binary_env, '/nonexistent')
+
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPT), str(video), str(output_dir)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert proc.returncode == 1
+    assert existing.read_bytes() == b'pre-existing frame'
