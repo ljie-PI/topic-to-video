@@ -22,7 +22,7 @@ import pytest
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / 'scripts'
 
 TEXT = '你好。再见。'
-# mlx's sentence grouper (text_align.group_sentences) matches a sentence to
+# mlx's sentence grouper (mlx_align.group_sentences) matches a sentence to
 # aligner tokens by length including '。', so its tests use newline-separated
 # sentences, which it strips.
 MLX_TEXT = '你好\n再见'
@@ -215,6 +215,24 @@ def test_mlx_aligner_failure_raises_instead_of_returning_quietly(
     voice_clone = load_script(monkeypatch, 'voice-clone.py', 'voice_clone_under_test')
     out = tmp_path / 'transcript.json'
 
-    with pytest.raises(ValueError, match='no timestamps'):
+    with pytest.raises(ValueError, match='no sentences or no words'):
         mlx_backend(voice_clone).emit_transcript(MLX_TEXT, tmp_path / 'narration.mp3', out)
+    assert not out.exists()
+
+
+def test_mlx_aligner_with_words_but_no_sentences_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    # words but no sentences used to fall into the schema's single-sentence
+    # fallback, wrapping the whole narration in one span; that is a failed
+    # alignment and must raise so ASR gets its turn.
+    install_fake_mlx_aligner(monkeypatch, ITEMS)
+    voice_clone = load_script(monkeypatch, 'voice-clone.py', 'voice_clone_under_test')
+    out = tmp_path / 'transcript.json'
+
+    with pytest.raises(ValueError, match='no sentences or no words'):
+        # '...' has no alignable text, so group_sentences returns no sentences
+        # while the aligner still produced words — the shape that used to fall
+        # into the schema's single-sentence fallback.
+        mlx_backend(voice_clone).emit_transcript('...', tmp_path / 'narration.mp3', out)
     assert not out.exists()

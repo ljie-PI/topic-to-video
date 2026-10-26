@@ -41,8 +41,8 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 ### TTS / ASR
 
 2. **TTS 后端由环境变量选择。** 配音脚本、参考音色、参数和依赖见 `scripts/voice-clone.py` 的顶部说明。**绝不**使用 `npx hyperframes tts`。
-3. **ASR 后端由环境变量选择。** transcript 必须带词级时间戳（schema 见 Phase 7 文档的接口契约）。后端、参数和依赖见 `scripts/transcribe.py` 的顶部说明；直对齐后端（voice-clone.py 的 mlx，或启用转写的 qwen3tts）由配音脚本直接写出 transcript，跳过 ASR。
-   ↳ DO NOT：用 `npx hyperframes transcribe`；接受没有词级时间戳的 transcript。
+3. **ASR 后端由环境变量选择。** transcript 必须带词级时间戳（schema 见 Phase 7 文档的接口契约）。后端、参数和依赖见 `scripts/transcribe.py` 的顶部说明。voice-clone.py 保证产出**本轮新鲜**的 transcript：直对齐优先，失败自动回退到 transcribe.py，成功 JSON 带 `transcript_method`（`direct_align` / `asr`）；`asr` 意味着转录来自 ASR，与朗读稿逐字一致不保证。即使主用直对齐（如 mlx），也要配置一种 ASR 后备（`DASHSCOPE_API_KEY` 或可用的 `ASR_BACKEND`），否则回退路径不可用。
+   ↳ DO NOT：用 `npx hyperframes transcribe`；接受没有词级时间戳的 transcript；沿用上一轮留下的 transcript。
 
 ### 字体与文本
 

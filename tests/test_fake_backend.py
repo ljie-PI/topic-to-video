@@ -17,17 +17,19 @@ def test_whitespace_does_not_count_towards_the_duration():
 
 
 def test_uniform_transcript_spreads_one_word_per_character_over_the_duration():
+    # Punctuation is dropped from the word tokens, exactly like the real
+    # aligners' token cleaning (transcript_schema.kept_chars): a sentence ends
+    # at its last letter token, never earlier.
     transcript = fake_backend.uniform_transcript('你好。再见。', 3.0)
 
     assert transcript == [
         {
             'begin': 0,
-            'end': 1000,  # transcript_schema closes a sentence on its last letter token
+            'end': 1500,
             'text': '你好。',
             'words': [
-                {'text': '你', 'begin': 0, 'end': 500},
-                {'text': '好', 'begin': 500, 'end': 1000},
-                {'text': '。', 'begin': 1000, 'end': 1500},
+                {'text': '你', 'begin': 0, 'end': 750},
+                {'text': '好', 'begin': 750, 'end': 1500},
             ],
         },
         {
@@ -35,9 +37,8 @@ def test_uniform_transcript_spreads_one_word_per_character_over_the_duration():
             'end': 3000,
             'text': '再见。',
             'words': [
-                {'text': '再', 'begin': 1500, 'end': 2000},
-                {'text': '见', 'begin': 2000, 'end': 2500},
-                {'text': '。', 'begin': 2500, 'end': 3000},
+                {'text': '再', 'begin': 1500, 'end': 2250},
+                {'text': '见', 'begin': 2250, 'end': 3000},
             ],
         },
     ]

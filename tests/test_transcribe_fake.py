@@ -74,12 +74,12 @@ def test_fake_asr_spreads_text_evenly_over_audio_duration(tmp_path: Path, silent
     assert result['backend'] == 'fake'
     assert result['output_path'] == str(output.resolve())
     assert result['sentence_count'] == 2
-    assert result['word_count'] == 6
+    assert result['word_count'] == 4  # punctuation is dropped from word tokens
 
     transcript = json.loads(output.read_text(encoding='utf-8'))
     assert [sentence['text'] for sentence in transcript] == ['你好。', '再见。']
     words = [word for sentence in transcript for word in sentence['words']]
-    assert [word['text'] for word in words] == list(TEXT)
+    assert [word['text'] for word in words] == ['你', '好', '再', '见']
     # ffprobe measures the 3 s clip (an mp3 may add a few ms of padding).
     assert words[0]['begin'] == 0
     assert words[-1]['end'] == pytest.approx(3000, abs=100)

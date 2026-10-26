@@ -3,11 +3,11 @@
 Word/character level ASR with a local-first backend.
 
 Backends (select via --backend or ASR_BACKEND env, default: auto):
-  auto       Pick by environment: CUDA GPU -> qwen3; DASHSCOPE_API_KEY ->
-             dashscope; otherwise exit 1 with a JSON error listing what is
-             missing (Apple Silicon included: ASR is the fallback when
-             voice-clone.py's direct alignment fails, so it is never "not
-             needed").
+  auto       Pick by environment: CUDA GPU with the qwen_asr package ->
+             qwen3; DASHSCOPE_API_KEY -> dashscope; otherwise exit 1 with a
+             JSON error listing what is missing (Apple Silicon included: ASR
+             is the fallback when voice-clone.py's direct alignment fails, so
+             it is never "not needed").
   qwen3      Local Qwen3-ASR + Qwen3-ForcedAligner (Apache-2.0). Runs on the
              local GPU, returns char-level (CJK) / word-level (Latin)
              timestamps with optional ITN. No cloud key needed.
@@ -24,7 +24,9 @@ Usage:
   python3 transcribe.py --resolve-backend   # print the auto decision (no model)
 
 Optional env:
-  ASR_BACKEND           auto (default) | qwen3 | dashscope
+  ASR_BACKEND           auto (default) | qwen3 | dashscope | fake (test only)
+  ASR_FAKE_TEXT         (fake backend only, required) UTF-8 text the fake
+                        ASR "recognizes"; without it the fake backend errors
   # qwen3 backend:
   QWEN3_ASR_MODEL       default Qwen/Qwen3-ASR-1.7B
   QWEN3_ALIGNER_MODEL   default Qwen/Qwen3-ForcedAligner-0.6B
@@ -58,6 +60,7 @@ from __future__ import annotations
 
 import abc
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -86,12 +89,20 @@ PROBE_PREFIX = 'ASR_DETECT'
 
 
 def _auto_backend(probes: dict[str, object]) -> tuple[str, dict[str, object]]:
-    """ASR auto order: CUDA -> qwen3; DASHSCOPE_API_KEY -> dashscope;
-    otherwise BackendUnavailableError listing what is missing."""
+    """ASR auto order: CUDA + qwen_asr installed -> qwen3; DASHSCOPE_API_KEY ->
+    dashscope; otherwise BackendUnavailableError listing what is missing.
+
+    A CUDA machine without the qwen_asr package must not be sent down the
+    qwen3 path (it would fail at import and never reach dashscope), so the
+    package is probed with find_spec — cheap, and no model code runs.
+    """
     missing: list[str] = []
     if probes['cuda']:
-        return 'qwen3', probes
-    missing.append('CUDA-capable GPU with torch (backend qwen3)')
+        if importlib.util.find_spec('qwen_asr') is not None:
+            return 'qwen3', probes
+        missing.append('qwen_asr python package (backend qwen3)')
+    else:
+        missing.append('CUDA-capable GPU with torch (backend qwen3)')
     if probes['dashscope_key']:
         return 'dashscope', probes
     missing.append('DASHSCOPE_API_KEY (backend dashscope)')

@@ -1,8 +1,8 @@
 """Tests for voice-clone.py's transcript contract, driven through its command line.
 
 Contract (issue #105): when the run needs a transcript (``--emit-transcript``,
-or a backend whose ``transcript_capability`` is ``'always'``), voice-clone
-either produces a FRESH transcript at the target path or fails:
+or a backend that ``always_emits_transcript``), voice-clone either produces a
+FRESH transcript at the target path or fails:
 
 * any pre-existing file at the target path is deleted before synthesis;
 * the backend's own direct aligner runs first (``transcript_method`` =
@@ -16,6 +16,7 @@ so the whole path runs without any model. ffmpeg / ffprobe are required.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -30,7 +31,7 @@ VOICE_CLONE = REPO_ROOT / 'scripts' / 'voice-clone.py'
 # Input env vars that must not leak from the host into a test run.
 _ENV_BLACKLIST_PREFIXES = ('TTS_', 'ASR_', 'ALIGN', 'QWEN3', 'DASHSCOPE_', 'COSYVOICE_')
 
-NARRATION = '大家好。今天我们来聊聊视频制作。'  # 15 non-whitespace characters
+NARRATION = '大家好。今天我们来聊聊视频制作。'  # 15 characters, 13 alignable (punctuation dropped)
 
 
 def run_voice_clone(
@@ -82,16 +83,16 @@ def test_fake_backend_direct_align_succeeds_without_asr(tmp_path: Path):
     assert result['transcript_method'] == 'direct_align'
     assert result['output_path'] == str((tmp_path / 'out' / 'narration.mp3').resolve())
     assert (tmp_path / 'out' / 'narration.mp3').stat().st_size > 0
-    # 15 non-whitespace characters / 7.5 per second = 2.0 s (floor 1.0 s).
-    assert result['duration_s'] == pytest.approx(2.0, abs=0.15)
+    # 13 alignable characters / 7.5 per second (punctuation does not count).
+    assert result['duration_s'] == pytest.approx(13 / 7.5, abs=0.15)
 
     transcript_file = tmp_path / 'tr' / 'transcript.json'
     assert result['transcript_path'] == str(transcript_file.resolve())
     transcript = json.loads(transcript_file.read_text(encoding='utf-8'))
     assert [sentence['text'] for sentence in transcript] == ['大家好。', '今天我们来聊聊视频制作。']
     words = [word for sentence in transcript for word in sentence['words']]
-    assert ''.join(word['text'] for word in words) == NARRATION  # one word per character
-    # Even spread over the whole audio: starts at 0, no gaps, ends at the duration.
+    assert ''.join(word['text'] for word in words) == '大家好今天我们来聊聊视频制作'  # punctuation dropped
+    # Even spread over the whole audio: starts at 0, no gaps.
     assert words[0]['begin'] == 0
     assert all(a['end'] == b['begin'] for a, b in zip(words, words[1:]))
     assert words[-1]['end'] == pytest.approx(result['duration_s'] * 1000, abs=2)
@@ -271,11 +272,11 @@ def test_backend_without_aligner_goes_straight_to_asr_when_a_transcript_is_reque
     assert result['transcript_path'] == str((tmp_path / 'tr' / 'transcript.json').resolve())
 
 
-def test_backend_without_aligner_reports_both_attempts_when_asr_is_unavailable(
+def test_backend_without_aligner_reports_the_asr_attempt_when_asr_is_unavailable(
     tmp_path: Path, dashscope_env: dict[str, str]
 ):
-    # The DashScope key set for synthesis would make auto ASR usable, so pin
-    # ASR to the fake backend, which fails without ASR_FAKE_TEXT.
+    # No direct aligner exists for dashscope, so no fake direct_align attempt
+    # is recorded: the attempts list holds the ASR failure only.
     proc = synthesize_dashscope(
         tmp_path,
         '--emit-transcript',
@@ -284,8 +285,7 @@ def test_backend_without_aligner_reports_both_attempts_when_asr_is_unavailable(
 
     assert proc.returncode == 1
     result = parse_stdout(proc)
-    direct, asr = result['transcript_attempts']
-    assert direct == {'method': 'direct_align', 'error': 'dashscope backend has no direct aligner'}
+    (asr,) = result['transcript_attempts']
     assert asr['method'] == 'asr'
     assert 'ASR_FAKE_TEXT' in asr['error']
     assert (tmp_path / 'out' / 'narration.mp3').stat().st_size > 0
@@ -298,3 +298,123 @@ def test_help_marks_fake_as_test_only():
     assert 'fake' in proc.stdout
     assert '测试用' in proc.stdout
     assert 'transcript_attempts' in proc.stdout  # the backend docs live in --help
+
+
+# --- the capability contract holds without any transcript flags -------------
+
+
+@pytest.mark.usefixtures('require_ffmpeg')
+def test_always_backend_emits_at_the_default_path_without_any_flags(tmp_path: Path):
+    # mlx's guarantee — "a run produces a transcript, flag or not" — rests on
+    # wants_transcript() returning True for always-emits backends; this pins it.
+    narration = tmp_path / 'narration.txt'
+    narration.write_text(NARRATION, encoding='utf-8')
+
+    proc = run_voice_clone(
+        '--backend', 'fake',
+        '--input-file', str(narration),
+        '--output-dir', str(tmp_path / 'out'),
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    result = parse_stdout(proc)
+    assert result['transcript_method'] == 'direct_align'
+    transcript = tmp_path / 'out' / 'transcript.json'
+    assert result['transcript_path'] == str(transcript.resolve())
+    assert transcript.is_file()
+
+
+@pytest.mark.usefixtures('require_ffmpeg')
+def test_asr_fallback_hits_the_default_path_without_flags(tmp_path: Path):
+    narration = tmp_path / 'narration.txt'
+    narration.write_text(NARRATION, encoding='utf-8')
+
+    proc = run_voice_clone(
+        '--backend', 'fake',
+        '--input-file', str(narration),
+        '--output-dir', str(tmp_path / 'out'),
+        env={'TTS_FAKE_ALIGN_FAIL': '1', 'ASR_BACKEND': 'fake', 'ASR_FAKE_TEXT': NARRATION},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    result = parse_stdout(proc)
+    assert result['transcript_method'] == 'asr'
+    assert result['transcript_path'] == str((tmp_path / 'out' / 'transcript.json').resolve())
+
+
+# --- transcribe_with_asr: stdout parsing and the success guards --------------
+
+
+def load_voice_clone():
+    spec = importlib.util.spec_from_file_location('voice_clone', VOICE_CLONE)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def completed(cmd: list[str], returncode: int, stdout: str = '', stderr: str = ''):
+    return subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr=stderr)
+
+
+def test_transcribe_with_asr_reads_the_last_json_line_and_attaches_stderr(monkeypatch, tmp_path):
+    vc = load_voice_clone()
+    mp3 = tmp_path / 'narration.mp3'
+    mp3.write_bytes(b'\0' * 8)
+
+    def fake_run(cmd, **kwargs):
+        assert kwargs['stdout'] is subprocess.PIPE
+        assert kwargs['stderr'] is subprocess.PIPE
+        return completed(cmd, 1, stdout='stray sdk log line\n{"success": false, "error": "model blew up"}\n', stderr='traceback\nboom')
+
+    monkeypatch.setattr(vc.subprocess, 'run', fake_run)
+
+    with pytest.raises(RuntimeError, match='model blew up; stderr: traceback'):
+        vc.transcribe_with_asr(mp3, tmp_path / 'transcript.json')
+
+
+def test_transcribe_with_asr_accepts_stray_stdout_before_the_result(monkeypatch, tmp_path):
+    vc = load_voice_clone()
+    mp3 = tmp_path / 'narration.mp3'
+    mp3.write_bytes(b'\0' * 8)
+    transcript = tmp_path / 'transcript.json'
+    transcript.write_text('[]', encoding='utf-8')
+
+    monkeypatch.setattr(
+        vc.subprocess,
+        'run',
+        lambda cmd, **kwargs: completed(cmd, 0, stdout='stray line\n{"success": true, "sentence_count": 2}\n'),
+    )
+
+    vc.transcribe_with_asr(mp3, transcript)  # no raise: the last JSON line wins
+
+
+def test_transcribe_with_asr_rejects_success_without_sentences(monkeypatch, tmp_path):
+    vc = load_voice_clone()
+    mp3 = tmp_path / 'narration.mp3'
+    mp3.write_bytes(b'\0' * 8)
+    (tmp_path / 'transcript.json').write_text('[]', encoding='utf-8')
+
+    monkeypatch.setattr(
+        vc.subprocess,
+        'run',
+        lambda cmd, **kwargs: completed(cmd, 0, stdout='{"success": true, "sentence_count": 0}'),
+    )
+
+    with pytest.raises(RuntimeError, match='wrote no sentences'):
+        vc.transcribe_with_asr(mp3, tmp_path / 'transcript.json')
+
+
+def test_transcribe_with_asr_rejects_success_without_the_file(monkeypatch, tmp_path):
+    vc = load_voice_clone()
+    mp3 = tmp_path / 'narration.mp3'
+    mp3.write_bytes(b'\0' * 8)
+
+    monkeypatch.setattr(
+        vc.subprocess,
+        'run',
+        lambda cmd, **kwargs: completed(cmd, 0, stdout='{"success": true, "sentence_count": 2}'),
+    )
+
+    with pytest.raises(RuntimeError, match='wrote no sentences'):
+        vc.transcribe_with_asr(mp3, tmp_path / 'transcript.json')

@@ -17,6 +17,7 @@ ASR is the fallback when voice-clone's direct alignment fails).
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -203,17 +204,66 @@ def test_unknown_backend_cli_exits_2():
 # --- transcribe.py --resolve-backend ------------------------------------------
 
 
-def test_transcribe_resolve_auto_cuda_picks_qwen3():
-    proc = run_cli(
-        TRANSCRIBE,
-        '--resolve-backend',
-        env={'ASR_DETECT_PLATFORM': 'linux', 'ASR_DETECT_MACHINE': 'x86_64', 'ASR_DETECT_CUDA': '1'},
-    )
+def test_transcribe_resolve_auto_cuda_picks_qwen3(tmp_path):
+    # Auto only commits to qwen3 when the qwen_asr package is importable;
+    # the test machine may not have it, so stub it onto PYTHONPATH.
+    env = qwen_asr_stub_env(tmp_path)
+    env.update({'ASR_DETECT_PLATFORM': 'linux', 'ASR_DETECT_MACHINE': 'x86_64', 'ASR_DETECT_CUDA': '1'})
+    proc = run_cli(TRANSCRIBE, '--resolve-backend', env=env)
+
     assert proc.returncode == 0, proc.stderr
     result = parse_stdout(proc)
     assert result['success'] is True
     assert result['backend'] == 'qwen3'
     assert result['backend_source'] == 'auto'
+
+
+def qwen_asr_stub_env(tmp_path: Path) -> dict[str, str]:
+    """PYTHONPATH env with an importable (empty) qwen_asr package."""
+    package = tmp_path / 'fakepkg'
+    (package / 'qwen_asr').mkdir(parents=True)
+    (package / 'qwen_asr' / '__init__.py').write_text('', encoding='utf-8')
+    return {'PYTHONPATH': str(package)}
+
+
+def test_transcribe_resolve_auto_cuda_without_qwen_asr_falls_through_to_dashscope():
+    # A CUDA box that has torch but never installed qwen_asr must reach the
+    # DashScope fallback instead of dying at the qwen3 import.
+    if importlib.util.find_spec('qwen_asr') is not None:
+        pytest.skip('host has qwen_asr installed; the missing-package path needs it absent')
+    proc = run_cli(
+        TRANSCRIBE,
+        '--resolve-backend',
+        env={
+            'ASR_DETECT_PLATFORM': 'linux',
+            'ASR_DETECT_MACHINE': 'x86_64',
+            'ASR_DETECT_CUDA': '1',
+            'DASHSCOPE_API_KEY': 'sk-test',
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    result = parse_stdout(proc)
+    assert result['backend'] == 'dashscope'
+
+
+def test_transcribe_resolve_auto_cuda_without_qwen_asr_package_errors_listing_it(tmp_path):
+    proc = run_cli(
+        TRANSCRIBE,
+        '--resolve-backend',
+        env={
+            'ASR_DETECT_PLATFORM': 'linux',
+            'ASR_DETECT_MACHINE': 'x86_64',
+            'ASR_DETECT_CUDA': '1',
+        },
+    )
+
+    if importlib.util.find_spec('qwen_asr') is not None:
+        pytest.skip('host has qwen_asr installed; the missing-package path needs it absent')
+    assert proc.returncode == 1
+    result = parse_stdout(proc)
+    assert result['success'] is False
+    assert 'qwen_asr python package' in result['error']
 
 
 def test_transcribe_resolve_auto_dashscope_key_picks_dashscope():

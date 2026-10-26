@@ -28,7 +28,7 @@ TTS 与字幕合并在同一个 phase：先配音并拿到词级时间戳（tran
 | 有 CUDA 的机器 | backend `qwen3tts`：torch Qwen3-TTS | `--emit-transcript`：torch Qwen3-ForcedAligner 直对齐；aligner 不可用时自动退到 `transcribe.py` 全 ASR |
 | 兜底 | backend `dashscope`：云端 CosyVoice | 没有直对齐，由 voice-clone.py 自动调用 `transcribe.py`（auto → dashscope 云端 ASR） |
 
-直对齐方案（mlx / emit-transcript）里 transcript 与朗读稿逐字一致，「ASR 结果与旁白校对映射」天然退化：7.2 的 align-narration.py 归一化 / difflib 校对逻辑照常运行但平凡通过（不会产生 `fallback: true` 单元）。
+直对齐成功时（`transcript_method` 为 `direct_align`）transcript 与朗读稿逐字一致，「ASR 结果与旁白校对映射」天然退化：7.2 的 align-narration.py 归一化 / difflib 校对逻辑照常运行但平凡通过。**先看 7.1 输出 JSON 的 `transcript_method`**：若为 `asr`，transcript 来自 ASR 识别，不保证与朗读稿逐字一致——7.2 可能产生 `fallback: true` 单元和"TTS 跳过了这段文本"的警告，属于预期行为，按警告核对那几段即可。
 
 #### 7.1 — TTS 配音 + transcript
 
@@ -51,6 +51,15 @@ ffprobe -v error -show_entries format=duration \
 
 - 这一条命令保证**要么产出本轮新鲜的 transcript，要么失败**：它先删除目标路径上已有的 transcript，再用后端自带的直对齐；没写出来就自动以子进程运行 `scripts/transcribe.py`（`ASR_BACKEND` 等环境变量照常生效）。成功时输出 JSON 里的 `transcript_method` 是 `direct_align` 或 `asr`。
 - 失败（exit 1）时 `narration.mp3` 保留，JSON 的 `transcript_attempts` 按顺序列出每种方式（`direct_align`、`asr`）的 `error`：按错误补上缺的依赖或环境变量后，重跑同一条命令。**不要**沿用旧的 transcript，也不要手写。
+- 若只是转录步骤失败、不想重跑整段 TTS（重跑会重新合成整段音频，慢且时间轴抖动），mp3 已经保留，直接对它单独补跑转录：
+
+  ```bash
+  python3 scripts/transcribe.py \
+    {work_dir}/{topic_name}/voice_clone/narration.mp3 \
+    {work_dir}/{topic_name}/transcribe/transcript.json
+  ```
+
+  （`ASR_BACKEND` 等环境变量照常生效；跑完回到 7.2。）
 - 后端由环境选择；参数、依赖和 `--resolve-backend`（只打印决策、不加载模型）见 voice-clone.py 的 `--help`。
 
 脚本编写规范：

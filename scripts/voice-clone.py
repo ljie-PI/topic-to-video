@@ -462,22 +462,22 @@ def write_mp3(wav, sample_rate: int, output_path: Path, atempo: float | None) ->
 class TTSBackend(abc.ABC):
     """Common interface: synthesize narration text into an mp3 file.
 
-    Backends also declare whether they can emit ``transcript.json`` from a
-    local forced aligner (``transcript_capability``):
+    Two boolean flags declare the backend's relationship to transcripts;
+    ``main()`` owns the contract (stale-file removal, the direct-align -> ASR
+    fallback, the failure report) from them:
 
-    * ``'always'`` — mlx, fake: the narration text is aligned straight onto the
-      audio, so the transcript is a normal product of every run;
-    * ``'opt_in'`` — qwen3tts: has a torch aligner, used when the run asks for
-      a transcript (``--emit-transcript``);
-    * ``None`` — dashscope: no local aligner, the transcript comes from ASR.
-
-    ``main()`` owns the transcript contract (stale-file removal, the
-    direct-align -> ASR fallback, the failure report); a backend only provides
-    its aligner through :meth:`emit_transcript`, which raises when it cannot.
+    * ``always_emits_transcript`` — mlx, fake: the narration text is aligned
+      straight onto the audio, so every run must leave a transcript, flag or
+      not;
+    * ``has_direct_aligner`` — mlx, qwen3tts, fake: can write transcript.json
+      from a local forced aligner via :meth:`emit_transcript`. Backends without
+      one (dashscope) go straight to ASR when a transcript is needed — no
+      fake direct-align attempt is recorded for them.
     """
 
     name: str
-    transcript_capability: str | None = None
+    always_emits_transcript: bool = False
+    has_direct_aligner: bool = False
 
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
@@ -489,7 +489,7 @@ class TTSBackend(abc.ABC):
 
     def wants_transcript(self, emit_transcript: bool) -> bool:
         """Whether this run must produce a transcript (flag or capability)."""
-        return emit_transcript or self.transcript_capability == 'always'
+        return emit_transcript or self.always_emits_transcript
 
     @abc.abstractmethod
     def synthesize(self, text: str, output_path: Path) -> Path | None:
@@ -577,7 +577,8 @@ class MLXBackend(TTSBackend):
     """
 
     name = 'mlx'
-    transcript_capability = 'always'
+    always_emits_transcript = True
+    has_direct_aligner = True
 
     def __init__(self, args: argparse.Namespace) -> None:
         super().__init__(args)
@@ -628,7 +629,7 @@ class MLXBackend(TTSBackend):
 
         Raises on failure; the caller falls back to ASR, the mp3 is unaffected.
         """
-        from text_align import align_text  # lazy: pulls mlx-audio
+        from mlx_align import align_text  # lazy: pulls mlx-audio
 
         aligner_model = os.environ.get('ALIGNER_MODEL_MLX', DEFAULT_ALIGNER_MODEL_MLX)
         align_language = os.environ.get('ALIGNER_LANGUAGE_MLX', 'Chinese')
@@ -637,6 +638,10 @@ class MLXBackend(TTSBackend):
         alignment = align_text(
             audio, text, model_path=aligner_model, language=align_language
         )
+        if not alignment.get('words') or not alignment.get('sentences'):
+            # Without sentences the schema would silently wrap the whole text
+            # in one span; that is a failed alignment, so ASR gets its turn.
+            raise ValueError('alignment has no sentences or no words')
         if self._atempo and abs(self._atempo - 1.0) > 1e-3:
             # The mp3 was re-timed after synthesis; scale timestamps to match.
             alignment = scale_alignment_times(alignment, 1.0 / self._atempo)
@@ -656,7 +661,7 @@ class Qwen3TTSBackend(TTSBackend):
     """Local Qwen3-TTS voice clone (reference WAV + its transcript)."""
 
     name = 'qwen3tts'
-    transcript_capability = 'opt_in'
+    has_direct_aligner = True
 
     def synthesize(self, text: str, output_path: Path) -> None:
         import gc
@@ -758,7 +763,8 @@ class FakeBackend(TTSBackend):
     """
 
     name = 'fake'
-    transcript_capability = 'always'
+    always_emits_transcript = True
+    has_direct_aligner = True
 
     def synthesize(self, text: str, output_path: Path) -> None:
         duration_s = fake_backend.synthetic_duration_s(text)
@@ -797,29 +803,42 @@ def transcribe_with_asr(audio_path: Path, transcript_path: Path) -> None:
     """Run scripts/transcribe.py on the mp3; raise with its error when it fails.
 
     The subprocess inherits the environment, so ASR_BACKEND and the backend
-    credentials apply as they would for a manual run; its stderr streams
-    through, its stdout (one JSON document) is parsed here.
+    credentials apply as they would for a manual run. stdout may carry stray
+    lines (a chatty SDK printing before its JSON), so the LAST parseable JSON
+    line is the result; stderr is captured and its tail reported on failure.
     """
     script = Path(__file__).resolve().parent / 'transcribe.py'
     log(f'running {script.name} (ASR) on {audio_path}')
     proc = subprocess.run(
         [sys.executable, str(script), str(audio_path), str(transcript_path)],
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         check=False,
     )
-    try:
-        result = json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        result = None
-    if not isinstance(result, dict):
-        result = {}
-    if proc.returncode != 0 or result.get('success') is not True:
-        raise RuntimeError(
-            result.get('error') or f'{script.name} exited {proc.returncode} without a JSON result'
+    result: dict | None = None
+    for line in reversed([line for line in proc.stdout.splitlines() if line.strip()]):
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            result = parsed
+            break
+    stderr_tail = '\n'.join(proc.stderr.splitlines()[-5:])
+    if proc.returncode != 0 or result is None or result.get('success') is not True:
+        message = (
+            (result or {}).get('error')
+            or f'{script.name} exited {proc.returncode} without a JSON result'
         )
+        if stderr_tail:
+            message = f'{message}; stderr: {stderr_tail}'
+        raise RuntimeError(message)
     if not result.get('sentence_count') or not transcript_path.is_file():
-        raise RuntimeError(f'{script.name} reported success but wrote no sentences')
+        raise RuntimeError(
+            f"{script.name} reported success but wrote no sentences"
+            + (f'; stderr: {stderr_tail}' if stderr_tail else '')
+        )
 
 
 def produce_transcript(
@@ -831,20 +850,21 @@ def produce_transcript(
 ) -> str:
     """Leave a fresh transcript at ``transcript_path``; return how it was made.
 
-    Direct alignment (the backend's own aligner) comes first; when it writes
-    nothing, ASR via transcribe.py. Raises :class:`TranscriptError` carrying
-    every attempt when neither does.
+    Direct alignment (the backend's own aligner, when it has one) comes first;
+    when it writes nothing, ASR via transcribe.py. Raises :class:`TranscriptError`
+    carrying every attempt actually made when neither does.
     """
     attempts: list[dict[str, str]] = []
-    try:
-        backend.emit_transcript(text, output_path, transcript_path, alignment_audio)
-        if not transcript_path.is_file():
-            raise RuntimeError('direct alignment wrote no transcript')
-        return 'direct_align'
-    except Exception as exc:  # noqa: BLE001 - any aligner failure => try ASR
-        log(f'direct alignment failed ({exc}); falling back to ASR')
-        attempts.append({'method': 'direct_align', 'error': str(exc)})
-    transcript_path.unlink(missing_ok=True)
+    if backend.has_direct_aligner:
+        try:
+            backend.emit_transcript(text, output_path, transcript_path, alignment_audio)
+            if not transcript_path.is_file():
+                raise RuntimeError('direct alignment wrote no transcript')
+            return 'direct_align'
+        except Exception as exc:  # noqa: BLE001 - any aligner failure => try ASR
+            log(f'direct alignment failed ({exc}); falling back to ASR')
+            attempts.append({'method': 'direct_align', 'error': str(exc)})
+        transcript_path.unlink(missing_ok=True)
     try:
         transcribe_with_asr(output_path, transcript_path)
     except Exception as exc:  # noqa: BLE001 - reported as the second attempt
