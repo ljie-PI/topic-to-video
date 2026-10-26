@@ -24,8 +24,8 @@ SCRIPT = REPO_ROOT / 'scripts' / 'cut-clips.py'
 SOURCE_SECONDS = 5
 CLIP_A = (0.5, 2.0)
 CLIP_B = (2.5, 4.5)
-CLIP_A_PATH = 'clips/vid_001_0.50-2.00.mp4'
-CLIP_B_PATH = 'clips/vid_001_2.50-4.50.mp4'
+CLIP_A_PATH = 'clips/example/vid_001_0.500-2.000.mp4'
+CLIP_B_PATH = 'clips/example/vid_001_2.500-4.500.mp4'
 DURATION_TOLERANCE_S = 0.1
 
 
@@ -171,8 +171,9 @@ def test_a_cut_file_missing_from_the_catalog_is_recorded_without_cutting_again(w
 
 
 def test_an_empty_clip_file_is_cut_again(ws: Path):
-    (ws / 'clips').mkdir()
-    (ws / CLIP_A_PATH).write_bytes(b'')
+    target = ws / CLIP_A_PATH
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b'')
 
     result = parse_result(run_cli(str(ws)))
 
@@ -201,7 +202,7 @@ def test_a_failed_clip_is_reported_and_the_other_clips_are_kept(tmp_path: Path):
     assert result['errors'][0]['stderr_tail']
     assert media.probe(ws / CLIP_A_PATH)['has_audio'] is False
     # Nothing is left behind for the failed clip, not even a partial file.
-    assert [path.name for path in (ws / 'clips').iterdir()] == ['vid_001_0.50-2.00.mp4']
+    assert [path.name for path in (ws / 'clips').rglob('*.mp4')] == ['vid_001_0.500-2.000.mp4']
     failed, kept = clips_of(read_catalog(ws))
     assert 'clip_path' not in failed
     assert kept['clip_path'] == CLIP_A_PATH
@@ -230,7 +231,7 @@ def test_an_unusable_clip_is_an_error_entry_not_a_crash(ws: Path, video: dict, d
     assert result['clips'] == []
     assert len(result['errors']) == 1
     assert detail in result['errors'][0]['error'], result['errors'][0]
-    assert not (ws / 'clips').exists() or list((ws / 'clips').iterdir()) == []
+    assert not (ws / 'clips').exists() or list((ws / 'clips').rglob('*.mp4')) == []
 
 
 def test_an_absolute_local_path_from_an_old_catalog_is_used_as_is(tmp_path: Path):
@@ -287,7 +288,10 @@ def test_missing_workspace_argument_exits_2():
     assert parse_result(proc)['success'] is False
 
 
-def test_a_video_shared_by_two_entries_is_cut_once(ws: Path):
+def test_a_video_shared_by_two_entries_is_cut_per_entry(ws: Path):
+    # The same source video referenced by two entries gets one clip file per
+    # entry: clip paths are namespaced by entry slug, so an id recurring
+    # across entries can never reuse (or be reused by) another entry's file.
     catalog = read_catalog(ws)
     other = json.loads(json.dumps(catalog['entries'][0]))
     other['slug'] = 'other'
@@ -299,10 +303,41 @@ def test_a_video_shared_by_two_entries_is_cut_once(ws: Path):
     assert [(clip['clip_path'], clip['skipped']) for clip in result['clips']] == [
         (CLIP_A_PATH, False),
         (CLIP_B_PATH, False),
-        (CLIP_A_PATH, True),
-        (CLIP_B_PATH, True),
+        ('clips/other/vid_001_0.500-2.000.mp4', False),
+        ('clips/other/vid_001_2.500-4.500.mp4', False),
     ]
+    assert {path.relative_to(ws).as_posix() for path in (ws / 'clips').rglob('*.mp4')} == {
+        CLIP_A_PATH,
+        CLIP_B_PATH,
+        'clips/other/vid_001_0.500-2.000.mp4',
+        'clips/other/vid_001_2.500-4.500.mp4',
+    }
     assert all('clip_path' in clip for clip in clips_of(read_catalog(ws)))
+
+
+def test_two_entries_with_the_same_video_id_but_different_sources_get_two_files(tmp_path: Path):
+    # harvest-pages names every page's native video native_001; the clip file
+    # must come from the entry's own source, not be skipped onto the other's.
+    ws = tmp_path / 'ws'
+    make_source_with_audio(ws / 'harvest_page' / 'page-a' / 'videos' / 'native_001.mp4')
+    make_source_with_audio(ws / 'harvest_page' / 'page-b' / 'videos' / 'native_001.mp4')
+    write_catalog(ws, [video_item('native_001', 'page-a/videos/native_001.mp4', [CLIP_A])])
+    catalog = read_catalog(ws)
+    catalog['entries'][0]['slug'] = 'page-a'
+    other = json.loads(json.dumps(catalog['entries'][0]))
+    other['slug'] = 'page-b'
+    other['videos'][0]['local_path'] = 'page-b/videos/native_001.mp4'
+    catalog['entries'].append(other)
+    (ws / 'material-catalog.json').write_text(json.dumps(catalog), encoding='utf-8')
+
+    result = parse_result(run_cli(str(ws)))
+
+    assert result['success'] is True
+    assert [clip['skipped'] for clip in result['clips']] == [False, False]
+    assert {path.relative_to(ws).as_posix() for path in (ws / 'clips').rglob('*.mp4')} == {
+        'clips/page-a/native_001_0.500-2.000.mp4',
+        'clips/page-b/native_001_0.500-2.000.mp4',
+    }
 
 
 def test_missing_ffmpeg_is_a_runtime_error(ws: Path, monkeypatch: pytest.MonkeyPatch):
@@ -347,15 +382,25 @@ def test_an_ffmpeg_that_hangs_times_out_and_leaves_no_file(
     result = json.loads(capsys.readouterr().out)
     assert result['success'] is False
     assert [error['ref'] for error in result['errors']] == ['vid_001:0.5-2.0', 'vid_001:2.5-4.5']
-    assert list((ws / 'clips').iterdir()) == []
+    assert list((ws / 'clips').rglob('*.mp4')) == []
     assert all('clip_path' not in clip for clip in clips_of(read_catalog(ws)))
 
 
-def test_pipeline_status_accepts_a_catalog_only_once_its_clips_are_cut(ws: Path):
-    spec = importlib.util.spec_from_file_location('pipeline_status', REPO_ROOT / 'scripts' / 'pipeline-status.py')
-    pipeline_status = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = pipeline_status  # @dataclass looks its module up here
-    spec.loader.exec_module(pipeline_status)
+def load_pipeline_status(monkeypatch: pytest.MonkeyPatch):
+    """Import pipeline-status.py as a module without leaking into sys.modules."""
+    spec = importlib.util.spec_from_file_location(
+        'pipeline_status_under_test', REPO_ROOT / 'scripts' / 'pipeline-status.py'
+    )
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, module)  # @dataclass looks its module up here
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_pipeline_status_accepts_a_catalog_only_once_its_clips_are_cut(
+    ws: Path, monkeypatch: pytest.MonkeyPatch
+):
+    pipeline_status = load_pipeline_status(monkeypatch)
 
     before = pipeline_status.check_material_catalog(ws, 'material-catalog.json')
     assert run_cli(str(ws)).returncode == 0
@@ -363,6 +408,94 @@ def test_pipeline_status_accepts_a_catalog_only_once_its_clips_are_cut(ws: Path)
 
     assert before.status == pipeline_status.STATUS_CORRUPT and 'clip_path' in before.detail
     assert after.ok, after.detail
+
+
+def test_a_missing_clip_file_does_not_blind_scene_plan_ref_validation(
+    ws: Path, monkeypatch: pytest.MonkeyPatch
+):
+    # The full check fails (Phase 5 is corrupt), but the catalog's structure is
+    # still indexed: scene-plan material refs keep being validated against the
+    # windows that exist instead of the check silently passing.
+    assert run_cli(str(ws)).returncode == 0
+    (ws / CLIP_A_PATH).unlink()
+    pipeline_status = load_pipeline_status(monkeypatch)
+
+    assert not pipeline_status.check_material_catalog(ws, 'material-catalog.json').ok
+    assert pipeline_status.check_catalog_structure(ws, 'material-catalog.json').ok
+    index = pipeline_status.load_catalog_index(ws)
+    assert index is not None
+    assert pipeline_status.ref_resolves('vid_001:0.5-2.0', index)
+    assert not pipeline_status.ref_resolves('not_a_real_ref', index)
+
+
+def test_a_skipped_file_with_an_audio_track_is_cut_again(ws: Path):
+    # Rule 6 wants silent clips; an existing file that still has audio is not
+    # accepted as done.
+    assert run_cli(str(ws)).returncode == 0
+    source = ws / 'harvest_page' / 'example' / 'videos' / 'vid_001.mp4'
+    target = ws / CLIP_A_PATH
+    cut_at = target.stat().st_mtime_ns
+    subprocess.run(
+        ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', source, '-t', '1', '-c', 'copy', str(target)],
+        check=True,
+        capture_output=True,
+        timeout=60,
+    )
+
+    result = parse_result(run_cli(str(ws)))
+
+    assert [clip['skipped'] for clip in result['clips']] == [False, True]
+    assert media.probe(target)['has_audio'] is False
+    assert target.stat().st_mtime_ns != cut_at
+
+
+def test_the_catalog_keeps_its_file_permissions(ws: Path):
+    catalog = ws / 'material-catalog.json'
+    catalog.chmod(0o644)
+
+    assert run_cli(str(ws)).returncode == 0
+
+    assert catalog.stat().st_mode & 0o777 == 0o644  # not the mkstemp default 0600
+
+
+def test_a_partially_covering_window_is_an_error_with_lengths(ws: Path):
+    # 5 s source, window 4-9: ffmpeg happily cuts the 1 s that exists and used
+    # to report success; the catalog then promised a 5 s clip it did not hold.
+    write_catalog(ws, [video_item('vid_001', 'example/videos/vid_001.mp4', [(4.0, 9.0)])])
+
+    proc = run_cli(str(ws))
+
+    assert proc.returncode == 1
+    result = parse_result(proc)
+    detail = result['errors'][0]['error']
+    assert 'extends past the end of the source' in detail, detail
+
+
+def test_an_odd_sized_source_produces_an_even_yuv420p_clip(ws: Path):
+    # Odd widths fail libx264 ('width not divisible by 2'); other pixel formats
+    # (10-bit, 4:4:4) leave Chrome-black clips. Both are normalized on output.
+    source = ws / 'harvest_page' / 'example' / 'videos' / 'vid_001.mp4'
+    subprocess.run(
+        [
+            'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
+            '-f', 'lavfi', '-i', 'testsrc=duration=5:size=161x121:rate=25',
+            '-pix_fmt', 'yuv444p', '-c:v', 'libx264', '-crf', '18', str(source),
+        ],
+        check=True,
+        capture_output=True,
+        timeout=60,
+    )
+
+    assert run_cli(str(ws)).returncode == 0, 'odd-sized 4:4:4 source must still cut'
+
+    info = media.probe(ws / CLIP_A_PATH)
+    assert (info['width'], info['height']) == (160, 120)  # rounded down to even
+    pix = subprocess.run(
+        ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
+         'stream=pix_fmt', '-of', 'default=noprint_wrappers=1:nokey=1', str(ws / CLIP_A_PATH)],
+        capture_output=True, text=True, check=True, timeout=30,
+    ).stdout.strip()
+    assert pix == 'yuv420p'
 
 
 def test_a_failed_clip_does_not_keep_a_clip_path_left_over_from_an_earlier_window(ws: Path):

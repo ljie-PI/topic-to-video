@@ -35,7 +35,37 @@ RESEARCH_BRIEF = '# research brief\n\n## Key facts (verified)\n- fact [source]\n
 SCRIPT_TXT = '甲' * 1125 + '\n\n' + '乙' * 1125 + '\n'
 
 # cut-clips.py writes this file and the clip_path that names it (guardrail 6).
-CLIP_PATH = 'clips/vid_001_12.00-18.50.mp4'
+# Namespaced by the entry slug, millisecond window: scripts/clip_paths.py.
+CLIP_PATH = 'clips/example/vid_001_12.000-18.500.mp4'
+
+# A real silent mp4, built once per session: the clip-file check probes the
+# file (playable video, no audio, non-zero length), so zero blobs do not pass.
+_CLIP_BYTES: bytes | None = None
+
+
+def clip_bytes() -> bytes:
+    global _CLIP_BYTES
+    if _CLIP_BYTES is None:
+        import subprocess
+
+        proc = subprocess.run(
+            [
+                'ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi',
+                '-i', 'testsrc=duration=1:size=64x48:rate=10', '-an',
+                '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', 'frag_keyframe+empty_moov',
+                '-f', 'mp4', 'pipe:1',
+            ],
+            capture_output=True,
+            check=True,
+            timeout=60,
+        )
+        _CLIP_BYTES = proc.stdout
+    return _CLIP_BYTES
+
+
+def write_clip(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(clip_bytes())
 
 CATALOG = {
     'topic_name': 'demo',
@@ -150,7 +180,7 @@ def complete_through_harvest(ws: Path, **inputs_overrides) -> None:
 def complete_through_catalog(ws: Path, **inputs_overrides) -> None:
     complete_through_harvest(ws, **inputs_overrides)
     write_json(ws / 'material-catalog.json', CATALOG)
-    write_blob(ws / CLIP_PATH)
+    write_clip(ws / CLIP_PATH)
 
 
 def complete_through_script(ws: Path, **inputs_overrides) -> None:
@@ -295,10 +325,12 @@ def test_catalog_ids_repeating_across_entries_are_accepted(tmp_path: Path):
     catalog = catalog_with()
     other = json.loads(json.dumps(catalog['entries'][0]))
     other['slug'] = 'other'
+    other['videos'][0]['selected_clips'][0]['clip_path'] = 'clips/other/vid_001_12.000-18.500.mp4'
     catalog['entries'].append(other)
     complete_through_harvest(tmp_path)
     write_json(tmp_path / 'material-catalog.json', catalog)
-    write_blob(tmp_path / CLIP_PATH)
+    write_clip(tmp_path / CLIP_PATH)
+    write_clip(tmp_path / 'clips' / 'other' / 'vid_001_12.000-18.500.mp4')
     result = parse_result(run_cli(str(tmp_path)))
     assert '5-material-catalog' in result['completed_phases']
 
@@ -330,7 +362,7 @@ def catalog_clip(catalog: dict) -> dict:
 def assert_clip_problem(tmp_path: Path, catalog: dict, *detail_parts: str) -> None:
     complete_through_harvest(tmp_path)
     write_json(tmp_path / 'material-catalog.json', catalog)
-    write_blob(tmp_path / CLIP_PATH)
+    write_clip(tmp_path / CLIP_PATH)
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase']['id'] == '5-material-catalog'
     assert 'material-catalog.json' in result['corrupt_products']
@@ -384,7 +416,8 @@ def test_catalog_clip_whose_file_is_empty_is_corrupt(tmp_path: Path):
 
 @pytest.mark.parametrize('clip_path', ['../outside.mp4', 'clips/../../outside.mp4', '/etc/hosts', 'clips'])
 def test_catalog_clip_path_must_be_a_file_inside_the_workspace(tmp_path: Path, clip_path: str):
-    outside = tmp_path.parent / 'outside.mp4'
+    # Both files live under this test's own tmp dir, not the shared parent.
+    outside = tmp_path / 'outside.mp4'
     outside.write_bytes(b'\0' * 128)
     ws = tmp_path / 'ws'
     catalog = catalog_with()
@@ -395,6 +428,42 @@ def test_catalog_clip_path_must_be_a_file_inside_the_workspace(tmp_path: Path, c
     result = parse_result(run_cli(str(ws)))
     assert 'material-catalog.json' in result['corrupt_products']
     assert clip_path in result['next_phase']['problems']['material-catalog.json']
+
+
+def test_catalog_clip_with_a_mismatched_clip_path_is_corrupt(tmp_path: Path):
+    # The window was edited after cutting without re-running cut-clips: the
+    # recorded clip_path names the OLD window's file.
+    complete_through_catalog(tmp_path)
+    catalog = json.loads((tmp_path / 'material-catalog.json').read_text(encoding='utf-8'))
+    catalog['entries'][0]['videos'][0]['selected_clips'][0]['start'] = 13.0
+    write_json(tmp_path / 'material-catalog.json', catalog)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert 'material-catalog.json' in result['corrupt_products']
+    detail = result['next_phase']['problems']['material-catalog.json']
+    assert 'current window' in detail and 'cut-clips' in detail, detail
+
+
+def test_catalog_clip_file_with_an_audio_track_is_corrupt(tmp_path: Path):
+    complete_through_catalog(tmp_path)
+    subprocess.run(
+        [
+            'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
+            '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-f', 'lavfi',
+            '-i', 'testsrc=duration=1:size=64x48:rate=10', '-shortest',
+            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', str(tmp_path / CLIP_PATH),
+        ],
+        check=True,
+        capture_output=True,
+        timeout=60,
+    )
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert 'material-catalog.json' in result['corrupt_products']
+    detail = result['next_phase']['problems']['material-catalog.json']
+    assert 'audio track' in detail and 'guardrail 6' in detail, detail
 
 
 def test_catalog_video_without_selected_clips_needs_no_clip_files(tmp_path: Path):
