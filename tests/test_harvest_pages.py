@@ -78,6 +78,7 @@ def _close_test_chrome(cdp_url: str) -> None:
 def test_local_page_loads_once_and_manifest_contains_image(
     tmp_path: Path,
     require_chrome: None,
+    require_ffmpeg: None,
 ):
     server = ThreadingHTTPServer(('127.0.0.1', 0), _PageHandler)
     server.page_requests = 0
@@ -97,7 +98,7 @@ def test_local_page_loads_once_and_manifest_contains_image(
                 '--cdp-url', cdp_url,
                 '--headless', 'on',
                 '--no-sandbox',
-                '--no-scroll-record',
+                '--scroll-duration', '5',
                 '--min-image-width', '1',
                 '--min-image-height', '1',
             ],
@@ -108,16 +109,25 @@ def test_local_page_loads_once_and_manifest_contains_image(
         )
 
         assert proc.returncode == 0, proc.stderr
-        assert proc.stderr.count(f'loaded {url}') == 1
-        assert server.page_requests == 1
         manifest = json.loads((output_dir / 'manifest.json').read_text(encoding='utf-8'))
+        entry = next(item for item in manifest['entries'] if item['url'] == url)
+        assert entry['success'] is True
+        recording = entry['scroll_recording']
+        assert recording is not None
+        if recording['method'] == 'cdp_screencast':
+            # A primary-recorder failure may reload once for the CDP fallback.
+            assert 'trying CDP screencast fallback' in proc.stderr
+            expected_loads = 2
+        else:
+            assert recording['method'] == 'playwright'
+            expected_loads = 1
+        assert server.page_requests == expected_loads
+        assert proc.stderr.count(f'loaded {url}') == expected_loads
         assert manifest['chrome'] == {
             'cdp_url': cdp_url,
             'reused': False,
             'ignored_flags': [],
         }
-        entry = next(item for item in manifest['entries'] if item['url'] == url)
-        assert entry['success'] is True
         assert len(entry['images']) == 1
         assert Path(entry['images'][0]['local_path']).is_file()
 
