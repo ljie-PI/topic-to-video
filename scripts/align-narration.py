@@ -93,6 +93,8 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from script_text import paragraph_spans
+
 TOOL_NAME = 'align-narration'
 
 CHINESE_DIGITS = {
@@ -384,22 +386,6 @@ def load_offsets(path: str) -> tuple[dict[str, Any], Callable[[int], int]]:
         return segment['script_start'] + min(position - segment['narration_start'], span)
 
     return data, to_script
-
-
-def paragraph_spans(text: str) -> list[tuple[int, int]]:
-    """Non-blank line groups: [(start, end)] character spans, 1-based lookup."""
-    spans: list[tuple[int, int]] = []
-    position = 0
-    start: int | None = None
-    for line in text.split('\n') + ['']:
-        if line.strip():
-            if start is None:
-                start = position
-        elif start is not None:
-            spans.append((start, position))
-            start = None
-        position += len(line) + 1
-    return spans
 
 
 # --- alignment -------------------------------------------------------------------

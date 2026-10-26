@@ -8,11 +8,18 @@ next phase to run, the phase doc to read for it, and any missing or corrupt
 products. A phase whose product was deleted or corrupted falls back to that
 phase.
 
-Usage:
-  python3 scripts/pipeline-status.py [workspace_dir]
+Phase 6's deterministic rules are checked here too, so no agent computes them
+by hand: script.txt length against inputs.json's duration, scene-plan
+paragraphs against script.txt's paragraphs, and scene-plan material refs
+against the catalog. Phase 8 additionally requires the saved
+check-composition report to say pass.
 
-workspace_dir defaults to the current working directory. Project workspaces
-live outside this repo; only the doc paths in the output are repo-relative.
+Usage:
+  python3 scripts/pipeline-status.py <workspace_dir>
+
+workspace_dir is required: the commands in SKILL.md run from the skill root, so
+the current directory is never the project workspace. Project workspaces live
+outside this repo; only the doc paths in the output are repo-relative.
 
 Output: one JSON document on stdout.
 Exit codes: 0 = success (a next phase exists, or the pipeline is complete),
@@ -22,11 +29,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
 import cli
+import script_text
 
 TOOL_NAME = 'pipeline-status'
 
@@ -54,6 +64,18 @@ INPUTS_REQUIRED_FIELDS = [
 QA_LEVELS = {'quick', 'standard', 'strict'}
 
 PAPER_MODES = {'paper'}
+
+# Phase 6's length rule: the display draft's non-blank characters must be within
+# +-15% of duration x 60 s x 7.5 chars/s (speech_rate=1.4).
+CHARS_PER_SECOND = 7.5
+SCRIPT_LENGTH_TOLERANCE = 0.15
+
+# A scene-plan clip ref "<video_id>:<start>-<end>" must match a catalog
+# selected_clips entry to within this many seconds on both ends.
+CLIP_REF_TOLERANCE_S = 0.01
+
+# inputs.json's duration is minutes: a number, or a string that starts with one ("5min").
+DURATION_PREFIX = re.compile(r'^\s*(\d+(?:\.\d+)?)')
 
 
 @dataclass
@@ -88,12 +110,7 @@ def parse_args() -> argparse.Namespace:
         TOOL_NAME,
         description='Scan a topic-to-video workspace and report the next pipeline phase.'
     )
-    parser.add_argument(
-        'workspace',
-        nargs='?',
-        default='.',
-        help='Project workspace directory (default: current working directory).',
-    )
+    parser.add_argument('workspace', help='Project workspace directory ({work_dir}/{topic_name}).')
     return parser.parse_args()
 
 
@@ -143,6 +160,28 @@ def check_text_product(ws: Path, relpath: str) -> CheckResult:
     return result
 
 
+def check_script_text(ws: Path, relpath: str) -> CheckResult:
+    """script.txt: non-empty, and its length is within tolerance of the target
+    that inputs.json's duration implies."""
+    result, text = read_nonempty_text(ws, relpath)
+    if not result.ok:
+        return result
+    _, inputs = load_inputs(ws)
+    minutes = duration_minutes(inputs['duration']) if inputs else None
+    if minutes is None:
+        return OK  # nothing to compare against; inputs.json is reported on its own
+    target = minutes * 60 * CHARS_PER_SECOND
+    count = script_text.count_chars(text)
+    deviation = (count - target) / target
+    if abs(deviation) > SCRIPT_LENGTH_TOLERANCE:
+        return CheckResult(
+            STATUS_CORRUPT,
+            f'{count} characters, target {target:g} ({minutes:g} min x 60 s x {CHARS_PER_SECOND:g} chars/s), '
+            f'off by {deviation:+.1%} (limit +-{SCRIPT_LENGTH_TOLERANCE:.0%})',
+        )
+    return OK
+
+
 def check_dict_entries_product(ws: Path, relpath: str) -> CheckResult:
     """For JSON objects that must carry a non-empty `entries` list
     (harvest manifest, material catalog)."""
@@ -157,6 +196,120 @@ def check_dict_entries_product(ws: Path, relpath: str) -> CheckResult:
     return OK
 
 
+CATALOG_ITEM_KINDS = ('images', 'videos')
+
+
+def entry_label(index: int, entry: Any) -> str:
+    slug = entry.get('slug') if isinstance(entry, dict) else None
+    return f'entry {slug!r}' if isinstance(slug, str) and slug else f'entry {index}'
+
+
+def check_material_catalog(ws: Path, relpath: str) -> CheckResult:
+    """material-catalog.json: non-empty `entries`; every image / video has a
+    non-empty string `id` and `semantic_description` (Phase 5's contract);
+    an id is unique across the whole catalog because scene-plan refs and the
+    composition agent resolve materials by id alone."""
+    entries_result = check_dict_entries_product(ws, relpath)
+    if not entries_result.ok:
+        return entries_result
+    _, data = read_json_product(ws, relpath)
+    first_seen: dict[str, str] = {}
+    for index, entry in enumerate(data['entries']):
+        label = entry_label(index, entry)
+        if not isinstance(entry, dict):
+            return CheckResult(STATUS_CORRUPT, f'{label} is not an object')
+        for kind in CATALOG_ITEM_KINDS:
+            items = entry.get(kind, [])
+            if not isinstance(items, list):
+                return CheckResult(STATUS_CORRUPT, f'{label} {kind} is not a list')
+            for position, item in enumerate(items):
+                where = f'{label} {kind}[{position}]'
+                if not isinstance(item, dict):
+                    return CheckResult(STATUS_CORRUPT, f'{where} is not an object')
+                for field in ('id', 'semantic_description'):
+                    value = item.get(field)
+                    if not isinstance(value, str) or not value.strip():
+                        return CheckResult(
+                            STATUS_CORRUPT,
+                            f'{where} (id {item.get("id")!r}) has no non-empty string {field}',
+                        )
+                if item['id'] in first_seen:
+                    return CheckResult(
+                        STATUS_CORRUPT,
+                        f'duplicate id {item["id"]!r} at {where} (first used at {first_seen[item["id"]]})',
+                    )
+                first_seen[item['id']] = where
+    return OK
+
+
+@dataclass
+class CatalogIndex:
+    """What scene-plan refs can point at: every image / video id, plus each
+    video's selected clip windows as (start_s, end_s)."""
+
+    ids: set[str]
+    clips: dict[str, list[tuple[float, float]]]
+
+
+def load_catalog_index(ws: Path) -> CatalogIndex | None:
+    """The index of material-catalog.json, or None when it is not a valid catalog
+    (Phase 5 is reported on its own then)."""
+    if not check_material_catalog(ws, 'material-catalog.json').ok:
+        return None
+    _, data = read_json_product(ws, 'material-catalog.json')
+    ids: set[str] = set()
+    clips: dict[str, list[tuple[float, float]]] = {}
+    for entry in data['entries']:
+        for image in entry.get('images', []):
+            ids.add(image['id'])
+        for video in entry.get('videos', []):
+            ids.add(video['id'])
+            windows = clips.setdefault(video['id'], [])
+            for clip in video.get('selected_clips') or []:
+                bounds = [clip.get(key) if isinstance(clip, dict) else None for key in ('start', 'end')]
+                if all(isinstance(b, (int, float)) and not isinstance(b, bool) for b in bounds):
+                    windows.append((float(bounds[0]), float(bounds[1])))
+    return CatalogIndex(ids, clips)
+
+
+def ref_resolves(ref: str, index: CatalogIndex) -> bool:
+    """A material ref is a catalog id, or `<video_id>:<start>-<end>` naming one
+    of that video's selected clips."""
+    if ref in index.ids:
+        return True
+    video_id, colon, window = ref.rpartition(':')
+    if not colon or video_id not in index.clips:
+        return False
+    bounds = window.split('-')
+    if len(bounds) != 2:
+        return False
+    try:
+        start, end = float(bounds[0]), float(bounds[1])
+    except ValueError:
+        return False
+    return any(
+        abs(start - clip_start) <= CLIP_REF_TOLERANCE_S and abs(end - clip_end) <= CLIP_REF_TOLERANCE_S
+        for clip_start, clip_end in index.clips[video_id]
+    )
+
+
+def material_ref_problem(ws: Path, refs: list[str]) -> str | None:
+    """Why the scene plan's material refs are unusable, or None."""
+    _, inputs = load_inputs(ws)
+    if not phase_applies(PHASES_BY_ID['5-material-catalog'], inputs):
+        return (
+            'material_candidates must be empty when fetch_materials is false (there is no catalog), '
+            f'got refs {list(dict.fromkeys(refs))}'
+        )
+    index = load_catalog_index(ws)
+    if index is None:
+        return None
+    invalid = [ref for ref in dict.fromkeys(refs) if not ref_resolves(ref, index)]
+    if invalid:
+        return f'material_candidates refs not found in material-catalog.json: {invalid}'
+    return None
+
+
 def check_harvest_manifest(ws: Path, relpath: str) -> CheckResult:
     """Phase 4 needs entries and at least one actual web harvest batch."""
     entries_result = check_dict_entries_product(ws, relpath)
@@ -167,6 +320,20 @@ def check_harvest_manifest(ws: Path, relpath: str) -> CheckResult:
     if not isinstance(batches, list) or not batches:
         return CheckResult(STATUS_CORRUPT, 'harvest_batches is not a non-empty list')
     return OK
+
+
+def duration_minutes(value: Any) -> float | None:
+    """The target length in minutes, or None when `value` is not a positive minutes number."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        minutes = float(value)
+    elif isinstance(value, str):
+        match = DURATION_PREFIX.match(value)
+        minutes = float(match.group(1)) if match else 0.0
+    else:
+        return None
+    return minutes if math.isfinite(minutes) and minutes > 0 else None
 
 
 def is_design_dir(path: Path) -> bool:
@@ -208,6 +375,14 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
         ), None
     if not isinstance(data['fetch_materials'], bool):
         return CheckResult(STATUS_CORRUPT, 'field fetch_materials is not a boolean'), None
+    if duration_minutes(data['duration']) is None:
+        # Same as a removed design: the rest of inputs.json is still usable for
+        # phase applicability, only Phase 1 has to rewrite this field.
+        return CheckResult(
+            STATUS_CORRUPT,
+            'field duration must be the target length in minutes (分钟数): a positive number '
+            f'such as 5, or a string starting with one such as "5min", got {data["duration"]!r}',
+        ), data
     problem = design_problem(ws, data['design'])
     if problem:
         # e.g. a project created before a theme was removed: back to Phase 1
@@ -264,10 +439,56 @@ def check_lexicon_product(ws: Path, relpath: str) -> CheckResult:
     return OK
 
 
+# make-narration.py's OFFSETS_VERSION; align-narration refuses any other version.
+NARRATION_OFFSETS_VERSION = 1
+
+
+def check_narration_offsets(ws: Path, relpath: str) -> CheckResult:
+    """narration-offsets.json: make-narration's offset table, a required input
+    of Phase 7's align-narration. Only the envelope is checked here:
+    {version: 1, segments: [...]}."""
+    result, data = read_json_product(ws, relpath)
+    if not result.ok:
+        return result
+    if not isinstance(data, dict):
+        return CheckResult(STATUS_CORRUPT, 'JSON root is not an object')
+    if data.get('version') != NARRATION_OFFSETS_VERSION:
+        return CheckResult(
+            STATUS_CORRUPT, f'version must be {NARRATION_OFFSETS_VERSION}, got {data.get("version")!r}'
+        )
+    if not isinstance(data.get('segments'), list):
+        return CheckResult(STATUS_CORRUPT, 'segments is not a list')
+    return OK
+
+
+def paragraph_coverage_problem(scenes: list[dict[str, Any]], paragraph_count: int) -> str | None:
+    """Why the scenes' paragraph numbers are not exactly {1..paragraph_count}, or None.
+
+    Scenes may share a paragraph (a scene split mid-paragraph); only the union counts.
+    """
+    covered: set[int] = set()
+    for index, scene in enumerate(scenes):
+        for number in scene['paragraphs']:
+            if isinstance(number, bool) or not isinstance(number, int):
+                return f'scene {index} paragraphs must be integers, got {number!r}'
+            covered.add(number)
+    missing = sorted(set(range(1, paragraph_count + 1)) - covered)
+    out_of_range = sorted(number for number in covered if not 1 <= number <= paragraph_count)
+    if not missing and not out_of_range:
+        return None
+    parts = []
+    if missing:
+        parts.append(f'missing paragraphs {missing}')
+    if out_of_range:
+        parts.append(f'out-of-range paragraphs {out_of_range}')
+    return f'{"; ".join(parts)} (script.txt has {paragraph_count} paragraphs)'
+
+
 def check_scene_plan_product(ws: Path, relpath: str) -> CheckResult:
     """scene-plan.json: a non-empty JSON list of scenes; each scene has a
     scene_id and a non-empty paragraphs list (narrative-level plan from the
-    delegated script agent)."""
+    delegated script agent). Against script.txt, the paragraphs of all scenes
+    must cover its paragraphs exactly."""
     result, data = read_json_product(ws, relpath)
     if not result.ok:
         return result
@@ -281,6 +502,27 @@ def check_scene_plan_product(ws: Path, relpath: str) -> CheckResult:
         paragraphs = scene.get('paragraphs')
         if not isinstance(paragraphs, list) or not paragraphs:
             return CheckResult(STATUS_CORRUPT, f'scene {index} missing paragraphs')
+    script_result, script = read_nonempty_text(ws, 'script.txt')
+    if script_result.ok:  # otherwise script.txt is reported on its own
+        problem = paragraph_coverage_problem(data, len(script_text.paragraphs(script)))
+        if problem:
+            return CheckResult(STATUS_CORRUPT, problem)
+    refs: list[str] = []
+    for index, scene in enumerate(data):
+        candidates = scene.get('material_candidates', [])
+        if not isinstance(candidates, list):
+            return CheckResult(STATUS_CORRUPT, f'scene {index} material_candidates is not a list')
+        for position, candidate in enumerate(candidates):
+            ref = candidate.get('ref') if isinstance(candidate, dict) else None
+            if not isinstance(ref, str) or not ref:
+                return CheckResult(
+                    STATUS_CORRUPT,
+                    f'scene {index} material_candidates[{position}] has no non-empty string ref',
+                )
+            refs.append(ref)
+    problem = material_ref_problem(ws, refs) if refs else None
+    if problem:
+        return CheckResult(STATUS_CORRUPT, problem)
     return OK
 
 
@@ -341,6 +583,36 @@ def check_timeline(ws: Path, relpath: str) -> CheckResult:
             return CheckResult(
                 STATUS_CORRUPT, f'paragraph {index} missing numeric fields: {", ".join(missing)}'
             )
+    return OK
+
+
+def check_directory_product(ws: Path, relpath: str) -> CheckResult:
+    """A directory holding at least one visible file at any depth (hidden files
+    such as .DS_Store do not count)."""
+    path = ws / relpath
+    if not path.exists():
+        return CheckResult(STATUS_MISSING)
+    if not path.is_dir():
+        return CheckResult(STATUS_CORRUPT, 'not a directory')
+    has_file = any(
+        item.is_file() and not any(part.startswith('.') for part in item.relative_to(path).parts)
+        for item in path.rglob('*')
+    )
+    if not has_file:
+        return CheckResult(STATUS_CORRUPT, 'directory has no files')
+    return OK
+
+
+def check_composition_report(ws: Path, relpath: str) -> CheckResult:
+    """composition/check-composition.json: the saved stdout of the composition
+    agent's last check-composition run; its verdict must be pass."""
+    result, data = read_json_product(ws, relpath)
+    if not result.ok:
+        return result
+    if not isinstance(data, dict):
+        return CheckResult(STATUS_CORRUPT, 'JSON root is not an object')
+    if data.get('verdict') != 'pass':
+        return CheckResult(STATUS_CORRUPT, f'verdict must be "pass", got {data.get("verdict")!r}')
     return OK
 
 
@@ -407,16 +679,17 @@ PHASES: list[dict[str, Any]] = [
         'title': '素材 catalog',
         'doc': 'references/phases/05-material-catalog.md',
         'conditional': 'fetch',
-        'products': {'material-catalog.json': check_dict_entries_product},
+        'products': {'material-catalog.json': check_material_catalog},
     },
     {
         'id': '6-script-scene-plan',
         'title': '脚本与场景规划（委派）',
         'doc': 'references/phases/06-script-scene-plan.md',
         'products': {
-            'script.txt': check_text_product,
+            'script.txt': check_script_text,
             'tts-lexicon.json': check_lexicon_product,
             'narration.txt': check_text_product,
+            'narration-offsets.json': check_narration_offsets,
             'scene-plan.json': check_scene_plan_product,
         },
     },
@@ -436,7 +709,10 @@ PHASES: list[dict[str, Any]] = [
         'title': 'composition（委派）',
         'doc': 'references/phases/08-composition.md',
         'products': {
+            'composition/storyboard.md': check_text_product,
             'composition/index.html': check_file_product,
+            'composition/compositions': check_directory_product,
+            'composition/check-composition.json': check_composition_report,
             'composition/renders/final.mp4': check_file_product,
         },
     },
@@ -450,6 +726,9 @@ PHASES: list[dict[str, Any]] = [
         },
     },
 ]
+
+
+PHASES_BY_ID = {phase['id']: phase for phase in PHASES}
 
 
 def phase_applies(phase: dict[str, Any], inputs: dict[str, Any] | None) -> bool:

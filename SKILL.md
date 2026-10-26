@@ -20,7 +20,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 **禁止预读其他 phase 文档。** 每次只读 `pipeline-status` 指出的那一份 phase 文档；除此之外不要打开 `references/phases/` 下的任何其他文件。
 
-1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`（工作区目录省略时默认为当前目录）。它输出一个 JSON：已完成的 phase、下一个 phase、要读的文档、缺失 / 损坏的产物。
+1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`（工作区目录必填）。它输出一个 JSON：已完成的 phase、下一个 phase、要读的文档、缺失 / 损坏的产物。
 2. 只读它指出的那一份 phase 文档（`next_phase.doc`）。
 3. 按该文档执行；文档头部的「输入 / 输出 / 完成判据 / 下一步」是自包含的，不需要查其他 phase 文档。
 4. 回到第 1 步，直到脚本报告 `next_phase` 为 `null`（全部完成）。

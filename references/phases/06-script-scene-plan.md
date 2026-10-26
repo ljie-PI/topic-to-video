@@ -12,7 +12,14 @@ Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（若 `fet
 
 ## 完成判据
 
-全部产物都通过状态脚本的校验（`script.txt` / `narration.txt` 存在非空；`tts-lexicon.json` 是可解析的非空 JSON map，键值都是非空字符串；`scene-plan.json` 是非空列表，每个 scene 有 `scene_id` 和非空 `paragraphs`）；字数与目标时长的偏差在 ±15% 以内；场景规划覆盖 `script.txt` 的全部段落；素材引用都存在于 catalog 中。校验通过后，把旁白和场景摘要交给用户确认，再进入 TTS。
+运行 `pipeline-status` 后，Phase 6 不再是 `next_phase`。状态脚本替你判定：
+
+- `script.txt`、`narration.txt` 存在且非空；`script.txt` 的字数（去掉所有空白）与 `inputs.json` 的 `duration`（分钟）× 60 × 7.5 的偏差在 ±15% 以内；
+- `tts-lexicon.json` 是可解析的非空 JSON map，键值都是非空字符串；
+- `narration-offsets.json` 是 `version` 为 1 的 JSON 对象，带 `segments` 列表；
+- `scene-plan.json` 是非空列表，每个 scene 有 `scene_id` 和整数 `paragraphs`；所有 scene 的段落并集恰好是 `script.txt` 的第 1 段到最后一段；`material_candidates[].ref` 都能在 catalog 里解析（素材 id，或 `<video_id>:<start>-<end>` 且与某个 `selected_clips` 的起止相差都不超过 0.01 秒）；`fetch_materials = false` 时没有 catalog，`material_candidates` 必须是空列表。
+
+通过后，把旁白和场景摘要交给用户确认，再进入 TTS。
 
 ## 下一步
 
@@ -35,15 +42,12 @@ Phase 7（配音与字幕）：只对 `narration.txt` 配音，并生成词级�
 
 ## Phase 6.2 — 主 agent 校验与用户确认
 
-script agent 报告完成后，主 agent 逐项校验（不修改产物，不合格就打回）：
+script agent 报告完成后：
 
-1. **产物齐全**：`script.txt`、`tts-lexicon.json`、`narration.txt`、`narration-offsets.json`、`scene-plan.json` 都存在且非空（状态脚本也会校验）。
-2. **字数 ±15%**：`script.txt` 总字数（去掉空白）与目标时长的换算偏差在 ±15% 以内。换算：`speech_rate=1.4` 下约 7.5 字符/秒（3min ≈ 1350、5min ≈ 2250、10min ≈ 4500）。
-3. **段落全覆盖**：`scene-plan.json` 所有 scene 的 `paragraphs` 并集恰好覆盖 `script.txt` 的全部段落（1 起编号，无遗漏、无越界）。
-4. **素材引用有效**：`material-catalog.json` 存在时，`scene-plan.json` 里所有 `material_candidates[].ref` 都能在 catalog 中找到对应素材 id 或 `selected_clips` 的 `<video_id>:<start>-<end>` 引用；引用了不存在的素材即不合格。
-
-全部通过后，把旁白和场景摘要（每个 scene 的 `scene_id` + `intent`）交给用户确认；用户确认前不要进入 Phase 7。
+1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`。
+2. `next_phase` 仍是 Phase 6 时，把 `next_phase.problems`（产物 → 原因）原样交给 script agent 修复，修完再跑一次。字数、段落覆盖、素材引用都由状态脚本判定：不要自己手算，也不要改产物。
+3. Phase 6 不再是 `next_phase` 后，把旁白和场景摘要（每个 scene 的 `scene_id` + `intent`）交给用户确认；用户确认前不要进入 Phase 7。
 
 ## Phase 6.3 — 朗读稿生成归属
 
-`narration.txt` 与 `narration-offsets.json` 由 **script agent** 在委派任务内作为最后一步生成（handoff 的 Outputs 已列出 `scripts/make-narration.py` 命令；生成是确定性的）。主 agent 不运行 make-narration，只在校验（6.2）里确认这两份产物存在且非空。不要手改 `narration.txt`；要改就改显示稿或词表，然后让 script agent 重新生成（改了显示稿需重新过一遍 6.2 校验与用户确认）。
+`narration.txt` 与 `narration-offsets.json` 由 **script agent** 在委派任务内作为最后一步生成（handoff 的 Outputs 已列出 `scripts/make-narration.py` 命令；生成是确定性的）。主 agent 不运行 make-narration，只靠 6.2 的状态脚本确认这两份产物合格。不要手改 `narration.txt`；要改就改显示稿或词表，然后让 script agent 重新生成（改了显示稿需重新过一遍 6.2 校验与用户确认）。

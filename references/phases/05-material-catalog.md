@@ -10,7 +10,7 @@
 
 ## 完成判据
 
-`material-catalog.json` 存在、非空、JSON 可解析，`entries` 为非空列表；每个素材都有 `id` 和 `semantic_description`（VLM 评分 <5 或偏题的素材已过滤）。
+`material-catalog.json` 存在、非空、JSON 可解析，`entries` 为非空列表；每张图片 / 每个视频都有非空字符串的 `id` 和 `semantic_description`（VLM 评分 <5 或偏题的素材已过滤），且 `id` 在整个 catalog 里唯一（状态脚本会逐项检查）。
 
 ## 下一步
 

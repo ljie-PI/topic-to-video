@@ -12,7 +12,7 @@
 | --- | --- |
 | `source` | 来源：要抓取的 URL、粘贴的文本，或仅一个主题 |
 | `input_mode` | `standard`（默认）/ `topic` / `article` / `text` / `paper`（论文模式） |
-| `duration` | 目标时长，默认 5 分钟 |
+| `duration` | 目标时长，单位分钟，写成数字（默认 `5`）；状态脚本还接受以数字开头的字符串（如 `"5min"`），其他写法都判为损坏 |
 | `language` | 解说语言，默认中文 |
 | `orientation` | `landscape`（横屏 1920×1080）/ `portrait`（竖屏 1080×1920）/ `portrait-3:4`（1080×1440） |
 | `template` | 所选模板，未选为 `null` |

@@ -29,6 +29,7 @@
 
 - composition/storyboard.md：storyboard，每个 scene 写明 intent、所用的 content 区域、素材与 pattern 选择；偏离场景规划处写明理由
 - composition/index.html + composition/compositions/：HyperFrames 工程与子合成
+- composition/check-composition.json：最后一次 check-composition 的 stdout（下面的命令已重定向到它；verdict 必须是 pass）
 - composition/renders/final.mp4：渲染产物
 
 渲染前自查（全部通过再渲染）：
@@ -38,7 +39,8 @@
     --layout modules/layouts/<layout>.json \
     --design-doc modules/designs/<design>/<design>.md \
     --subtitle-units {work_dir}/{topic_name}/transcribe/subtitle-units.json \
-    --timeline {work_dir}/{topic_name}/transcribe/timeline.json
+    --timeline {work_dir}/{topic_name}/transcribe/timeline.json \
+    > {work_dir}/{topic_name}/composition/check-composition.json
 - 每个 scene 的中点截一张快照目检
 
 ## Required References
