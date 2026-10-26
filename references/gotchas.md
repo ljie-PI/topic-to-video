@@ -63,9 +63,11 @@ MinerU 云端可能因为 token、超时或 URL 抓取等原因失败。
 
 ## 6. Chrome CDP 的 profile 锁
 
-Chrome 启动时会复用位于 `{work_dir}/chrome_profile/` 的共享 profile。如果 Chrome 立刻退出，可能是另一个 Chrome 进程正占用该 profile。
+Chrome 启动时使用显式 `--profile-dir {work_dir}/chrome_profile` 指定的共享 profile。如果 Chrome 立刻退出，可能是另一个 Chrome 进程正占用该 profile。
 
-修复：关掉冲突的 Chrome 进程，或传一个不同的 `--profile-dir`。如果 CDP 端口 9222 被占用，传另一个 `--cdp-url`，比如 `http://localhost:9223`。
+如果 CDP 已就绪，脚本会直接 attach；此次传入的 `--profile-dir` / `--headless` / `--chrome-path` / `--no-sandbox` 不会改变正在运行的 Chrome。stderr 会记录 warning，输出 JSON 的 `chrome.ignored_flags` 会列出这些被忽略的参数，`chrome.reused` 为 `true`。
+
+修复：需要应用不同启动配置时，先关闭复用的 Chrome 再运行；profile 锁冲突时关闭冲突进程或换 `--profile-dir`。如果 CDP 端口 9222 被占用，传另一个 `--cdp-url`，比如 `http://localhost:9223`。
 
 ## 7. 视频下载必须顺序执行
 

@@ -25,7 +25,8 @@ Phase 4（素材抓取，若 `fetch_materials = true`）或 Phase 6（脚本与�
 1. **如果用户给了 URL** → 先 `web_fetch` 它。读完整内容。这是整个视频的脊椎。
 2. **先跑 Gemini Deep Research 自检，再提交调研。**
    ```bash
-   scripts/gemini-deep-research.py --self-check
+   scripts/gemini-deep-research.py --self-check \
+     --profile-dir {work_dir}/chrome_profile
    ```
    - 自检只验证登录状态和 Deep Research 入口，不提交任何 prompt。输出 `{"success": true, "self_check": true}` 才算通过。
    - **自检失败（未登录或入口失效，失败 JSON 带 `failed_step`）→ 不要重试提交，直接回退到人工 `web_search` 流程**（下面的 step 4-5 变成主路径），把 Gemini 的问题告诉用户。
@@ -35,7 +36,8 @@ Phase 4（素材抓取，若 `fetch_materials = true`）或 Phase 6（脚本与�
    ```bash
    scripts/gemini-deep-research.py \
      --prompt "关于 [topic] 的全面综述：历史、关键进展、重要人物、技术细节、最新动态" \
-     --output-dir {work_dir}/{topic_name}/
+     --output-dir {work_dir}/{topic_name}/ \
+     --profile-dir {work_dir}/chrome_profile
    ```
    - 脚本会**新开一个浏览器标签页**执行，不会导航走你已打开的标签页。
    - 输出：`gemini_deep_research.md`（完整报告）+ `gemini_deep_research_sources.json`（引用的 URL）
@@ -45,7 +47,8 @@ Phase 4（素材抓取，若 `fetch_materials = true`）或 Phase 6（脚本与�
    - **超时或中断后续跑（不白跑）：** 默认完成超时是 1800 秒；超时或进程被杀后，从"等待完成"（step 9）那一步续跑，带上 state 文件里保存的 URL：
 
      ```bash
-     scripts/gemini-deep-research.py --output-dir {work_dir}/{topic_name}/ --resume
+     scripts/gemini-deep-research.py --output-dir {work_dir}/{topic_name}/ --resume \
+       --profile-dir {work_dir}/chrome_profile
      ```
    - **如果它失败了（selector timeout、运行时错误或其他步骤失败）：** 检查错误 JSON 里的 `failed_step` —— 提交前（step ≤ 6）的失败可以用 `--start-from-step N` 重试；提交后的失败用上一条的续跑命令。如果重试仍不通，回退到人工 `web_search` 流程（下面的 step 4-5 变成主路径），但不要让整个项目卡在消费级 Gemini UI 上。
 4. **找空缺。** 不论 Gemini 跑没跑成功，检查：哪些数字、人名、日期或技术细节缺失或没核实？列出来。

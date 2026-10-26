@@ -65,7 +65,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 ### 环境与工具
 
 10. **跑 Python 前一律 `source .venv/bin/activate`。** 用 `python3`。
-11. **Chrome over CDP。** 共享 profile 位于 `{work_dir}/chrome_profile/`。
+11. **Chrome over CDP。** `harvest-pages.py` 和 `gemini-deep-research.py` 必须显式传 `--profile-dir {work_dir}/chrome_profile`。复用已运行的 CDP 时，启动参数不会生效；检查 stderr warning 和输出 JSON 的 `chrome.ignored_flags`，需要新配置就先关闭复用的 Chrome。
 12. **视频下载顺序执行。** yt-dlp 并行时会被限速。
 
 ## 输出约定

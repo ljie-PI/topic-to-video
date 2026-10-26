@@ -16,6 +16,7 @@ def run_resume(output_dir: Path) -> subprocess.CompletedProcess[str]:
             sys.executable, str(SCRIPT),
             '--output-dir', str(output_dir),
             '--resume',
+            '--profile-dir', str(output_dir / 'profile'),
             '--chrome-path', str(output_dir / 'missing-chrome'),
             '--cdp-url', 'http://127.0.0.1:9',
         ],
@@ -25,6 +26,26 @@ def run_resume(output_dir: Path) -> subprocess.CompletedProcess[str]:
         timeout=30,
         check=False,
     )
+
+
+def test_self_check_requires_profile_dir(tmp_path: Path):
+    proc = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), '--self-check',
+            '--cdp-url', 'http://127.0.0.1:1',
+            '--chrome-path', str(tmp_path / 'missing-chrome'),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert proc.returncode == 2
+    result = json.loads(proc.stdout)
+    assert result['success'] is False
+    assert '--profile-dir' in result['error']
 
 
 def test_resume_with_missing_state_file_returns_json_error_without_chrome(tmp_path: Path):

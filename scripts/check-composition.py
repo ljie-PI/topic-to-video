@@ -54,32 +54,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import chrome_cdp
 import cli
 from timeline_scenes import normalize_scenes
 
 TOOL_NAME = 'check-composition'
-
-CHROME_CANDIDATES_LINUX = [
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-]
-CHROME_CANDIDATES_MAC = [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
-]
-CHROME_CANDIDATES_WIN = [
-    os.path.expandvars(r'%ProgramFiles%\Google\Chrome\Application\chrome.exe'),
-    os.path.expandvars(r'%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe'),
-    os.path.expandvars(r'%LocalAppData%\Google\Chrome\Application\chrome.exe'),
-]
 
 DEFAULT_VIEWPORT = '1920x1080'
 RECT_TOLERANCE_PX = 2.0
@@ -223,28 +206,6 @@ def resolve_composition_path(raw_path: str) -> Tuple[Path, Path]:
         composition_dir = path / 'composition'
         return composition_dir, composition_dir / 'index.html'
     raise ValueError(f'Could not find composition/index.html from {raw_path!r}')
-
-
-def find_chrome(explicit: Optional[str]) -> Optional[str]:
-    if explicit:
-        return explicit if Path(explicit).is_file() else None
-    env_path = os.environ.get('CHROME_PATH')
-    if env_path and Path(env_path).is_file():
-        return env_path
-    import platform
-
-    system = platform.system()
-    candidates = (
-        CHROME_CANDIDATES_MAC
-        if system == 'Darwin'
-        else CHROME_CANDIDATES_WIN
-        if system == 'Windows'
-        else CHROME_CANDIDATES_LINUX
-    )
-    for candidate in candidates:
-        if candidate and Path(candidate).is_file():
-            return candidate
-    return None
 
 
 # --- region geometry ----------------------------------------------------------------
@@ -705,33 +666,21 @@ def main() -> None:
         fail(str(exc), exit_code=1)
 
     try:
-        # DOM discovery and check snapshots share one browser session.
-        from playwright.sync_api import sync_playwright
-
-        executable_path = find_chrome(args.chrome_path)
-        if not executable_path:
-            raise RuntimeError('Chrome executable not found; set CHROME_PATH or pass --chrome-path')
+        # DOM discovery and check snapshots share one isolated browser session.
         index_url = index_path.as_uri()
         log(f'Loading {index_url}')
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(
-                executable_path=executable_path,
-                headless=True,
-                args=['--allow-file-access-from-files'],
-            )
-            try:
-                page = browser.new_page(viewport={'width': viewport[0], 'height': viewport[1]})
-                page.goto(index_url, wait_until='networkidle', timeout=30000)
-                page.wait_for_timeout(300)
-                scenes = resolve_scenes(page, timeline_scenes)
-                checks = [
-                    {'scene_id': scene['scene_id'], 'time': time}
-                    for scene in scenes
-                    for time in scene_check_times(scene)
-                ]
-                snapshots = page.evaluate(load_snapshot_js(), {'checks': checks})
-            finally:
-                browser.close()
+        with chrome_cdp.launch_isolated(args.chrome_path) as chrome_session:
+            browser = chrome_session.browser
+            page = browser.new_page(viewport={'width': viewport[0], 'height': viewport[1]})
+            page.goto(index_url, wait_until='networkidle', timeout=30000)
+            page.wait_for_timeout(300)
+            scenes = resolve_scenes(page, timeline_scenes)
+            checks = [
+                {'scene_id': scene['scene_id'], 'time': time}
+                for scene in scenes
+                for time in scene_check_times(scene)
+            ]
+            snapshots = page.evaluate(load_snapshot_js(), {'checks': checks})
 
         regions = RegionIndex(layout)
         report = build_report(

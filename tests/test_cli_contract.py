@@ -58,6 +58,8 @@ def test_gemini_self_check_runtime_error_is_json_without_output_dir(tmp_path: Pa
     proc = run_script(
         SCRIPTS_DIR / 'gemini-deep-research.py',
         '--self-check',
+        '--profile-dir',
+        str(tmp_path / 'chrome_profile'),
         '--chrome-path',
         '/nonexistent',
         '--cdp-url',
