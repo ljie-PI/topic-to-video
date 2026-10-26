@@ -70,7 +70,7 @@ TTS 朗读稿由 `scripts/make-narration.py` 按词表确定性生成，不要�
    - `intent`：这场景要帮观众理解什么。
    - `template_scene` / `pattern_hints`：可选。选了模板时，`cues` 按模板的旁白要求（`modules/templates/<template>/narration.md`）摘录需要的锚点句——这些句子会用来从配音里算出秒数，务必原样取自显示稿。
    - `facts`：这一段旁白依赖的关键事实（数字、实体、列表、代码）。
-   - `material_candidates`：候选素材引用，每项含 `ref`（catalog 素材 id 或 `<video_id>:<start>-<end>` clip 引用）、`score`（1–10）、`reason`。**只是候选，不做排他分配**；同一素材可以被多个 scene 候选。引用的素材 id 必须存在于 `material-catalog.json`；clip 引用的起止时间要与 `selected_clips` 里的某一项相差不超过 0.01 秒；`fetch_materials = false` 时没有 catalog，留空列表。素材 id 的引用格式见 `references/phases/05-material-catalog.md`。
+   - `material_candidates`：候选素材引用，每项含 `ref`（catalog 素材 id 或 `<video_id>:<start>-<end>` clip 引用）、`score`（1–10）、`reason`。**只是候选，不做排他分配**；同一素材可以被多个 scene 候选。引用的素材 id 必须存在于 `material-catalog.json`；clip 引用必须写成 `<video_id>:<start>-<end>`（秒，数字间不加空格），起止时间要与 `selected_clips` 里的某一项相差不超过 0.01 秒；`fetch_materials = false` 时没有 catalog，留空列表。素材 id 的引用格式见 `references/phases/05-material-catalog.md`。
    - **不包含** `layout_role` / `visual_role` / `display_text`——那是 composition 阶段的设计空间。
 
 ## 完成后

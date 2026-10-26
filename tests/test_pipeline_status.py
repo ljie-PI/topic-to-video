@@ -283,17 +283,17 @@ def test_catalog_video_without_description_is_corrupt(tmp_path: Path):
     assert_catalog_corrupt(tmp_path, catalog, 'vid_001', 'semantic_description')
 
 
-def test_catalog_duplicate_id_across_images_and_videos_is_corrupt(tmp_path: Path):
-    assert_catalog_corrupt(tmp_path, catalog_with(id='vid_001'), 'duplicate', 'vid_001')
-
-
-def test_catalog_duplicate_id_across_entries_is_corrupt(tmp_path: Path):
+def test_catalog_ids_repeating_across_entries_are_accepted(tmp_path: Path):
+    # harvest-pages.py numbers each page's images img_001, img_002, ... from 1,
+    # so two pages of one project legitimately both hold an img_001.
     catalog = catalog_with()
     other = json.loads(json.dumps(catalog['entries'][0]))
     other['slug'] = 'other'
-    other['videos'] = []
     catalog['entries'].append(other)
-    assert_catalog_corrupt(tmp_path, catalog, 'duplicate', 'img_001')
+    complete_through_harvest(tmp_path)
+    write_json(tmp_path / 'material-catalog.json', catalog)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert '5-material-catalog' in result['completed_phases']
 
 
 def test_catalog_images_that_are_not_a_list_are_corrupt(tmp_path: Path):
@@ -546,6 +546,15 @@ def test_scene_plan_scenes_may_share_a_paragraph(tmp_path: Path):
     assert '6-script-scene-plan' in result['completed_phases']
 
 
+def test_scene_plan_paragraph_types_are_checked_without_script_txt(tmp_path: Path):
+    complete_through_script(tmp_path)
+    (tmp_path / 'script.txt').unlink()
+    write_json(tmp_path / 'scene-plan.json', [scene('s1', ['1', 2.5])])
+    result = parse_result(run_cli(str(tmp_path)))
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert 'integer' in result['next_phase']['problems']['scene-plan.json']
+
+
 def test_scene_plan_is_not_judged_against_a_missing_script(tmp_path: Path):
     complete_through_script(tmp_path)
     (tmp_path / 'script.txt').unlink()
@@ -592,6 +601,10 @@ def test_scene_plan_ref_missing_from_catalog_is_corrupt(tmp_path: Path):
         'vid_001:12.0-18.5-20',
         'vid_001:',
         ':12.0-18.5',
+        'vid_001:12.0 - 18.5',  # float() would accept these; the documented form has no spaces
+        'vid_001: 12-18.5',
+        'vid_001:+12-18.5',
+        'vid_001:1_2-18.5',
     ],
 )
 def test_scene_plan_clip_ref_that_matches_no_selected_clip_is_corrupt(tmp_path: Path, ref: str):
@@ -991,7 +1004,7 @@ def test_removed_design_accepted_from_workspace_copy(tmp_path: Path):
     assert result['next_phase']['id'] != '1-gather-inputs'
 
 
-@pytest.mark.parametrize('duration', [5, 7.5, '5min', ' 10 分钟', '3.5'])
+@pytest.mark.parametrize('duration', [5, 7.5, '5min', ' 10 分钟', '3.5', '5 minutes', '2 mins', '4分'])
 def test_duration_in_minutes_is_accepted(tmp_path: Path, duration):
     complete_through_research(tmp_path, duration=duration)
     result = parse_result(run_cli(str(tmp_path)))
@@ -999,7 +1012,10 @@ def test_duration_in_minutes_is_accepted(tmp_path: Path, duration):
     assert result['next_phase']['id'] == '4-material-harvest'
 
 
-@pytest.mark.parametrize('duration', ['five minutes', '', 'min5', 0, -5, '0min', True, None, [5]])
+@pytest.mark.parametrize(
+    'duration',
+    ['five minutes', '', 'min5', 0, -5, '0min', True, None, [5], '90s', '30秒', '1h', '3-5 min', '5 min left'],
+)
 def test_duration_without_a_minutes_number_is_corrupt_inputs(tmp_path: Path, duration):
     complete_through_research(tmp_path, duration=duration)
     result = parse_result(run_cli(str(tmp_path)))

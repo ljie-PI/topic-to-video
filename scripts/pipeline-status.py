@@ -74,8 +74,13 @@ SCRIPT_LENGTH_TOLERANCE = 0.15
 # selected_clips entry to within this many seconds on both ends.
 CLIP_REF_TOLERANCE_S = 0.01
 
-# inputs.json's duration is minutes: a number, or a string that starts with one ("5min").
-DURATION_PREFIX = re.compile(r'^\s*(\d+(?:\.\d+)?)')
+# inputs.json's duration is minutes: a number, or a string of a number plus an
+# optional minutes unit ("5min", "5 分钟"). Anything else ("90s", "1h", "3-5 min")
+# is rejected rather than read as that many minutes.
+DURATION_TEXT = re.compile(r'^\s*(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|分钟|分)?\s*$', re.IGNORECASE)
+
+# The window of a clip ref "<video_id>:<start>-<end>", in seconds, written exactly so.
+CLIP_WINDOW = re.compile(r'^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$')
 
 
 @dataclass
@@ -206,14 +211,13 @@ def entry_label(index: int, entry: Any) -> str:
 
 def check_material_catalog(ws: Path, relpath: str) -> CheckResult:
     """material-catalog.json: non-empty `entries`; every image / video has a
-    non-empty string `id` and `semantic_description` (Phase 5's contract);
-    an id is unique across the whole catalog because scene-plan refs and the
-    composition agent resolve materials by id alone."""
+    non-empty string `id` and `semantic_description` (Phase 5's contract).
+    ids are not required to be unique: harvest-pages numbers each page's
+    images from img_001, so the same id recurs across entries."""
     entries_result = check_dict_entries_product(ws, relpath)
     if not entries_result.ok:
         return entries_result
     _, data = read_json_product(ws, relpath)
-    first_seen: dict[str, str] = {}
     for index, entry in enumerate(data['entries']):
         label = entry_label(index, entry)
         if not isinstance(entry, dict):
@@ -233,12 +237,6 @@ def check_material_catalog(ws: Path, relpath: str) -> CheckResult:
                             STATUS_CORRUPT,
                             f'{where} (id {item.get("id")!r}) has no non-empty string {field}',
                         )
-                if item['id'] in first_seen:
-                    return CheckResult(
-                        STATUS_CORRUPT,
-                        f'duplicate id {item["id"]!r} at {where} (first used at {first_seen[item["id"]]})',
-                    )
-                first_seen[item['id']] = where
     return OK
 
 
@@ -280,13 +278,10 @@ def ref_resolves(ref: str, index: CatalogIndex) -> bool:
     video_id, colon, window = ref.rpartition(':')
     if not colon or video_id not in index.clips:
         return False
-    bounds = window.split('-')
-    if len(bounds) != 2:
+    bounds = CLIP_WINDOW.match(window)
+    if not bounds:
         return False
-    try:
-        start, end = float(bounds[0]), float(bounds[1])
-    except ValueError:
-        return False
+    start, end = float(bounds.group(1)), float(bounds.group(2))
     return any(
         abs(start - clip_start) <= CLIP_REF_TOLERANCE_S and abs(end - clip_end) <= CLIP_REF_TOLERANCE_S
         for clip_start, clip_end in index.clips[video_id]
@@ -329,7 +324,7 @@ def duration_minutes(value: Any) -> float | None:
     if isinstance(value, (int, float)):
         minutes = float(value)
     elif isinstance(value, str):
-        match = DURATION_PREFIX.match(value)
+        match = DURATION_TEXT.match(value)
         minutes = float(match.group(1)) if match else 0.0
     else:
         return None
@@ -381,7 +376,7 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
         return CheckResult(
             STATUS_CORRUPT,
             'field duration must be the target length in minutes (分钟数): a positive number '
-            f'such as 5, or a string starting with one such as "5min", got {data["duration"]!r}',
+            f'such as 5, or a number with a minutes unit such as "5min", got {data["duration"]!r}',
         ), data
     problem = design_problem(ws, data['design'])
     if problem:
@@ -461,17 +456,22 @@ def check_narration_offsets(ws: Path, relpath: str) -> CheckResult:
     return OK
 
 
-def paragraph_coverage_problem(scenes: list[dict[str, Any]], paragraph_count: int) -> str | None:
-    """Why the scenes' paragraph numbers are not exactly {1..paragraph_count}, or None.
-
-    Scenes may share a paragraph (a scene split mid-paragraph); only the union counts.
-    """
-    covered: set[int] = set()
+def paragraph_type_problem(scenes: list[dict[str, Any]]) -> str | None:
+    """Why a scene's `paragraphs` holds something other than integers, or None."""
     for index, scene in enumerate(scenes):
         for number in scene['paragraphs']:
             if isinstance(number, bool) or not isinstance(number, int):
                 return f'scene {index} paragraphs must be integers, got {number!r}'
-            covered.add(number)
+    return None
+
+
+def paragraph_coverage_problem(scenes: list[dict[str, Any]], paragraph_count: int) -> str | None:
+    """Why the scenes' paragraph numbers are not exactly {1..paragraph_count}, or None.
+
+    Scenes may share a paragraph (a scene split mid-paragraph); only the union counts.
+    Assumes paragraph_type_problem found nothing.
+    """
+    covered = {number for scene in scenes for number in scene['paragraphs']}
     missing = sorted(set(range(1, paragraph_count + 1)) - covered)
     out_of_range = sorted(number for number in covered if not 1 <= number <= paragraph_count)
     if not missing and not out_of_range:
@@ -502,6 +502,9 @@ def check_scene_plan_product(ws: Path, relpath: str) -> CheckResult:
         paragraphs = scene.get('paragraphs')
         if not isinstance(paragraphs, list) or not paragraphs:
             return CheckResult(STATUS_CORRUPT, f'scene {index} missing paragraphs')
+    problem = paragraph_type_problem(data)
+    if problem:
+        return CheckResult(STATUS_CORRUPT, problem)
     script_result, script = read_nonempty_text(ws, 'script.txt')
     if script_result.ok:  # otherwise script.txt is reported on its own
         problem = paragraph_coverage_problem(data, len(script_text.paragraphs(script)))

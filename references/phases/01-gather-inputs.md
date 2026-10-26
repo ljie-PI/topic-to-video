@@ -12,7 +12,7 @@
 | --- | --- |
 | `source` | 来源：要抓取的 URL、粘贴的文本，或仅一个主题 |
 | `input_mode` | `standard`（默认）/ `topic` / `article` / `text` / `paper`（论文模式） |
-| `duration` | 目标时长，单位分钟，写成数字（默认 `5`）；状态脚本还接受以数字开头的字符串（如 `"5min"`），其他写法都判为损坏 |
+| `duration` | 目标时长，单位分钟，写成数字（默认 `5`）；也接受数字加分钟单位的字符串（`"5min"`、`"5 分钟"`）。`"90秒"`、`"1h"`、`"3-5分钟"` 这类写法不接受，会被判为损坏 |
 | `language` | 解说语言，默认中文 |
 | `orientation` | `landscape`（横屏 1920×1080）/ `portrait`（竖屏 1080×1920）/ `portrait-3:4`（1080×1440） |
 | `template` | 所选模板，未选为 `null` |
@@ -24,7 +24,7 @@
 
 ## 完成判据
 
-`inputs.json` 存在、非空、JSON 可解析，且上表字段齐全（`design` 必须是 `modules/designs/` 下现有的主题，旧项目里已删除的主题会被判为不合格、回到本 phase 重选；`fetch_materials` 必须是布尔；`qa_level` 可缺省，缺省视为 `standard`，填写时必须是三档之一）。
+`inputs.json` 存在、非空、JSON 可解析，且上表字段齐全（`design` 必须是 `modules/designs/` 下现有的主题，旧项目里已删除的主题会被判为不合格、回到本 phase 重选；`fetch_materials` 必须是布尔；`duration` 必须是分钟数；`qa_level` 可缺省，缺省视为 `standard`，填写时必须是三档之一）。
 
 ## 下一步
 
@@ -55,4 +55,4 @@
 
 **如果已经存在一个姊妹项目**（例如用户说 "用和 `claude-code-video/` 一样的风格"），把该项目的 `composition-instructions.md`（旧的 `style-prompt.md` 视为其中一部分）复制进本项目工作区，并在对话中向用户确认要选同一个 design / layout；外观 token 只从所选 design 的文档取，不再复制任何 DESIGN.md。
 
-全部确认后，把结果落盘为 `inputs.json`，再运行 `scripts/pipeline-status.py` 进入下一个 phase。续跑 / 回退永远以状态脚本的输出为准，不要自己扫描工作区猜进度。
+全部确认后，把结果落盘为 `inputs.json`，再运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}` 进入下一个 phase。续跑 / 回退永远以状态脚本的输出为准，不要自己扫描工作区猜进度。

@@ -6,7 +6,7 @@ Phase 7 的 `voice_clone/narration.mp3` + `transcribe/subtitle-units.json` / `tr
 
 ## 输出
 
-`composition/storyboard.md` + `composition/index.html` + `composition/compositions/` + `composition/check-composition.json`（最后一次 check-composition 的 stdout）+ `composition/renders/final.mp4`。
+`composition/storyboard.md` + `composition/index.html` + `composition/compositions/` + `composition/check-composition.json`（check-composition 用 `--output` 写出的报告）+ `composition/renders/final.mp4`。
 
 ## 完成判据
 
