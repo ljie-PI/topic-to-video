@@ -114,15 +114,9 @@ def test_local_page_loads_once_and_manifest_contains_image(
         assert entry['success'] is True
         recording = entry['scroll_recording']
         assert recording is not None
-        if recording['method'] == 'cdp_screencast':
-            # A primary-recorder failure may reload once for the CDP fallback.
-            assert 'trying CDP screencast fallback' in proc.stderr
-            expected_loads = 2
-        else:
-            assert recording['method'] == 'playwright'
-            expected_loads = 1
-        assert server.page_requests == expected_loads
-        assert proc.stderr.count(f'loaded {url}') == expected_loads
+        assert recording['method'] == 'playwright'
+        assert server.page_requests == 1
+        assert proc.stderr.count(f'loaded {url}') == 1
         assert manifest['chrome'] == {
             'cdp_url': cdp_url,
             'reused': False,
