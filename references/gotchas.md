@@ -6,13 +6,13 @@
 
 本工作流中，不要用 `npx hyperframes transcribe` 处理中文解说。历史 run 多次遇到模型下载失败和 UTF-8 输出乱码。
 
-修复：用 `scripts/transcribe.py`。后端由环境变量选择，参数和依赖见 `scripts/transcribe.py --help`。脚本输出带词级时间戳的句子列表（transcript schema 见 Phase 7 的接口契约）。
+修复：用 `scripts/transcribe.py`。后端由环境变量选择，参数和依赖见 `scripts/transcribe.py` 的顶部说明。脚本输出带词级时间戳的句子列表（transcript schema 见 Phase 7 的接口契约）。
 
 如果所有已配置的后端都不可用，问用户要一份外部 transcript，而不是悄悄切换到 HyperFrames 的 transcribe。
 
 ## 1b. ASR 的数字归一化（ITN）
 
-transcript 里的数字可能是中文或阿拉伯写法（取决于后端与开关），下游对齐会把两者视为等价，不做假设。数字归一化的行为、依赖与开关见 `scripts/transcribe.py --help`。
+transcript 里的数字可能是中文或阿拉伯写法（取决于后端与开关），下游对齐会把两者视为等价，不做假设。数字归一化的行为、依赖与开关见 `scripts/transcribe.py` 的顶部说明。
 
 做文本对比 / CER 评测时应对两侧都做同样归一化，否则数字格式差异会让分数虚高。
 
@@ -28,17 +28,17 @@ python3 scripts/voice-clone.py \
   --output-dir {work_dir}/{topic_name}/voice_clone
 ```
 
-后端由环境变量选择，参考音色、参数和依赖见 `scripts/voice-clone.py --help`。
+后端由环境变量选择，参考音色、参数和依赖见 `scripts/voice-clone.py` 的顶部说明。
 
 ## 2b. 参考音频需要 transcript
 
-声音克隆除了参考 WAV 还需要它对应的逐字稿。解析顺序、缓存位置与自动转写行为见 `scripts/voice-clone.py --help`。
+声音克隆除了参考 WAV 还需要它对应的逐字稿。解析顺序、缓存位置与自动转写行为见 `scripts/voice-clone.py` 的顶部说明。
 
 坑（长 narration 内存不足）：合成较长 narration 时可能在高负载机器上 OOM。`voice-clone.py` 已做缓解；仍失败时可把 narration 分段合成再用 ffmpeg 拼接，或切到其他后端。
 
 ## 2c. 硬件精度注意事项
 
-后端特定的硬件精度选择（如低精度推理、避免不支持的 kernel）见 `scripts/voice-clone.py --help` 与 `scripts/transcribe.py --help`。
+后端特定的硬件精度选择（如低精度推理、避免不支持的 kernel）见 `scripts/voice-clone.py` 与 `scripts/transcribe.py` 的顶部说明。
 
 ## 3. 全角中文冒号可能引入 TTS 停顿
 
@@ -110,7 +110,7 @@ scripts/merge-paper-manifest.py \
 
 常见修复：
 - `playwright` import 出错：`pip install playwright`
-- TTS / ASR 后端依赖 import 出错：按 `scripts/voice-clone.py --help` / `scripts/transcribe.py --help` 安装对应后端的包
+- TTS / ASR 后端依赖 import 出错：按 `scripts/voice-clone.py` / `scripts/transcribe.py` 的顶部说明安装对应后端的包
 - `mineru` 缺失：`pip install "mineru[pipeline]"`
 
 ## 12. Paper mode 不要跳过主论文解析

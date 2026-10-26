@@ -42,7 +42,7 @@ Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产
      {work_dir}/{topic_name}/extract_frames/<slug>/<video-name>/ \
      --max-frames 16
    ```
-   帧文件名带时间戳（如 `frame_t00.5s.jpg`），可以反向映射到 clip 区间。
+   帧文件名带时间戳（如 `frame_t0012.50s.jpg`）。输出 JSON 的 `interval_s` 是采样间隔，`frames` 中每项含绝对路径 `path` 和源视频时间 `t_s`（秒），可以反向映射到 clip 区间。
 
 2. **解析字幕**：对每个带 sidecar 字幕文件的已下载视频：
    ```bash
@@ -53,7 +53,7 @@ Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产
    - 对图片（光栅图和 SVG）：按 URL 聚合图片，每次调用最多放 10 张；同一 URL 超过 10 张时拆成多个 batch，且共享同一话题 context 摘要。prompt 询问"这张图在讲解该话题时可以用来说明什么论点或概念"、视觉风格、1-10 的适配度评分，并根据 `width` / `height` 和画面内容给出布局能力提示：是否适合 `media_first`、`viewport_reveal`、`band`、`detail_callout`、`comparison_pair` 等。对 tall / ultra-tall 素材，写入 `viewport_reveal` affordance，并标注 `focal_region`、start / mid / end 关键区域或 avoid-region；可用 0-1 归一化坐标。
    - 对每个视频：一个 batch 跑在抽出的帧上。prompt 额外询问最相关片段的起止时间戳，以及该片段适合说明话题的哪个方面；同时判断该 clip 是否适合 `video_first`、`viewport_reveal`、`comparison_pair` 或 `comparison_sequence`，并指出关键动作 / UI 区域或应避免遮挡的区域。
    - **Mode 1（显式 VLM）：** 若已设置 `VLM_API_KEY` + `VLM_BASE_URL` + `VLM_MODEL` → 直接走 OpenAI 兼容的调用，话题 context 摘要作为 system prompt 或 user prompt 前缀注入。
-   - **Mode 2（主 agent 直接分析）：** 否则 → 脚本返回 `delegate_to_agent` 和图片路径列表。此时由**主 agent 自身的多模态视觉能力**（Read 图片文件，让模型直接看图）完成分析——使用与主 agent 其他推理相同的模型，不调用任何外部工具。分析时把话题 context 摘要带入 prompt，与 Mode 1 保持一致，产出同样格式的 `semantic_description` 和 `score`，并手动写入 `material-catalog.json`。
+   - **Mode 2（主 agent 直接分析）：** 否则 → 脚本返回 `delegate_to_agent`、图片路径列表和 `context`（话题摘要原文）。此时由**主 agent 自身的多模态视觉能力**（Read 图片文件，让模型直接看图）完成分析——使用与主 agent 其他推理相同的模型，不调用任何外部工具。分析时使用返回的 `context`，与 Mode 1 保持一致，产出同样格式的 `semantic_description` 和 `score`，并手动写入 `material-catalog.json`。
 
    **Paper-origin entries（`source_type: "paper_pdf"`）：** 直接把 PDF caption（`paper_metadata.figure_captions` / `table_captions`）作为 `semantic_description`，默认 `score: 8`。只对没有 caption 的论文素材跑 VLM。
 

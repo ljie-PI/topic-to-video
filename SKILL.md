@@ -40,8 +40,8 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 ### TTS / ASR
 
-2. **TTS 后端由环境变量选择。** 配音脚本、参考音色、参数和依赖见 `scripts/voice-clone.py --help`。**绝不**使用 `npx hyperframes tts`。
-3. **ASR 后端由环境变量选择。** transcript 必须带词级时间戳（schema 见 Phase 7 文档的接口契约）。后端、参数和依赖见 `scripts/transcribe.py --help`；直对齐后端（voice-clone.py 的 mlx，或 qwen3tts + `--emit-transcript`）由配音脚本直接写出 transcript，跳过 ASR。
+2. **TTS 后端由环境变量选择。** 配音脚本、参考音色、参数和依赖见 `scripts/voice-clone.py` 的顶部说明。**绝不**使用 `npx hyperframes tts`。
+3. **ASR 后端由环境变量选择。** transcript 必须带词级时间戳（schema 见 Phase 7 文档的接口契约）。后端、参数和依赖见 `scripts/transcribe.py` 的顶部说明；直对齐后端（voice-clone.py 的 mlx，或启用转写的 qwen3tts）由配音脚本直接写出 transcript，跳过 ASR。
    ↳ DO NOT：用 `npx hyperframes transcribe`；接受没有词级时间戳的 transcript。
 
 ### 字体与文本
@@ -80,8 +80,8 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 | --- | --- | --- |
 | `pipeline-status.py` | 扫描工作区，输出已完成 / 下一个 phase、要读的文档、缺失或损坏的产物 | — |
 | `fonts-download.sh` | 把仓库里预置的 WOFF2 字体（`resources/fonts/<design>/`）装进工程，不联网；`--refresh` 才从 Google Fonts 重新下载（维护用） | — |
-| `voice-clone.py` | TTS：把 `narration.txt` 合成 `voice_clone/narration.mp3`；后端由环境变量选择 | 见 `--help` |
-| `transcribe.py` | ASR：输出带词级时间戳的 transcript；后端由环境变量选择 | 见 `--help` |
+| `voice-clone.py` | TTS：把 `narration.txt` 合成 `voice_clone/narration.mp3`；后端由环境变量选择 | 见脚本顶部说明 |
+| `transcribe.py` | ASR：输出带词级时间戳的 transcript；后端由环境变量选择 | 见脚本顶部说明 |
 | `align-narration.py` | 把 ASR 时间对齐回显示稿，生成字幕单元（subtitle-units.json）与时间轴（timeline.json） | — |
 | `check-composition.py` | composition 渲染前检查：越界 / reserved 区域侵入 / 文字溢出 / 资源与字体加载 / 字号下限 / 字幕一致性 | `playwright`、系统 Chrome |
 | `check-render.py` | 渲染后确定性检查：音轨与时长偏差 / 朝向分辨率 / 黑屏与黑尾 / 冻结（发现映射回 scene_id） | `ffmpeg` |
@@ -99,4 +99,4 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 **系统依赖：** `ffmpeg`、`playwright`（`pip install playwright`，**不要**执行 `playwright install chromium`）、系统 Chrome（自动检测）、`yt-dlp`、带 venv 的 `python3`。
 
-**Python 包（装到 venv 里）：** 各后端自己的参数与依赖（Python 包、环境变量、硬件要求）只写在两个脚本自己的说明里：`scripts/voice-clone.py --help` 与 `scripts/transcribe.py --help`。此外是所有辅助脚本 import 的依赖。
+**Python 包（装到 venv 里）：** 各后端自己的参数与依赖（Python 包、环境变量、硬件要求）只写在 `scripts/voice-clone.py` 与 `scripts/transcribe.py` 的顶部说明里。此外是所有辅助脚本 import 的依赖。

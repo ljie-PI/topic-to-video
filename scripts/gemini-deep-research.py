@@ -22,10 +22,7 @@ and is also embedded in the failure JSON ("session_url") of any later error
 (e.g. timeout).  To resume from the wait-for-completion step after a timeout
 or interruption, re-run with the saved URL:
 
-  python3 gemini-deep-research.py \\
-    --prompt "..." --output-dir ... \\
-    --start-from-step 9 \\
-    --page-url "$(python3 -c 'import json;print(json.load(open("STATE_FILE"))["session_url"])')"
+  python3 gemini-deep-research.py --output-dir ... --resume
 
 Usage:
   python3 gemini-deep-research.py \\
@@ -126,6 +123,8 @@ def parse_args() -> argparse.Namespace:
                    help='Only verify login state and Deep Research entry; submit no prompt.')
     p.add_argument('--state-file', default=None,
                    help='State file for the session URL (default <output-dir>/gemini_deep_research_state.json).')
+    p.add_argument('--resume', action='store_true',
+                   help='Resume step 9 using session_url from the state file; --prompt is optional.')
     p.add_argument('--cdp-url', default=DEFAULT_CDP_URL,
                    help=f'CDP endpoint (default {DEFAULT_CDP_URL}).')
     p.add_argument('--profile-dir', default=DEFAULT_PROFILE_DIR,
@@ -145,11 +144,30 @@ def parse_args() -> argparse.Namespace:
                    help='Existing Gemini conversation URL to resume from.')
     args = p.parse_args()
     if not args.self_check:
-        missing = [name for name, value in (('--prompt', args.prompt), ('--output-dir', args.output_dir))
-                   if not value]
+        required = [('--output-dir', args.output_dir)]
+        if not args.resume:
+            required.append(('--prompt', args.prompt))
+        missing = [name for name, value in required if not value]
         if missing:
             p.error(f'the following arguments are required (unless --self-check): {", ".join(missing)}')
     return args
+
+
+def apply_resume_state(args: argparse.Namespace) -> None:
+    if not args.resume:
+        return
+    state_path = Path(args.state_file).expanduser() if args.state_file else (
+        Path(args.output_dir).expanduser() / 'gemini_deep_research_state.json'
+    )
+    try:
+        state = json.loads(state_path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f'Could not read resume state file {state_path}: {exc}')
+    session_url = state.get('session_url') if isinstance(state, dict) else None
+    if not isinstance(session_url, str) or not session_url.strip():
+        fail(f'Resume state file {state_path} does not contain session_url')
+    args.start_from_step = 9
+    args.page_url = session_url
 
 
 # ---------------------------------------------------------------------------
@@ -674,6 +692,7 @@ def run(args: argparse.Namespace) -> None:
 
 def main() -> None:
     args = parse_args()
+    apply_resume_state(args)
     run(args)
 
 

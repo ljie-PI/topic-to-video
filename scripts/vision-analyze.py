@@ -20,7 +20,7 @@ Two modes, selected by environment:
 Usage:
   python3 vision-analyze.py --prompt "描述内容并给出 1-10 的质量评分" \
       --images frame_001.jpg frame_002.jpg https://example.com/img.jpg \
-      [--model <model>] [--detail low|high|auto]
+      [--context-file topic-context.txt] [--model <model>] [--detail low|high|auto]
 
 Output convention:
   stdout: single JSON object
@@ -36,11 +36,12 @@ import base64
 import json
 import mimetypes
 import os
-import sys
 from pathlib import Path
 from urllib import error as urlerror
 from urllib import request as urlrequest
 from urllib.parse import urlparse
+
+import cli
 
 MAX_IMAGES = 10
 DETAIL_LEVELS = ('low', 'high', 'auto')
@@ -56,21 +57,14 @@ DELEGATE_INSTRUCTION = (
 )
 
 
-class ArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'Argument error: {message}')
-        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
-        self.exit(2)
-
-
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
+log = cli.make_logger(TOOL_NAME)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = ArgumentParser(description='Analyze images with an OpenAI-compatible vision model or delegate to the main agent.')
+    parser = cli.JsonArgumentParser(TOOL_NAME, description='Analyze images with an OpenAI-compatible vision model or delegate to the main agent.')
     parser.add_argument('--prompt', required=True, help='Analysis prompt or question.')
     parser.add_argument('--images', required=True, nargs='+', help='One or more local image paths or http/https URLs.')
+    parser.add_argument('--context-file', help='UTF-8 topic context to include with the analysis request.')
     parser.add_argument(
         '--model',
         default=None,
@@ -128,7 +122,7 @@ def resolve_local_path(image_path: str) -> str:
 
 def fail(message: str, exit_code: int = 1) -> None:
     log(message)
-    print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
+    cli.print_json({'success': False, 'error': message})
     raise SystemExit(exit_code)
 
 
@@ -151,11 +145,15 @@ def build_vlm_content(images, prompt, detail):
     return content
 
 
-def call_openai_compatible_vlm(api_key, base_url, model, content, timeout):
+def call_openai_compatible_vlm(api_key, base_url, model, content, timeout, context=None):
     endpoint = base_url.rstrip('/') + '/chat/completions'
+    messages = []
+    if context is not None:
+        messages.append({'role': 'system', 'content': context})
+    messages.append({'role': 'user', 'content': content})
     payload = json.dumps({
         'model': model,
-        'messages': [{'role': 'user', 'content': content}],
+        'messages': messages,
     }).encode('utf-8')
 
     req = urlrequest.Request(
@@ -218,7 +216,9 @@ def run_mode_vlm(args, api_key):
     log(f'Mode: vlm; model={model}; base_url={base_url}; images={len(args.images)}')
 
     content = build_vlm_content(args.images, args.prompt, args.detail)
-    analysis = call_openai_compatible_vlm(api_key, base_url, model, content, HTTP_TIMEOUT_SECONDS)
+    analysis = call_openai_compatible_vlm(
+        api_key, base_url, model, content, HTTP_TIMEOUT_SECONDS, args.context
+    )
 
     log('Vision analysis completed')
     print(json.dumps(
@@ -242,6 +242,7 @@ def run_mode_delegate(args):
             'mode': 'delegate_to_agent',
             'instruction': DELEGATE_INSTRUCTION,
             'prompt': args.prompt,
+            'context': args.context,
             'images': {'local': local, 'remote': remote},
             'image_count': len(args.images),
         },
@@ -251,6 +252,12 @@ def run_mode_delegate(args):
 
 def main() -> None:
     args = parse_args()
+    args.context = None
+    if args.context_file:
+        try:
+            args.context = Path(args.context_file).expanduser().read_text(encoding='utf-8')
+        except (OSError, UnicodeError) as exc:
+            fail(f'Could not read context file {args.context_file}: {exc}', exit_code=2)
 
     if len(args.images) > MAX_IMAGES:
         fail(f'Max {MAX_IMAGES} images are allowed per request (got {len(args.images)})')
@@ -271,4 +278,4 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(cli.run(main, TOOL_NAME))
