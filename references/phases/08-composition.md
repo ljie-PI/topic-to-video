@@ -2,7 +2,7 @@
 
 ## 输入
 
-Phase 7 的 `voice_clone/narration.mp3` + `transcribe/subtitle-units.json` / `transcribe/timeline.json` + `material-catalog.json`（若 `fetch_materials = false` 则无）+ `scene-plan.json`（叙事层场景规划，仅作参考）+ `script.txt` + `inputs.json`（design / layout / template）+ 主 agent 写的 `composition-handoff.md` 与物化到工作区的委派包、modules 副本和预置字体。
+Phase 7 的 `voice_clone/narration.mp3` + `transcribe/subtitle-units.json` / `transcribe/timeline.json` + `material-catalog.json` 与 `clips/`（Phase 5 切好的无音轨片段；若 `fetch_materials = false` 则都无）+ `scene-plan.json`（叙事层场景规划，仅作参考）+ `script.txt` + `inputs.json`（design / layout / template）+ 主 agent 写的 `composition-handoff.md` 与物化到工作区的委派包、modules 副本和预置字体。
 
 ## 输出
 

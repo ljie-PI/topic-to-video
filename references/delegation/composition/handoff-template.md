@@ -18,6 +18,7 @@
 - transcribe/subtitle-units.json：字幕单元（text / begin_s / end_s，逐字使用）
 - transcribe/timeline.json：段落与 cue 时间轴（scene 切分与 cue 锚点）
 - material-catalog.json：<路径；fetch_materials = false 时写“无（无素材，画面用纯排版）”>
+- clips/：<fetch_materials = true 时写“Phase 5 切好的无音轨视频片段；视频 clip 的引用解析到 catalog 里 selected_clips[].clip_path（相对工作区根），不用视频的 local_path”；否则写“无”>
 - scene-plan.json：叙事层场景规划（仅作参考，可合并 / 拆分 / 改选）
 - script.txt：显示稿（旁白与屏幕文字的文本来源，不能改）
 - inputs.json：design <design>、layout <layout>、template <template 或 无>、orientation <朝向>

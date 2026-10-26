@@ -10,7 +10,8 @@ material-catalog.json is updated in place (atomic write).
 
 A clip whose target file already exists and is non-empty is not cut again. A
 clip that fails (bad window, missing source, ffmpeg error) is reported in
-`errors`; the others are still cut, and the clips already cut stay.
+`errors` and carries no clip_path; the others are still cut, and the clips
+already cut stay.
 
 Usage:
   python3 scripts/cut-clips.py <workspace_dir>
@@ -197,6 +198,9 @@ def main() -> int:
             if isinstance(exc, media.FfmpegError):
                 error['stderr_tail'] = exc.stderr_tail
             errors.append(error)
+            # clip_path must name the file of the clip's current window, or nothing.
+            if clip.pop('clip_path', None) is not None:
+                catalog_changed = True
             continue
         clips.append({'ref': ref, **result})
         catalog_changed = catalog_changed or changed

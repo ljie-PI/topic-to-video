@@ -363,3 +363,19 @@ def test_pipeline_status_accepts_a_catalog_only_once_its_clips_are_cut(ws: Path)
 
     assert before.status == pipeline_status.STATUS_CORRUPT and 'clip_path' in before.detail
     assert after.ok, after.detail
+
+
+def test_a_failed_clip_does_not_keep_a_clip_path_left_over_from_an_earlier_window(ws: Path):
+    assert run_cli(str(ws)).returncode == 0
+    catalog = read_catalog(ws)
+    stale = clips_of(catalog)[0]
+    stale.update(start=3.0, end=3.0)  # the window was edited into something that cannot be cut
+    assert stale['clip_path'] == CLIP_A_PATH
+    (ws / 'material-catalog.json').write_text(json.dumps(catalog), encoding='utf-8')
+
+    proc = run_cli(str(ws))
+
+    assert proc.returncode == 1
+    failed, kept = clips_of(read_catalog(ws))
+    assert 'clip_path' not in failed
+    assert kept['clip_path'] == CLIP_B_PATH
