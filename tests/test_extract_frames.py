@@ -56,7 +56,11 @@ def test_frames_have_timestamped_names_and_absolute_timed_paths(tmp_path: Path):
     assert len(set(timestamps)) == len(timestamps)
 
 
-def test_frame_timestamps_include_the_start_time(tmp_path: Path):
+@pytest.mark.parametrize(
+    ('start_time', 'end_time'),
+    [('00:00:01.50', '00:00:03.50'), ('00:01.50', '00:03.50')],
+)
+def test_frame_timestamps_include_the_start_time(tmp_path: Path, start_time: str, end_time: str):
     video = tmp_path / 'input.mp4'
     subprocess.run(
         [
@@ -73,7 +77,7 @@ def test_frame_timestamps_include_the_start_time(tmp_path: Path):
     proc = subprocess.run(
         [
             sys.executable, str(SCRIPT), str(video), str(tmp_path / 'frames'),
-            '--start-time', '00:00:01.50', '--end-time', '00:00:03.50',
+            '--start-time', start_time, '--end-time', end_time,
             '--max-frames', '2',
         ],
         capture_output=True,

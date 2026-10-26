@@ -127,6 +127,9 @@ def timestamp_to_seconds(value: str | None) -> float:
     parts = value.split(':')
     if len(parts) == 1:
         return float(parts[0])
+    if len(parts) == 2:
+        minutes, seconds = parts
+        return int(minutes) * 60 + float(seconds)
     if len(parts) == 3:
         hours, minutes, seconds = parts
         return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
