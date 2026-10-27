@@ -49,6 +49,7 @@ Output convention:
 import argparse
 import json
 import time
+from functools import partial
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -84,18 +85,6 @@ SEL = {
 # ---------------------------------------------------------------------------
 
 log = cli.make_logger(TOOL_NAME)
-
-
-def fail(message: str, exit_code: int = 1, failed_step: Optional[int] = None,
-         extra: Optional[Dict[str, Any]] = None) -> None:
-    log(message)
-    obj: Dict[str, Any] = {'success': False, 'error': message}
-    if failed_step is not None:
-        obj['failed_step'] = failed_step
-    if extra:
-        obj.update(extra)
-    cli.print_json(obj)
-    raise SystemExit(exit_code)
 
 
 def parse_args() -> argparse.Namespace:
@@ -147,10 +136,10 @@ def apply_resume_state(args: argparse.Namespace) -> None:
     try:
         state = json.loads(state_path.read_text(encoding='utf-8'))
     except (OSError, json.JSONDecodeError) as exc:
-        fail(f'Could not read resume state file {state_path}: {exc}')
+        cli.fail(TOOL_NAME, f'Could not read resume state file {state_path}: {exc}')
     session_url = state.get('session_url') if isinstance(state, dict) else None
     if not isinstance(session_url, str) or not session_url.strip():
-        fail(f'Resume state file {state_path} does not contain session_url')
+        cli.fail(TOOL_NAME, f'Resume state file {state_path} does not contain session_url')
     args.start_from_step = 9
     args.page_url = session_url
 
@@ -311,7 +300,7 @@ def run_self_check(args: argparse.Namespace, browser: Any, chrome_metadata: Dict
         try:
             page.wait_for_selector(f'xpath={SEL["input_box"]}', timeout=30000)
         except Exception:
-            fail('Self-check failed: Not logged in to Gemini. Please log in manually first.',
+            cli.fail(TOOL_NAME, 'Self-check failed: Not logged in to Gemini. Please log in manually first.',
                  failed_step=2)
 
         log('Self-check: verifying Deep Research entry...')
@@ -319,7 +308,7 @@ def run_self_check(args: argparse.Namespace, browser: Any, chrome_metadata: Dict
             page.locator(f'xpath={SEL["tools_button"]}').click()
             page.wait_for_selector(f'xpath={SEL["deep_research_item"]}', state='visible', timeout=10000)
         except Exception as e:
-            fail(f'Self-check failed: Deep Research entry not reachable: {e}', failed_step=3)
+            cli.fail(TOOL_NAME, f'Self-check failed: Deep Research entry not reachable: {e}', failed_step=3)
 
         cli.print_json({'success': True, 'self_check': True, 'chrome': chrome_metadata})
     finally:
@@ -347,7 +336,7 @@ def run(args: argparse.Namespace) -> None:
             chrome_path=args.chrome_path,
         )
     except Exception as e:
-        fail(f'Step 1 failed: could not connect to Chrome: {e}', failed_step=1)
+        cli.fail(TOOL_NAME, f'Step 1 failed: could not connect to Chrome: {e}', failed_step=1)
 
     with chrome_session:
         browser = chrome_session.browser
@@ -361,11 +350,8 @@ def run(args: argparse.Namespace) -> None:
         # (--page-url) seeds it directly: steps <= 6 are skipped, so without
         # the seed a second timeout would lose the URL entirely.
         session: Dict[str, Any] = {'session_url': args.page_url}
-
-        def fail_with_session(message: str, exit_code: int = 1,
-                              failed_step: Optional[int] = None) -> None:
-            extra = {'session_url': session['session_url']} if session['session_url'] else None
-            fail(message, exit_code, failed_step, extra=extra)
+        session_extra = {'session_url': session['session_url']} if session['session_url'] else {}
+        session_fail = partial(cli.fail, TOOL_NAME, extra=session_extra)
 
         # ALWAYS open a brand-new tab for the automation; never navigate a tab
         # the user already had open.
@@ -383,14 +369,14 @@ def run(args: argparse.Namespace) -> None:
                 page.goto(nav_url, wait_until='domcontentloaded', timeout=30000)
                 page.wait_for_timeout(2000)
             except Exception as e:
-                fail_with_session(f'Step 2 failed: navigation error: {e}', failed_step=2)
+                session_fail(f'Step 2 failed: navigation error: {e}', failed_step=2)
         elif args.page_url:
             log('Step 2: Navigating to provided page URL...')
             try:
                 page.goto(args.page_url, wait_until='domcontentloaded', timeout=30000)
                 page.wait_for_timeout(2000)
             except Exception as e:
-                fail_with_session(f'Step 2 failed: navigation error: {e}', failed_step=2)
+                session_fail(f'Step 2 failed: navigation error: {e}', failed_step=2)
 
         # Step 3: Verify login
         if start <= 3:
@@ -398,7 +384,7 @@ def run(args: argparse.Namespace) -> None:
             try:
                 page.wait_for_selector(f'xpath={SEL["input_box"]}', timeout=30000)
             except Exception:
-                fail_with_session('Step 3 failed: Not logged in to Gemini. Please log in manually first.', failed_step=3)
+                session_fail('Step 3 failed: Not logged in to Gemini. Please log in manually first.', failed_step=3)
 
         # Step 4: Activate Deep Research mode
         if start <= 4:
@@ -409,7 +395,7 @@ def run(args: argparse.Namespace) -> None:
                 page.locator(f'xpath={SEL["deep_research_item"]}').first.click()
                 page.wait_for_timeout(1500)
             except Exception as e:
-                fail_with_session(f'Step 4 failed: could not activate Deep Research: {e}', failed_step=4)
+                session_fail(f'Step 4 failed: could not activate Deep Research: {e}', failed_step=4)
 
         # Step 5: Type the research prompt
         if start <= 5:
@@ -423,7 +409,7 @@ def run(args: argparse.Namespace) -> None:
                 )
                 page.wait_for_timeout(500)
             except Exception as e:
-                fail_with_session(f'Step 5 failed: could not type prompt: {e}', failed_step=5)
+                session_fail(f'Step 5 failed: could not type prompt: {e}', failed_step=5)
 
         # Step 6: Submit
         if start <= 6:
@@ -432,11 +418,13 @@ def run(args: argparse.Namespace) -> None:
                 page.locator(f'xpath={SEL["send_button"]}').click()
                 page.wait_for_timeout(1000)
             except Exception as e:
-                fail_with_session(f'Step 6 failed: could not submit: {e}', failed_step=6)
+                session_fail(f'Step 6 failed: could not submit: {e}', failed_step=6)
 
             # IMMEDIATELY persist the session URL: from here on, a timeout or
             # interruption can be resumed from step 9 with this URL.
             session['session_url'] = page.url
+            if session['session_url']:
+                session_extra['session_url'] = session['session_url']
             state_path = Path(args.state_file).expanduser() if args.state_file \
                 else output_dir / 'gemini_deep_research_state.json'
             state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -459,11 +447,11 @@ def run(args: argparse.Namespace) -> None:
                         break
                     page.wait_for_timeout(2000)
                 else:
-                    fail_with_session('Step 7 failed: research plan did not appear within 120s.', failed_step=7)
+                    session_fail('Step 7 failed: research plan did not appear within 120s.', failed_step=7)
             except SystemExit:
                 raise
             except Exception as e:
-                fail_with_session(f'Step 7 failed: error waiting for plan: {e}', failed_step=7)
+                session_fail(f'Step 7 failed: error waiting for plan: {e}', failed_step=7)
 
         # Step 8: Confirm the research plan
         if start <= 8:
@@ -472,7 +460,7 @@ def run(args: argparse.Namespace) -> None:
                 page.locator(f'xpath={SEL["confirm_button"]}').click()
                 page.wait_for_timeout(2000)
             except Exception as e:
-                fail_with_session(f'Step 8 failed: could not confirm plan: {e}', failed_step=8)
+                session_fail(f'Step 8 failed: could not confirm plan: {e}', failed_step=8)
 
         # Step 9: Wait for research completion
         if start <= 9:
@@ -503,11 +491,11 @@ def run(args: argparse.Namespace) -> None:
                         prev_text_len = text_len
                     page.wait_for_timeout(5000)
                 else:
-                    fail_with_session(f'Step 9 failed: research did not complete within {args.timeout}s.', failed_step=9)
+                    session_fail(f'Step 9 failed: research did not complete within {args.timeout}s.', failed_step=9)
             except SystemExit:
                 raise
             except Exception as e:
-                fail_with_session(f'Step 9 failed: error waiting for completion: {e}', failed_step=9)
+                session_fail(f'Step 9 failed: error waiting for completion: {e}', failed_step=9)
 
         # Step 10: Extract report and sources
         log('Step 10: Extracting report and sources...')
@@ -541,7 +529,7 @@ def run(args: argparse.Namespace) -> None:
         except SystemExit:
             raise
         except Exception as e:
-            fail_with_session(f'Step 10 failed: could not extract report: {e}', failed_step=10)
+            session_fail(f'Step 10 failed: could not extract report: {e}', failed_step=10)
 
 
 # ---------------------------------------------------------------------------

@@ -73,11 +73,6 @@ FREEZE_END_RE = re.compile(r'freeze_end[:=]?\s*([0-9.]+)')
 log = cli.make_logger(TOOL_NAME)
 
 
-def print_json(payload: dict[str, object]) -> int:
-    cli.print_json(payload)
-    return 0 if payload.get('success') else 1
-
-
 def parse_args() -> argparse.Namespace:
     parser = cli.JsonArgumentParser(TOOL_NAME, description='Deterministic post-render checks (metadata, blackdetect, freezedetect).')
     parser.add_argument('--video', required=True, help='Rendered video file to check.')
@@ -340,7 +335,7 @@ def main() -> int:
 
     verdict = 'fail' if findings else 'pass'
     log(f'checks complete: {len(findings)} finding(s), verdict={verdict}')
-    return print_json(
+    cli.print_json(
         {
             'success': True,
             'video': str(video_path.resolve()),
@@ -349,6 +344,7 @@ def main() -> int:
             'verdict': verdict,
         }
     )
+    return 0
 
 
 if __name__ == '__main__':

@@ -122,22 +122,18 @@ def warnings_from(result: dict[str, Any]) -> list[Any]:
     return []
 
 
-def fail(step: str, error: str, child: dict[str, Any] | None = None) -> int:
-    log(f'error ({step}): {error}')
-    payload: dict[str, Any] = {'success': False, 'failed_step': step, 'error': error}
-    if child is not None:
-        payload['child'] = child
-    cli.print_json(payload)
-    return 1
-
-
 def main() -> int:
     args = parse_args()
     workspace = Path(args.workspace).expanduser().resolve()
     try:
         layout = read_layout(workspace)
     except (OSError, ValueError) as exc:
-        return fail('inputs', str(exc))
+        cli.fail(
+            TOOL_NAME,
+            str(exc),
+            failed_step='inputs',
+            log_message=f'error (inputs): {exc}',
+        )
 
     transcript = workspace / 'transcribe' / 'transcript.json'
     warnings: list[Any] = []
@@ -177,7 +173,13 @@ def main() -> int:
         aligned = run_child('align', align_command)
         warnings.extend(warnings_from(aligned))
     except ChildFailure as exc:
-        return fail(exc.step, str(exc), exc.child)
+        cli.fail(
+            TOOL_NAME,
+            str(exc),
+            failed_step=exc.step,
+            extra={'child': exc.child},
+            log_message=f'error ({exc.step}): {exc}',
+        )
 
     cli.print_json(
         {

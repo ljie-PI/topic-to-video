@@ -21,13 +21,6 @@ BLOCK_SPLIT_RE = re.compile(r'\n\n+')
 TOOL_NAME = 'subtitle-parse'
 
 log = cli.make_logger(TOOL_NAME)
-print_json = cli.print_json
-
-
-def fail(message: str, exit_code: int = 1) -> None:
-    log(message)
-    print_json({'success': False, 'error': message})
-    raise SystemExit(exit_code)
 
 
 def parse_args() -> argparse.Namespace:
@@ -170,11 +163,11 @@ def main() -> None:
             output['matched_entries'] = len(filtered_entries)
 
         log(f'Parsed {len(entries)} subtitle entries')
-        print_json(output)
+        cli.print_json(output)
     except FileNotFoundError:
-        fail(f'File not found: {args.file_path}')
+        cli.fail(TOOL_NAME, f'File not found: {args.file_path}')
     except ValueError as exc:
-        fail(str(exc))
+        cli.fail(TOOL_NAME, str(exc))
 
 
 if __name__ == '__main__':

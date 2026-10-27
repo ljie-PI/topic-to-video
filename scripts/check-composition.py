@@ -84,12 +84,6 @@ SNAPSHOT_JS_PATH = SCRIPT_DIR / 'check-composition-snapshot.js'
 log = cli.make_logger(TOOL_NAME)
 
 
-def fail(message: str, exit_code: int = 1) -> None:
-    log(message)
-    cli.print_json({'success': False, 'error': message})
-    raise SystemExit(exit_code)
-
-
 def parse_viewport(value: str) -> Tuple[int, int]:
     match = re.match(r'^(\d+)x(\d+)$', value.strip())
     if not match:
@@ -700,7 +694,7 @@ def main() -> None:
     try:
         explicit_viewport = parse_viewport(args.viewport) if args.viewport is not None else None
     except ValueError as exc:
-        fail(str(exc), exit_code=2)  # invalid argument value
+        cli.fail(TOOL_NAME, str(exc), exit_code=2)  # invalid argument value
     try:
         if args.snapshots_from:
             composition_dir = Path(args.composition).expanduser().resolve()
@@ -708,7 +702,7 @@ def main() -> None:
         else:
             composition_dir, index_path = resolve_composition_path(args.composition)
     except (ValueError, OSError) as exc:
-        fail(str(exc), exit_code=1)
+        cli.fail(TOOL_NAME, str(exc), exit_code=1)
     try:
         layout = load_layout(args.layout)
         canvas_viewport = layout_viewport(layout)
@@ -730,7 +724,7 @@ def main() -> None:
         for warning in timeline_warnings:
             log(f'timeline scenes: {warning}')
     except (ValueError, OSError, json.JSONDecodeError) as exc:
-        fail(str(exc), exit_code=1)
+        cli.fail(TOOL_NAME, str(exc), exit_code=1)
 
     try:
         if args.snapshots_from:
@@ -778,7 +772,7 @@ def main() -> None:
             log(f'Wrote {output_path}')
         cli.print_json(report)
     except Exception as exc:
-        fail(str(exc), exit_code=1)
+        cli.fail(TOOL_NAME, str(exc), exit_code=1)
 
 
 if __name__ == '__main__':
