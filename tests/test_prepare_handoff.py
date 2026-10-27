@@ -341,10 +341,9 @@ class TestCompositionHandoff:
             ['modules/layouts/portrait.json', 'modules/layouts/portrait.md'],
             ['modules/templates/github/github.md'],
             ['modules/components', 'modules/patterns'],
-            ['skill:modules/examples'],
         ]
-        assert items[-2].startswith('按 storyboard 需要，自行阅读 ')
-        assert 'github-trending' in items[-1] and 'jay-actions' in items[-1]
+        assert items[-1].startswith('按 storyboard 需要，自行阅读 ')
+        assert 'modules/examples' not in body
 
     def test_null_template_drops_the_template_item(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition', template=None)
@@ -352,9 +351,10 @@ class TestCompositionHandoff:
 
         body = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))['Required References']
 
-        # base, modules.md, design, layout, patterns/components, examples
-        assert len(re.findall(r'^\d+\. ', body, flags=re.MULTILINE)) == 6
+        # base, modules.md, design, layout, patterns/components
+        assert len(re.findall(r'^\d+\. ', body, flags=re.MULTILINE)) == 5
         assert 'modules/templates' not in body
+        assert 'modules/examples' not in body
 
     def test_additional_instructions_list_the_existing_files(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition')
@@ -747,7 +747,10 @@ class TestDelegationDocs:
     def test_phase_docs_run_prepare_handoff_and_dispatch_its_prompt(self, doc: str, step: str):
         text = (REPO_ROOT / doc).read_text(encoding='utf-8')
 
-        assert f'python3 scripts/prepare-handoff.py {{work_dir}}/{{topic_name}} {step}' in text
+        assert (
+            f'source .venv/bin/activate && python3 scripts/prepare-handoff.py '
+            f'{{work_dir}}/{{topic_name}} {step}'
+        ) in text
         assert 'dispatch_prompt' in text
         assert 'handoff-template.md' not in text
 
@@ -755,6 +758,23 @@ class TestDelegationDocs:
         text = (REPO_ROOT / 'references' / 'delegation' / 'conventions.md').read_text(encoding='utf-8')
 
         assert 'claude -p "<dispatch_prompt>" --add-dir <ws> --add-dir <skill_root>' in text
+        assert (
+            'handoff 里的命令（`source <skill_root>/.venv/bin/activate && '
+            'python3 <skill_root>/scripts/...`）'
+        ) in text
+        assert (
+            '运行 `source .venv/bin/activate && python3 scripts/prepare-handoff.py <ws> <step>`'
+        ) in text
+
+    @pytest.mark.parametrize('doc', [
+        'modules/modules.md',
+        'modules/templates/github/github.md',
+        'modules/components/jay/jay.md',
+    ])
+    def test_example_docs_do_not_point_to_the_removed_handoff_reference(self, doc: str):
+        text = (REPO_ROOT / doc).read_text(encoding='utf-8')
+
+        assert 'handoff 的 Required References' not in text
 
     def test_composition_instructions_choose_components_before_writing_the_storyboard(self):
         text = (REPO_ROOT / 'references' / 'delegation' / 'composition' / 'base-instructions.md').read_text(encoding='utf-8')

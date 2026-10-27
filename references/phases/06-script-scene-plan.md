@@ -31,7 +31,7 @@ Phase 7（配音与字幕）：只对 `narration.txt` 配音，并生成词级�
 
 **主 agent 不读委派包里的基础指令**（`references/delegation/script/base-instructions.md` 只给被委派的 agent 读）。主 agent 做三件事：
 
-1. 运行 `python3 scripts/prepare-handoff.py {work_dir}/{topic_name} script`。它把委派约定和 script 委派包拷进 `{work_dir}/{topic_name}/references/delegation/`（已存在的副本不覆盖，要覆盖加 `--refresh`），再按 `inputs.json` 和工作区里实际存在的文件生成 `{work_dir}/{topic_name}/script-handoff.md`：Coding Agent、Inputs、Outputs、Required References（基础指令 → 模板旁白要求）、Additional Instructions（实际存在的 `narration-instructions.md`，没有写 None），路径全是绝对路径。主 agent 不手写 handoff。
+1. 运行 `source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topic_name} script`。它把委派约定和 script 委派包拷进 `{work_dir}/{topic_name}/references/delegation/`（已存在的副本不覆盖，要覆盖加 `--refresh`），再按 `inputs.json` 和工作区里实际存在的文件生成 `{work_dir}/{topic_name}/script-handoff.md`：Coding Agent、Inputs、Outputs、Required References（基础指令 → 模板旁白要求）、Additional Instructions（实际存在的 `narration-instructions.md`，没有写 None），路径全是绝对路径。主 agent 不手写 handoff。
 2. 把输出 JSON 里的 `dispatch_prompt` 原样派发，派发方式见 `references/delegation/conventions.md`。
 3. script agent 返回后做 **Phase 6.2 的确定性校验**。
 

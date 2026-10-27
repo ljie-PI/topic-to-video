@@ -327,7 +327,6 @@ def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
     layout_text, skill_layout_paths = layout_reference(SKILL_ROOT / 'modules', layout)
     layout_paths = [modules / path.relative_to(SKILL_ROOT / 'modules') for path in skill_layout_paths]
     layout_item = ' + '.join(str(path) for path in layout_paths)
-    examples = SKILL_ROOT / 'modules' / 'examples'
 
     def source(skill_path: Path) -> Path:
         """Where a modules/ reference is validated against: the skill copy,
@@ -360,12 +359,6 @@ def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
         sources.append(source(SKILL_ROOT / 'modules' / 'templates' / template / f'{template}.md'))
     patterns, components = modules / 'patterns', modules / 'components'
     references.append((f'按 storyboard 需要，自行阅读 {patterns}/、{components}/ 下的文档', [patterns, components]))
-    # The workspace copy has no examples/ (they can be large); the complete
-    # example projects stay in the skill repo and the handoff carries the path.
-    # An empty path list: it is optional reading, never a validation target.
-    references.append(
-        (f'完整示例工程（不在工作区副本，需要时从这里读）：{examples}/，如 github-trending/、jay-actions/', [])
-    )
     plan = Plan(
         values={
             'required_references': numbered([text for text, _ in references]),

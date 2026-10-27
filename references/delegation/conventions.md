@@ -15,8 +15,8 @@ Phase 6（脚本与场景规划）与 Phase 8（composition）委派给 coding a
   - `--add-dir <dir>`：额外授予工具访问的目录，可重复；
   - `--model <model>`：指定模型；
   - `--permission-mode <mode>`：权限模式（headless 下通常配合环境预先配置）。
-  - 命令形态：`claude -p "<dispatch_prompt>" --add-dir <ws> --add-dir <skill_root>`。`<ws>` 是工作区（`{work_dir}/{topic_name}`），工作区在仓库外时需要；`<skill_root>` 是 skill 根目录，handoff 里的命令（`python3 <skill_root>/scripts/...`）在 skill 目录下，没有它被委派的 agent 读不到也跑不了这些脚本。具体 flag 以本机 `claude --help` 为准。
-- **委派 prompt 只有一句话**，由 `prepare-handoff.py` 生成：运行 `python3 scripts/prepare-handoff.py <ws> <step>`，把输出 JSON 里的 `dispatch_prompt` 原样派发。例如：
+  - 命令形态：`claude -p "<dispatch_prompt>" --add-dir <ws> --add-dir <skill_root>`。`<ws>` 是工作区（`{work_dir}/{topic_name}`），工作区在仓库外时需要；`<skill_root>` 是 skill 根目录，handoff 里的命令（`source <skill_root>/.venv/bin/activate && python3 <skill_root>/scripts/...`）在 skill 目录下，没有它被委派的 agent 读不到也跑不了这些脚本。具体 flag 以本机 `claude --help` 为准。
+- **委派 prompt 只有一句话**，由 `prepare-handoff.py` 生成：运行 `source .venv/bin/activate && python3 scripts/prepare-handoff.py <ws> <step>`，把输出 JSON 里的 `dispatch_prompt` 原样派发。例如：
 
   ```text
   读取 <ws>/script-handoff.md 并按它执行；完成后报告产物路径。

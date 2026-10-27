@@ -48,7 +48,7 @@ window.VIDEO = { jay: {
 } };
 ```
 
-完整例子：`examples/github-trending/`，剧本由它的 `tools/build-data.mjs` 从字幕和配音生成。（示例只在 skill 仓库；委派场景下工作区没有 `examples/`，绝对路径见 handoff 的 Required References。）
+完整例子：`examples/github-trending/`，剧本由它的 `tools/build-data.mjs` 从字幕和配音生成。（示例只在 skill 仓库；委派场景下工作区没有 `examples/`。）
 
 ## 安装
 
@@ -90,7 +90,7 @@ jay: {
 
 ### 动作库（`acts`）
 
-每个动作都可以在 `examples/jay-actions/` 里看到：Jay 放大到 840px，逐个演一遍，顶部标出动作名。（示例只在 skill 仓库；委派场景下工作区没有 `examples/`，绝对路径见 handoff 的 Required References。）
+每个动作都可以在 `examples/jay-actions/` 里看到：Jay 放大到 840px，逐个演一遍，顶部标出动作名。（示例只在 skill 仓库；委派场景下工作区没有 `examples/`。）
 
 **挥手和头部动作**
 

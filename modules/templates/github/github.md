@@ -2,7 +2,7 @@
 
 一类视频：人物 Jay 主持，盘点 GitHub 上的一批项目（例如本周 Trending Top 5）。整支视频看起来像在浏览 GitHub 页面。
 
-这里写的是**这类视频怎么组装**：用哪个布局、哪些组件、给组件什么参数、GitHub 专属的配色和元素、数据怎么填，以及人物怎么演。完整的例子见 `examples/github-trending/`（示例只在 skill 仓库；委派场景下工作区没有 `examples/`，绝对路径见 handoff 的 Required References）。
+这里写的是**这类视频怎么组装**：用哪个布局、哪些组件、给组件什么参数、GitHub 专属的配色和元素、数据怎么填，以及人物怎么演。完整的例子见 `examples/github-trending/`（示例只在 skill 仓库；委派场景下工作区没有 `examples/`）。
 
 ## 1. 组成
 

@@ -25,7 +25,7 @@ Phase 9（检查与混音）：渲染后 QA（`check-render.py` 确定性检查 
 运行一次（全部落到 `{work_dir}/{topic_name}/` 下）：
 
 ```bash
-python3 scripts/prepare-handoff.py {work_dir}/{topic_name} composition
+source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topic_name} composition
 ```
 
 脚本做三件事：
