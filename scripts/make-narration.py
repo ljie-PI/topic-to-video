@@ -57,33 +57,22 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import sys
 from pathlib import Path
 from typing import Any
+
+import cli
 
 TOOL_NAME = 'make-narration'
 OFFSETS_VERSION = 1
 
-
-class ArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'Argument error: {message}')
-        print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
-        self.exit(2)
-
-
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
-
-
-def fail(message: str, exit_code: int = 1) -> None:
-    log(message)
-    print(json.dumps({'success': False, 'error': message}, ensure_ascii=False))
-    raise SystemExit(exit_code)
+log = cli.make_logger(TOOL_NAME)
 
 
 def parse_args() -> argparse.Namespace:
-    p = ArgumentParser(description='Derive the TTS narration draft from the display draft + lexicon.')
+    p = cli.JsonArgumentParser(
+        TOOL_NAME,
+        description='Derive the TTS narration draft from the display draft + lexicon.',
+    )
     p.add_argument('--script', required=True, help='Path to the display draft (script.txt).')
     p.add_argument('--lexicon', required=True, help='Path to the TTS lexicon (tts-lexicon.json).')
     p.add_argument('--output-dir', required=True, help='Directory for narration.txt and narration-offsets.json.')
@@ -93,19 +82,19 @@ def parse_args() -> argparse.Namespace:
 def load_lexicon(path: Path) -> dict[str, str]:
     """Load and validate the lexicon: a JSON object of non-empty str -> non-empty str."""
     if not path.is_file():
-        fail(f'lexicon file not found: {path}')
+        raise FileNotFoundError(f'lexicon file not found: {path}')
     try:
         data = json.loads(path.read_text(encoding='utf-8'))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        fail(f'lexicon is not valid JSON: {exc}')
+        raise ValueError(f'lexicon is not valid JSON: {exc}') from exc
     if not isinstance(data, dict):
-        fail('lexicon root is not a JSON object (display form -> reading form map)')
+        raise ValueError('lexicon root is not a JSON object (display form -> reading form map)')
     lexicon: dict[str, str] = {}
     for key, value in data.items():
         if not isinstance(key, str) or not isinstance(value, str):
-            fail(f'lexicon entries must be strings, got {key!r}: {value!r}')
+            raise ValueError(f'lexicon entries must be strings, got {key!r}: {value!r}')
         if not key or not value:
-            fail(f'lexicon entries must be non-empty strings, got {key!r}: {value!r}')
+            raise ValueError(f'lexicon entries must be non-empty strings, got {key!r}: {value!r}')
         lexicon[key] = value
     return lexicon
 
@@ -182,10 +171,10 @@ def main() -> None:
     offsets_path = output_dir / 'narration-offsets.json'
 
     if not script_path.is_file():
-        fail(f'script file not found: {script_path}')
+        raise FileNotFoundError(f'script file not found: {script_path}')
     script_text = script_path.read_text(encoding='utf-8')
     if not script_text.strip():
-        fail(f'script file is empty: {script_path}')
+        raise ValueError(f'script file is empty: {script_path}')
 
     lexicon = load_lexicon(lexicon_path)
     log(f'Loaded {len(lexicon)} lexicon entries from {lexicon_path}')
@@ -211,15 +200,15 @@ def main() -> None:
         f'{replacement_count} replacements)')
     log(f'Offset table written to {offsets_path} ({len(segments)} segments)')
 
-    print(json.dumps({
+    cli.print_json({
         'success': True,
         'narration_path': str(narration_path),
         'offsets_path': str(offsets_path),
         'script_length': len(script_text),
         'narration_length': len(narration_text),
         'replacement_count': replacement_count,
-    }, ensure_ascii=False))
+    })
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(cli.run(main, TOOL_NAME))
