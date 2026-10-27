@@ -44,8 +44,8 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
    ↳ DO NOT：调研之前写脚本；没有明确条件就跳过 Gemini；用户给了 PDF 还跳过 Phase 2；用训练数据描述一篇论文。
 2. **进度只看 pipeline-status。** 续跑、回退与重做都由状态脚本驱动。
    ↳ DO NOT：自己扫描工作区猜进度；把 Scratchpad 当进度记录；手改 `.pipeline/`。
-3. **委派步骤（Phase 5 / 6 / 8）的内容由 sub-agent 产出。** 主 agent 只准备 handoff、派发并验收。
-   ↳ DO NOT：主 agent 手写 catalog、旁白或 composition HTML。
+3. **委派步骤（Phase 5 / 6 / 8）的内容由 sub-agent 产出。** 主 agent 只准备 handoff、派发并验收。唯一例外：Phase 5 当前环境没有 sub-agent 工具时，主 agent 按 `references/phases/05-material-catalog.md` 的兜底流程生成 catalog。
+   ↳ DO NOT：主 agent 手写旁白或 composition HTML；有 sub-agent 工具时主 agent 手写 catalog。
 4. **屏幕上的每个素材都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。
    ↳ DO NOT：让没有 catalog 引用的素材出现在屏幕上。
 5. **跑 Python 前一律 `source .venv/bin/activate`。** 用 `python3`。

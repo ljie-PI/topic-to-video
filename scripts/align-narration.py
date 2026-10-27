@@ -751,32 +751,47 @@ def locate_text(
     return None
 
 
+def _locate_scene_texts(
+    scene_plan: list[dict[str, Any]],
+    atoms_by_paragraph: dict[int, list[Atom]],
+    item_key: str,
+    text_for: Callable[[Any], str],
+) -> list[tuple[Any, Any, str, tuple[int, int] | None]]:
+    located = []
+    for scene in scene_plan:
+        if not isinstance(scene, dict):
+            continue
+        scene_id = scene.get('scene_id') or scene.get('id')
+        paragraphs = scene.get('paragraphs') or []
+        for item in scene.get(item_key) or []:
+            text = text_for(item)
+            found = locate_text(text, paragraphs, atoms_by_paragraph)
+            located.append((scene_id, item, text, found))
+    return located
+
+
 def locate_cues(
     scene_plan: list[dict[str, Any]],
     atoms_by_paragraph: dict[int, list[Atom]],
     warnings: list[str],
 ) -> list[dict[str, Any]]:
     cues: list[dict[str, Any]] = []
-    for scene in scene_plan:
-        if not isinstance(scene, dict):
+    for scene_id, cue, text, found in _locate_scene_texts(
+        scene_plan, atoms_by_paragraph, 'cues', str
+    ):
+        if found is None:
+            warning = f'cue not found for scene {scene_id!r}: {text[:40]!r}'
+            warnings.append(warning)
+            log(f'warning: {warning}')
             continue
-        scene_id = scene.get('scene_id') or scene.get('id')
-        paragraphs = scene.get('paragraphs') or []
-        for cue in scene.get('cues') or []:
-            found = locate_text(str(cue), paragraphs, atoms_by_paragraph)
-            if found is None:
-                warning = f'cue not found for scene {scene_id!r}: {str(cue)[:40]!r}'
-                warnings.append(warning)
-                log(f'warning: {warning}')
-                continue
-            cues.append(
-                {
-                    'scene_id': scene_id,
-                    'cue': cue,
-                    'begin_s': round(found[0] / 1000, 3),
-                    'end_s': round(found[1] / 1000, 3),
-                }
-            )
+        cues.append(
+            {
+                'scene_id': scene_id,
+                'cue': cue,
+                'begin_s': round(found[0] / 1000, 3),
+                'end_s': round(found[1] / 1000, 3),
+            }
+        )
     return cues
 
 
@@ -786,28 +801,23 @@ def locate_beats(
     warnings: list[str],
 ) -> list[dict[str, Any]]:
     beats: list[dict[str, Any]] = []
-    for scene in scene_plan:
-        if not isinstance(scene, dict):
+    for scene_id, beat, text, found in _locate_scene_texts(
+        scene_plan, atoms_by_paragraph, 'beats', lambda beat: str(beat.get('text', ''))
+    ):
+        if found is None:
+            warning = f'beat not found for scene {scene_id!r}: {text[:40]!r}'
+            warnings.append(warning)
+            log(f'warning: {warning}')
             continue
-        scene_id = scene.get('scene_id') or scene.get('id')
-        paragraphs = scene.get('paragraphs') or []
-        for beat in scene.get('beats') or []:
-            text = str(beat.get('text', ''))
-            found = locate_text(text, paragraphs, atoms_by_paragraph)
-            if found is None:
-                warning = f'beat not found for scene {scene_id!r}: {text[:40]!r}'
-                warnings.append(warning)
-                log(f'warning: {warning}')
-                continue
-            beats.append(
-                {
-                    'scene_id': scene_id,
-                    'type': beat.get('type'),
-                    'text': beat.get('text'),
-                    'begin_s': round(found[0] / 1000, 3),
-                    'end_s': round(found[1] / 1000, 3),
-                }
-            )
+        beats.append(
+            {
+                'scene_id': scene_id,
+                'type': beat.get('type'),
+                'text': beat.get('text'),
+                'begin_s': round(found[0] / 1000, 3),
+                'end_s': round(found[1] / 1000, 3),
+            }
+        )
     return beats
 
 

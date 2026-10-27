@@ -44,7 +44,7 @@ TTS 与字幕合并在同一个 phase：先配音并拿到词级时间戳（tran
 在 skill 根目录只运行：
 
 ```bash
-python3 scripts/voice-subtitles.py {work_dir}/{topic_name}
+source .venv/bin/activate && python3 scripts/voice-subtitles.py {work_dir}/{topic_name}
 ```
 
 需要显式指定后端时加 `--backend <name>`，否则仍由 `TTS_BACKEND` / 自动探测选择。命令先检查 `inputs.json`、`narration.txt`、`narration-offsets.json` 和 `script.txt`，再依次调用 voice-clone.py 与 align-narration.py；工作区路径、layout 映射和可选 scene-plan 都由脚本处理，agent 不要手拼子命令。只有 layout 或 scene-plan 变化、需要复用现有音频与 transcript 时，给同一条命令加 `--align-only`，此时只重跑对齐。

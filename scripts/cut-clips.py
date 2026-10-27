@@ -3,7 +3,8 @@
 
 Phase 5 writes `selected_clips` as references (`{start, end, reason, ...}`) into
 a source video. This script materialises each one as `<ws>/clips/<video_id>_<start:.2f>-<end:.2f>.mp4`
-with the audio track stripped (SKILL.md guardrail 6), so composition embeds a
+with the audio track stripped (Phase 5 guardrails:
+`references/phases/05-material-catalog.md`), so composition embeds a
 short silent file instead of the whole original video. The clip's catalog
 entry gets `clip_path` (relative to the workspace, POSIX separators), and
 material-catalog.json is updated in place (atomic write).

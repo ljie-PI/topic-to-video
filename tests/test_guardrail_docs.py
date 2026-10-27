@@ -54,6 +54,32 @@ def test_skill_keeps_only_cross_phase_guardrails_and_the_output_convention():
     assert '所有脚本都把 JSON 输出到 stdout' in section(skill, '输出约定')
 
 
+def test_skill_delegation_guardrail_preserves_the_phase5_fallback():
+    core = section(doc_text('SKILL.md'), '核心护栏')
+
+    assert '唯一例外' in core
+    assert 'Phase 5' in core
+    assert '没有 sub-agent 工具' in core
+    assert 'references/phases/05-material-catalog.md' in core
+
+
+def test_voice_subtitles_command_activates_the_project_venv():
+    phase7 = doc_text('references/phases/07-voice-subtitles.md')
+
+    assert (
+        'source .venv/bin/activate && python3 scripts/voice-subtitles.py '
+        '{work_dir}/{topic_name}'
+    ) in phase7
+
+
+def test_cut_clips_points_to_the_current_phase5_guardrails():
+    script = doc_text('scripts/cut-clips.py')
+
+    assert 'SKILL.md guardrail 6' not in script
+    assert 'Phase 5 guardrails' in script
+    assert 'references/phases/05-material-catalog.md' in script
+
+
 @pytest.mark.parametrize('doc_path', PHASE_DOCS, ids=lambda path: path.name)
 def test_every_phase_has_guardrails_immediately_after_next_step(doc_path: Path):
     text = doc_path.read_text(encoding='utf-8')
