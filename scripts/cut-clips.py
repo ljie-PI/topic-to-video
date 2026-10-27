@@ -8,11 +8,9 @@ short silent file instead of the whole original video. The clip's catalog
 entry gets `clip_path` (relative to the workspace, POSIX separators), and
 material-catalog.json is updated in place (atomic write).
 
-A clip whose target file already exists and passes the cut-file checks (a
-non-empty, playable, silent video of the expected length) is not cut again;
-a stale or foreign file at the target is re-cut. A clip that fails (bad
-window, missing source, ffmpeg error) is reported in `errors` and carries no
-clip_path; the others are still cut. The catalog is saved incrementally —
+A clip whose target file already exists and is non-empty is not cut again. A
+clip that fails (bad window, missing source, ffmpeg error) is reported in
+`errors` and carries no clip_path; the others are still cut. The catalog is saved incrementally —
 after every clip and again in a `finally`, so an interrupted run keeps the
 clip_path updates of the clips it already finished.
 
@@ -86,14 +84,14 @@ def load_catalog(ws: Path) -> dict[str, Any]:
 
 
 def iter_selected_clips(catalog: dict[str, Any]):
-    """Yield (entry, video, clip) for every selected clip of every catalog video."""
+    """Yield (video, clip) for every selected clip of every catalog video."""
     for entry in catalog['entries']:
         videos = entry.get('videos') if isinstance(entry, dict) else None
         for video in videos if isinstance(videos, list) else []:
             clips = video.get('selected_clips') if isinstance(video, dict) else None
             for clip in clips if isinstance(clips, list) else []:
                 if isinstance(clip, dict):
-                    yield entry, video, clip
+                    yield video, clip
 
 
 def source_path(ws: Path, video: dict[str, Any]) -> Path:
@@ -108,39 +106,19 @@ def source_path(ws: Path, video: dict[str, Any]) -> Path:
     return path
 
 
-def clip_relpath(entry: dict[str, Any], video: dict[str, Any], start: Any, end: Any) -> str:
+def clip_relpath(video: dict[str, Any], start: Any, end: Any) -> str:
     if not (is_number(start) and is_number(end)):
         raise ClipError('clip start and end must be numbers')
     if start < 0 or end <= start:
         raise ClipError(f'clip window {start}-{end} must satisfy 0 <= start < end')
     try:
-        # clip_paths namespaces by entry slug and millisecond window, so ids
-        # recurring across entries and sub-centisecond edits cannot collide.
-        return clip_paths.clip_relpath(entry.get('slug'), video.get('id'), start, end)
+        return clip_paths.clip_relpath(video.get('id'), start, end)
     except ValueError as exc:
         raise ClipError(str(exc)) from exc
 
 
-def is_cut(target: Path, expected_duration_s: float) -> bool:
-    """Whether `target` is a usable silent clip of the expected length.
-
-    Any non-empty file used to count, so a leftover with its original audio
-    track (or a truncated half-write) was reported as skipped; probe it
-    instead: playable, no audio (SKILL.md guardrail 6), roughly the length
-    the window promises.
-    """
-    if not target.is_file() or target.stat().st_size == 0:
-        return False
-    try:
-        info = media.probe(target)
-    except media.MediaProbeError:
-        return False
-    return (
-        info['width'] is not None
-        and not info['has_audio']
-        and info['duration_seconds'] is not None
-        and info['duration_seconds'] >= expected_duration_s - DURATION_SLACK_S
-    )
+def is_cut(target: Path) -> bool:
+    return target.is_file() and target.stat().st_size > 0
 
 
 def cut(source: Path, start: float, end: float, target: Path) -> None:
@@ -154,14 +132,10 @@ def cut(source: Path, start: float, end: float, target: Path) -> None:
                 '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
                 '-ss', f'{start:.3f}', '-to', f'{end:.3f}', '-i', source,
                 '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
-                # Browser-safe output: even dimensions and yuv420p, whatever
-                # the source was (10-bit / 4:4:4 / odd-sized sources otherwise
-                # fail or render black in Chrome).
-                '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p',
                 '-movflags', '+faststart',
                 partial,
             ],
-            timeout=FFMPEG_TIMEOUT_SECONDS,
+            timeout=float(os.environ.get('CUT_CLIPS_FFMPEG_TIMEOUT', FFMPEG_TIMEOUT_SECONDS)),
         )
         # A window past the end of the source makes ffmpeg exit 0 with a tiny file holding no frames.
         try:
@@ -181,12 +155,12 @@ def cut(source: Path, start: float, end: float, target: Path) -> None:
         partial.unlink(missing_ok=True)
 
 
-def process_clip(ws: Path, entry: dict[str, Any], video: dict[str, Any], clip: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+def process_clip(ws: Path, video: dict[str, Any], clip: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     """Make sure the clip's file exists and clip_path is set. Returns (result, catalog_changed)."""
     start, end = clip.get('start'), clip.get('end')
-    relpath = clip_relpath(entry, video, start, end)
+    relpath = clip_relpath(video, start, end)
     target = ws / relpath
-    skipped = is_cut(target, (end or 0) - (start or 0))
+    skipped = is_cut(target)
     if skipped:
         log(f'{relpath} already cut, skipping')
     else:
@@ -217,10 +191,10 @@ def main() -> int:
     errors: list[dict[str, Any]] = []
     catalog_changed = False
     try:
-        for entry, video, clip in iter_selected_clips(catalog):
+        for video, clip in iter_selected_clips(catalog):
             ref = f"{video.get('id')}:{clip.get('start')}-{clip.get('end')}"
             try:
-                result, changed = process_clip(ws, entry, video, clip)
+                result, changed = process_clip(ws, video, clip)
             except (ClipError, media.FfmpegError, subprocess.TimeoutExpired) as exc:
                 log(f'{ref} failed: {exc}')
                 error = {'ref': ref, 'error': str(exc)}

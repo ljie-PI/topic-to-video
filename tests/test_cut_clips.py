@@ -6,8 +6,8 @@ written back into <ws>/material-catalog.json.
 """
 from __future__ import annotations
 
-import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -20,12 +20,13 @@ pytestmark = pytest.mark.usefixtures('require_ffmpeg')
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'cut-clips.py'
+PIPELINE_STATUS_SCRIPT = REPO_ROOT / 'scripts' / 'pipeline-status.py'
 
 SOURCE_SECONDS = 5
 CLIP_A = (0.5, 2.0)
 CLIP_B = (2.5, 4.5)
-CLIP_A_PATH = 'clips/example/vid_001_0.500-2.000.mp4'
-CLIP_B_PATH = 'clips/example/vid_001_2.500-4.500.mp4'
+CLIP_A_PATH = 'clips/vid_001_0.50-2.00.mp4'
+CLIP_B_PATH = 'clips/vid_001_2.50-4.50.mp4'
 DURATION_TOLERANCE_S = 0.1
 
 
@@ -202,7 +203,7 @@ def test_a_failed_clip_is_reported_and_the_other_clips_are_kept(tmp_path: Path):
     assert result['errors'][0]['stderr_tail']
     assert media.probe(ws / CLIP_A_PATH)['has_audio'] is False
     # Nothing is left behind for the failed clip, not even a partial file.
-    assert [path.name for path in (ws / 'clips').rglob('*.mp4')] == ['vid_001_0.500-2.000.mp4']
+    assert [path.name for path in (ws / 'clips').rglob('*.mp4')] == ['vid_001_0.50-2.00.mp4']
     failed, kept = clips_of(read_catalog(ws))
     assert 'clip_path' not in failed
     assert kept['clip_path'] == CLIP_A_PATH
@@ -288,56 +289,28 @@ def test_missing_workspace_argument_exits_2():
     assert parse_result(proc)['success'] is False
 
 
-def test_a_video_shared_by_two_entries_is_cut_per_entry(ws: Path):
-    # The same source video referenced by two entries gets one clip file per
-    # entry: clip paths are namespaced by entry slug, so an id recurring
-    # across entries can never reuse (or be reused by) another entry's file.
+def test_a_video_shared_by_two_entries_reuses_the_same_target(ws: Path):
     catalog = read_catalog(ws)
     other = json.loads(json.dumps(catalog['entries'][0]))
     other['slug'] = 'other'
     catalog['entries'].append(other)
     (ws / 'material-catalog.json').write_text(json.dumps(catalog), encoding='utf-8')
 
-    result = parse_result(run_cli(str(ws)))
+    proc = run_cli(str(ws))
 
+    assert proc.returncode == 0, proc.stderr
+    result = parse_result(proc)
     assert [(clip['clip_path'], clip['skipped']) for clip in result['clips']] == [
         (CLIP_A_PATH, False),
         (CLIP_B_PATH, False),
-        ('clips/other/vid_001_0.500-2.000.mp4', False),
-        ('clips/other/vid_001_2.500-4.500.mp4', False),
+        (CLIP_A_PATH, True),
+        (CLIP_B_PATH, True),
     ]
     assert {path.relative_to(ws).as_posix() for path in (ws / 'clips').rglob('*.mp4')} == {
         CLIP_A_PATH,
         CLIP_B_PATH,
-        'clips/other/vid_001_0.500-2.000.mp4',
-        'clips/other/vid_001_2.500-4.500.mp4',
     }
     assert all('clip_path' in clip for clip in clips_of(read_catalog(ws)))
-
-
-def test_two_entries_with_the_same_video_id_but_different_sources_get_two_files(tmp_path: Path):
-    # harvest-pages names every page's native video native_001; the clip file
-    # must come from the entry's own source, not be skipped onto the other's.
-    ws = tmp_path / 'ws'
-    make_source_with_audio(ws / 'harvest_page' / 'page-a' / 'videos' / 'native_001.mp4')
-    make_source_with_audio(ws / 'harvest_page' / 'page-b' / 'videos' / 'native_001.mp4')
-    write_catalog(ws, [video_item('native_001', 'page-a/videos/native_001.mp4', [CLIP_A])])
-    catalog = read_catalog(ws)
-    catalog['entries'][0]['slug'] = 'page-a'
-    other = json.loads(json.dumps(catalog['entries'][0]))
-    other['slug'] = 'page-b'
-    other['videos'][0]['local_path'] = 'page-b/videos/native_001.mp4'
-    catalog['entries'].append(other)
-    (ws / 'material-catalog.json').write_text(json.dumps(catalog), encoding='utf-8')
-
-    result = parse_result(run_cli(str(ws)))
-
-    assert result['success'] is True
-    assert [clip['skipped'] for clip in result['clips']] == [False, False]
-    assert {path.relative_to(ws).as_posix() for path in (ws / 'clips').rglob('*.mp4')} == {
-        'clips/page-a/native_001_0.500-2.000.mp4',
-        'clips/page-b/native_001_0.500-2.000.mp4',
-    }
 
 
 def test_missing_ffmpeg_is_a_runtime_error(ws: Path, monkeypatch: pytest.MonkeyPatch):
@@ -352,17 +325,46 @@ def test_missing_ffmpeg_is_a_runtime_error(ws: Path, monkeypatch: pytest.MonkeyP
     assert not (ws / 'clips').exists()
 
 
-def load_script():
-    spec = importlib.util.spec_from_file_location('cut_clips', SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def run_pipeline_status_cli(ws: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(PIPELINE_STATUS_SCRIPT), str(ws)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+
+def complete_pipeline_prerequisites(ws: Path) -> None:
+    (ws / 'inputs.json').write_text(json.dumps({
+        'source': 'https://example.com/article',
+        'input_mode': 'standard',
+        'duration': '5min',
+        'language': 'zh',
+        'orientation': 'landscape',
+        'template': None,
+        'design': 'default',
+        'layout': 'stage',
+        'coding_agent': 'claude-code',
+        'fetch_materials': True,
+    }), encoding='utf-8')
+    (ws / 'research-brief.md').write_text('# research brief\n', encoding='utf-8')
+    (ws / 'harvest_page' / 'manifest.json').write_text(json.dumps({
+        'entries': [{'slug': 'example', 'images': [], 'videos': []}],
+        'harvest_batches': [{
+            'at': '2026-01-01T00:00:00Z',
+            'urls': ['https://example.com/article'],
+            'succeeded': 1,
+            'failed': 0,
+            'rejected': [],
+        }],
+    }), encoding='utf-8')
 
 
 def test_an_ffmpeg_that_hangs_times_out_and_leaves_no_file(
-    ws: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ws: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    # Half-writes its output, then hangs: the clip must not count as cut on the next run.
+    # Half-writes its output, then hangs: the CLI must report both timeouts as JSON.
     hanging = tmp_path / 'hanging-ffmpeg'
     hanging.write_text(
         f'#!{sys.executable}\n'
@@ -373,80 +375,70 @@ def test_an_ffmpeg_that_hangs_times_out_and_leaves_no_file(
     )
     hanging.chmod(0o755)
     monkeypatch.setenv('FFMPEG_BIN', str(hanging))
-    monkeypatch.setattr(sys, 'argv', ['cut-clips.py', str(ws)])
-    script = load_script()
-    monkeypatch.setattr(script, 'FFMPEG_TIMEOUT_SECONDS', 0.5)
+    monkeypatch.setenv('CUT_CLIPS_FFMPEG_TIMEOUT', '0.5')
 
-    assert script.cli.run(script.main, script.TOOL_NAME) == 1
+    proc = run_cli(str(ws))
 
-    result = json.loads(capsys.readouterr().out)
+    assert proc.returncode == 1, proc.stderr
+    result = parse_result(proc)
     assert result['success'] is False
     assert [error['ref'] for error in result['errors']] == ['vid_001:0.5-2.0', 'vid_001:2.5-4.5']
     assert list((ws / 'clips').rglob('*.mp4')) == []
     assert all('clip_path' not in clip for clip in clips_of(read_catalog(ws)))
 
 
-def load_pipeline_status(monkeypatch: pytest.MonkeyPatch):
-    """Import pipeline-status.py as a module without leaking into sys.modules."""
-    spec = importlib.util.spec_from_file_location(
-        'pipeline_status_under_test', REPO_ROOT / 'scripts' / 'pipeline-status.py'
-    )
-    module = importlib.util.module_from_spec(spec)
-    monkeypatch.setitem(sys.modules, spec.name, module)  # @dataclass looks its module up here
-    spec.loader.exec_module(module)
-    return module
+def test_pipeline_status_accepts_a_catalog_only_once_its_clips_are_cut(ws: Path):
+    complete_pipeline_prerequisites(ws)
 
+    before_proc = run_pipeline_status_cli(ws)
+    assert before_proc.returncode == 0, before_proc.stderr
+    before = parse_result(before_proc)
+    assert before['next_phase']['id'] == '5-material-catalog'
+    assert 'material-catalog.json' in before['corrupt_products']
+    assert 'clip_path' in before['next_phase']['problems']['material-catalog.json']
 
-def test_pipeline_status_accepts_a_catalog_only_once_its_clips_are_cut(
-    ws: Path, monkeypatch: pytest.MonkeyPatch
-):
-    pipeline_status = load_pipeline_status(monkeypatch)
-
-    before = pipeline_status.check_material_catalog(ws, 'material-catalog.json')
     assert run_cli(str(ws)).returncode == 0
-    after = pipeline_status.check_material_catalog(ws, 'material-catalog.json')
 
-    assert before.status == pipeline_status.STATUS_CORRUPT and 'clip_path' in before.detail
-    assert after.ok, after.detail
+    after_proc = run_pipeline_status_cli(ws)
+    assert after_proc.returncode == 0, after_proc.stderr
+    after = parse_result(after_proc)
+    assert '5-material-catalog' in after['completed_phases']
+    assert after['next_phase']['id'] == '6-script-scene-plan'
 
 
-def test_a_missing_clip_file_does_not_blind_scene_plan_ref_validation(
-    ws: Path, monkeypatch: pytest.MonkeyPatch
-):
-    # The full check fails (Phase 5 is corrupt), but the catalog's structure is
-    # still indexed: scene-plan material refs keep being validated against the
-    # windows that exist instead of the check silently passing.
+def test_pipeline_status_reports_a_missing_clip_file_as_corrupt(ws: Path):
+    complete_pipeline_prerequisites(ws)
     assert run_cli(str(ws)).returncode == 0
     (ws / CLIP_A_PATH).unlink()
-    pipeline_status = load_pipeline_status(monkeypatch)
 
-    assert not pipeline_status.check_material_catalog(ws, 'material-catalog.json').ok
-    assert pipeline_status.check_catalog_structure(ws, 'material-catalog.json').ok
-    index = pipeline_status.load_catalog_index(ws)
-    assert index is not None
-    assert pipeline_status.ref_resolves('vid_001:0.5-2.0', index)
-    assert not pipeline_status.ref_resolves('not_a_real_ref', index)
+    proc = run_pipeline_status_cli(ws)
+
+    assert proc.returncode == 0, proc.stderr
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '5-material-catalog'
+    assert 'material-catalog.json' in result['corrupt_products']
+    assert CLIP_A_PATH in result['next_phase']['problems']['material-catalog.json']
 
 
-def test_a_skipped_file_with_an_audio_track_is_cut_again(ws: Path):
-    # Rule 6 wants silent clips; an existing file that still has audio is not
-    # accepted as done.
-    assert run_cli(str(ws)).returncode == 0
-    source = ws / 'harvest_page' / 'example' / 'videos' / 'vid_001.mp4'
+def test_any_nonempty_target_is_skipped_without_probing_or_recutting(ws: Path):
     target = ws / CLIP_A_PATH
-    cut_at = target.stat().st_mtime_ns
-    subprocess.run(
-        ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', source, '-t', '1', '-c', 'copy', str(target)],
-        check=True,
-        capture_output=True,
-        timeout=60,
-    )
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b'any nonempty target counts as cut')
+    catalog = read_catalog(ws)
+    catalog['entries'][0]['videos'][0]['selected_clips'] = [clips_of(catalog)[0]]
+    (ws / 'material-catalog.json').write_text(json.dumps(catalog), encoding='utf-8')
 
-    result = parse_result(run_cli(str(ws)))
+    proc = run_cli(str(ws))
 
-    assert [clip['skipped'] for clip in result['clips']] == [False, True]
-    assert media.probe(target)['has_audio'] is False
-    assert target.stat().st_mtime_ns != cut_at
+    assert proc.returncode == 0, proc.stderr
+    result = parse_result(proc)
+    assert result == {
+        'success': True,
+        'clips': [{'ref': 'vid_001:0.5-2.0', 'clip_path': CLIP_A_PATH, 'skipped': True}],
+        'errors': [],
+    }
+    assert target.read_bytes() == b'any nonempty target counts as cut'
+    assert clips_of(read_catalog(ws))[0]['clip_path'] == CLIP_A_PATH
 
 
 def test_the_catalog_keeps_its_file_permissions(ws: Path):
@@ -471,31 +463,39 @@ def test_a_partially_covering_window_is_an_error_with_lengths(ws: Path):
     assert 'extends past the end of the source' in detail, detail
 
 
-def test_an_odd_sized_source_produces_an_even_yuv420p_clip(ws: Path):
-    # Odd widths fail libx264 ('width not divisible by 2'); other pixel formats
-    # (10-bit, 4:4:4) leave Chrome-black clips. Both are normalized on output.
-    source = ws / 'harvest_page' / 'example' / 'videos' / 'vid_001.mp4'
-    subprocess.run(
-        [
-            'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
-            '-f', 'lavfi', '-i', 'testsrc=duration=5:size=161x121:rate=25',
-            '-pix_fmt', 'yuv444p', '-c:v', 'libx264', '-crf', '18', str(source),
-        ],
-        check=True,
-        capture_output=True,
-        timeout=60,
+def test_ffmpeg_receives_exactly_the_specified_cut_options(
+    ws: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    real_ffmpeg = shutil.which('ffmpeg')
+    assert real_ffmpeg is not None
+    args_log = tmp_path / 'ffmpeg-args.json'
+    recording_ffmpeg = tmp_path / 'recording-ffmpeg'
+    recording_ffmpeg.write_text(
+        f'#!{sys.executable}\n'
+        'import json, os, sys\n'
+        'from pathlib import Path\n'
+        f'Path({str(args_log)!r}).write_text(json.dumps(sys.argv[1:]), encoding="utf-8")\n'
+        f'os.execv({real_ffmpeg!r}, [{real_ffmpeg!r}, *sys.argv[1:]])\n',
+        encoding='utf-8',
     )
+    recording_ffmpeg.chmod(0o755)
+    monkeypatch.setenv('FFMPEG_BIN', str(recording_ffmpeg))
+    catalog = read_catalog(ws)
+    catalog['entries'][0]['videos'][0]['selected_clips'] = [clips_of(catalog)[0]]
+    (ws / 'material-catalog.json').write_text(json.dumps(catalog), encoding='utf-8')
 
-    assert run_cli(str(ws)).returncode == 0, 'odd-sized 4:4:4 source must still cut'
+    proc = run_cli(str(ws))
 
-    info = media.probe(ws / CLIP_A_PATH)
-    assert (info['width'], info['height']) == (160, 120)  # rounded down to even
-    pix = subprocess.run(
-        ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
-         'stream=pix_fmt', '-of', 'default=noprint_wrappers=1:nokey=1', str(ws / CLIP_A_PATH)],
-        capture_output=True, text=True, check=True, timeout=30,
-    ).stdout.strip()
-    assert pix == 'yuv420p'
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(args_log.read_text(encoding='utf-8')) == [
+        '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
+        '-ss', '0.500', '-to', '2.000',
+        '-i', str(ws / 'harvest_page' / 'example' / 'videos' / 'vid_001.mp4'),
+        '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
+        '-movflags', '+faststart',
+        str(ws / 'clips' / '.vid_001_0.50-2.00.part.mp4'),
+    ]
+    assert media.probe(ws / CLIP_A_PATH)['has_audio'] is False
 
 
 def test_a_failed_clip_does_not_keep_a_clip_path_left_over_from_an_earlier_window(ws: Path):

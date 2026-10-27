@@ -70,7 +70,7 @@ Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产
 scripts/cut-clips.py {work_dir}/{topic_name}
 ```
 
-对 catalog 里每个视频的每个 `selected_clip`，切出 `{work_dir}/{topic_name}/clips/<entry-slug>/<video_id>_<start:.3f>-<end:.3f>.mp4`（`-an` 去掉音轨，libx264 重编码成偶数尺寸 yuv420p，浏览器才能解），在该 clip 上写入 `clip_path`（相对工作区），并原地更新 `material-catalog.json`（保留原文件权限）。路径按 entry slug 分目录：视频 id 只在 entry 内唯一（harvest 每页都从 `native_001` 编号），裸 id 文件名会跨 entry 撞车。窗口毫秒精度，所以相差不到 0.01 秒的窗口不会共用旧文件。目标文件已存在**且经 ffprobe 确认是无音轨、可播放、时长够**时才跳过；带着原始音轨或截断的同名文件会被重切。视频 `local_path` 以 `harvest_page/` 为 base，绝对路径原样使用。输出 JSON：`{"success": true, "clips": [{"ref": "<video_id>:<start>-<end>", "clip_path": ..., "skipped": false}], "errors": []}`；只要有一个 clip 失败就退出 1（已切好的保留且 catalog 增量写回），按 `errors` 里的 `ref` 与原因修 catalog（窗口、`local_path`）后重跑。
+对 catalog 里每个视频的每个 `selected_clip`，切出 `{work_dir}/{topic_name}/clips/<video_id>_<start:.2f>-<end:.2f>.mp4`（`-an` 去掉音轨，libx264 重编码），在该 clip 上写入 `clip_path`（相对工作区），并原地更新 `material-catalog.json`（原子写、保留原文件权限）。视频的相对 `local_path` 以 `harvest_page/` 为 base，绝对路径原样使用。目标文件已存在且非空时跳过，所以改过 catalog 后可以直接重跑。输出 JSON：`{"success": true, "clips": [{"ref": "<video_id>:<start>-<end>", "clip_path": ..., "skipped": false}], "errors": []}`；只要有一个 clip 失败就退出 1（已切好的保留且 catalog 增量写回），按 `errors` 里的 `ref` 与原因修 catalog（窗口、`local_path`）后重跑。
 
 **`material-catalog.json` 的结构：**
 
@@ -106,7 +106,7 @@ scripts/cut-clips.py {work_dir}/{topic_name}
           "semantic_description": "...",
           "selected_clips": [
             {"start": 12.0, "end": 18.5, "reason": "...", "frame_paths": [...],
-             "clip_path": "clips/example/2MJDdzSXL74_12.000-18.500.mp4"}
+             "clip_path": "clips/2MJDdzSXL74_12.00-18.50.mp4"}
           ]
         }
       ]
