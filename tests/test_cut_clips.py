@@ -325,9 +325,9 @@ def test_missing_ffmpeg_is_a_runtime_error(ws: Path, monkeypatch: pytest.MonkeyP
     assert not (ws / 'clips').exists()
 
 
-def run_pipeline_status_cli(ws: Path) -> subprocess.CompletedProcess:
+def run_pipeline_status_cli(ws: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(PIPELINE_STATUS_SCRIPT), str(ws)],
+        [sys.executable, str(PIPELINE_STATUS_SCRIPT), str(ws), *args],
         capture_output=True,
         text=True,
         timeout=30,
@@ -359,6 +359,8 @@ def complete_pipeline_prerequisites(ws: Path) -> None:
             'rejected': [],
         }],
     }), encoding='utf-8')
+    approval = run_pipeline_status_cli(ws, '--approve', 'research-brief')
+    assert approval.returncode == 0, approval.stderr
 
 
 def test_an_ffmpeg_that_hangs_times_out_and_leaves_no_file(
