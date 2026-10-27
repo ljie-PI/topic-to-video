@@ -19,7 +19,7 @@ Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（标准�
 - `narration-offsets.json` 是 `version` 为 1 的 JSON 对象，带非空的 `segments` 列表；它记录的 `script_length` / `narration_length` 等于当前 `script.txt` / `narration.txt` 的字符数；表里的 `script_sha256` / `narration_sha256`（make-narration 写入）必须等于当前两个文件的内容哈希——等长修改字符数看不出来，哈希躲不掉（改了 `script.txt` 就要重跑 make-narration）；
 - `scene-plan.json` 是非空列表，每个 scene 有 `scene_id` 和整数 `paragraphs`；所有 scene 的段落并集恰好是 `script.txt` 的第 1 段到最后一段；`material_candidates[].ref` 都能在 catalog 里解析（素材 id，或 `<video_id>:<start>-<end>` 且与某个 `selected_clips` 的起止相差都不超过 0.01 秒）；没有 catalog（`fetch_materials = false` 且不是论文模式）时，`material_candidates` 必须是空列表。
 
-通过后，把旁白和场景摘要交给用户确认，再进入 TTS。
+通过后，把旁白和场景摘要交给用户确认；用户确认后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve script`，再进入 TTS。除非用户已经明确确认，否则不要自己执行 `--approve`。
 
 ## 下一步
 
@@ -40,8 +40,8 @@ Phase 7（配音与字幕）：只对 `narration.txt` 配音，并生成词级�
 script agent 报告完成后：
 
 1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`。
-2. `next_phase` 仍是 Phase 6 时，把 `next_phase.problems`（产物 → 原因）原样交给 script agent 修复，修完再跑一次。字数、段落覆盖、素材引用都由状态脚本判定：不要自己手算，也不要改产物。
-3. Phase 6 不再是 `next_phase` 后，把旁白和场景摘要（每个 scene 的 `scene_id` + `intent`）交给用户确认；用户确认前不要进入 Phase 7。
+2. `next_phase` 仍是 Phase 6 且 `reason` 为 `missing` / `corrupt` 时，把 `next_phase.problems`（产物 → 原因）原样交给 script agent 修复，修完再跑一次。字数、段落覆盖、素材引用都由状态脚本判定：不要自己手算，也不要改产物。
+3. `next_phase.reason` 为 `awaiting_approval` 且 `gate` 为 `script` 时，把旁白和场景摘要（每个 scene 的 `scene_id` + `intent`）交给用户确认；用户确认后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve script`。除非用户已经明确确认，否则不要自己执行 `--approve`；用户确认前不要进入 Phase 7。
 
 ## Phase 6.3 — 朗读稿生成归属
 

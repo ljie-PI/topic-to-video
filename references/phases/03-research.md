@@ -92,7 +92,7 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
    2. 从 `gemini_deep_research_sources.json` 中筛选出符合 Phase 4 INCLUDE 类型的 URL（官方站、GitHub、docs、blog、YouTube —— 不要聚合页或社交 feed）。
    3. 通过 `web_search` 发现的、符合 INCLUDE 类型的 URL。
    目标 **10-15 个 source URL**，覆盖多样的视觉素材类型。
-8. **写脚本之前，把 `research-brief.md` 给用户看。** 通常 ~1 轮反馈。
+8. **写脚本之前，把 `research-brief.md` 给用户看。** 通常 ~1 轮反馈。用户确认后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve research-brief`；除非用户已经明确确认，否则不要自己执行 `--approve`。
 
 **仅在以下情况跳过研究：**
 - 用户明确说"skip research, use this exact text" 且提供了完整内容

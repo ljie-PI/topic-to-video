@@ -25,6 +25,8 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 3. 按该文档执行；文档头部的「输入 / 输出 / 完成判据 / 下一步」是自包含的，不需要查其他 phase 文档。
 4. 回到第 1 步，直到脚本报告 `next_phase` 为 `null`（全部完成）。
 
+`next_phase.reason == "awaiting_approval"` 时，按 `instruction` 找用户确认；除非用户已经明确确认，否则不要自己执行 `--approve`。
+
 续跑、回退与重做都由状态脚本驱动。状态由三部分组成：`inputs.json`、各 phase 的产物，以及 `.pipeline/`（状态脚本记下的上游指纹，**只由状态脚本写，不要手改**）。
 
 - 某个 phase 的产物被删掉或写坏时，脚本回退到那个 phase（`reason` 为 `missing` / `corrupt`）。
@@ -87,7 +89,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 | 脚本 | 用途 | 依赖 |
 | --- | --- | --- |
-| `pipeline-status.py` | 扫描工作区，输出已完成 / 下一个 phase、要读的文档、缺失 / 损坏 / stale 的产物；`--restamp <phase_id>` 接受某个 stale phase 的现有产物 | — |
+| `pipeline-status.py` | 扫描工作区，输出已完成 / 下一个 phase、要读的文档、缺失 / 损坏 / stale 的产物；`--restamp <phase_id>` 接受某个 stale phase 的现有产物；`--approve <gate>` 在用户明确确认后记录 gate 及产物指纹 | — |
 | `prepare-handoff.py` | 委派步骤（script / composition）的准备：物化委派包（composition 另含 modules 与预置字体）、生成 handoff，输出可原样派发的 `dispatch_prompt` | — |
 | `fonts-download.sh` | 把仓库里预置的 WOFF2 字体（`resources/fonts/<design>/`）装进工程，不联网；`--refresh` 才从 Google Fonts 重新下载（维护用） | — |
 | `voice-clone.py` | TTS：把 `narration.txt` 合成 `voice_clone/narration.mp3`；后端由环境变量选择 | 见脚本顶部说明 |

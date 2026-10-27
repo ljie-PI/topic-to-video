@@ -23,11 +23,17 @@ products. A phase whose upstream changed while its products did not is stale:
 it was built from an older upstream. A partial redo does not clear the mark:
 the phase stays stale until every product has been regenerated (or the phase
 is restamped), so a half-finished redo can never silence staleness. Phases
-are judged in order; the first one that is missing, corrupt or stale becomes
-next_phase, and every later applicable phase is pending: it is not checked,
-not stamped and not reported as completed. --restamp <phase_id> accepts the
-current products of a phase as built from the current upstream (its products
-must pass their checks).
+are judged in order; the first one that is missing, corrupt, stale or awaiting
+user approval becomes next_phase, and every later applicable phase is pending:
+it is not checked, not stamped and not reported as completed. --restamp
+<phase_id> accepts the current products of a phase as built from the current
+upstream (its products must pass their checks).
+
+User gates: research-brief (Phase 3) and script (Phase 6) also require a
+matching approval in {workspace}/.pipeline/approvals.json. --approve <gate>
+records the current product hashes only after every product of that phase
+passes; editing an approved product returns the phase to awaiting_approval.
+Legacy workspaces without approvals must confirm both gates once.
 
 Robustness: scanning never aborts on state-file problems. An unreadable
 optional upstream counts as absent; an unusable stamps.json is quarantined
@@ -41,7 +47,7 @@ pass. A size + mtime fingerprint cache (.pipeline/fpcache.json) skips
 re-hashing large media files that cannot have changed.
 
 Usage:
-  python3 scripts/pipeline-status.py <workspace_dir> [--restamp <phase_id>]
+  python3 scripts/pipeline-status.py <workspace_dir> [--restamp <phase_id> | --approve <gate>]
 
 workspace_dir is required: the commands in SKILL.md run from the skill root, so
 the current directory is never the project workspace. Project workspaces live
@@ -50,16 +56,17 @@ outside this repo; only the doc paths in the output are repo-relative.
 Output: one JSON document on stdout. Besides the legacy completed_phases /
 skipped_phases / missing_products / corrupt_products it carries
   phases          [{id, status}] for every phase; status is completed,
-                  skipped, missing, corrupt, stale or pending
+                  skipped, missing, corrupt, stale, awaiting_approval or pending
   stale_phases, pending_phases
   stamps_reset      true when stamps.json was unusable and is now quarantined:
                   every phase may be stale; rebuild stamps with --restamp
   next_phase      {id, title, doc, reason, problems}; reason is missing,
-                  corrupt or stale, and a stale phase adds changed_upstream
-                  (the upstream keys whose fingerprint changed)
+                  corrupt, stale or awaiting_approval. A stale phase adds
+                  changed_upstream; an approval gate adds gate and instruction.
 Exit codes: 0 = success (a next phase exists, or the pipeline is complete),
 1 = runtime error (workspace unreadable or not writable, --restamp on a phase
-whose products do not pass), 2 = invalid arguments.
+whose products do not pass), 2 = invalid arguments or products that cannot be
+approved.
 """
 from __future__ import annotations
 
@@ -95,6 +102,7 @@ PHASE_COMPLETED = 'completed'
 PHASE_SKIPPED = 'skipped'
 PHASE_STALE = 'stale'
 PHASE_PENDING = 'pending'
+PHASE_AWAITING_APPROVAL = 'awaiting_approval'
 
 INPUTS_REQUIRED_FIELDS = [
     'source',
@@ -127,6 +135,28 @@ STAMPS_VERSION = 1
 QUARANTINED_STAMPS = 'stamps.json.quarantined'
 FPCACHE_PATH = '.pipeline/fpcache.json'
 FPCACHE_VERSION = 1
+
+# User confirmation is durable state, tied to the exact products the user saw.
+APPROVALS_PATH = '.pipeline/approvals.json'
+APPROVALS_VERSION = 1
+GATES: dict[str, dict[str, Any]] = {
+    'research-brief': {
+        'phase': '3-research',
+        'products': ['research-brief.md'],
+        'instruction': (
+            '把 research-brief.md 给用户过目；用户确认后运行 '
+            '`python3 scripts/pipeline-status.py <ws> --approve research-brief`'
+        ),
+    },
+    'script': {
+        'phase': '6-script-scene-plan',
+        'products': ['script.txt', 'tts-lexicon.json', 'scene-plan.json'],
+        'instruction': (
+            '把旁白和每个 scene 的 scene_id + intent 交给用户确认；确认后运行 '
+            '`python3 scripts/pipeline-status.py <ws> --approve script`'
+        ),
+    },
+}
 
 # Fingerprint of an upstream file that does not exist (optional upstream).
 ABSENT = 'absent'
@@ -185,7 +215,8 @@ def parse_args() -> argparse.Namespace:
         description='Scan a topic-to-video workspace and report the next pipeline phase.'
     )
     parser.add_argument('workspace', help='Project workspace directory ({work_dir}/{topic_name}).')
-    parser.add_argument(
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument(
         '--restamp',
         metavar='PHASE_ID',
         choices=[phase['id'] for phase in PHASES],
@@ -194,6 +225,12 @@ def parse_args() -> argparse.Namespace:
             'stamp, then report the status as usual. For a stale phase whose products need no '
             'regeneration. All products of the phase must pass their checks.'
         ),
+    )
+    action.add_argument(
+        '--approve',
+        metavar='GATE',
+        choices=list(GATES),
+        help='Record user approval of a gate, tied to the current product hashes, then report status.',
     )
     return parser.parse_args()
 
@@ -970,6 +1007,7 @@ PHASES: list[dict[str, Any]] = [
         'title': '主题调研',
         'doc': 'references/phases/03-research.md',
         'applies': 'always',
+        'gate': 'research-brief',
         'upstream': [
             'inputs.json#source',
             'inputs.json#input_mode',
@@ -999,6 +1037,7 @@ PHASES: list[dict[str, Any]] = [
         'title': '脚本与场景规划（委派）',
         'doc': 'references/phases/06-script-scene-plan.md',
         'applies': 'always',
+        'gate': 'script',
         'upstream': [
             'research-brief.md',
             'material-catalog.json',  # optional: absent when fetch_materials is false
@@ -1238,6 +1277,39 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+class Approvals:
+    """Durable user approvals, invalidated whenever an approved product changes."""
+
+    def __init__(self, ws: Path) -> None:
+        self.path = ws / APPROVALS_PATH
+        self.gates: dict[str, dict[str, Any]] = {}
+        try:
+            data = json.loads(self.path.read_text(encoding='utf-8'))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return
+        if not isinstance(data, dict) or data.get('version') != APPROVALS_VERSION:
+            return
+        gates = data.get('gates')
+        if isinstance(gates, dict):
+            self.gates = {
+                gate: approval
+                for gate, approval in gates.items()
+                if isinstance(gate, str) and isinstance(approval, dict)
+            }
+
+    def matches(self, gate: str, products: dict[str, str]) -> bool:
+        approval = self.gates.get(gate)
+        return approval is not None and approval.get('products') == products
+
+    def approve(self, gate: str, products: dict[str, str]) -> None:
+        self.gates[gate] = {
+            'approved_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+            'products': products,
+        }
+        staged = stage_json(self.path, {'version': APPROVALS_VERSION, 'gates': self.gates})
+        os.replace(staged, self.path)
+
+
 class Stamps:
     """{ws}/.pipeline/stamps.json: {"version": 1, "phases": {<phase_id>: {upstream, products, stamped_at}}}.
 
@@ -1385,7 +1457,7 @@ def reconcile_stamp(phase: dict[str, Any], stamps: Stamps, fingerprints: Fingerp
     return changed
 
 
-def scan_workspace(ws: Path, stamps: Stamps, cache: FpCache) -> dict[str, Any]:
+def scan_workspace(ws: Path, stamps: Stamps, approvals: Approvals, cache: FpCache) -> dict[str, Any]:
     _, inputs = load_inputs(ws)
     fingerprints = Fingerprinter(ws, cache)
 
@@ -1406,6 +1478,21 @@ def scan_workspace(ws: Path, stamps: Stamps, cache: FpCache) -> dict[str, Any]:
         if not problems:
             changed_upstream = reconcile_stamp(phase, stamps, fingerprints)
             if not changed_upstream:
+                gate = phase.get('gate')
+                if gate is not None:
+                    products = {relpath: fingerprints.file(relpath) for relpath in GATES[gate]['products']}
+                    if not approvals.matches(gate, products):
+                        statuses.append({'id': phase['id'], 'status': PHASE_AWAITING_APPROVAL})
+                        next_phase = {
+                            'id': phase['id'],
+                            'title': phase['title'],
+                            'doc': phase['doc'],
+                            'reason': PHASE_AWAITING_APPROVAL,
+                            'gate': gate,
+                            'instruction': GATES[gate]['instruction'],
+                            'problems': {},
+                        }
+                        continue
                 statuses.append({'id': phase['id'], 'status': PHASE_COMPLETED})
                 continue
             statuses.append({'id': phase['id'], 'status': PHASE_STALE})
@@ -1478,6 +1565,23 @@ def restamp_phase(ws: Path, phase_id: str, stamps: Stamps, cache: FpCache) -> di
     return None
 
 
+def approve_gate(ws: Path, gate: str, approvals: Approvals, cache: FpCache) -> dict[str, Any] | None:
+    """Record approval only after every product of the gate's phase passes."""
+    phase = PHASES_BY_ID[GATES[gate]['phase']]
+    problems = validate_phase(ws, phase)
+    if problems:
+        return {
+            'success': False,
+            'error': f'cannot approve {gate}: its products do not pass their checks',
+            'problems': {relpath: result.detail or result.status for relpath, result in problems.items()},
+        }
+    fingerprints = Fingerprinter(ws, cache)
+    products = {relpath: fingerprints.file(relpath) for relpath in GATES[gate]['products']}
+    approvals.approve(gate, products)
+    log(f'approved {gate}')
+    return None
+
+
 def main() -> int:
     args = parse_args()
     ws = Path(args.workspace)
@@ -1487,6 +1591,7 @@ def main() -> int:
         if not ws.is_dir():
             raise NotADirectoryError(f'workspace is not a directory: {ws}')
         stamps = Stamps(ws)
+        approvals = Approvals(ws)
         cache = FpCache(ws)
         if args.restamp:
             failure = restamp_phase(ws, args.restamp, stamps, cache)
@@ -1494,7 +1599,13 @@ def main() -> int:
                 log(f"error: {failure['error']}")
                 print_json(failure)
                 return 1
-        result = scan_workspace(ws, stamps, cache)
+        if args.approve:
+            failure = approve_gate(ws, args.approve, approvals, cache)
+            if failure is not None:
+                log(f"error: {failure['error']}")
+                print_json(failure)
+                return 2
+        result = scan_workspace(ws, stamps, approvals, cache)
         # Persisting state is best-effort: a read-only workspace or .pipeline/
         # must not throw away the scan results that were just computed.
         try:
