@@ -56,6 +56,33 @@ CATALOG = {
     ],
 }
 
+# What parse-pdf.py writes for the main paper: a manifest entry (slug
+# main-paper, source_type paper_pdf) plus the synced metadata file. Paper-mode
+# fixtures use this shape instead of the web-harvest one.
+PAPER_ENTRY = {
+    'slug': 'main-paper',
+    'success': True,
+    'source_type': 'paper_pdf',
+    'title': 'Demo Paper',
+    'text_excerpt': 'abstract ...',
+    'paper_metadata': {
+        'full_markdown_path': 'main-paper/mineru/full.md',
+        'abstract': 'abstract ...',
+        'figure_captions': {'img_001': '图 1：总体架构'},
+        'table_captions': {},
+    },
+    'images': [{'id': 'img_001', 'local_path': 'main-paper/images/img_001.png', 'caption': '图 1：总体架构'}],
+    'videos': [],
+}
+
+PAPER_METADATA = {key: value for key, value in PAPER_ENTRY.items() if key != 'images'}
+
+PAPER_CATALOG_ENTRY = {
+    'slug': 'main-paper',
+    'images': [{'id': 'img_001', 'semantic_description': '图 1：总体架构'}],
+    'videos': [],
+}
+
 
 def script_of(chars: int) -> str:
     """A two-paragraph display draft of exactly `chars` non-blank characters."""
@@ -73,7 +100,7 @@ SCENE_PLAN = [
     }
 ]
 
-# Without fetch_materials there is no catalog to refer to.
+# Without a catalog phase (no fetch_materials, not a paper) there is nothing to refer to.
 SCENE_PLAN_NO_MATERIALS = [{**SCENE_PLAN[0], 'material_candidates': []}]
 
 TRANSCRIPT = [
@@ -154,33 +181,62 @@ def complete_through_inputs(ws: Path, **inputs_overrides) -> None:
     write_json(ws / 'inputs.json', inputs)
 
 
+def write_paper_metadata(ws: Path) -> None:
+    """Phase 2's product: the parsed main paper."""
+    write_json(
+        ws / 'harvest_page' / 'main-paper' / 'metadata.json',
+        {
+            'slug': 'main-paper',
+            'success': True,
+            'source_type': 'paper_pdf',
+            'paper_metadata': {'full_markdown_path': 'main-paper/mineru/full.md'},
+        },
+    )
+
+
 def complete_through_research(ws: Path, **inputs_overrides) -> None:
     complete_through_inputs(ws, **inputs_overrides)
+    if inputs_overrides.get('input_mode') == 'paper':
+        write_paper_metadata(ws)
     write_text(ws / 'research-brief.md', RESEARCH_BRIEF)
 
 
 def complete_through_harvest(ws: Path, **inputs_overrides) -> None:
     complete_through_research(ws, **inputs_overrides)
-    write_json(
-        ws / 'harvest_page' / 'manifest.json',
-        {
-            'entries': [{'slug': 'example', 'images': [], 'videos': []}],
-            'harvest_batches': [{'at': '2026-01-01T00:00:00Z', 'urls': ['https://example.com'], 'succeeded': 1, 'failed': 0, 'rejected': []}],
-        },
-    )
+    inputs = {**INPUTS, **inputs_overrides}
+    # The real manifest shape: paper entries (Phase 2/3) plus web page entries
+    # (Phase 4); harvest_batches only exist when fetching actually ran.
+    entries = []
+    if inputs['input_mode'] == 'paper':
+        # Phase 2 products: the synced metadata file and the manifest entry.
+        write_json(ws / 'harvest_page' / 'main-paper' / 'metadata.json', PAPER_METADATA)
+        entries.append(PAPER_ENTRY)
+    if inputs['fetch_materials']:
+        entries.append({'slug': 'example', 'images': [], 'videos': []})
+    manifest: dict = {'entries': entries}
+    if inputs['fetch_materials']:
+        manifest['harvest_batches'] = [{'at': '2026-01-01T00:00:00Z', 'urls': ['https://example.com'], 'succeeded': 1, 'failed': 0, 'rejected': []}]
+    write_json(ws / 'harvest_page' / 'manifest.json', manifest)
 
 
 def complete_through_catalog(ws: Path, **inputs_overrides) -> None:
     complete_through_harvest(ws, **inputs_overrides)
-    write_json(ws / 'material-catalog.json', CATALOG)
+    inputs = {**INPUTS, **inputs_overrides}
+    entries = []
+    if inputs['input_mode'] == 'paper':
+        entries.append(PAPER_CATALOG_ENTRY)
+    if inputs['fetch_materials']:
+        entries.extend(CATALOG['entries'])
+    write_json(ws / 'material-catalog.json', {'topic_name': 'demo', 'entries': entries})
 
 
 def complete_through_script(ws: Path, **inputs_overrides) -> None:
     complete_through_catalog(ws, **inputs_overrides)
     write_script(ws, SCRIPT_TXT)
     write_json(ws / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
-    fetching = {**INPUTS, **inputs_overrides}['fetch_materials']
-    write_json(ws / 'scene-plan.json', SCENE_PLAN if fetching else SCENE_PLAN_NO_MATERIALS)
+    inputs = {**INPUTS, **inputs_overrides}
+    has_catalog = inputs['fetch_materials'] or inputs['input_mode'] == 'paper'
+    write_json(ws / 'scene-plan.json', SCENE_PLAN if has_catalog else SCENE_PLAN_NO_MATERIALS)
 
 
 def complete_through_voice_subtitles(ws: Path, **inputs_overrides) -> None:
@@ -928,18 +984,42 @@ def test_paper_mode_includes_paper_parse(tmp_path: Path):
 
 def test_paper_parse_product_validated(tmp_path: Path):
     complete_through_inputs(tmp_path, input_mode='paper')
-    metadata = {
-        'slug': 'main-paper',
-        'success': True,
-        'source_type': 'paper_pdf',
-        'paper_metadata': {'full_markdown_path': 'main-paper/full.md'},
-    }
-    write_json(tmp_path / 'harvest_page' / 'main-paper' / 'metadata.json', metadata)
+    write_json(tmp_path / 'harvest_page' / 'main-paper' / 'metadata.json', PAPER_METADATA)
+    write_json(tmp_path / 'harvest_page' / 'manifest.json', {'version': 2, 'entries': [PAPER_ENTRY]})
     write_text(tmp_path / 'harvest_page' / 'main-paper' / 'full.md', '# paper\n')
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
     assert '2-paper-parse' in result['completed_phases']
     assert result['next_phase']['id'] == '3-research'
+
+
+def test_paper_parse_requires_the_main_paper_manifest_entry(tmp_path: Path):
+    # Workspaces parsed before parse-pdf upserted into the manifest have a
+    # metadata file but no manifest entry; Phase 5 would find nothing to
+    # catalog, so Phase 2 stays open until parse-pdf re-runs.
+    complete_through_inputs(tmp_path, input_mode='paper')
+    write_json(tmp_path / 'harvest_page' / 'main-paper' / 'metadata.json', PAPER_METADATA)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '2-paper-parse'
+    assert 'harvest_page/manifest.json' in result['missing_products']
+
+
+def test_paper_parse_manifest_without_the_main_paper_entry_is_corrupt(tmp_path: Path):
+    complete_through_inputs(tmp_path, input_mode='paper')
+    write_json(tmp_path / 'harvest_page' / 'main-paper' / 'metadata.json', PAPER_METADATA)
+    write_json(
+        tmp_path / 'harvest_page' / 'manifest.json',
+        {'version': 2, 'entries': [{'slug': 'unrelated', 'images': [], 'videos': []}]},
+    )
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '2-paper-parse'
+    assert 'harvest_page/manifest.json' in result['corrupt_products']
+    detail = result['next_phase']['problems']['harvest_page/manifest.json']
+    assert 'main-paper' in detail
 
 
 def test_paper_only_manifest_without_harvest_batches_does_not_complete_phase_4(tmp_path: Path):
@@ -976,6 +1056,46 @@ def test_no_fetch_skips_harvest_and_catalog(tmp_path: Path):
     assert '4-material-harvest' in result['skipped_phases']
     assert '5-material-catalog' in result['skipped_phases']
     assert result['next_phase']['id'] == '6-script-scene-plan'
+
+
+def test_paper_mode_without_fetch_skips_harvest_but_builds_the_catalog(tmp_path: Path):
+    complete_through_harvest(tmp_path, input_mode='paper', fetch_materials=False)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert '4-material-harvest' in result['skipped_phases']
+    assert '5-material-catalog' not in result['skipped_phases']
+    assert result['next_phase']['id'] == '5-material-catalog'
+    assert result['next_phase']['doc'] == 'references/phases/05-material-catalog.md'
+
+
+def test_standard_mode_without_fetch_skips_harvest_and_catalog(tmp_path: Path):
+    complete_through_research(tmp_path, input_mode='standard', fetch_materials=False)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert {'4-material-harvest', '5-material-catalog'} <= set(result['skipped_phases'])
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+
+
+def test_paper_mode_without_fetch_full_run(tmp_path: Path):
+    complete_all(tmp_path, input_mode='paper', fetch_materials=False)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase'] is None
+    assert result['skipped_phases'] == ['4-material-harvest']
+    assert '5-material-catalog' in result['completed_phases']
+
+
+def test_paper_mode_without_fetch_scene_plan_refs_resolve_against_the_catalog(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene('s1', [1, 2], candidates('img_001'))], input_mode='paper', fetch_materials=False
+    )
+    assert detail is None
+    assert '6-script-scene-plan' in result['completed_phases']
+
+
+def test_paper_mode_without_fetch_scene_plan_ref_missing_from_catalog_is_corrupt(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene('s1', [1, 2], candidates('nope_1'))], input_mode='paper', fetch_materials=False
+    )
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert "'nope_1'" in detail, detail
 
 
 def test_no_fetch_full_run(tmp_path: Path):
@@ -1150,6 +1270,16 @@ def test_corrupt_inputs_json_falls_back_to_phase_1(tmp_path: Path):
     result = parse_result(proc)
     assert result['next_phase']['id'] == '1-gather-inputs'
     assert 'inputs.json' in result['corrupt_products']
+
+
+def test_unreadable_inputs_still_list_fetch_and_catalog_as_applicable(tmp_path: Path):
+    # inputs.json cannot say whether the workspace fetches or parses a paper:
+    # the default sequence (standard, with fetching) applies, so Phases 4 and 5
+    # are reported as upcoming, never silently skipped.
+    write_text(tmp_path / 'inputs.json', 'not json {')
+    result = parse_result(run_cli(str(tmp_path)))
+    assert '4-material-harvest' not in result['skipped_phases']
+    assert '5-material-catalog' not in result['skipped_phases']
 
 
 def test_unreadable_file_is_corrupt_not_missing(tmp_path: Path):
@@ -1349,6 +1479,7 @@ def test_paper_parse_stamp_upstream_and_its_metadata_as_upstream_of_research(tmp
         'paper_metadata': {'full_markdown_path': 'main-paper/full.md'},
     }
     write_json(tmp_path / 'harvest_page' / 'main-paper' / 'metadata.json', metadata)
+    write_json(tmp_path / 'harvest_page' / 'manifest.json', {'version': 2, 'entries': [PAPER_ENTRY]})
     write_text(tmp_path / 'research-brief.md', RESEARCH_BRIEF)
     result = parse_result(run_cli(str(tmp_path)))
     assert result['completed_phases'] == ['1-gather-inputs', '2-paper-parse', '3-research']
