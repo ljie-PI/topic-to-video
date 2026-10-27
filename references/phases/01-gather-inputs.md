@@ -47,12 +47,11 @@
    - 未指定时保持默认主题。
 5. 时长：通常 3-10 分钟——从用户需求中提取，默认 5 分钟。
 6. 语言：默认中文。若用户想要其他语言要询问确认。
-7. 询问是否需要搜索视觉素材（图片/视频片段）来丰富场景。默认：是。
+7. 询问是否需要搜索视觉素材（图片/视频片段）来丰富场景。默认：是。论文模式下，论文自己的 figure 无论如何都会用上。
 8. **输入类型识别：**
    - 来源是 `.pdf` 文件路径 → 置 `input_mode = "paper"`
    - 来源是以 `.pdf` 结尾的 URL（例如 arXiv） → 置 `input_mode = "paper"`，并将该 URL 保留用于 `parse-pdf.py --url`
    - 否则 → `input_mode = "standard"`（默认；后续所有 "paper mode" 段落都跳过）
-   - 论文模式下，论文自己的 figure / table 总会进入 Phase 5 的 catalog（不因为不抓 web 素材而丢掉；Phase 5 的评分过滤仍然适用，低分或偏题的照样会被过滤）
 
 **如果已经存在一个姊妹项目**（例如用户说 "用和 `claude-code-video/` 一样的风格"），把该项目的 `composition-instructions.md`（旧的 `style-prompt.md` 视为其中一部分）复制进本项目工作区，并在对话中向用户确认要选同一个 design / layout；外观 token 只从所选 design 的文档取，不再复制任何 DESIGN.md。
 

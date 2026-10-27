@@ -19,11 +19,6 @@ Output convention:
   stdout : JSON result with metadata + manifest entry
   stderr : human-readable progress prefixed with [parse-pdf]
   exit   : 0 success, 1 runtime error, 2 invalid arguments
-
-Material ids: the main paper (--slug main-paper) keeps bare ids (img_001,
-tbl_001, chart_001). Any other slug — the related papers parsed in Phase 3 —
-carries the slug as a prefix (related-foo_img_001), because every paper
-numbers its own figures from 001 and the shared manifest must not collide.
 """
 
 from __future__ import annotations
@@ -362,12 +357,6 @@ def process_mineru_output(
     tbl_idx = 0
     chart_idx = 0
 
-    # Every paper numbers its own figures from img_001 / tbl_001. The main paper
-    # (and any ad-hoc parse) keeps those bare ids; papers parsed as related
-    # work in Phase 3 carry their slug as a prefix, so a bare id always means
-    # the main paper and ids never collide across papers.
-    id_prefix = f'{slug}_' if slug.startswith('related-') else ''
-
     for item in content_list:
         item_type = item.get('type', '')
         if item_type not in ('image', 'table', 'chart'):
@@ -388,7 +377,7 @@ def process_mineru_output(
         # Determine caption
         if item_type == 'image':
             img_idx += 1
-            file_id = f'{id_prefix}img_{img_idx:03d}'
+            file_id = f'img_{img_idx:03d}'
             caption_list = item.get('image_caption', [])
             if not isinstance(caption_list, list):
                 caption_list = [caption_list] if caption_list else []
@@ -397,7 +386,7 @@ def process_mineru_output(
             figure_captions[file_id] = caption
         elif item_type == 'table':
             tbl_idx += 1
-            file_id = f'{id_prefix}tbl_{tbl_idx:03d}'
+            file_id = f'tbl_{tbl_idx:03d}'
             caption_list = item.get('table_caption', [])
             if not isinstance(caption_list, list):
                 caption_list = [caption_list] if caption_list else []
@@ -406,7 +395,7 @@ def process_mineru_output(
             table_captions[file_id] = caption
         else:  # chart
             chart_idx += 1
-            file_id = f'{id_prefix}chart_{chart_idx:03d}'
+            file_id = f'chart_{chart_idx:03d}'
             caption_list = item.get('chart_caption', [])
             if not isinstance(caption_list, list):
                 caption_list = [caption_list] if caption_list else []

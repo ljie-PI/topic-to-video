@@ -90,9 +90,7 @@ def test_local_mineru_upserts_v2_manifest_with_dimensions_and_relative_paths(tmp
     check_paths(manifest)
 
 
-def test_related_paper_ids_carry_the_slug_prefix(tmp_path: Path):
-    # Both papers number figures from img_001; related papers must namespace
-    # their ids with the slug so a bare id always means the main paper.
+def test_main_and_related_paper_material_ids_remain_bare(tmp_path: Path):
     pdf, harvest_dir, env = install_fake_mineru(tmp_path)
     base_cmd = [sys.executable, str(SCRIPT), '--pdf', str(pdf), '--output-dir', str(harvest_dir)]
 
@@ -106,9 +104,11 @@ def test_related_paper_ids_carry_the_slug_prefix(tmp_path: Path):
     manifest = json.loads((harvest_dir / 'manifest.json').read_text(encoding='utf-8'))
     entries = {entry['slug']: entry for entry in manifest['entries']}
     assert entries['main-paper']['images'][0]['id'] == 'img_001'
+    assert entries['main-paper']['images'][0]['local_path'] == 'main-paper/images/img_001.png'
     assert entries['main-paper']['paper_metadata']['figure_captions'] == {'img_001': 'Figure 1'}
-    assert entries['related-foo']['images'][0]['id'] == 'related-foo_img_001'
-    assert entries['related-foo']['paper_metadata']['figure_captions'] == {'related-foo_img_001': 'Figure 1'}
+    assert entries['related-foo']['images'][0]['id'] == 'img_001'
+    assert entries['related-foo']['images'][0]['local_path'] == 'related-foo/images/img_001.png'
+    assert entries['related-foo']['paper_metadata']['figure_captions'] == {'img_001': 'Figure 1'}
 
 
 def test_nested_mineru_full_markdown_keeps_a_resolvable_relative_path(tmp_path: Path):

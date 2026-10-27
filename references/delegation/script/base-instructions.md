@@ -28,7 +28,7 @@ Phase 6 撰写旁白时，论文模式沿用论文自身的逻辑流，而非通
 6. Impact 与后续工作（来自 Deep Research）
 7. Takeaway / CTA
 
-论文 figure / table 条目是**首选**素材（catalog 里没有 `source_type` 字段：主论文条目的 slug 是 `main-paper`，相关论文是 `related-*`；素材 id 主论文是裸的 `img_001` / `tbl_001`，相关论文带 slug 前缀如 `related-foo_img_001`）。从 web 抓取的资源作为补充 B-roll。叙述中合适时自然引用图号 / 表号：`"如表一所示..."`。
+论文 figure（`source_type: "paper_pdf"` 条目）是**首选**素材。从 web 抓取的资源作为补充 B-roll。叙述中合适时自然引用图号 / 表号：`"如表一所示..."`。
 
 ### 通用要求
 
