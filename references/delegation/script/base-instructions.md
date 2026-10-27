@@ -85,4 +85,4 @@ TTS 朗读稿由 `scripts/make-narration.py` 按词表确定性生成，不要�
 
 ## 完成后
 
-运行 `scripts/make-narration.py` 生成 `narration.txt` 与 `narration-offsets.json`（命令见 handoff 的 Outputs 一节），然后向主 agent 报告四个产物路径。主 agent 会运行状态脚本做确定性校验（字数 / 段落覆盖 / 素材引用），不通过就把原因交还给你修复，通过后交给用户确认。
+运行 `scripts/make-narration.py` 生成 `narration.txt` 与 `narration-offsets.json`（命令见 handoff 的 Outputs 一节），然后向主 agent 报告五个产物路径：`script.txt`、`tts-lexicon.json`、`scene-plan.json`、`narration.txt`、`narration-offsets.json`。主 agent 会运行状态脚本做确定性校验（字数 / 段落覆盖 / 素材引用），不通过就把原因交还给你修复，通过后交给用户确认。
