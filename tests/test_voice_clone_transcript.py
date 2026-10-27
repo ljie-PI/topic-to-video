@@ -16,14 +16,13 @@ so the whole path runs without any model. ffmpeg / ffprobe are required.
 """
 from __future__ import annotations
 
-import importlib.util
 import json
-import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
+
+from cli_helpers import parse_stdout, run_cli
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VOICE_CLONE = REPO_ROOT / 'scripts' / 'voice-clone.py'
@@ -37,24 +36,10 @@ NARRATION = '大家好。今天我们来聊聊视频制作。'  # 15 non-whitesp
 def run_voice_clone(
     *args: str, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess:
-    clean = {
-        k: v for k, v in os.environ.items() if not k.startswith(_ENV_BLACKLIST_PREFIXES)
-    }
-    if env:
-        clean.update(env)
-    return subprocess.run(
-        [sys.executable, str(VOICE_CLONE), *args],
-        capture_output=True,
-        text=True,
-        env=clean,
-        timeout=120,
+    return run_cli(
+        VOICE_CLONE, *args, env=env or {},
+        blocked_prefixes=_ENV_BLACKLIST_PREFIXES, timeout=120,
     )
-
-
-def parse_stdout(proc: subprocess.CompletedProcess) -> dict:
-    """stdout must be exactly one parseable JSON document."""
-    assert len(proc.stdout.splitlines()) == 1, proc.stdout
-    return json.loads(proc.stdout)
 
 
 def synthesize(tmp_path: Path, *extra: str, env: dict[str, str] | None = None):
@@ -342,79 +327,130 @@ def test_asr_fallback_hits_the_default_path_without_flags(tmp_path: Path):
     assert result['transcript_path'] == str((tmp_path / 'out' / 'transcript.json').resolve())
 
 
-# --- transcribe_with_asr: stdout parsing and the success guards --------------
+# --- ASR subprocess stdout parsing and success guards, through the CLI -------
 
 
-def load_voice_clone():
-    spec = importlib.util.spec_from_file_location('voice_clone', VOICE_CLONE)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+def fake_asr_process_env(tmp_path: Path) -> tuple[Path, dict[str, str]]:
+    """Fake third-party imports and transcribe-child process side effects."""
+    root = tmp_path / 'asr_process_fakes'
+    (root / 'torch').mkdir(parents=True)
+    (root / 'qwen_asr').mkdir()
+    (root / 'torch' / '__init__.py').write_text(
+        "float16 = 'float16'\nfloat32 = 'float32'\n"
+        'class cuda:\n'
+        '    @staticmethod\n'
+        '    def is_available():\n'
+        '        return False\n',
+        encoding='utf-8',
+    )
+    (root / 'sitecustomize.py').write_text(
+        'import atexit\n'
+        'import os\n'
+        'import sys\n'
+        'from pathlib import Path\n'
+        "if Path(sys.argv[0]).name == 'transcribe.py':\n"
+        "    if os.environ.get('FAKE_TRANSCRIBE_STRAY_STDOUT') == '1':\n"
+        "        print('stray sdk log line')\n"
+        "    if os.environ.get('FAKE_TRANSCRIBE_DELETE_OUTPUT') == '1':\n"
+        '        atexit.register(lambda: Path(sys.argv[2]).unlink(missing_ok=True))\n',
+        encoding='utf-8',
+    )
+    return root, {'PYTHONPATH': str(root), 'TTS_FAKE_ALIGN_FAIL': '1'}
 
 
-def completed(cmd: list[str], returncode: int, stdout: str = '', stderr: str = ''):
-    return subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr=stderr)
+def asr_failure(result: dict) -> dict:
+    direct, asr = result['transcript_attempts']
+    assert direct['method'] == 'direct_align'
+    assert asr['method'] == 'asr'
+    return asr
 
 
-def test_transcribe_with_asr_reads_the_last_json_line_and_attaches_stderr(monkeypatch, tmp_path):
-    vc = load_voice_clone()
-    mp3 = tmp_path / 'narration.mp3'
-    mp3.write_bytes(b'\0' * 8)
-
-    def fake_run(cmd, **kwargs):
-        assert kwargs['stdout'] is subprocess.PIPE
-        assert kwargs['stderr'] is subprocess.PIPE
-        return completed(cmd, 1, stdout='stray sdk log line\n{"success": false, "error": "model blew up"}\n', stderr='traceback\nboom')
-
-    monkeypatch.setattr(vc.subprocess, 'run', fake_run)
-
-    with pytest.raises(RuntimeError, match='model blew up; stderr: traceback'):
-        vc.transcribe_with_asr(mp3, tmp_path / 'transcript.json')
-
-
-def test_transcribe_with_asr_accepts_stray_stdout_before_the_result(monkeypatch, tmp_path):
-    vc = load_voice_clone()
-    mp3 = tmp_path / 'narration.mp3'
-    mp3.write_bytes(b'\0' * 8)
-    transcript = tmp_path / 'transcript.json'
-    transcript.write_text('[]', encoding='utf-8')
-
-    monkeypatch.setattr(
-        vc.subprocess,
-        'run',
-        lambda cmd, **kwargs: completed(cmd, 0, stdout='stray line\n{"success": true, "sentence_count": 2}\n'),
+@pytest.mark.usefixtures('require_ffmpeg')
+def test_asr_cli_failure_uses_its_json_result_and_stderr_tail(tmp_path: Path):
+    root, env = fake_asr_process_env(tmp_path)
+    (root / 'qwen_asr' / '__init__.py').write_text(
+        'import sys\n'
+        "print('stray sdk log line')\n"
+        "print('traceback\\nboom', file=sys.stderr)\n"
+        "raise RuntimeError('model blew up')\n",
+        encoding='utf-8',
     )
 
-    vc.transcribe_with_asr(mp3, transcript)  # no raise: the last JSON line wins
+    proc = synthesize(tmp_path, env={**env, 'ASR_BACKEND': 'qwen3'})
+
+    assert proc.returncode == 1
+    result = parse_stdout(proc)
+    assert result['success'] is False
+    error = asr_failure(result)['error']
+    assert 'model blew up' in error
+    assert 'stderr: traceback\nboom' in error
+    assert not (tmp_path / 'tr' / 'transcript.json').exists()
+    assert (tmp_path / 'out' / 'narration.mp3').is_file()
 
 
-def test_transcribe_with_asr_rejects_success_without_sentences(monkeypatch, tmp_path):
-    vc = load_voice_clone()
-    mp3 = tmp_path / 'narration.mp3'
-    mp3.write_bytes(b'\0' * 8)
-    (tmp_path / 'transcript.json').write_text('[]', encoding='utf-8')
+@pytest.mark.usefixtures('require_ffmpeg')
+def test_asr_cli_accepts_stray_stdout_before_a_successful_result(tmp_path: Path):
+    _root, env = fake_asr_process_env(tmp_path)
 
-    monkeypatch.setattr(
-        vc.subprocess,
-        'run',
-        lambda cmd, **kwargs: completed(cmd, 0, stdout='{"success": true, "sentence_count": 0}'),
+    proc = synthesize(
+        tmp_path,
+        env={
+            **env,
+            'ASR_BACKEND': 'fake',
+            'ASR_FAKE_TEXT': '识别成功。',
+            'FAKE_TRANSCRIBE_STRAY_STDOUT': '1',
+        },
     )
 
-    with pytest.raises(RuntimeError, match='wrote no sentences'):
-        vc.transcribe_with_asr(mp3, tmp_path / 'transcript.json')
+    assert proc.returncode == 0, proc.stderr
+    result = parse_stdout(proc)
+    assert result['success'] is True
+    assert result['transcript_method'] == 'asr'
+    transcript = json.loads((tmp_path / 'tr' / 'transcript.json').read_text(encoding='utf-8'))
+    assert [sentence['text'] for sentence in transcript] == ['识别成功。']
 
 
-def test_transcribe_with_asr_rejects_success_without_the_file(monkeypatch, tmp_path):
-    vc = load_voice_clone()
-    mp3 = tmp_path / 'narration.mp3'
-    mp3.write_bytes(b'\0' * 8)
-
-    monkeypatch.setattr(
-        vc.subprocess,
-        'run',
-        lambda cmd, **kwargs: completed(cmd, 0, stdout='{"success": true, "sentence_count": 2}'),
+@pytest.mark.usefixtures('require_ffmpeg')
+def test_asr_cli_success_without_sentences_is_a_public_failure(tmp_path: Path):
+    root, env = fake_asr_process_env(tmp_path)
+    (root / 'qwen_asr' / '__init__.py').write_text(
+        'from types import SimpleNamespace\n'
+        'class Qwen3ASRModel:\n'
+        '    @staticmethod\n'
+        '    def from_pretrained(*args, **kwargs):\n'
+        '        return Qwen3ASRModel()\n'
+        '    def transcribe(self, audio, language, return_time_stamps):\n'
+        "        return [SimpleNamespace(text='', time_stamps=None)]\n",
+        encoding='utf-8',
     )
 
-    with pytest.raises(RuntimeError, match='wrote no sentences'):
-        vc.transcribe_with_asr(mp3, tmp_path / 'transcript.json')
+    proc = synthesize(tmp_path, env={**env, 'ASR_BACKEND': 'qwen3'})
+
+    assert proc.returncode == 1
+    result = parse_stdout(proc)
+    assert result['success'] is False
+    assert 'reported success but wrote no sentences' in asr_failure(result)['error']
+    assert not (tmp_path / 'tr' / 'transcript.json').exists()
+    assert (tmp_path / 'out' / 'narration.mp3').is_file()
+
+
+@pytest.mark.usefixtures('require_ffmpeg')
+def test_asr_cli_success_without_a_transcript_file_is_a_public_failure(tmp_path: Path):
+    _root, env = fake_asr_process_env(tmp_path)
+
+    proc = synthesize(
+        tmp_path,
+        env={
+            **env,
+            'ASR_BACKEND': 'fake',
+            'ASR_FAKE_TEXT': NARRATION,
+            'FAKE_TRANSCRIBE_DELETE_OUTPUT': '1',
+        },
+    )
+
+    assert proc.returncode == 1
+    result = parse_stdout(proc)
+    assert result['success'] is False
+    assert 'reported success but wrote no sentences' in asr_failure(result)['error']
+    assert not (tmp_path / 'tr' / 'transcript.json').exists()
+    assert (tmp_path / 'out' / 'narration.mp3').is_file()
