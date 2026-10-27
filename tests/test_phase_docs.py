@@ -41,6 +41,15 @@ def test_every_product_checked_by_pipeline_status_is_named_in_the_phase_doc_outp
     assert not missing, f'{phase["doc"]} "## 输出" does not name: {missing}'
 
 
+def test_phase7_offers_one_voice_clone_command_without_a_manual_asr_fallback():
+    doc = (REPO_ROOT / 'references/phases/07-voice-subtitles.md').read_text(encoding='utf-8')
+    section = doc.split('#### 7.1 —', 1)[1].split('#### 7.2 —', 1)[0]
+
+    assert 'python3 scripts/voice-clone.py' in section
+    assert 'python3 scripts/transcribe.py' not in section
+    assert '单独补跑转录' not in section
+
+
 def doc_text(relpath: str) -> str:
     return (REPO_ROOT / relpath).read_text(encoding='utf-8')
 

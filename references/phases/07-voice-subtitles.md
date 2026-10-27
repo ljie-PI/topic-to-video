@@ -24,11 +24,11 @@ TTS 与字幕合并在同一个 phase：先配音并拿到词级时间戳（tran
 
 | 环境 | TTS（voice-clone.py） | 词级时间戳来源 |
 | --- | --- | --- |
-| M 系列（arm64）Mac + mlx-audio | backend `mlx`：mlx-audio Qwen3-TTS | Qwen3-ForcedAligner 直接对齐朗读稿原文，**跳过 ASR**（transcript.json 由 voice-clone.py 一并写出） |
-| 有 CUDA 的机器 | backend `qwen3tts`：torch Qwen3-TTS | 优先 `--emit-transcript`：torch Qwen3-ForcedAligner 直对齐；aligner 不可导入时退到 `transcribe.py` 全 ASR |
-| 兜底 | backend `dashscope`：云端 CosyVoice | `transcribe.py`（auto → dashscope 云端 ASR） |
+| M 系列（arm64）Mac + mlx-audio | backend `mlx`：mlx-audio Qwen3-TTS | Qwen3-ForcedAligner 直接对齐朗读稿原文（transcript.json 由 voice-clone.py 一并写出）；对齐失败时自动退到 `transcribe.py` 全 ASR |
+| 有 CUDA 的机器 | backend `qwen3tts`：torch Qwen3-TTS | `--emit-transcript`：torch Qwen3-ForcedAligner 直对齐；aligner 不可用时自动退到 `transcribe.py` 全 ASR |
+| 兜底 | backend `dashscope`：云端 CosyVoice | 没有直对齐，由 voice-clone.py 自动调用 `transcribe.py`（auto → dashscope 云端 ASR） |
 
-直对齐方案（mlx / emit-transcript）里 transcript 与朗读稿逐字一致，「ASR 结果与旁白校对映射」天然退化：7.2 的 align-narration.py 归一化 / difflib 校对逻辑照常运行但平凡通过（不会产生 `fallback: true` 单元）。
+直对齐成功时（`transcript_method` 为 `direct_align`）transcript 与朗读稿逐字一致，「ASR 结果与旁白校对映射」天然退化：7.2 的 align-narration.py 归一化 / difflib 校对逻辑照常运行但平凡通过。**先看 7.1 输出 JSON 的 `transcript_method`**：若为 `asr`，transcript 来自 ASR 识别，不保证与朗读稿逐字一致——7.2 可能产生 `fallback: true` 单元和"TTS 跳过了这段文本"的警告，属于预期行为，按警告核对那几段即可。
 
 #### 7.1 — TTS 配音 + transcript
 
@@ -47,16 +47,9 @@ ffprobe -v error -show_entries format=duration \
   {work_dir}/{topic_name}/voice_clone/narration.mp3
 ```
 
-- 后端由环境选择，参数和依赖（参考音色、Python 包、硬件要求等）见 `scripts/voice-clone.py` 的顶部说明。拿不准当前机器会选哪个后端时先跑 `python3 scripts/voice-clone.py --resolve-backend`。
-- **mlx**（arm64 Mac）：合成后直接用 mlx-audio ForcedAligner 对齐朗读稿原文并写出 transcript.json（该后端默认出 transcript，不需要 `--emit-transcript`；aligner 不可用时告警并跳过，用户需按 7.2 的回退路径补 transcript）。
-- **qwen3tts**（CUDA）：`--emit-transcript` 让 torch Qwen3-ForcedAligner 可用时同样直对齐出 transcript.json；aligner 不可导入时脚本只在 stderr 警告、不写 transcript.json —— 这时跑全 ASR：
-
-  ```bash
-  scripts/transcribe.py \
-    {work_dir}/{topic_name}/voice_clone/narration.mp3 \
-    {work_dir}/{topic_name}/transcribe/transcript.json
-  ```
-- **dashscope**（云端兜底）：没有本地 aligner，合成后总是跑上面这条 transcribe.py（auto 会选 dashscope ASR）。transcribe.py 的后端选择与依赖见 `scripts/transcribe.py` 的顶部说明。
+- 这一条命令保证**要么产出本轮新鲜的 transcript，要么失败**：它先删除目标路径上已有的 transcript，再用后端自带的直对齐；没写出来就自动以子进程运行 `scripts/transcribe.py`（`ASR_BACKEND` 等环境变量照常生效）。成功时输出 JSON 里的 `transcript_method` 是 `direct_align` 或 `asr`。
+- 失败（exit 1）时 `narration.mp3` 保留，JSON 的 `transcript_attempts` 按顺序列出每种方式（`direct_align`、`asr`）的 `error`：按错误补上缺的依赖或环境变量后，重跑同一条 voice-clone 命令。**不要**沿用旧的 transcript，也不要手写或手动补跑 ASR。
+- 后端由环境选择；参数、依赖和 `--resolve-backend`（只打印决策、不加载模型）见 voice-clone.py 的 `--help`。
 
 脚本编写规范：
 - 解说内容只放在 `narration.txt` 里。
@@ -95,9 +88,9 @@ TTS 和 ASR 的 CLI 参数、输出路径、transcript schema 固定不变；后
 **TTS（`scripts/voice-clone.py`）**：
 
 - 参数：`--input-file <narration.txt>`、`--output-dir <dir>`（其余参数见 `--help`）。
-- 产物：`<output-dir>/narration.mp3`（本阶段即 `voice_clone/narration.mp3`）；直对齐后端（mlx，或 qwen3tts + `--emit-transcript` 且 aligner 可用时）额外写 `transcript.json`（`--transcript-output` 可改路径，本阶段指向 `transcribe/transcript.json`）。
+- 产物：`<output-dir>/narration.mp3`（本阶段即 `voice_clone/narration.mp3`）；带 `--emit-transcript`（mlx 始终）时额外写本轮新鲜的 `transcript.json`（`--transcript-output` 可改路径，本阶段指向 `transcribe/transcript.json`），写不出来则 exit 1 并在 JSON 里给出 `transcript_attempts`。
 
-**ASR（`scripts/transcribe.py`，仅非直对齐路径使用）**：
+**ASR（`scripts/transcribe.py`，voice-clone.py 在直对齐没写出 transcript 时自动调用）**：
 
 - 参数：`<input.mp3> <output.json>`（`--backend` 等见 `--help`）。
 - 产物：`<output.json>`，transcript schema 为**句子列表**，每句：

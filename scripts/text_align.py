@@ -50,6 +50,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import cli
+from mlx_align import align_text, group_sentences
 from transcript_schema import transcript_from_mlx_alignment
 from utils import (
     ResourceMonitor,
@@ -59,90 +61,8 @@ from utils import (
     save_metrics,
 )
 
-# sentence-ending punctuation for Chinese/English scripts
-_SENT_SPLIT = re.compile(r"(?<=[。！？!?；;])|\n+")
-
-
-def transcript_from_alignment(align: dict) -> list[dict]:
-    """Convert an alignment result to the pipeline transcript schema.
-
-    ``align`` is the dict returned by :func:`align_text` (or a parsed
-    align.json): ``words`` is the flat aligned token list (``word`` /
-    ``start`` / ``end``, seconds) and ``sentences`` the punctuation-grouped
-    sentence spans (``text`` / ``start`` / ``end``, seconds). Returns the
-    transcript schema shared with transcribe.py — a list of
-    ``{begin, end, text, words:[{text, begin, end}]}`` with ALL times in
-    milliseconds.
-
-    Thin adapter over transcript_schema.transcript_from_mlx_alignment, which
-    owns the shared grouping walk. Raises ValueError when the alignment holds
-    no sentences or no words — an empty transcript is never a valid pipeline
-    product.
-    """
-    if not align.get("sentences") or not align.get("words"):
-        raise ValueError("alignment has no sentences or no words")
-    return transcript_from_mlx_alignment(align)
-
-
-def align_text(
-    audio_path: str | Path,
-    text: str,
-    *,
-    model_path: str | Path | None = None,
-    language: str = "Chinese",
-    load_model_fn=None,
-) -> dict:
-    """Align `text` to `audio_path` and return word/sentence timestamps.
-
-    Returns {"words": [...], "sentences": [...], "align_s": float}.
-    `load_model_fn` lets callers reuse an already-loaded aligner model.
-    """
-    from mlx_audio.stt.utils import load_model as _load_model
-
-    t0 = time.perf_counter()
-    model = load_model_fn if load_model_fn is not None else _load_model(str(model_path))
-    aligned = model.generate(audio=str(audio_path), text=text, language=language)
-    if isinstance(aligned, list):
-        aligned = aligned[0]
-    items = getattr(aligned, "items", aligned) or []
-    words = [{"word": it.text, "start": round(it.start_time, 3),
-              "end": round(it.end_time, 3)} for it in items]
-    sentences = group_sentences(words, text)
-    return {"words": words, "sentences": sentences,
-            "align_s": round(time.perf_counter() - t0, 3)}
-
-
-def group_sentences(words: list[dict], script_text: str) -> list[dict]:
-    """Group aligned word spans into sentence spans using the script's punctuation.
-
-    Each punctuated chunk of the script consumes aligned words until their
-    combined length covers the chunk's alignable text, so every sentence span
-    starts at its first word and ends at its last. Chunks with no alignable
-    characters (pure punctuation) are skipped.
-    """
-    stripped = [s.strip() for s in _SENT_SPLIT.split(script_text)]
-    stripped = [s for s in stripped if s]
-
-    sentences = []
-    pos = 0  # pointer into words
-    for chunk in stripped:
-        target = re.sub(r"[\s，,、.．:：\"'\"'()（）-]", "", chunk)
-        if not target:
-            continue
-        if pos >= len(words):
-            break
-        # find the word span covering this chunk
-        acc = ""
-        start_word = pos
-        while pos < len(words) and len(acc) < len(target):
-            acc += words[pos]["word"]
-            pos += 1
-        sentences.append({
-            "text": chunk,
-            "start": words[start_word]["start"],
-            "end": words[pos - 1]["end"],
-        })
-    return sentences
+TOOL_NAME = "text_align"
+_print_json = cli.print_json
 
 
 def to_srt(sentences: list[dict]) -> str:
@@ -159,16 +79,9 @@ def to_srt(sentences: list[dict]) -> str:
     return "\n".join(lines)
 
 
-class JsonArgumentParser(argparse.ArgumentParser):
-    """Usage errors still print one JSON document on stdout (exit 2)."""
-
-    def error(self, message: str) -> None:
-        print(json.dumps({"success": False, "error": message}, ensure_ascii=False))
-        raise SystemExit(2)
-
-
 def parse_args() -> argparse.Namespace:
-    p = JsonArgumentParser(
+    p = cli.JsonArgumentParser(
+        TOOL_NAME,
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -201,10 +114,6 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def _print_json(payload: dict) -> None:
-    print(json.dumps(payload, ensure_ascii=False))
-
-
 def convert_align_json(align_json_path: str, transcript_path: str) -> int:
     """Pure align.json -> transcript.json conversion (no model, no audio).
 
@@ -228,7 +137,10 @@ def convert_align_json(align_json_path: str, transcript_path: str) -> int:
                      "error": "align.json root is not an object"})
         return 1
     try:
-        transcript = transcript_from_alignment(payload)
+        # An empty transcript is never a valid pipeline product.
+        if not payload.get("sentences") or not payload.get("words"):
+            raise ValueError("alignment has no sentences or no words")
+        transcript = transcript_from_mlx_alignment(payload)
     except (ValueError, KeyError, TypeError) as exc:
         _print_json({"success": False, "error": str(exc)})
         return 1
@@ -349,15 +261,11 @@ def run_alignment(args: argparse.Namespace) -> int:
 
 def main() -> int:
     """Entry point: stdout carries exactly one JSON document, in every mode."""
-    try:
-        args = parse_args()
-        if args.align_json or args.emit_transcript:
-            return _run_conversion(args)
-        return run_alignment(args)
-    except Exception as exc:  # noqa: BLE001 - failures end with one JSON error
-        _print_json({"success": False, "error": str(exc)})
-        return 1
+    args = parse_args()
+    if args.align_json or args.emit_transcript:
+        return _run_conversion(args)
+    return run_alignment(args)
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli.run(main, TOOL_NAME))
