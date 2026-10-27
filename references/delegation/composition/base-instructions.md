@@ -25,6 +25,7 @@
 - 先读所选布局的区域定义 `modules/layouts/<layout>.json`：画布尺寸、区域列表（每个区域有 id、kind（content / reserved）、rect；reserved 区域写明对应组件）与字幕规格。文档版 `modules/layouts/<layout>.md` 与 JSON 一一对应。
 - storyboard 里**每个 scene 都要写明用了哪些 content 区域**。
 - 所有元素只放在 content 区域内；reserved 区域只放各自对应的组件（如导航栏区只放 `nav-bar`、字幕条区只放 `caption-bar`）。
+- layout 有人物区（presenter）时必须挂 `jay`；`VIDEO.jay` 按 `jay.md` 的通用演法编排，有模板时再叠加模板的演法；嘴型数据用 `node modules/components/jay/make-envelope.mjs voice_clone/narration.mp3` 生成。
 
 ## 工作顺序
 

@@ -131,3 +131,62 @@ def test_catalog_delegation_package_documents_the_paper_only_path():
     # Paper tables are often tall: layout hints are derived, not invented.
     assert 'viewport_reveal' in section
     assert 'focal_region' in section
+
+
+def test_phase_1_selects_presenter_for_an_untemplated_host_request():
+    phase_1 = doc_text('references/phases/01-gather-inputs.md')
+
+    assert '用户明确要求“主持人”“有人讲解”“讲解员”或“Jay”时，用 `presenter`' in phase_1
+    assert '其他横屏情况仍用 `stage`' in phase_1
+    assert '不为此额外向用户提问' in phase_1
+    assert '竖屏布局没有人物区' in phase_1
+    assert '照常用竖屏布局，不加主持人' in phase_1
+
+    presenter = doc_text('modules/layouts/presenter.md')
+    assert '带主持人的通用横屏布局' in presenter
+    assert '用不用模板都可以选它' in presenter
+
+
+def test_jay_generic_performance_and_github_specific_overlay():
+    jay = doc_text('modules/components/jay/jay.md')
+    generic = jay.split('### 通用演法')[1].split('### 动作库')[0]
+    generic_rows = [line for line in generic.splitlines() if line.startswith('| ')][1:]
+    assert len(generic_rows) == 11
+    for cue in (
+        '["wave", 3000]',
+        'typing [切点 - 0.85, 切点 + 0.05]',
+        '[该时刻, 1.0, "L"]',
+        '[该时刻, 1.0, "U"]',
+        '["smile", 2200]',
+        '["idea", 2400]',
+        '["question", 2400]',
+        '["think", 2000]',
+        '["sigh", 2600]',
+        '["shake", 1600]',
+        '["nod-small", 1000]',
+        '["laugh", 2200]',
+        '["wave", 3200]',
+    ):
+        assert cue in generic
+
+    github = doc_text('modules/templates/github/github.md')
+    overlay = github.split('## 5. 人物怎么演')[1]
+    assert '先按 `components/jay/jay.md` 的通用演法' in overlay
+    overlay_rows = [line for line in overlay.splitlines() if line.startswith('| ')][1:]
+    assert len(overlay_rows) == 3
+    assert '[cue, 1.0, "U"]' in overlay
+    assert '[cue + 1.7, 1.0, "L"]' in overlay
+    assert '["eureka", 2700]' in overlay
+    assert '封面的介绍出现时' in overlay and '瞥视 `"L"`' in overlay
+    for generic_cue in ('["smile", 2200]', '["idea", 2400]', '["question", 2400]', '["lean", 2400]'):
+        assert generic_cue not in overlay
+
+
+def test_composition_requires_jay_for_presenter():
+    composition = doc_text('references/delegation/composition/base-instructions.md')
+    layout_rules = composition.split('## 三、必须遵守 layout 区域')[1].split('## 工作顺序')[0]
+
+    assert 'layout 有人物区（presenter）时必须挂 `jay`' in layout_rules
+    assert '`VIDEO.jay` 按 `jay.md` 的通用演法编排' in layout_rules
+    assert '有模板时再叠加模板的演法' in layout_rules
+    assert 'node modules/components/jay/make-envelope.mjs voice_clone/narration.mp3' in layout_rules
