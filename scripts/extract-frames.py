@@ -28,11 +28,6 @@ TOOL_NAME = 'extract-frames'
 log = cli.make_logger(TOOL_NAME)
 
 
-def print_json(payload: dict[str, object]) -> int:
-    cli.print_json(payload)
-    return 0 if payload.get('success') else 1
-
-
 def parse_args() -> argparse.Namespace:
     parser = cli.JsonArgumentParser(TOOL_NAME, description='Extract JPEG frames from a video with ffmpeg.')
     parser.add_argument('video_path', help='Video file path')
@@ -156,7 +151,7 @@ def main() -> int:
     media.run_ffmpeg(command[1:], timeout=FFMPEG_TIMEOUT_SECONDS)
     frames = list_frames(output_dir, start_s, interval_s)
     log(f'Extracted {len(frames)} frame(s)')
-    return print_json(
+    cli.print_json(
         {
             'success': True,
             'output_dir': str(output_dir),
@@ -165,6 +160,7 @@ def main() -> int:
             'frames': frames,
         }
     )
+    return 0
 
 
 if __name__ == '__main__':

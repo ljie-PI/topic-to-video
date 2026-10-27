@@ -4,20 +4,20 @@
 
 先读工作区里的输入（handoff 的 Inputs 一节列出的文件），再按下面的约束执行。指令冲突时，按 `references/delegation/conventions.md` 的叠加顺序处理：后读的（模板组装说明 → 项目指令 → 用户追加要求）覆盖先读的。
 
-本指令只有三部分约束——输入契约、必须参考 design、必须遵守 layout 区域——和一条工作顺序。除此之外你没有别的规则：scene 怎么切、素材怎么摆、动效怎么选，是你的设计空间。
+本指令只有四部分约束——输入契约、必须参考 design、必须遵守 layout 区域、语义节拍映射——和一条工作顺序。除此之外你没有别的规则：scene 怎么切、素材怎么摆、动效怎么选，是你的设计空间。
 
 ## 一、输入契约
 
 - **配音**：只用主 agent 生成的 `voice_clone/narration.mp3`，不重生成 TTS、不用任何其他音频来源；画面与解说的同步以这份音频为最终边界。
 - **字幕**：字幕文本来自 `transcribe/subtitle-units.json` 的字幕单元，逐字使用，不自己改写、不重新断句。字幕单元已按句末标点分段，句内只在 `，；、：——`（含半角 `, ; :`）处断开、绝不在单词或数字中间切断：单元边界不可改动（禁止重新排序、合并或拆分），逐单元原样上屏。
-- **时间**：段落与 cue 的起止秒来自 `transcribe/timeline.json`；scene 切分和 cue 锚点对齐以它为准。
-- **素材**：画面素材只来自 `material-catalog.json`。图片用素材 id，解析到 `local_path`：catalog 沿用 v2 harvest manifest 的路径，所有相对 `local_path` 都以 `{work_dir}/{topic_name}/harvest_page/` 为 base（不是 `composition/` 或当前目录），旧 catalog 的绝对路径原样使用。视频 clip 用 `<video_id>:<start>-<end>`，一律解析到对应 `selected_clips[].clip_path`（Phase 5 已切好的无音轨片段文件，相对工作区根 `{work_dir}/{topic_name}/`），不使用视频的 `local_path`、不嵌入整段原视频；场景规划只引用了视频 id 时，从该视频的 `selected_clips` 里挑片段。读取或复制进 composition 前先按此规则解析。视频仍然静音播放（`<video>` 带 `muted playsinline`）。
+- **时间**：段落、cue 与语义节拍 beat 的起止秒来自 `transcribe/timeline.json`；scene 切分、cue 锚点和 beat 对齐以它为准。
+- **素材**：画面素材只来自 `material-catalog.json`。图片 / 视频 ref 用 `<slug>/<id>`，先定位 `entries[*].slug` 对应的 entry，再在该 entry 内按 id 找素材；裸 id 无效。图片解析到该 entry 的 `local_path`：catalog 沿用 v2 harvest manifest 的路径，所有相对 `local_path` 都以 `{work_dir}/{topic_name}/harvest_page/` 为 base（不是 `composition/` 或当前目录），旧 catalog 的绝对路径原样使用。视频 clip 用 `<slug>/<video_id>:<start>-<end>`，一律解析到该 entry 对应的 `selected_clips[].clip_path`（Phase 5 已切好的无音轨片段文件，相对工作区根 `{work_dir}/{topic_name}/`），不使用视频的 `local_path`、不嵌入整段原视频；场景规划只引用了 `<slug>/<video_id>` 时，从该 entry 的视频 `selected_clips` 里挑片段。同一个 video id 出现在多个 entry 时，slug 决定使用哪一个 entry 的片段，不能跨 entry 匹配窗口。读取或复制进 composition 前先按此规则解析。视频仍然静音播放（`<video>` 带 `muted playsinline`）。
 - **字体**：只用主 agent 预置的字体目录（`composition/assets/fonts/`，由所选 design 决定），不依赖系统字体。
 
 ## 二、必须参考 design
 
-- 颜色、字体、动效只取所选 design 的 token（token 契约见 `modules/designs/designs.md` 与 `modules/designs/<design>/<design>.md`）。
-- 字号守所选 design 的「字号下限」：面板标题栏、按钮、小标签这类界面小字放在带 `data-text-role="ui"` 的元素里，按界面小字下限检查；其余文字都按阅读文字下限检查。
+- 颜色、字体、动效只取所选 design 的 token（token 契约见 `modules/designs/designs.md`、`modules/designs/<design>/<design>.md` 与同目录的 `<design>.json`）。
+- 字号守所选 design JSON 的 `min_font_px`：面板标题栏、按钮、小标签这类界面小字放在带 `data-text-role="ui"` 的元素里，按界面小字下限检查；其余文字都按阅读文字下限检查。
 - 选了模板时，模板的专属变量与覆盖值**写在 design 之后**，只能增补主题，不能替换 design 的语义。
 
 ## 三、必须遵守 layout 区域
@@ -25,6 +25,20 @@
 - 先读所选布局的区域定义 `modules/layouts/<layout>.json`：画布尺寸、区域列表（每个区域有 id、kind（content / reserved）、rect；reserved 区域写明对应组件）与字幕规格。文档版 `modules/layouts/<layout>.md` 与 JSON 一一对应。
 - storyboard 里**每个 scene 都要写明用了哪些 content 区域**。
 - 所有元素只放在 content 区域内；reserved 区域只放各自对应的组件（如导航栏区只放 `nav-bar`、字幕条区只放 `caption-bar`）。
+- layout 有人物区（presenter）时必须挂 `jay`；`VIDEO.jay` 按 `jay.md` 的通用演法编排，有模板时再叠加模板的演法；嘴型数据用 `node modules/components/jay/make-envelope.mjs voice_clone/narration.mp3` 生成。
+
+## 四、把语义节拍落到画面
+
+读取 `timeline.json` 的 `beats`，按下表落到画面上。动作从 `begin_s` 开始；和其他 Jay 动作时间冲突时，后一个顺延（`jay.md` 的动作库也有这条规则）。
+
+| type | 有 Jay（presenter） | 没有 Jay |
+|---|---|---|
+| question | `["question", 2400]` | 按所选 design 第 6、7 节的强调写法，强调对应的提问文字 |
+| idea | `["idea", 2400]` | 按所选 design 的强调写法，强调关键句或图示 |
+| caveat | `["think", 2000]` 加一条不超过 4 个字的 `thoughts`，或 `["sigh", 2600]` | 对应信息用 `--c-warning` 左线的 callout 出现 |
+| highlight | 数字类用 `["eureka", 2700]`，其他用 `["smile", 2200]` | 按所选 design 的强调写法，强调数字或关键词 |
+| negation | `["shake", 1600]` | 对应项打 ✗，文字降为 `--c-ink2` |
+| confirm | `["nod-small", 1000]` | 不加额外动效 |
 
 ## 工作顺序
 

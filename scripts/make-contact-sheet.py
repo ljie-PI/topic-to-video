@@ -170,7 +170,7 @@ def annotate_frame(image_path: Path, spec: FrameSpec) -> None:
     font_size = max(14, strip_height - 10)
     try:
         font = ImageFont.load_default(size=font_size)
-    except TypeError:  # pragma: no cover - Pillow < 10.1 fallback
+    except TypeError:  # Pillow < 10.1 fallback
         font = ImageFont.load_default()
     text = f'{spec.scene_id}  [{spec.kind}]  t={spec.time_s:.2f}s'
     draw.text((8, strip_height // 2), text, fill=(255, 255, 255), font=font, anchor='lm')

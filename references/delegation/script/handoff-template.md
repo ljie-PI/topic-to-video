@@ -14,7 +14,7 @@
 | `{{script_txt_q}}` / `{{lexicon_q}}` / `{{output_dir_q}}` | make-narration 命令里三条路径的 shell 引号版 |
 | `{{coding_agent}}` | `inputs.json` 的 `coding_agent` |
 | `{{duration}}` / `{{language}}` / `{{input_mode}}` / `{{template}}` | `inputs.json` 的对应字段（`template` 为 null 时写“无”） |
-| `{{material_catalog}}` | `fetch_materials` 为真：catalog 的路径和 id 引用格式文档；否则“无” |
+| `{{material_catalog}}` | `fetch_materials` 为真：catalog 的路径；图片 / 视频 ref 用 `<slug>/<id>`，clip 用 `<slug>/<video_id>:<start>-<end>`；否则“无” |
 | `{{required_references}}` | 按叠加顺序编号：基础指令（工作区副本，含论文模式解说结构与素材引用格式）→ 所选模板的旁白要求（skill 目录；未选模板或模板没有旁白要求则省略） |
 | `{{additional_instructions}}` | 实际存在的 `narration-instructions.md`；没有写 `None` |
 
@@ -38,7 +38,7 @@
 
 - {{ws}}/script.txt：显示稿，段间空行分隔（schema 见基础指令）
 - {{ws}}/tts-lexicon.json：词表，JSON map 显示形式 → 朗读形式
-- {{ws}}/scene-plan.json：叙事层场景规划（schema 见基础指令；段落并集覆盖全部段落；素材引用必须存在于 catalog）
+- {{ws}}/scene-plan.json：叙事层场景规划（schema 见基础指令；段落并集覆盖全部段落；素材引用必须存在于 catalog，图片 / 视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>`，裸 id 无效）
 - {{ws}}/narration.txt + {{ws}}/narration-offsets.json：由脚本确定性生成，不要手写——
   source {{venv_activate_q}} && python3 {{skill_root_q}}/scripts/make-narration.py \
     --script {{script_txt_q}} --lexicon {{lexicon_q}} --output-dir {{output_dir_q}}

@@ -29,8 +29,8 @@ Inputs:
                  the caption spec is read from its `caption` object
                  ({width_px, font_size_px, max_lines}). Either --layout or
                  the three explicit flags are required.
-  --scene-plan   optional scene plan JSON; when scenes carry `cues`, each
-                 cue's seconds are written to timeline.json.
+  --scene-plan   optional scene plan JSON; when scenes carry `cues` / `beats`,
+                 their seconds are written to timeline.json.
 
 Alignment:
   Both sides are normalized (NFKC, lowercase, alnum only, Chinese numerals
@@ -69,7 +69,8 @@ Outputs (paths from --units-output / --timeline-output):
   timeline.json : {"version": 1, "total_s", "paragraphs": [{index, begin_s,
     end_s}]}; with --scene-plan a "scenes" list [{scene_id, begin_s, end_s}]
     (scene boundaries derived from each scene's paragraph coverage) and a
-    "cues" list [{scene_id, cue, begin_s, end_s}] are added (scenes / cues
+    "cues" list [{scene_id, cue, begin_s, end_s}] and a "beats" list
+    [{scene_id, type, text, begin_s, end_s}] are added (scenes / cues / beats
     that cannot be located are reported as warnings and omitted).
 
 Output convention:
@@ -88,11 +89,11 @@ import difflib
 import json
 import os
 import re
-import sys
 import unicodedata
 from dataclasses import dataclass
 from typing import Any, Callable
 
+import cli
 from script_text import paragraph_spans
 
 TOOL_NAME = 'align-narration'
@@ -121,13 +122,6 @@ SOFT_BREAK_CHARS = {'，', ',', '；', ';', '、', '：', ':', '—', '–', '-'
 MIN_UNIT_MS = 600
 
 
-class JsonArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'bad arguments: {message}')
-        print_json({'success': False, 'error': message})
-        raise SystemExit(2)
-
-
 @dataclass
 class Word:
     text: str
@@ -152,16 +146,13 @@ class Atom:
     borrowed: bool = False
 
 
-def log(message: str) -> None:
-    print(f'[{TOOL_NAME}] {message}', file=sys.stderr)
-
-
-def print_json(payload: dict[str, Any]) -> None:
-    print(json.dumps(payload, ensure_ascii=False))
+log = cli.make_logger(TOOL_NAME)
+print_json = cli.print_json
 
 
 def parse_args() -> argparse.Namespace:
-    parser = JsonArgumentParser(
+    parser = cli.JsonArgumentParser(
+        TOOL_NAME,
         description='Align transcript timing onto the display draft and build subtitle units + timeline.'
     )
     parser.add_argument('--transcript', required=True, help='Path to transcribe/transcript.json')
@@ -189,7 +180,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--scene-plan',
         default=None,
-        help='Optional scene plan JSON with per-scene cues; enables cue seconds in timeline.json.',
+        help='Optional scene plan JSON with per-scene cues/beats; enables their seconds in timeline.json.',
     )
     args = parser.parse_args()
     explicit = [args.width, args.font_size, args.max_lines]
@@ -697,7 +688,7 @@ def merge_short_units(
     return units, merged_count
 
 
-# --- timeline scenes and cues ------------------------------------------------------
+# --- timeline scenes, cues and beats -----------------------------------------------
 
 
 def locate_scenes(
@@ -734,49 +725,100 @@ def locate_scenes(
     return scenes
 
 
+def locate_text(
+    text: str,
+    paragraphs: list[int],
+    atoms_by_paragraph: dict[int, list[Atom]],
+) -> tuple[int, int] | None:
+    """Locate normalized display text inside a scene's aligned paragraphs."""
+    text_norm, _ = normalize_with_map(text)
+    if not text_norm:
+        return None
+    for paragraph in paragraphs:
+        atoms = atoms_by_paragraph.get(int(paragraph), [])
+        norm_chars: list[str] = []
+        norm_atom: list[Atom] = []
+        for atom in atoms:
+            for char in normalize_with_map(atom.text)[0]:
+                norm_chars.append(char)
+                norm_atom.append(atom)
+        haystack = ''.join(norm_chars)
+        position = haystack.find(text_norm)
+        if position != -1:
+            first = norm_atom[position]
+            last = norm_atom[position + len(text_norm) - 1]
+            return first.begin_ms, last.end_ms
+    return None
+
+
+def _locate_scene_texts(
+    scene_plan: list[dict[str, Any]],
+    atoms_by_paragraph: dict[int, list[Atom]],
+    item_key: str,
+    text_for: Callable[[Any], str],
+) -> list[tuple[Any, Any, str, tuple[int, int] | None]]:
+    located = []
+    for scene in scene_plan:
+        if not isinstance(scene, dict):
+            continue
+        scene_id = scene.get('scene_id') or scene.get('id')
+        paragraphs = scene.get('paragraphs') or []
+        for item in scene.get(item_key) or []:
+            text = text_for(item)
+            found = locate_text(text, paragraphs, atoms_by_paragraph)
+            located.append((scene_id, item, text, found))
+    return located
+
+
 def locate_cues(
     scene_plan: list[dict[str, Any]],
     atoms_by_paragraph: dict[int, list[Atom]],
     warnings: list[str],
 ) -> list[dict[str, Any]]:
     cues: list[dict[str, Any]] = []
-    for scene in scene_plan:
-        if not isinstance(scene, dict):
+    for scene_id, cue, text, found in _locate_scene_texts(
+        scene_plan, atoms_by_paragraph, 'cues', str
+    ):
+        if found is None:
+            warning = f'cue not found for scene {scene_id!r}: {text[:40]!r}'
+            warnings.append(warning)
+            log(f'warning: {warning}')
             continue
-        scene_id = scene.get('scene_id') or scene.get('id')
-        paragraphs = scene.get('paragraphs') or []
-        for cue in scene.get('cues') or []:
-            cue_norm, _ = normalize_with_map(str(cue))
-            found: tuple[int, int] | None = None
-            for paragraph in paragraphs:
-                atoms = atoms_by_paragraph.get(int(paragraph), [])
-                norm_chars: list[str] = []
-                norm_atom: list[Atom] = []
-                for atom in atoms:
-                    for char in normalize_with_map(atom.text)[0]:
-                        norm_chars.append(char)
-                        norm_atom.append(atom)
-                haystack = ''.join(norm_chars)
-                position = haystack.find(cue_norm) if cue_norm else -1
-                if position != -1:
-                    first = norm_atom[position]
-                    last = norm_atom[position + len(cue_norm) - 1]
-                    found = (first.begin_ms, last.end_ms)
-                    break
-            if found is None:
-                warning = f'cue not found for scene {scene_id!r}: {str(cue)[:40]!r}'
-                warnings.append(warning)
-                log(f'warning: {warning}')
-                continue
-            cues.append(
-                {
-                    'scene_id': scene_id,
-                    'cue': cue,
-                    'begin_s': round(found[0] / 1000, 3),
-                    'end_s': round(found[1] / 1000, 3),
-                }
-            )
+        cues.append(
+            {
+                'scene_id': scene_id,
+                'cue': cue,
+                'begin_s': round(found[0] / 1000, 3),
+                'end_s': round(found[1] / 1000, 3),
+            }
+        )
     return cues
+
+
+def locate_beats(
+    scene_plan: list[dict[str, Any]],
+    atoms_by_paragraph: dict[int, list[Atom]],
+    warnings: list[str],
+) -> list[dict[str, Any]]:
+    beats: list[dict[str, Any]] = []
+    for scene_id, beat, text, found in _locate_scene_texts(
+        scene_plan, atoms_by_paragraph, 'beats', lambda beat: str(beat.get('text', ''))
+    ):
+        if found is None:
+            warning = f'beat not found for scene {scene_id!r}: {text[:40]!r}'
+            warnings.append(warning)
+            log(f'warning: {warning}')
+            continue
+        beats.append(
+            {
+                'scene_id': scene_id,
+                'type': beat.get('type'),
+                'text': beat.get('text'),
+                'begin_s': round(found[0] / 1000, 3),
+                'end_s': round(found[1] / 1000, 3),
+            }
+        )
+    return beats
 
 
 # --- main --------------------------------------------------------------------------
@@ -899,6 +941,7 @@ def align(args: argparse.Namespace) -> dict[str, Any]:
     paragraphs, total_s = build_timeline(atoms_by_paragraph, len(spans), warnings)
 
     cues: list[dict[str, Any]] = []
+    beats: list[dict[str, Any]] = []
     scenes: list[dict[str, Any]] = []
     if args.scene_plan:
         with open(args.scene_plan, encoding='utf-8') as file:
@@ -907,6 +950,7 @@ def align(args: argparse.Namespace) -> dict[str, Any]:
             raise ValueError('scene plan root must be a list')
         scenes = locate_scenes(scene_plan, atoms_by_paragraph, warnings)
         cues = locate_cues(scene_plan, atoms_by_paragraph, warnings)
+        beats = locate_beats(scene_plan, atoms_by_paragraph, warnings)
 
     return {
         'units': {'version': 1, 'units': units, 'summary': {}},
@@ -916,12 +960,14 @@ def align(args: argparse.Namespace) -> dict[str, Any]:
             'paragraphs': paragraphs,
             **({'scenes': scenes} if args.scene_plan else {}),
             **({'cues': cues} if args.scene_plan else {}),
+            **({'beats': beats} if args.scene_plan else {}),
         },
         'summary': {
             'unit_count': len(units),
             'fallback_units': fallback_units,
             'merged_units': merged_total,
             'cue_count': len(cues),
+            'beat_count': len(beats),
             'warnings': warnings,
         },
     }
@@ -932,34 +978,29 @@ def main() -> int:
     transcript_dir = os.path.dirname(os.path.abspath(args.transcript))
     units_output = args.units_output or os.path.join(transcript_dir, 'subtitle-units.json')
     timeline_output = args.timeline_output or os.path.join(transcript_dir, 'timeline.json')
-    try:
-        result = align(args)
-        result['units']['summary'] = result['summary']
-        for output_path, payload in (
-            (units_output, result['units']),
-            (timeline_output, result['timeline']),
-        ):
-            output_dir = os.path.dirname(os.path.abspath(output_path))
-            if output_dir:
-                os.makedirs(output_dir, exist_ok=True)
-            with open(output_path, 'w', encoding='utf-8') as file:
-                json.dump(payload, file, ensure_ascii=False, indent=2)
-                file.write('\n')
-            log(f'wrote {output_path}')
-        print_json(
-            {
-                'success': True,
-                'units_path': os.path.abspath(units_output),
-                'timeline_path': os.path.abspath(timeline_output),
-                'summary': result['summary'],
-            }
-        )
-        return 0
-    except Exception as exc:
-        log(f'error: {exc}')
-        print_json({'success': False, 'error': str(exc)})
-        return 1
+    result = align(args)
+    result['units']['summary'] = result['summary']
+    for output_path, payload in (
+        (units_output, result['units']),
+        (timeline_output, result['timeline']),
+    ):
+        output_dir = os.path.dirname(os.path.abspath(output_path))
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        with open(output_path, 'w', encoding='utf-8') as file:
+            json.dump(payload, file, ensure_ascii=False, indent=2)
+            file.write('\n')
+        log(f'wrote {output_path}')
+    print_json(
+        {
+            'success': True,
+            'units_path': os.path.abspath(units_output),
+            'timeline_path': os.path.abspath(timeline_output),
+            'summary': result['summary'],
+        }
+    )
+    return 0
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(cli.run(main, TOOL_NAME))

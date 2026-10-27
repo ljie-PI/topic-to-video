@@ -111,8 +111,8 @@ def test_each_selected_clip_becomes_a_silent_file_of_the_right_length(ws: Path):
     assert result == {
         'success': True,
         'clips': [
-            {'ref': 'vid_001:0.5-2.0', 'clip_path': CLIP_A_PATH, 'skipped': False},
-            {'ref': 'vid_001:2.5-4.5', 'clip_path': CLIP_B_PATH, 'skipped': False},
+            {'ref': 'example/vid_001:0.5-2.0', 'clip_path': CLIP_A_PATH, 'skipped': False},
+            {'ref': 'example/vid_001:2.5-4.5', 'clip_path': CLIP_B_PATH, 'skipped': False},
         ],
         'errors': [],
     }
@@ -198,7 +198,7 @@ def test_a_failed_clip_is_reported_and_the_other_clips_are_kept(tmp_path: Path):
     result = parse_result(proc)
     assert result['success'] is False
     assert [clip['clip_path'] for clip in result['clips']] == [CLIP_A_PATH]
-    assert [error['ref'] for error in result['errors']] == ['vid_002:0.5-2.0']
+    assert [error['ref'] for error in result['errors']] == ['example/vid_002:0.5-2.0']
     assert result['errors'][0]['error']
     assert result['errors'][0]['stderr_tail']
     assert media.probe(ws / CLIP_A_PATH)['has_audio'] is False
@@ -325,9 +325,9 @@ def test_missing_ffmpeg_is_a_runtime_error(ws: Path, monkeypatch: pytest.MonkeyP
     assert not (ws / 'clips').exists()
 
 
-def run_pipeline_status_cli(ws: Path) -> subprocess.CompletedProcess:
+def run_pipeline_status_cli(ws: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(PIPELINE_STATUS_SCRIPT), str(ws)],
+        [sys.executable, str(PIPELINE_STATUS_SCRIPT), str(ws), *args],
         capture_output=True,
         text=True,
         timeout=30,
@@ -359,6 +359,8 @@ def complete_pipeline_prerequisites(ws: Path) -> None:
             'rejected': [],
         }],
     }), encoding='utf-8')
+    approval = run_pipeline_status_cli(ws, '--approve', 'research-brief')
+    assert approval.returncode == 0, approval.stderr
 
 
 def test_an_ffmpeg_that_hangs_times_out_and_leaves_no_file(
@@ -382,7 +384,9 @@ def test_an_ffmpeg_that_hangs_times_out_and_leaves_no_file(
     assert proc.returncode == 1, proc.stderr
     result = parse_result(proc)
     assert result['success'] is False
-    assert [error['ref'] for error in result['errors']] == ['vid_001:0.5-2.0', 'vid_001:2.5-4.5']
+    assert [error['ref'] for error in result['errors']] == [
+        'example/vid_001:0.5-2.0', 'example/vid_001:2.5-4.5'
+    ]
     assert list((ws / 'clips').rglob('*.mp4')) == []
     assert all('clip_path' not in clip for clip in clips_of(read_catalog(ws)))
 
@@ -434,7 +438,7 @@ def test_any_nonempty_target_is_skipped_without_probing_or_recutting(ws: Path):
     result = parse_result(proc)
     assert result == {
         'success': True,
-        'clips': [{'ref': 'vid_001:0.5-2.0', 'clip_path': CLIP_A_PATH, 'skipped': True}],
+        'clips': [{'ref': 'example/vid_001:0.5-2.0', 'clip_path': CLIP_A_PATH, 'skipped': True}],
         'errors': [],
     }
     assert target.read_bytes() == b'any nonempty target counts as cut'

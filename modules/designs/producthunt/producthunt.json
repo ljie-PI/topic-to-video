@@ -1,0 +1,54 @@
+{
+  "design": "producthunt",
+  "tokens": {
+    "--c-canvas": "#f4f0ec",
+    "--c-card": "#fcfaf8",
+    "--c-surface": "#f2ede8",
+    "--c-border": "#dbd3cc",
+    "--c-ink": "#242a36",
+    "--c-ink2": "#535b6a",
+    "--c-muted": "#8a8580",
+    "--c-focus": "#a84b37",
+    "--c-focus-tint": "#f7eae4",
+    "--c-info": "#3d6793",
+    "--c-warning": "#94661b",
+    "--c-danger": "#9e3b3b",
+    "--c-positive": "#2e7360",
+    "--c-positive-solid": "#3b836e",
+    "--c-positive-tint": "#e1ede8",
+    "--c-positive-text": "#235747",
+    "--c-highlight": "#bf6f58",
+    "--c-done": "#3b836e",
+    "--c-chrome": "#262b36",
+    "--c-chrome-ink": "#f7f4f1",
+    "--c-chrome-muted": "#a8adb7",
+    "--c-chrome-active": "#e0957f",
+    "--c-tile0": "#eae2db",
+    "--c-tile1": "#efd5cb",
+    "--c-tile2": "#ddae9f",
+    "--c-tile3": "#c47e69",
+    "--c-tile4": "#a84b37",
+    "--ground": "url(\"assets/textures/paper.jpg\") center / cover, #f4f0ec",
+    "--font-sans": "\"NotoSansSC\", sans-serif",
+    "--font-mono": "\"IBMPlexMono\", \"NotoSansSC\", monospace",
+    "--motion-enter-duration": "0.5s",
+    "--motion-easing": "power3.out",
+    "--motion-list-interval": "0.2s"
+  },
+  "min_font_px": {
+    "reading": 26,
+    "ui": 22
+  },
+  "caption_font_px": 36,
+  "fonts": {
+    "css_filename": "producthunt-fonts.css",
+    "rename": {
+      "Noto Sans SC": "NotoSansSC",
+      "IBM Plex Mono": "IBMPlexMono"
+    },
+    "css2_families": [
+      "Noto+Sans+SC:wght@100..900",
+      "IBM+Plex+Mono:wght@400;500;600;700"
+    ]
+  }
+}

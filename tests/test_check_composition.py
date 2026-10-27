@@ -304,27 +304,26 @@ def test_scenes_fall_back_to_dom_roots_without_timeline(tmp_path: Path):
     assert checked == {'s1', 's2'}
 
 
-def test_design_doc_supplies_min_font_size(tmp_path: Path):
+def test_design_json_supplies_min_font_size(tmp_path: Path):
     comp = write_composition(
         tmp_path,
         [scene('s1', 0.0, 10.0, CLEAN_SCENE + CAPTION_BAR)],
     )
-    design_doc = tmp_path / 'theme.md'
-    design_doc.write_text('# theme\n\n**字号下限**：阅读文字不小于 26px。\n', encoding='utf-8')
+    design = tmp_path / 'theme.json'
+    write_json(design, {'min_font_px': {'reading': 26, 'ui': 26}})
     units_path = tmp_path / 'subtitle-units.json'
     write_json(units_path, SUBTITLE_UNITS)
     proc = run_cli(
         str(comp),
         '--layout', str(PRESENTER_LAYOUT),
-        '--design-doc', str(design_doc),
+        '--design', str(design),
         '--subtitle-units', str(units_path),
     )
     assert proc.returncode == 0
     result = json.loads(proc.stdout)
     assert result['min_font_size'] == 26
-    # Without a 界面小字 label the UI-text minimum falls back to the reading one.
     assert result['min_ui_font_size'] == 26
-    # panel text is 30px, above the parsed 26px floor
+    # panel text is 30px, above the JSON 26px floor
     assert result['verdict'] == 'pass'
 
 
@@ -339,17 +338,14 @@ UI_TEXT_SCENE = """
 
 def test_ui_text_role_uses_the_ui_minimum(tmp_path: Path):
     comp = write_composition(tmp_path, [scene('s1', 0.0, 10.0, UI_TEXT_SCENE + CAPTION_BAR)])
-    design_doc = tmp_path / 'theme.md'
-    design_doc.write_text(
-        '# theme\n\n**字号下限**：阅读文字不小于 26px，界面小字不小于 22px，字幕 36px。\n',
-        encoding='utf-8',
-    )
+    design = tmp_path / 'theme.json'
+    write_json(design, {'min_font_px': {'reading': 26, 'ui': 22}})
     units_path = tmp_path / 'subtitle-units.json'
     write_json(units_path, SUBTITLE_UNITS)
     proc = run_cli(
         str(comp),
         '--layout', str(PRESENTER_LAYOUT),
-        '--design-doc', str(design_doc),
+        '--design', str(design),
         '--subtitle-units', str(units_path),
     )
     assert proc.returncode == 0, proc.stderr

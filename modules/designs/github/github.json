@@ -1,0 +1,52 @@
+{
+  "design": "github",
+  "tokens": {
+    "--c-canvas": "#f2f4f6",
+    "--c-card": "#fbfcfd",
+    "--c-surface": "#f3f5f7",
+    "--c-border": "#d3d9df",
+    "--c-ink": "#22272e",
+    "--c-ink2": "#57606a",
+    "--c-muted": "#818a94",
+    "--c-focus": "#2f6aa8",
+    "--c-focus-tint": "#e6eef7",
+    "--c-info": "#0969da",
+    "--c-warning": "#986400",
+    "--c-danger": "#cf2230",
+    "--c-positive": "#337a4c",
+    "--c-positive-solid": "#3d8757",
+    "--c-positive-tint": "#e4f0e8",
+    "--c-positive-text": "#24563a",
+    "--c-highlight": "#a88831",
+    "--c-done": "#6f5bb5",
+    "--c-chrome": "#262b31",
+    "--c-chrome-ink": "#f6f8fa",
+    "--c-chrome-muted": "#9aa3ad",
+    "--c-chrome-active": "#e08a73",
+    "--c-tile0": "#e4e8ec",
+    "--c-tile1": "#c9d6e3",
+    "--c-tile2": "#9db4cc",
+    "--c-tile3": "#6f92b5",
+    "--c-tile4": "#2f6aa8",
+    "--ground": "url(\"assets/textures/paper.jpg\") center / cover, #f2f4f6",
+    "--font-sans": "\"Noto Sans\", \"Noto Sans SC\", sans-serif",
+    "--font-mono": "\"Noto Sans Mono\", \"Noto Sans SC\", monospace",
+    "--motion-enter-duration": "0.45s",
+    "--motion-easing": "power2.out",
+    "--motion-list-interval": "0.1s"
+  },
+  "min_font_px": {
+    "reading": 26,
+    "ui": 22
+  },
+  "caption_font_px": 36,
+  "fonts": {
+    "css_filename": "github-fonts.css",
+    "rename": {},
+    "css2_families": [
+      "Noto+Sans:wdth,wght@62.5..100,100..900",
+      "Noto+Sans+SC:wght@100..900",
+      "Noto+Sans+Mono:wdth,wght@62.5..100,100..900"
+    ]
+  }
+}

@@ -25,6 +25,8 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 3. 按该文档执行；文档头部的「输入 / 输出 / 完成判据 / 下一步」是自包含的，不需要查其他 phase 文档。
 4. 回到第 1 步，直到脚本报告 `next_phase` 为 `null`（全部完成）。
 
+`next_phase.reason == "awaiting_approval"` 时，按 `instruction` 找用户确认；除非用户已经明确确认，否则不要自己执行 `--approve`。
+
 续跑、回退与重做都由状态脚本驱动。状态由三部分组成：`inputs.json`、各 phase 的产物，以及 `.pipeline/`（状态脚本记下的上游指纹，**只由状态脚本写，不要手改**）。
 
 - 某个 phase 的产物被删掉或写坏时，脚本回退到那个 phase（`reason` 为 `missing` / `corrupt`）。
@@ -38,44 +40,16 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 ## 核心护栏
 
-这些规则是常驻上下文的高风险护栏；具体症状、原因和恢复方式见 `references/gotchas.md`。修改这些规则前，先 review gotchas 中对应条目，确认不会重开历史坑。
-
-### 研究与脚本
-
-0. **写之前先调研。** Phase 3 是强制的。每个论断都通过 Gemini Deep Research + `web_search` 落地。
+1. **写之前先调研。** Phase 3 是强制的。每个论断都通过 Gemini Deep Research + `web_search` 落地；用户给了论文，就必须先解析，不能用训练数据描述论文。
    ↳ DO NOT：调研之前写脚本；没有明确条件就跳过 Gemini；用户给了 PDF 还跳过 Phase 2；用训练数据描述一篇论文。
-1. **素材 catalog / vision 分析在 Phase 5，不是 Phase 6。** Phase 6 只引用 catalog 写脚本、匹配场景素材并规划屏幕文本块。
-   ↳ DO NOT：catalog 还没建就写解说或场景-素材匹配；跳过 vision-analyze（论文模式下带 caption 的图表按 Phase 5 规则直接用 caption、不做 VLM，是设计行为，不算跳过）。
-
-### TTS / ASR
-
-2. **TTS 后端由环境变量选择。** 配音脚本、参考音色、参数和依赖见 `scripts/voice-clone.py` 的顶部说明。**绝不**使用 `npx hyperframes tts`。
-3. **ASR 后端由环境变量选择。** transcript 必须带词级时间戳（schema 见 Phase 7 文档的接口契约）。后端、参数和依赖见 `scripts/transcribe.py` 的顶部说明。voice-clone.py 保证产出**本轮新鲜**的 transcript：直对齐优先，失败自动回退到 transcribe.py，成功 JSON 带 `transcript_method`（`direct_align` / `asr`）；`asr` 意味着转录来自 ASR，与朗读稿逐字一致不保证。即使主用直对齐（如 mlx），也要配置一种 ASR 后备（`DASHSCOPE_API_KEY` 或可用的 `ASR_BACKEND`），否则回退路径不可用。
-   ↳ DO NOT：用 `npx hyperframes transcribe`；接受没有词级时间戳的 transcript；沿用上一轮留下的 transcript。
-
-### 字体与文本
-
-4. **预先 stage 确定性的 WOFF2 字体。** Phase 8 的 `scripts/prepare-handoff.py` 按所选 design 调用 `scripts/fonts-download.sh`，预置到 composition 工程的 `assets/fonts/`，handoff 指向该目录。
-   ↳ DO NOT：让主 agent 处理 composition 的字体 CSS。
-5. **字体实现归 HyperFrames。** Phase 8 sub-agent 使用本地字体，并按 `hyperframes` skill 中的排版规则处理。
-
-### 素材
-
-6. **每个资源都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。**视频材料一律剥音轨**：Phase 5 用 `scripts/cut-clips.py` 把每个 `selected_clip` 切成无音轨文件（`clip_path`，`-an`），composition 只用这些文件；Phase 8 HTML 嵌入时 `<video>` 标签必须带 `muted playsinline` 兜底。
-   ↳ DO NOT：嵌入整段原视频或视频的 `local_path`；切片段时不带 `-an`；`<video>` 漏 `muted`。
-7. **素材搜索是可选但推荐的。** `inputs.json` 里 `fetch_materials = false` 或用户自带全部视觉时跳过（Phase 4 / 5 一起跳过；论文模式只跳过 Phase 4，论文自己的 figure 仍由 Phase 5 进 catalog）。
-
-### Composition
-
-8. **Composition 委派给 coding agent。** 主 agent 只运行 `scripts/prepare-handoff.py <ws> composition`：它生成 `composition-handoff.md`，把 composition 委派包（`references/delegation/composition/`）与 modules（不含 `examples/`）物化到工作区，再按所选 design 预置字体；委派约定与指令叠加顺序见 `references/delegation/conventions.md`。
-   ↳ DO NOT：手写 `composition/index.html`、挑选低层 animation / effect skill，或在本 session 里修 HyperFrames lint；除非用户明确指定，否则由 Phase 8 sub-agent 选择。
-9. **Scene 设计归 HyperFrames。** 切分、素材映射、布局、视觉层级、动画、lint/inspect 与渲染迭代都发生在 Phase 8。
-
-### 环境与工具
-
-10. **跑 Python 前一律 `source .venv/bin/activate`。** 用 `python3`。
-11. **Chrome over CDP。** `harvest-pages.py` 和 `gemini-deep-research.py` 必须显式传 `--profile-dir {work_dir}/chrome_profile`。复用已运行的 CDP 时，启动参数不会生效；检查 stderr warning 和输出 JSON 的 `chrome.ignored_flags`，需要新配置就先关闭复用的 Chrome。
-12. **视频下载顺序执行。** yt-dlp 并行时会被限速。
+2. **进度只看 pipeline-status。** 续跑、回退与重做都由状态脚本驱动。
+   ↳ DO NOT：自己扫描工作区猜进度；把 Scratchpad 当进度记录；手改 `.pipeline/`。
+3. **委派步骤（Phase 5 / 6 / 8）的内容由 sub-agent 产出。** 主 agent 只准备 handoff、派发并验收。唯一例外：Phase 5 当前环境没有 sub-agent 工具时，主 agent 按 `references/phases/05-material-catalog.md` 的兜底流程生成 catalog。
+   ↳ DO NOT：主 agent 手写旁白或 composition HTML；有 sub-agent 工具时主 agent 手写 catalog。
+4. **屏幕上的每个素材都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。
+   ↳ DO NOT：让没有 catalog 引用的素材出现在屏幕上。
+5. **跑 Python 前一律 `source .venv/bin/activate`。** 用 `python3`。
+   ↳ DO NOT：在未激活项目 venv 的 shell 里运行 Python，或改用 `python`。
 
 ## 输出约定
 
@@ -87,13 +61,15 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 | 脚本 | 用途 | 依赖 |
 | --- | --- | --- |
-| `pipeline-status.py` | 扫描工作区，输出已完成 / 下一个 phase、要读的文档、缺失 / 损坏 / stale 的产物；`--restamp <phase_id>` 接受某个 stale phase 的现有产物 | — |
-| `prepare-handoff.py` | 委派步骤（script / composition）的准备：物化委派包（composition 另含 modules 与预置字体）、生成 handoff，输出可原样派发的 `dispatch_prompt` | — |
-| `fonts-download.sh` | 把仓库里预置的 WOFF2 字体（`resources/fonts/<design>/`）装进工程，不联网；`--refresh` 才从 Google Fonts 重新下载（维护用） | — |
+| `pipeline-status.py` | 扫描工作区，输出已完成 / 下一个 phase、要读的文档、缺失 / 损坏 / stale 的产物；`--restamp <phase_id>` 接受某个 stale phase 的现有产物；`--approve <gate>` 在用户明确确认后记录 gate 及产物指纹 | — |
+| `prepare-handoff.py` | 委派步骤（catalog / script / composition）的准备：物化委派包（composition 另含 modules 与预置字体）、生成 handoff，输出可原样派发的 `dispatch_prompt` | — |
+| `fonts-download.sh` | 按 `<design>.json` 的 `fonts` 清单把仓库里预置的 WOFF2 字体（`resources/fonts/<design>/`）装进工程，不联网；`--refresh` 才从 Google Fonts 重新下载（维护用） | — |
+| `voice-subtitles.py` | Phase 7 一条命令：配音、fresh transcript、字幕单元与时间轴；`--align-only` 只重跑对齐 | 见 voice-clone.py / transcribe.py 顶部说明 |
 | `voice-clone.py` | TTS：把 `narration.txt` 合成 `voice_clone/narration.mp3`；后端由环境变量选择 | 见脚本顶部说明 |
 | `transcribe.py` | ASR：输出带词级时间戳的 transcript；后端由环境变量选择 | 见脚本顶部说明 |
-| `align-narration.py` | 把 ASR 时间对齐回显示稿，生成字幕单元（subtitle-units.json）与时间轴（timeline.json） | — |
-| `check-composition.py` | composition 渲染前检查：越界 / reserved 区域侵入 / 文字溢出 / 资源与字体加载 / 字号下限 / 字幕一致性 | `playwright`、系统 Chrome |
+| `align-narration.py` | 把 ASR 时间对齐回显示稿，生成字幕单元（subtitle-units.json）与段落 / cue / beat 时间轴（timeline.json） | — |
+| `make-narration.py` | 按显示稿与 TTS 词表确定性生成 `narration.txt` 和 `narration-offsets.json` | — |
+| `check-composition.py` | composition 渲染前检查：越界 / reserved 区域侵入 / 文字溢出 / 资源与字体加载 / 字号下限（`--design <design>.json`）/ 字幕一致性 | `playwright`、系统 Chrome |
 | `check-render.py` | 渲染后确定性检查：音轨与时长偏差 / 朝向分辨率 / 黑屏与黑尾 / 冻结（发现映射回 scene_id） | `ffmpeg` |
 | `make-contact-sheet.py` | 每 scene 中点帧拼 2×2 contact sheet（strict 加入场帧与切点帧），标注 scene_id 与时间戳 | `ffmpeg`、`Pillow` |
 | `extract-frames.py` | ffmpeg 抽帧 | `ffmpeg` |

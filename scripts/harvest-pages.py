@@ -73,12 +73,6 @@ USER_AGENT = (
 log = cli.make_logger(TOOL_NAME)
 
 
-def fail(message: str, exit_code: int = 1) -> None:
-    log(message)
-    cli.print_json({'success': False, 'error': message})
-    raise SystemExit(exit_code)
-
-
 def parse_args() -> argparse.Namespace:
     p = cli.JsonArgumentParser(TOOL_NAME, description='Batch URL material harvester (Playwright over CDP).')
     p.add_argument('--urls', required=True, nargs='+', help='One or more URLs to harvest.')
@@ -795,14 +789,14 @@ def main() -> None:
     try:
         viewport = parse_viewport(args.viewport)
     except ValueError as exc:
-        fail(str(exc), exit_code=2)
+        cli.fail(TOOL_NAME, str(exc), exit_code=2)
 
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     items, bad_urls = partition_urls(args.urls)
     if not items:
-        fail(
+        cli.fail(TOOL_NAME,
             'no http(s) URLs to harvest after scheme filtering. '
             f'Rejected: {[b["url"] for b in bad_urls]}',
             exit_code=2,
@@ -835,7 +829,7 @@ def main() -> None:
     }
     if needs_chrome:
         if sync_playwright is None:
-            fail(
+            cli.fail(TOOL_NAME,
                 'playwright not installed; run: pip install playwright '
                 '(no `playwright install chromium` needed — uses system Chrome over CDP)'
             )
@@ -849,7 +843,7 @@ def main() -> None:
                 chrome_path=args.chrome_path,
             )
         except Exception as exc:
-            fail(str(exc))
+            cli.fail(TOOL_NAME, str(exc))
         browser = chrome_session.browser
         chrome_metadata = chrome_session.metadata()
         log(f'Connected to Chrome over CDP ({args.cdp_url})')

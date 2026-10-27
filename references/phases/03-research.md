@@ -16,6 +16,12 @@
 
 Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = false` 时，论文模式进 Phase 5（仅论文素材），其余进 Phase 6（脚本与场景规划）。brief 里的 **Source URLs** 一节是交给 Phase 4 的显式接口。
 
+## 护栏
+
+- **Chrome over CDP。** `harvest-pages.py` 和 `gemini-deep-research.py` 必须显式传 `--profile-dir {work_dir}/chrome_profile`。复用已运行的 CDP 时，启动参数不会生效；检查 stderr warning 和输出 JSON 的 `chrome.ignored_flags`，需要新配置就先关闭复用的 Chrome。
+- 历史坑见 `references/gotchas.md` #4（Gemini Deep Research 的 UI 自动化）。
+- 历史坑见 `references/gotchas.md` #6（Chrome CDP 的 profile 锁）。
+
 ---
 
 **永远不要单凭自己的训练数据写脚本。** 每一个论断都要扎根在新鲜、可引用的来源上。
@@ -92,7 +98,7 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
    2. 从 `gemini_deep_research_sources.json` 中筛选出符合 Phase 4 INCLUDE 类型的 URL（官方站、GitHub、docs、blog、YouTube —— 不要聚合页或社交 feed）。
    3. 通过 `web_search` 发现的、符合 INCLUDE 类型的 URL。
    目标 **10-15 个 source URL**，覆盖多样的视觉素材类型。
-8. **写脚本之前，把 `research-brief.md` 给用户看。** 通常 ~1 轮反馈。
+8. **写脚本之前，把 `research-brief.md` 给用户看。** 通常 ~1 轮反馈。用户确认后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve research-brief`；除非用户已经明确确认，否则不要自己执行 `--approve`。
 
 **仅在以下情况跳过研究：**
 - 用户明确说"skip research, use this exact text" 且提供了完整内容

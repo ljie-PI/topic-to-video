@@ -120,12 +120,6 @@ def resolve_local_path(image_path: str) -> str:
     return str(path.resolve())
 
 
-def fail(message: str, exit_code: int = 1) -> None:
-    log(message)
-    cli.print_json({'success': False, 'error': message})
-    raise SystemExit(exit_code)
-
-
 def split_images(images):
     local, remote = [], []
     for img in images:
@@ -211,7 +205,7 @@ def run_mode_vlm(args, api_key):
     if not model:
         missing.append('VLM_MODEL (or pass --model)')
     if missing:
-        fail(f'VLM_API_KEY is set but missing required config: {", ".join(missing)}')
+        cli.fail(TOOL_NAME, f'VLM_API_KEY is set but missing required config: {", ".join(missing)}')
 
     log(f'Mode: vlm; model={model}; base_url={base_url}; images={len(args.images)}')
 
@@ -251,10 +245,10 @@ def main() -> None:
         try:
             args.context = Path(args.context_file).expanduser().read_text(encoding='utf-8')
         except (OSError, UnicodeError) as exc:
-            fail(f'Could not read context file {args.context_file}: {exc}', exit_code=2)
+            cli.fail(TOOL_NAME, f'Could not read context file {args.context_file}: {exc}', exit_code=2)
 
     if len(args.images) > MAX_IMAGES:
-        fail(f'Max {MAX_IMAGES} images are allowed per request (got {len(args.images)})')
+        cli.fail(TOOL_NAME, f'Max {MAX_IMAGES} images are allowed per request (got {len(args.images)})')
 
     api_key = os.environ.get('VLM_API_KEY')
 

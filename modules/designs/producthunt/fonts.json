@@ -1,8 +1,0 @@
-{
-  "css_filename": "producthunt-fonts.css",
-  "rename": true,
-  "css2_families": [
-    "Noto+Sans+SC:wght@100..900",
-    "IBM+Plex+Mono:wght@400;500;600;700"
-  ]
-}

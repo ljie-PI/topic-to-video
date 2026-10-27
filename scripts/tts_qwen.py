@@ -1,84 +1,19 @@
 #!/usr/bin/env python3
-"""Qwen TTS: clone a reference voice with Qwen3-TTS Base (mlx-audio).
+"""Qwen TTS library for cloning a reference voice with mlx-audio.
 
-Designed for the Qwen codec architecture whose output is already clean —
-no post-processing denoise stage. Emits the audio and a metrics JSON with
-latency and resource usage (CPU / memory / GPU memory).
-
-Path configuration (nothing is hardcoded; CLI > env var > default):
-    --text / TTS_TEXT             text to synthesize (or --text-file / TTS_TEXT_FILE;
-                                  TTS_TEXT_FILE is read when neither --text nor
-                                  --text-file is passed)
-    --voice / VOICE_REF           reference audio (default: <repo>/resources/my_voice.wav)
-    --ref-text / TTS_REF_TEXT     transcript of the reference audio (optional —
-                                  Qwen Base clones well without it)
-    --language / TTS_LANGUAGE     language code (default: auto)
-    --model / TTS_MODEL           model dir (default: <models>/Qwen3-TTS-12Hz-1.7B-Base-bf16)
-    --output-dir / TTS_OUTPUT_DIR (default: current working directory)
-    --prefix / TTS_PREFIX         output file prefix (default: tts)
-    --metrics / TTS_METRICS_FILE  (default: <output-dir>/<prefix>_metrics.json)
-
-Outputs:
-    <output-dir>/<prefix>.wav     synthesized audio
-    metrics JSON
-
-Scriptable: stdout ends with OUTPUT=<path> so callers can do
-    out=$(python3 tts_qwen.py --text "..." | grep '^OUTPUT=' | cut -d= -f2)
-
-Failures print one JSON line ({"success": false, "error": ...}) on stdout and
-exit 1; progress and latency diagnostics go to stderr where noted.
+The mlx-audio imports stay lazy inside :func:`synthesize`, so callers can import
+this module without installing MLX. Latency diagnostics go to stderr.
 """
 
 from __future__ import annotations
 
-import argparse
-import json
-import os
 import sys
-import time
 from pathlib import Path
 
 # make utils importable regardless of CWD
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from utils import (
-    ResourceMonitor,
-    default_models_dir,
-    log_latency,
-    resolve_path,
-    save_metrics,
-)
-
-
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    p.add_argument("text_pos", nargs="?", default=None,
-                   help="text to synthesize (positional; or set TTS_TEXT)")
-    p.add_argument("--text", default=None,
-                   help="text to synthesize (or set TTS_TEXT)")
-    p.add_argument("--text-file", default=None,
-                   help="file containing the text (or set TTS_TEXT_FILE; used when "
-                        "--text is absent)")
-    p.add_argument("--voice", default=None,
-                   help="reference audio for the voice (or set VOICE_REF; default: "
-                        "<repo>/resources/my_voice.wav)")
-    p.add_argument("--ref-text", default=None,
-                   help="transcript of the reference audio, optional (or set "
-                        "TTS_REF_TEXT)")
-    p.add_argument("--language", default=None,
-                   help="language code (or set TTS_LANGUAGE; default: auto)")
-    p.add_argument("--model", default=None,
-                   help="TTS model dir or HF id (or set TTS_MODEL)")
-    p.add_argument("--output-dir", default=None,
-                   help="output directory (or set TTS_OUTPUT_DIR; default: cwd)")
-    p.add_argument("--prefix", default=None,
-                   help="output file prefix (or set TTS_PREFIX; default: tts)")
-    p.add_argument("--metrics", default=None,
-                   help="metrics JSON path (or set TTS_METRICS_FILE)")
-    return p.parse_args()
+from utils import ResourceMonitor, log_latency
 
 
 def synthesize(
@@ -90,11 +25,11 @@ def synthesize(
     language: str = "auto",
     ref_text: str | None = None,
     load_model_fn=None,
-) -> dict:
+) -> dict:  # pragma: no cover - requires a real mlx-audio TTS model on supported hardware.
     """Clone the reference voice and synthesize `text` into `output_path`.
 
     Returns a metrics dict (latencies + resources). `load_model_fn` lets
-    callers (e.g. narrate.py) reuse an already-loaded model across calls.
+    callers reuse an already-loaded model across calls.
     """
     import time as _time
 
@@ -144,75 +79,3 @@ def synthesize(
     metrics["total_s"] = round(_time.perf_counter() - t_all, 3)
     metrics["output"] = str(output_path)
     return metrics
-
-
-def main() -> int:
-    """Run TTS; human-readable progress on success, one JSON error on failure."""
-    try:
-        return _run(parse_args())
-    except Exception as exc:  # noqa: BLE001 - failures end with one JSON line
-        print(json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False))
-        return 1
-
-
-def _run(args: argparse.Namespace) -> int:
-    # ---- resolve inputs ---------------------------------------------------
-    model_path = resolve_path(args.model, "TTS_MODEL",
-                              default_models_dir() / "Qwen3-TTS-12Hz-1.7B-Base-bf16")
-    voice_path = resolve_path(args.voice, "VOICE_REF", Path.cwd() / "my_voice.wav")
-    if not voice_path.exists():
-        # fall back to the repo workspace default voice
-        fallback = resolve_path(None, "VOICE_REF",
-                                Path(__file__).resolve().parent.parent / "resources" / "my_voice.wav")
-        if fallback.exists():
-            voice_path = fallback
-    output_dir = resolve_path(args.output_dir, "TTS_OUTPUT_DIR", Path.cwd())
-    prefix = args.prefix or os.environ.get("TTS_PREFIX") or "tts"
-    metrics_path = resolve_path(args.metrics, "TTS_METRICS_FILE",
-                                output_dir / f"{prefix}_metrics.json")
-
-    text = args.text_pos or args.text
-    if text is None:
-        text_file = args.text_file or os.environ.get("TTS_TEXT_FILE")
-        if text_file:
-            text = Path(
-                resolve_path(text_file, "TTS_TEXT_FILE", Path.cwd())
-            ).read_text(encoding="utf-8").strip()
-    if not text:
-        text = os.environ.get("TTS_TEXT")
-    if not text:
-        raise ValueError(
-            "no text: pass it positionally, via --text / --text-file, "
-            "or set TTS_TEXT / TTS_TEXT_FILE"
-        )
-
-    ref_text = args.ref_text or os.environ.get("TTS_REF_TEXT") or None
-    language = args.language or os.environ.get("TTS_LANGUAGE") or "auto"
-
-    if not model_path.exists():
-        raise FileNotFoundError(f"model not found: {model_path}")
-    if not voice_path.exists():
-        raise FileNotFoundError(f"voice reference not found: {voice_path}")
-
-    output_path = output_dir / f"{prefix}.wav"
-
-    print(f"model     : {model_path}")
-    print(f"voice     : {voice_path}")
-    print(f"language  : {language}")
-    print(f"text      : {text}")
-    print(f"output    : {output_path}")
-
-    metrics = synthesize(
-        text, output_path,
-        voice_path=voice_path, model_path=model_path,
-        language=language, ref_text=ref_text,
-    )
-    metrics["task"] = "qwen_tts_clone"
-    save_metrics(metrics_path, metrics)
-
-    print(f"OUTPUT={output_path}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -52,12 +52,6 @@ API_BASE = 'https://mineru.net/api/v4'
 log = cli.make_logger(TOOL_NAME)
 
 
-def fail(message: str, exit_code: int = 1) -> None:
-    log(message)
-    cli.print_json({'success': False, 'error': message})
-    raise SystemExit(exit_code)
-
-
 def parse_args() -> argparse.Namespace:
     p = cli.JsonArgumentParser(TOOL_NAME, description='MinerU PDF paper parser.')
     group = p.add_mutually_exclusive_group(required=True)
@@ -469,14 +463,14 @@ def main() -> None:
 
     # Validate inputs
     if args.pdf and not os.path.isfile(args.pdf):
-        fail(f'PDF file not found: {args.pdf}', exit_code=2)
+        cli.fail(TOOL_NAME, f'PDF file not found: {args.pdf}', exit_code=2)
 
     output_dir = os.path.abspath(args.output_dir)
     os.makedirs(output_dir, exist_ok=True)
 
     slug = args.slug or harvest_manifest.slug_for_pdf(args.url, args.pdf)
     if '/' in slug or '\\' in slug or '..' in slug:
-        fail(f'invalid slug (contains path separators or ..): {slug}', exit_code=2)
+        cli.fail(TOOL_NAME, f'invalid slug (contains path separators or ..): {slug}', exit_code=2)
     log(f'slug={slug} output_dir={output_dir}')
 
     token = os.environ.get('MINERU_API_TOKEN', '')
@@ -506,7 +500,7 @@ def main() -> None:
             backend = 'local_pipeline'
             log(f'local extraction succeeded: {mineru_dir}')
         except Exception as exc:
-            fail(f'both cloud and local extraction failed: {exc}')
+            cli.fail(TOOL_NAME, f'both cloud and local extraction failed: {exc}')
 
     # Process output
     try:
@@ -516,7 +510,7 @@ def main() -> None:
             pdf_path=args.pdf,
         )
     except Exception as exc:
-        fail(f'post-processing failed: {exc}')
+        cli.fail(TOOL_NAME, f'post-processing failed: {exc}')
 
     # Update manifest
     update_manifest(output_dir, entry)

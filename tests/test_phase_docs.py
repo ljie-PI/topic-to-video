@@ -41,13 +41,21 @@ def test_every_product_checked_by_pipeline_status_is_named_in_the_phase_doc_outp
     assert not missing, f'{phase["doc"]} "## 输出" does not name: {missing}'
 
 
-def test_phase7_offers_one_voice_clone_command_without_a_manual_asr_fallback():
+def test_phase7_offers_one_voice_subtitles_command_without_manual_child_commands():
     doc = (REPO_ROOT / 'references/phases/07-voice-subtitles.md').read_text(encoding='utf-8')
-    section = doc.split('#### 7.1 —', 1)[1].split('#### 7.2 —', 1)[0]
 
-    assert 'python3 scripts/voice-clone.py' in section
-    assert 'python3 scripts/transcribe.py' not in section
-    assert '单独补跑转录' not in section
+    assert doc.count('python3 scripts/voice-subtitles.py {work_dir}/{topic_name}') == 1
+    assert 'python3 scripts/voice-clone.py \\\n' not in doc
+    assert 'python3 scripts/align-narration.py \\\n' not in doc
+    assert 'python3 scripts/transcribe.py' not in doc
+    assert 'failed_step' in doc
+    assert '单独补跑转录' not in doc
+
+    skill = (REPO_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+    assert '| `voice-subtitles.py` |' in skill
+    gotchas = (REPO_ROOT / 'references/gotchas.md').read_text(encoding='utf-8')
+    assert 'Phase 7 的那条 voice-clone 命令' not in gotchas
+    assert 'python3 scripts/voice-subtitles.py {work_dir}/{topic_name}' not in gotchas
 
 
 def doc_text(relpath: str) -> str:
@@ -114,8 +122,8 @@ def test_phase_4_no_longer_documents_merging_the_parsed_paper():
     assert 'Paper mode' not in doc_text('references/phases/04-material-harvest.md')
 
 
-def test_phase_5_documents_the_paper_only_path():
-    catalog = doc_text('references/phases/05-material-catalog.md')
+def test_catalog_delegation_package_documents_the_paper_only_path():
+    catalog = doc_text('references/delegation/catalog/base-instructions.md')
     section = catalog.split('## 仅论文素材')[1]
     assert 'score: 8' in section and 'caption' in section
     # An empty caption means no caption: those figures go through the VLM step.
@@ -123,3 +131,138 @@ def test_phase_5_documents_the_paper_only_path():
     # Paper tables are often tall: layout hints are derived, not invented.
     assert 'viewport_reveal' in section
     assert 'focal_region' in section
+
+
+def test_material_ref_contract_is_slug_qualified_across_phase_and_delegation_docs():
+    phase_5 = doc_text('references/phases/05-material-catalog.md')
+    assert '方案 A' in phase_5
+    assert '只在所属 entry 内唯一' in phase_5
+    assert '不改 harvester / manifest 的 id' in phase_5
+
+    qualified_ref = '`<slug>/<id>`'
+    qualified_clip = '`<slug>/<video_id>:<start>-<end>`'
+    for doc in (
+        'references/phases/05-material-catalog.md',
+        'references/phases/06-script-scene-plan.md',
+        'references/delegation/catalog/base-instructions.md',
+        'references/delegation/script/base-instructions.md',
+        'references/delegation/script/handoff-template.md',
+        'references/delegation/composition/base-instructions.md',
+        'references/delegation/composition/handoff-template.md',
+    ):
+        text = doc_text(doc)
+        assert qualified_ref in text, doc
+        assert qualified_clip in text, doc
+
+    script_base = doc_text('references/delegation/script/base-instructions.md')
+    assert '"ref": "example/img_001"' in script_base
+    assert '裸 id' in script_base
+    composition_base = doc_text('references/delegation/composition/base-instructions.md')
+    assert '同一个 video id 出现在多个 entry' in composition_base
+
+
+def test_phase_1_selects_presenter_for_an_untemplated_host_request():
+    phase_1 = doc_text('references/phases/01-gather-inputs.md')
+
+    assert '用户明确要求“主持人”“有人讲解”“讲解员”或“Jay”时，用 `presenter`' in phase_1
+    assert '其他横屏情况仍用 `stage`' in phase_1
+    assert '不为此额外向用户提问' in phase_1
+    assert '竖屏布局没有人物区' in phase_1
+    assert '照常用竖屏布局，不加主持人' in phase_1
+
+    presenter = doc_text('modules/layouts/presenter.md')
+    assert '带主持人的通用横屏布局' in presenter
+    assert '用不用模板都可以选它' in presenter
+
+
+def test_jay_generic_performance_and_github_specific_overlay():
+    jay = doc_text('modules/components/jay/jay.md')
+    generic = jay.split('### 通用演法')[1].split('### 动作库')[0]
+    generic_rows = [line for line in generic.splitlines() if line.startswith('| ')][1:]
+    assert len(generic_rows) == 6
+    for cue in (
+        '["wave", 3000]',
+        'typing [切点 - 0.85, 切点 + 0.05]',
+        '[该时刻, 1.0, "L"]',
+        '[该时刻, 1.0, "U"]',
+        'beat → 画面',
+        '["laugh", 2200]',
+        '["wave", 3200]',
+    ):
+        assert cue in generic
+    for semantic_action in (
+        '["smile", 2200]',
+        '["idea", 2400]',
+        '["question", 2400]',
+        '["think", 2000]',
+        '["sigh", 2600]',
+        '["shake", 1600]',
+        '["nod-small", 1000]',
+    ):
+        assert semantic_action not in generic
+
+    action_library = jay.split('### 动作库（`acts`）')[1].split('### 常驻动作')[0]
+    assert action_library.count('| 动作 | 推荐时长 | 表现 | 适合的时刻 | 对应 beat |') == 2
+    for action, beat in (
+        ('`question`', 'question'),
+        ('`idea`', 'idea'),
+        ('`think`', 'caveat'),
+        ('`sigh`', 'caveat'),
+        ('`eureka`', 'highlight（数字）'),
+        ('`smile`', 'highlight（非数字）'),
+        ('`shake`', 'negation'),
+        ('`nod-small`', 'confirm'),
+    ):
+        row = next(line for line in action_library.splitlines() if line.startswith(f'| {action} |'))
+        assert row.endswith(f'| {beat} |')
+
+    github = doc_text('modules/templates/github/github.md')
+    overlay = github.split('## 5. 人物怎么演')[1]
+    assert '先按 `components/jay/jay.md` 的通用演法' in overlay
+    overlay_rows = [line for line in overlay.splitlines() if line.startswith('| ')][1:]
+    assert len(overlay_rows) == 3
+    assert '[cue, 1.0, "U"]' in overlay
+    assert '[cue + 1.7, 1.0, "L"]' in overlay
+    assert '["eureka", 2700]' in overlay
+    assert '封面的介绍出现时' in overlay and '瞥视 `"L"`' in overlay
+    for generic_cue in ('["smile", 2200]', '["idea", 2400]', '["question", 2400]', '["lean", 2400]'):
+        assert generic_cue not in overlay
+
+
+def test_composition_requires_jay_for_presenter():
+    composition = doc_text('references/delegation/composition/base-instructions.md')
+    layout_rules = composition.split('## 三、必须遵守 layout 区域')[1].split('## 工作顺序')[0]
+
+    assert 'layout 有人物区（presenter）时必须挂 `jay`' in layout_rules
+    assert '`VIDEO.jay` 按 `jay.md` 的通用演法编排' in layout_rules
+    assert '有模板时再叠加模板的演法' in layout_rules
+    assert 'node modules/components/jay/make-envelope.mjs voice_clone/narration.mp3' in layout_rules
+
+
+def test_scene_plan_beats_authoring_and_composition_contract():
+    script_base = doc_text('references/delegation/script/base-instructions.md')
+    assert '"beats": [{"type": "idea", "text": "原样取自显示稿的一小段"}]' in script_base
+    for beat_type in ('question', 'idea', 'caveat', 'highlight', 'negation', 'confirm'):
+        assert f'`{beat_type}`' in script_base
+    assert '8–30 个字符' in script_base
+    assert '平均每分钟不超过 4 个' in script_base
+    assert '两个 beat 的文本不能重叠' in script_base
+    assert '这个字段可以省略' in script_base
+
+    composition = doc_text('references/delegation/composition/base-instructions.md')
+    beat_mapping = composition.split('## 四、把语义节拍落到画面')[1].split('## 工作顺序')[0]
+    assert composition.count('| type | 有 Jay（presenter） | 没有 Jay |') == 1
+    for row in (
+        '| question | `["question", 2400]` | 按所选 design 第 6、7 节的强调写法，强调对应的提问文字 |',
+        '| idea | `["idea", 2400]` | 按所选 design 的强调写法，强调关键句或图示 |',
+        '| caveat | `["think", 2000]` 加一条不超过 4 个字的 `thoughts`，或 `["sigh", 2600]` | 对应信息用 `--c-warning` 左线的 callout 出现 |',
+        '| highlight | 数字类用 `["eureka", 2700]`，其他用 `["smile", 2200]` | 按所选 design 的强调写法，强调数字或关键词 |',
+        '| negation | `["shake", 1600]` | 对应项打 ✗，文字降为 `--c-ink2` |',
+        '| confirm | `["nod-small", 1000]` | 不加额外动效 |',
+    ):
+        assert row in beat_mapping
+    assert '动作从 `begin_s` 开始' in beat_mapping
+    assert '后一个顺延' in beat_mapping
+
+    github_narration = doc_text('modules/templates/github/narration.md')
+    assert '模板要求的锚点句仍然写进 `cues`，语义节拍写进 `beats`，两者互不影响' in github_narration

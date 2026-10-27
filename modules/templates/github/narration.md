@@ -14,7 +14,7 @@
    - 念到**一句话介绍（tagline）** → 对应 `taglineAt`；
    - 念到**本周 star 数** → 对应 `starsAt`（数字写法进词表，如 `"20,267": "两万零二百六十七"`）。
 
-场景规划里把上面这些锚点句摘录进各 scene 的 `cues`。封面场景用 `template_scene: "project-cover"`，总览场景用 `template_scene: "trending-overview"`。
+场景规划里把上面这些锚点句摘录进各 scene 的 `cues`。封面场景用 `template_scene: "project-cover"`，总览场景用 `template_scene: "trending-overview"`。模板要求的锚点句仍然写进 `cues`，语义节拍写进 `beats`，两者互不影响。
 
 ## 读法要求
 

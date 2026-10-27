@@ -128,9 +128,13 @@ SCENE_PLAN = [
         'paragraphs': [1, 2],
         'intent': '开场与背景',
         'facts': [],
-        'material_candidates': [{'ref': 'img_001', 'score': 8, 'reason': '对应开场'}],
+        'material_candidates': [{'ref': 'example/img_001', 'score': 8, 'reason': '对应开场'}],
         'cues': [],
     }
+]
+
+SCENE_PLAN_PAPER = [
+    {**SCENE_PLAN[0], 'material_candidates': [{'ref': 'main-paper/img_001', 'score': 8, 'reason': '论文图'}]}
 ]
 
 # Without a catalog phase (no fetch_materials, not a paper) there is nothing to refer to.
@@ -227,11 +231,13 @@ def write_paper_metadata(ws: Path) -> None:
     )
 
 
-def complete_through_research(ws: Path, **inputs_overrides) -> None:
+def complete_through_research(ws: Path, *, approved: bool = True, **inputs_overrides) -> None:
     complete_through_inputs(ws, **inputs_overrides)
     if inputs_overrides.get('input_mode') == 'paper':
         write_paper_metadata(ws)
     write_text(ws / 'research-brief.md', RESEARCH_BRIEF)
+    if approved:
+        approve(ws, 'research-brief')
 
 
 def complete_through_harvest(ws: Path, **inputs_overrides) -> None:
@@ -265,13 +271,16 @@ def complete_through_catalog(ws: Path, **inputs_overrides) -> None:
         write_clip(ws / CLIP_PATH)
 
 
-def complete_through_script(ws: Path, **inputs_overrides) -> None:
+def complete_through_script(ws: Path, *, approved: bool = True, **inputs_overrides) -> None:
     complete_through_catalog(ws, **inputs_overrides)
     write_script(ws, SCRIPT_TXT)
     write_json(ws / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
     inputs = {**INPUTS, **inputs_overrides}
     has_catalog = inputs['fetch_materials'] or inputs['input_mode'] == 'paper'
-    write_json(ws / 'scene-plan.json', SCENE_PLAN if has_catalog else SCENE_PLAN_NO_MATERIALS)
+    scene_plan = SCENE_PLAN_PAPER if inputs['input_mode'] == 'paper' else SCENE_PLAN
+    write_json(ws / 'scene-plan.json', scene_plan if has_catalog else SCENE_PLAN_NO_MATERIALS)
+    if approved:
+        approve(ws, 'script')
 
 
 def complete_through_voice_subtitles(ws: Path, **inputs_overrides) -> None:
@@ -656,6 +665,7 @@ def test_script_20_percent_off_target_is_corrupt(tmp_path: Path, chars: int):
 def test_script_14_percent_off_target_is_accepted(tmp_path: Path, chars: int):
     complete_through_script(tmp_path)
     write_script(tmp_path, script_of(chars))
+    approve(tmp_path, 'script')
     result = parse_result(run_cli(str(tmp_path)))
     assert '6-script-scene-plan' in result['completed_phases']
 
@@ -665,12 +675,13 @@ def test_script_length_ignores_whitespace(tmp_path: Path):
     # 2250 characters, padded with spaces, full-width spaces and extra blank lines.
     padded = '甲 ' * 1125 + '\n\n\n　　' + '乙\t' * 1125 + '\n\n'
     write_script(tmp_path, padded)
+    approve(tmp_path, 'script')
     result = parse_result(run_cli(str(tmp_path)))
     assert '6-script-scene-plan' in result['completed_phases']
 
 
 def test_script_length_target_follows_numeric_duration(tmp_path: Path):
-    complete_through_script(tmp_path, duration=1)  # 1 min -> 450 characters
+    complete_through_script(tmp_path, approved=False, duration=1)  # 1 min -> 450 characters
     result = parse_result(run_cli(str(tmp_path)))
     assert 'script.txt' in result['corrupt_products']
     assert '450' in result['next_phase']['problems']['script.txt']
@@ -729,14 +740,98 @@ def scene(scene_id: str, paragraphs, candidates=()) -> dict:
     }
 
 
-def scene_plan_problem(tmp_path: Path, scenes, *, script: str = SCRIPT_TXT, **inputs_overrides) -> tuple[dict, str | None]:
+def scene_plan_problem(
+    tmp_path: Path,
+    scenes,
+    *,
+    script: str = SCRIPT_TXT,
+    approve_script: bool = False,
+    catalog: dict | None = None,
+    **inputs_overrides,
+) -> tuple[dict, str | None]:
     """Run a Phase 6 workspace whose scene-plan.json is `scenes`; returns (result, scene-plan detail)."""
-    complete_through_script(tmp_path, **inputs_overrides)
+    complete_through_script(tmp_path, approved=False, **inputs_overrides)
+    if catalog is not None:
+        write_json(tmp_path / 'material-catalog.json', catalog)
     write_script(tmp_path, script)
     write_json(tmp_path / 'scene-plan.json', scenes)
+    if approve_script:
+        approve(tmp_path, 'script')
     result = parse_result(run_cli(str(tmp_path)))
     problems = (result['next_phase'] or {}).get('problems', {})
     return result, problems.get('scene-plan.json')
+
+
+def scene_with_beats(beats) -> dict:
+    planned = scene('s1', [1, 2])
+    planned['beats'] = beats
+    return planned
+
+
+def test_scene_plan_valid_beats_pass_and_can_be_approved(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path,
+        [scene_with_beats([{'type': 'idea', 'text': '甲' * 8}])],
+        approve_script=True,
+    )
+
+    assert detail is None
+    assert 'scene-plan.json' not in result['corrupt_products']
+    assert '6-script-scene-plan' in result['completed_phases']
+    approval = read_approvals(tmp_path)['gates']['script']
+    assert 'scene-plan.json' in approval['products']
+
+
+def test_scene_plan_without_optional_beats_passes(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene('s1', [1, 2])], approve_script=True
+    )
+
+    assert detail is None
+    assert '6-script-scene-plan' in result['completed_phases']
+
+
+def test_scene_plan_beats_must_be_a_list(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene_with_beats({'type': 'idea', 'text': '甲' * 8})]
+    )
+
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert 'scene 0' in detail and 'beats' in detail and 'list' in detail
+
+
+def test_scene_plan_beat_type_must_be_allowed(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene_with_beats([{'type': 'feeling', 'text': '甲' * 8}])]
+    )
+
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert 'beats[0]' in detail and 'type' in detail and 'feeling' in detail
+
+
+@pytest.mark.parametrize(
+    'beat',
+    [
+        {'type': 'idea'},
+        {'type': 'idea', 'text': ''},
+        {'type': 'idea', 'text': 7},
+        'not-an-object',
+    ],
+)
+def test_scene_plan_beat_text_must_be_a_non_empty_string(tmp_path: Path, beat):
+    result, detail = scene_plan_problem(tmp_path, [scene_with_beats([beat])])
+
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert 'beats[0]' in detail and 'text' in detail
+
+
+def test_scene_plan_beat_text_must_appear_literally_in_script(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene_with_beats([{'type': 'idea', 'text': '不在显示稿里的节拍'}])]
+    )
+
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert 'beats[0]' in detail and 'script.txt' in detail
 
 
 def test_scene_plan_missing_a_paragraph_is_corrupt(tmp_path: Path):
@@ -773,7 +868,7 @@ def test_scene_plan_paragraphs_must_be_integers(tmp_path: Path, paragraphs):
 
 
 def test_scene_plan_scenes_may_share_a_paragraph(tmp_path: Path):
-    result, detail = scene_plan_problem(tmp_path, [scene('s1', [1, 2]), scene('s2', [2])])
+    result, detail = scene_plan_problem(tmp_path, [scene('s1', [1, 2]), scene('s2', [2])], approve_script=True)
     assert detail is None
     assert '6-script-scene-plan' in result['completed_phases']
 
@@ -806,37 +901,103 @@ def candidates(*refs) -> list[dict]:
 
 @pytest.mark.parametrize(
     'ref',
-    ['img_001', 'vid_001', 'vid_001:12.0-18.5', 'vid_001:12-18.5', 'vid_001:12.005-18.495'],
+    [
+        'example/img_001',
+        'example/vid_001',
+        'example/vid_001:12.0-18.5',
+        'example/vid_001:12-18.5',
+        'example/vid_001:12.005-18.495',
+    ],
 )
 def test_scene_plan_accepts_refs_that_resolve(tmp_path: Path, ref: str):
-    result, detail = scene_plan_problem(tmp_path, [scene('s1', [1, 2], candidates(ref))])
+    result, detail = scene_plan_problem(tmp_path, [scene('s1', [1, 2], candidates(ref))], approve_script=True)
     assert detail is None
     assert '6-script-scene-plan' in result['completed_phases']
 
 
-def test_scene_plan_ref_missing_from_catalog_is_corrupt(tmp_path: Path):
-    result, detail = scene_plan_problem(tmp_path, [scene('s1', [1, 2], candidates('img_001', 'img_999'))])
+def test_scene_plan_duplicate_image_ids_resolve_by_entry_slug(tmp_path: Path):
+    catalog = catalog_with()
+    other = json.loads(json.dumps(catalog['entries'][0]))
+    other['slug'] = 'other'
+    other['videos'] = []
+    catalog['entries'].append(other)
+
+    result, detail = scene_plan_problem(
+        tmp_path,
+        [scene('s1', [1, 2], candidates('example/img_001', 'other/img_001'))],
+        approve_script=True,
+        catalog=catalog,
+    )
+
+    assert detail is None
+    assert '6-script-scene-plan' in result['completed_phases']
+
+
+@pytest.mark.parametrize('ref', ['missing/img_001', 'example/img_999'])
+def test_scene_plan_ref_with_nonexistent_slug_or_id_is_corrupt(tmp_path: Path, ref: str):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene('s1', [1, 2], candidates('example/img_001', ref))]
+    )
+
     assert result['next_phase']['id'] == '6-script-scene-plan'
     assert 'scene-plan.json' in result['corrupt_products']
-    assert "'img_999'" in detail and "'img_001'" not in detail, detail
+    assert repr(ref) in detail and "'example/img_001'" not in detail, detail
+
+
+def test_scene_plan_bare_material_id_is_corrupt(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene('s1', [1, 2], candidates('example/img_001', 'img_001'))]
+    )
+
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert "'img_001'" in detail and "'example/img_001'" not in detail, detail
+
+
+def test_scene_plan_duplicate_video_ids_and_clip_windows_are_scoped_by_slug(tmp_path: Path):
+    catalog = catalog_with()
+    other = json.loads(json.dumps(catalog['entries'][0]))
+    other['slug'] = 'other'
+    other_clip = other['videos'][0]['selected_clips'][0]
+    other_clip['start'], other_clip['end'] = 20.0, 22.0
+    other_clip['clip_path'] = 'clips/vid_001_20.00-22.00.mp4'
+    catalog['entries'].append(other)
+    write_clip(tmp_path / other_clip['clip_path'])
+    valid_refs = (
+        'example/vid_001',
+        'other/vid_001',
+        'example/vid_001:12.0-18.5',
+        'other/vid_001:20.0-22.0',
+    )
+    wrong_entry_window = 'other/vid_001:12.0-18.5'
+
+    result, detail = scene_plan_problem(
+        tmp_path,
+        [scene('s1', [1, 2], candidates(*valid_refs, wrong_entry_window))],
+        catalog=catalog,
+    )
+
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert repr(wrong_entry_window) in detail, detail
+    for ref in valid_refs:
+        assert repr(ref) not in detail, detail
 
 
 @pytest.mark.parametrize(
     'ref',
     [
-        'vid_001:13.0-18.5',  # start differs by 1.0
-        'vid_001:12.0-18.6',  # end differs by 0.1
-        'vid_999:12.0-18.5',  # no such video
-        'img_001:12.0-18.5',  # an image has no clips
-        'vid_001:abc-def',
-        'vid_001:12.0',
-        'vid_001:12.0-18.5-20',
-        'vid_001:',
+        'example/vid_001:13.0-18.5',  # start differs by 1.0
+        'example/vid_001:12.0-18.6',  # end differs by 0.1
+        'example/vid_999:12.0-18.5',  # no such video
+        'example/img_001:12.0-18.5',  # an image has no clips
+        'example/vid_001:abc-def',
+        'example/vid_001:12.0',
+        'example/vid_001:12.0-18.5-20',
+        'example/vid_001:',
         ':12.0-18.5',
-        'vid_001:12.0 - 18.5',  # float() would accept these; the documented form has no spaces
-        'vid_001: 12-18.5',
-        'vid_001:+12-18.5',
-        'vid_001:1_2-18.5',
+        'example/vid_001:12.0 - 18.5',  # float() would accept these; the documented form has no spaces
+        'example/vid_001: 12-18.5',
+        'example/vid_001:+12-18.5',
+        'example/vid_001:1_2-18.5',
     ],
 )
 def test_scene_plan_clip_ref_that_matches_no_selected_clip_is_corrupt(tmp_path: Path, ref: str):
@@ -846,21 +1007,26 @@ def test_scene_plan_clip_ref_that_matches_no_selected_clip_is_corrupt(tmp_path: 
 
 
 def test_scene_plan_lists_every_invalid_ref(tmp_path: Path):
-    scenes = [scene('s1', [1], candidates('nope_1')), scene('s2', [2], candidates('img_001', 'nope_2'))]
+    scenes = [
+        scene('s1', [1], candidates('example/nope_1')),
+        scene('s2', [2], candidates('example/img_001', 'example/nope_2')),
+    ]
     _, detail = scene_plan_problem(tmp_path, scenes)
-    assert "'nope_1'" in detail and "'nope_2'" in detail, detail
+    assert "'example/nope_1'" in detail and "'example/nope_2'" in detail, detail
 
 
 def test_scene_plan_without_catalog_phase_must_have_no_candidates(tmp_path: Path):
     result, detail = scene_plan_problem(
-        tmp_path, [scene('s1', [1, 2], candidates('img_001'))], fetch_materials=False
+        tmp_path, [scene('s1', [1, 2], candidates('example/img_001'))], fetch_materials=False
     )
     assert 'scene-plan.json' in result['corrupt_products']
-    assert 'fetch_materials' in detail and "'img_001'" in detail, detail
+    assert 'fetch_materials' in detail and "'example/img_001'" in detail, detail
 
 
 def test_scene_plan_without_catalog_phase_and_no_candidates_is_accepted(tmp_path: Path):
-    result, detail = scene_plan_problem(tmp_path, [scene('s1', [1, 2])], fetch_materials=False)
+    result, detail = scene_plan_problem(
+        tmp_path, [scene('s1', [1, 2])], fetch_materials=False, approve_script=True
+    )
     assert detail is None
     assert '6-script-scene-plan' in result['completed_phases']
 
@@ -967,6 +1133,60 @@ def test_corrupt_subtitle_units_falls_back_to_phase_7(tmp_path: Path):
     result = parse_result(proc)
     assert result['next_phase']['id'] == '7-voice-subtitles'
     assert 'transcribe/subtitle-units.json' in result['corrupt_products']
+
+
+def write_timeline_beats(ws: Path, beats) -> None:
+    timeline = {**TIMELINE, 'beats': beats}
+    write_json(ws / 'transcribe' / 'timeline.json', timeline)
+
+
+def test_timeline_valid_beats_pass(tmp_path: Path):
+    complete_through_voice_subtitles(tmp_path)
+    write_timeline_beats(
+        tmp_path,
+        [{
+            'scene_id': 'scene_1',
+            'type': 'idea',
+            'text': '大家好，这是关键思路',
+            'begin_s': 0.25,
+            'end_s': 1.5,
+        }],
+    )
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert 'transcribe/timeline.json' not in result['corrupt_products']
+    assert '7-voice-subtitles' in result['completed_phases']
+
+
+def test_timeline_without_optional_beats_passes(tmp_path: Path):
+    complete_through_voice_subtitles(tmp_path)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert '7-voice-subtitles' in result['completed_phases']
+
+
+@pytest.mark.parametrize(
+    'beats',
+    [
+        {'scene_id': 'scene_1', 'begin_s': 0, 'end_s': 1},
+        [{'scene_id': 'scene_1', 'end_s': 1}],
+        [{'scene_id': 'scene_1', 'begin_s': 0}],
+        [{'scene_id': 'scene_1', 'begin_s': '0', 'end_s': 1}],
+        [{'scene_id': 'scene_1', 'begin_s': False, 'end_s': 1}],
+        ['not-an-object'],
+    ],
+)
+def test_timeline_beats_require_numeric_begin_and_end(tmp_path: Path, beats):
+    complete_through_voice_subtitles(tmp_path)
+    write_timeline_beats(tmp_path, beats)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert 'transcribe/timeline.json' in result['corrupt_products']
+    detail = result['next_phase']['problems']['transcribe/timeline.json']
+    assert 'beats' in detail
 
 
 # --- phase 8 products: composition index.html + final.mp4 ------------------------
@@ -1234,7 +1454,8 @@ def test_paper_mode_without_fetch_full_run(tmp_path: Path):
 
 def test_paper_mode_without_fetch_scene_plan_refs_resolve_against_the_catalog(tmp_path: Path):
     result, detail = scene_plan_problem(
-        tmp_path, [scene('s1', [1, 2], candidates('img_001'))], input_mode='paper', fetch_materials=False
+        tmp_path, [scene('s1', [1, 2], candidates('main-paper/img_001'))],
+        input_mode='paper', fetch_materials=False, approve_script=True,
     )
     assert detail is None
     assert '6-script-scene-plan' in result['completed_phases']
@@ -1242,10 +1463,11 @@ def test_paper_mode_without_fetch_scene_plan_refs_resolve_against_the_catalog(tm
 
 def test_paper_mode_without_fetch_scene_plan_ref_missing_from_catalog_is_corrupt(tmp_path: Path):
     result, detail = scene_plan_problem(
-        tmp_path, [scene('s1', [1, 2], candidates('nope_1'))], input_mode='paper', fetch_materials=False
+        tmp_path, [scene('s1', [1, 2], candidates('main-paper/nope_1'))],
+        input_mode='paper', fetch_materials=False,
     )
     assert 'scene-plan.json' in result['corrupt_products']
-    assert "'nope_1'" in detail, detail
+    assert "'main-paper/nope_1'" in detail, detail
 
 
 def test_no_fetch_full_run(tmp_path: Path):
@@ -1298,7 +1520,10 @@ def test_removed_design_accepted_from_workspace_copy(tmp_path: Path):
     copy = tmp_path / 'modules' / 'designs' / 'moon'
     copy.mkdir(parents=True)
     (copy / 'moon.md').write_text('# moon', encoding='utf-8')
-    write_json(copy / 'fonts.json', {'css_filename': 'moon-fonts.css', 'css2_families': ['X']})
+    write_json(copy / 'moon.json', {
+        'design': 'moon',
+        'fonts': {'css_filename': 'moon-fonts.css', 'css2_families': ['X']},
+    })
     result = parse_result(run_cli(str(tmp_path)))
     assert 'inputs.json' not in result['corrupt_products']
     assert result['next_phase']['id'] != '1-gather-inputs'
@@ -1631,6 +1856,7 @@ def test_paper_parse_stamp_upstream_and_its_metadata_as_upstream_of_research(tmp
     write_json(tmp_path / 'harvest_page' / 'main-paper' / 'metadata.json', metadata)
     write_json(tmp_path / 'harvest_page' / 'manifest.json', {'version': 2, 'entries': [PAPER_ENTRY]})
     write_text(tmp_path / 'research-brief.md', RESEARCH_BRIEF)
+    approve(tmp_path, 'research-brief')
     result = parse_result(run_cli(str(tmp_path)))
     assert result['completed_phases'] == ['1-gather-inputs', '2-paper-parse', '3-research']
     phases = read_stamps(tmp_path)['phases']
@@ -1666,6 +1892,7 @@ def test_directory_products_are_not_fingerprinted(tmp_path: Path):
 def test_phases_that_are_not_completed_get_no_stamp(tmp_path: Path):
     complete_all(tmp_path)
     (tmp_path / 'research-brief.md').unlink()
+    (tmp_path / '.pipeline' / 'stamps.json').unlink()  # scan as a fresh workspace, not with old stamps
     parse_result(run_cli(str(tmp_path)))
     assert list(read_stamps(tmp_path)['phases']) == ['1-gather-inputs']
 
@@ -1711,6 +1938,7 @@ def test_a_partial_redo_keeps_the_phase_stale(tmp_path: Path):
     # stale mark: narration.mp3 and transcript.json are still the old build.
     settle(tmp_path)
     write_script(tmp_path, EDITED_SCRIPT_TXT)
+    approve(tmp_path, 'script')
     assert parse_result(run_cli(str(tmp_path)))['next_phase']['id'] == '7-voice-subtitles'
 
     write_json(tmp_path / 'transcribe' / 'subtitle-units.json', {'units': [{'text': '大家好呀', 'begin_s': 0.0, 'end_s': 2.6}]})
@@ -1788,6 +2016,7 @@ def test_fingerprint_cache_is_written_and_trusted(tmp_path: Path):
 def test_editing_the_script_makes_phase_7_stale_and_later_phases_pending(tmp_path: Path):
     settle(tmp_path)
     write_script(tmp_path, EDITED_SCRIPT_TXT)  # the script agent re-ran make-narration
+    approve(tmp_path, 'script')
 
     result = parse_result(run_cli(str(tmp_path)))
 
@@ -1835,12 +2064,14 @@ def test_a_newly_created_optional_upstream_file_makes_its_phase_stale(tmp_path: 
     assert result['next_phase']['changed_upstream'] == ['composition-instructions.md']
 
 
-def test_editing_a_product_by_hand_keeps_the_phase_completed_and_stales_the_next(tmp_path: Path):
+def test_reapproving_an_edited_product_stales_the_next_phase(tmp_path: Path):
     settle(tmp_path)
     edited = RESEARCH_BRIEF + '- one more fact [source]\n'
     write_text(tmp_path / 'research-brief.md', edited)
+    waiting = parse_result(run_cli(str(tmp_path)))
+    assert waiting['next_phase']['reason'] == 'awaiting_approval'
 
-    result = parse_result(run_cli(str(tmp_path)))
+    result = approve(tmp_path, 'research-brief')
 
     assert statuses(result)['3-research'] == 'completed'
     assert result['next_phase']['id'] == '4-material-harvest'
@@ -1855,6 +2086,7 @@ def test_editing_a_product_by_hand_keeps_the_phase_completed_and_stales_the_next
 def test_regenerating_a_phase_after_its_upstream_changed_makes_it_completed_again(tmp_path: Path):
     settle(tmp_path)
     write_script(tmp_path, EDITED_SCRIPT_TXT)
+    approve(tmp_path, 'script')
     assert parse_result(run_cli(str(tmp_path)))['next_phase']['id'] == '7-voice-subtitles'
 
     rewrite_voice_subtitles(tmp_path)
@@ -1914,6 +2146,7 @@ def test_redoing_phase_6_with_new_content_makes_phase_7_stale(tmp_path: Path):
     write_script(tmp_path, EDITED_SCRIPT_TXT)
     write_json(tmp_path / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
     write_json(tmp_path / 'scene-plan.json', SCENE_PLAN)
+    approve(tmp_path, 'script')
 
     result = parse_result(run_cli(str(tmp_path)))
 
@@ -1969,6 +2202,7 @@ def test_restamp_only_touches_the_named_phase(tmp_path: Path):
 def test_restamp_reads_the_current_files_not_the_old_ones(tmp_path: Path):
     settle(tmp_path)
     write_script(tmp_path, EDITED_SCRIPT_TXT)
+    approve(tmp_path, 'script')
     assert parse_result(run_cli(str(tmp_path)))['next_phase']['id'] == '7-voice-subtitles'
 
     result = parse_result(run_cli(str(tmp_path), '--restamp', '7-voice-subtitles'))
@@ -2128,6 +2362,7 @@ def test_same_length_edit_of_a_legacy_offsets_table_without_hashes_still_passes(
         offsets.pop(field, None)
     write_json(tmp_path / 'narration-offsets.json', offsets)
     write_text(tmp_path / 'script.txt', EDITED_SCRIPT_TXT)
+    approve(tmp_path, 'script')
 
     result = parse_result(run_cli(str(tmp_path)))
 
@@ -2196,6 +2431,7 @@ def test_what_make_narration_writes_is_accepted(tmp_path: Path, newline: str):
         text=True,
     )
     assert proc.returncode == 0, proc.stderr
+    approve(tmp_path, 'script')
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase']['id'] == '7-voice-subtitles', result['next_phase']
     assert statuses(result)['6-script-scene-plan'] == 'completed'
@@ -2367,3 +2603,129 @@ def test_storyboard_edited_after_the_render_sends_phase_8_back(tmp_path: Path):
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase']['id'] == '8-composition'
     assert 'storyboard.md' in result['next_phase']['problems'][REPORT]
+
+
+# --- user approval gates: .pipeline/approvals.json --------------------------------
+
+
+def approve(ws: Path, gate: str) -> dict:
+    proc = run_cli(str(ws), '--approve', gate)
+    assert proc.returncode == 0, proc.stderr
+    return parse_result(proc)
+
+
+def read_approvals(ws: Path) -> dict:
+    return json.loads((ws / '.pipeline' / 'approvals.json').read_text(encoding='utf-8'))
+
+
+def test_legacy_research_waits_for_approval_and_later_phases_are_pending(tmp_path: Path):
+    complete_through_research(tmp_path, approved=False)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['completed_phases'] == ['1-gather-inputs']
+    assert result['next_phase'] == {
+        'id': '3-research',
+        'title': '主题调研',
+        'doc': 'references/phases/03-research.md',
+        'reason': 'awaiting_approval',
+        'gate': 'research-brief',
+        'instruction': (
+            '把 research-brief.md 给用户过目；用户确认后运行 '
+            '`python3 scripts/pipeline-status.py <ws> --approve research-brief`'
+        ),
+        'problems': {},
+    }
+    assert statuses(result)['3-research'] == 'awaiting_approval'
+    assert result['pending_phases'] == PHASE_IDS[3:]
+
+
+def test_approving_research_records_product_hash_and_completes_the_gate(tmp_path: Path):
+    complete_through_research(tmp_path, approved=False)
+
+    result = approve(tmp_path, 'research-brief')
+
+    assert '3-research' in result['completed_phases']
+    assert result['next_phase']['id'] == '4-material-harvest'
+    approvals = read_approvals(tmp_path)
+    assert approvals['version'] == 1
+    assert set(approvals['gates']) == {'research-brief'}
+    approval = approvals['gates']['research-brief']
+    assert set(approval) == {'approved_at', 'products'}
+    datetime.fromisoformat(approval['approved_at'])
+    assert approval['products'] == {'research-brief.md': sha256_of(RESEARCH_BRIEF)}
+    # Approval is durable, not a one-shot transition in this invocation.
+    assert parse_result(run_cli(str(tmp_path)))['next_phase']['id'] == '4-material-harvest'
+
+
+def test_changing_an_approved_research_brief_requires_confirmation_again(tmp_path: Path):
+    complete_through_research(tmp_path, approved=False)
+    approve(tmp_path, 'research-brief')
+    write_text(tmp_path / 'research-brief.md', RESEARCH_BRIEF + '- another verified fact [source]\n')
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '3-research'
+    assert result['next_phase']['reason'] == 'awaiting_approval'
+    assert result['next_phase']['gate'] == 'research-brief'
+
+
+def test_script_gate_records_only_its_contract_products(tmp_path: Path):
+    complete_through_script(tmp_path, approved=False)
+    approve(tmp_path, 'research-brief')
+    waiting = parse_result(run_cli(str(tmp_path)))
+    assert waiting['next_phase']['id'] == '6-script-scene-plan'
+    assert waiting['next_phase']['reason'] == 'awaiting_approval'
+    assert waiting['next_phase']['gate'] == 'script'
+    assert waiting['next_phase']['instruction'] == (
+        '把旁白和每个 scene 的 scene_id + intent 交给用户确认；确认后运行 '
+        '`python3 scripts/pipeline-status.py <ws> --approve script`'
+    )
+    assert waiting['pending_phases'] == ['7-voice-subtitles', '8-composition', '9-check-mix']
+
+    result = approve(tmp_path, 'script')
+
+    assert '6-script-scene-plan' in result['completed_phases']
+    assert result['next_phase']['id'] == '7-voice-subtitles'
+    products = read_approvals(tmp_path)['gates']['script']['products']
+    assert products == {
+        'script.txt': sha256_of(SCRIPT_TXT),
+        'tts-lexicon.json': sha256_of((tmp_path / 'tts-lexicon.json').read_bytes()),
+        'scene-plan.json': sha256_of((tmp_path / 'scene-plan.json').read_bytes()),
+    }
+
+
+def test_changing_script_after_approval_returns_to_the_gate(tmp_path: Path):
+    complete_through_script(tmp_path, approved=False)
+    approve(tmp_path, 'research-brief')
+    approve(tmp_path, 'script')
+    write_script(tmp_path, EDITED_SCRIPT_TXT)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert result['next_phase']['reason'] == 'awaiting_approval'
+    assert result['next_phase']['gate'] == 'script'
+    assert statuses(result)['6-script-scene-plan'] == 'awaiting_approval'
+    assert result['pending_phases'] == ['7-voice-subtitles', '8-composition', '9-check-mix']
+
+
+def test_approve_rejects_products_that_do_not_pass_with_exit_2(tmp_path: Path):
+    complete_through_research(tmp_path, approved=False)
+    write_text(tmp_path / 'research-brief.md', '  \n')
+
+    proc = run_cli(str(tmp_path), '--approve', 'research-brief')
+
+    assert proc.returncode == 2
+    result = parse_result(proc)
+    assert result['success'] is False
+    assert 'research-brief' in result['error']
+    assert result['problems']['research-brief.md']
+    assert not (tmp_path / '.pipeline' / 'approvals.json').exists()
+
+
+def test_approve_rejects_an_unknown_gate_with_exit_2(tmp_path: Path):
+    proc = run_cli(str(tmp_path), '--approve', 'unknown')
+
+    assert proc.returncode == 2
+    assert 'unknown' in parse_result(proc)['error']

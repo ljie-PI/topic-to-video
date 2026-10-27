@@ -1,0 +1,54 @@
+{
+  "design": "default",
+  "tokens": {
+    "--c-canvas": "#f3f1ec",
+    "--c-card": "#fbfaf7",
+    "--c-surface": "#f1eee8",
+    "--c-border": "#d9d4cc",
+    "--c-ink": "#25232a",
+    "--c-ink2": "#58545f",
+    "--c-muted": "#878290",
+    "--c-focus": "#5e559e",
+    "--c-focus-tint": "#ece9f4",
+    "--c-info": "#3e6994",
+    "--c-warning": "#94661b",
+    "--c-danger": "#a4434a",
+    "--c-positive": "#3d7353",
+    "--c-positive-solid": "#4a8261",
+    "--c-positive-tint": "#e5eee7",
+    "--c-positive-text": "#2c573f",
+    "--c-highlight": "#a3823f",
+    "--c-done": "#4c4583",
+    "--c-chrome": "#2a282f",
+    "--c-chrome-ink": "#f5f3ef",
+    "--c-chrome-muted": "#a6a1ad",
+    "--c-chrome-active": "#b2a6de",
+    "--c-tile0": "#e8e4dd",
+    "--c-tile1": "#d9d4e6",
+    "--c-tile2": "#b8b0d5",
+    "--c-tile3": "#8a80bd",
+    "--c-tile4": "#5e559e",
+    "--ground": "url(\"assets/textures/paper.jpg\") center / cover, #f3f1ec",
+    "--font-sans": "\"NotoSansSC\", sans-serif",
+    "--font-mono": "\"IBMPlexMono\", \"NotoSansSC\", monospace",
+    "--motion-enter-duration": "0.2s",
+    "--motion-easing": "power1.out",
+    "--motion-list-interval": "0.12s"
+  },
+  "min_font_px": {
+    "reading": 26,
+    "ui": 22
+  },
+  "caption_font_px": 36,
+  "fonts": {
+    "css_filename": "default-fonts.css",
+    "rename": {
+      "Noto Sans SC": "NotoSansSC",
+      "IBM Plex Mono": "IBMPlexMono"
+    },
+    "css2_families": [
+      "Noto+Sans+SC:wght@100..900",
+      "IBM+Plex+Mono:wght@400;500;600;700"
+    ]
+  }
+}

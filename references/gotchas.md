@@ -1,135 +1,86 @@
-# Gotchas Catalog —— 上游 pipeline 踩坑清单
+# 维护者笔记：历史症状 → 原因 → 修复
 
-本文件聚焦 `topic-to-video` 的上游问题：调研、抓取、TTS、ASR、确定性资源以及 handoff contract。`SKILL.md` 只保留必须常驻上下文的核心护栏；这里记录具体症状、原因和恢复方式。HyperFrames composition、CSS、animation/effect skills、lint、inspect 与渲染实现的坑请去看 `hyperframes`、`hyperframes-cli` 以及对应 skill（如 `gsap`、`animejs`、`waapi`、`css-animations`、`lottie`、`three`、`typegpu`）。Tailwind 属于静态 layout / style utility，不负责 render-critical motion timing。
+本文件只记录未被 phase 护栏完全覆盖的历史症状、原因与恢复方式，供维护者 review；执行流程仍只读 `pipeline-status` 当前指出的 phase 文档。修改护栏前，从该 phase 的「护栏」小节核对对应历史坑，避免重开旧问题。HyperFrames composition、CSS、animation/effect skills、lint、inspect 与渲染实现的坑请去看 `hyperframes`、`hyperframes-cli` 以及对应 skill。
 
-## 1. 中文场景下避免使用 HyperFrames Transcribe
+## 1. HyperFrames Transcribe 的中文下载与 UTF-8 故障
 
-本工作流中，不要用 `npx hyperframes transcribe` 处理中文解说。历史 run 多次遇到模型下载失败和 UTF-8 输出乱码。
+**历史症状：** 历史 run 多次遇到模型下载失败和 UTF-8 输出乱码；所有已配置的 ASR 后端也可能同时不可用。
 
-修复：用 `scripts/transcribe.py`。后端由环境变量选择，参数和依赖见 `scripts/transcribe.py` 的顶部说明。脚本输出带词级时间戳的句子列表（transcript schema 见 Phase 7 的接口契约）。
+**原因：** HyperFrames Transcribe 的中文模型下载与输出编码不稳定；外部 ASR 服务或本地后端也可能暂时不可用。
 
-如果所有已配置的后端都不可用，问用户要一份外部 transcript，而不是悄悄切换到 HyperFrames 的 transcribe。
+**修复：** 用 `scripts/transcribe.py`，后端、参数和依赖见其顶部说明。如果所有已配置的后端都不可用，问用户要一份外部 transcript，不要悄悄切换到 HyperFrames 的 transcribe。
 
-## 1b. ASR 的数字归一化（ITN）
+## 2. ASR 的数字归一化影响文本对比 / CER
 
-transcript 里的数字可能是中文或阿拉伯写法（取决于后端与开关），下游对齐会把两者视为等价，不做假设。数字归一化的行为、依赖与开关见 `scripts/transcribe.py` 的顶部说明。
+**历史症状：** 做文本对比 / CER 评测时，数字格式差异会让分数虚高。
 
-做文本对比 / CER 评测时应对两侧都做同样归一化，否则数字格式差异会让分数虚高。
+**原因：** transcript 里的数字可能是中文或阿拉伯写法，取决于后端与开关；下游对齐会把两者视为等价，不做假设。
 
-## 2. 不要编辑 TTS 脚本源码
+**修复：** 对两侧都做同样归一化。数字归一化的行为、依赖与开关见 `scripts/transcribe.py` 的顶部说明。
 
-不要把 `voice-clone.py` 复制一份，再把解说粘进 Python 源码。这种做法让 resume 和 review 都变得脆弱。
+## 3. 参考音频需要 transcript；长 narration 可能 OOM
 
-修复：把解说放在 `narration.txt` 里，调用：
+**历史症状：** 声音克隆的参考 WAV 缺少对应逐字稿；合成较长 narration 时可能在高负载机器上 OOM。
 
-```bash
-python3 scripts/voice-clone.py \
-  --input-file {work_dir}/{topic_name}/narration.txt \
-  --output-dir {work_dir}/{topic_name}/voice_clone
-```
+**原因：** 声音克隆除了参考 WAV 还需要它对应的逐字稿；长文本合成有额外的内存压力。
 
-后端由环境变量选择，参考音色、参数和依赖见 `scripts/voice-clone.py` 的顶部说明。
-
-转录契约：Phase 7 的那条 voice-clone 命令始终尝试产出**本轮新鲜**的 transcript（直对齐失败自动回退 `transcribe.py`，成功 JSON 带 `transcript_method`）。不带 `--emit-transcript`、且后端不是 always 直对齐（如 dashscope）时，run 不会产出 transcript——这正是 Phase 7 命令始终带 `--emit-transcript` / `--transcript-output` 的原因。
-
-## 2b. 参考音频需要 transcript
-
-声音克隆除了参考 WAV 还需要它对应的逐字稿。解析顺序、缓存位置与自动转写行为见 `scripts/voice-clone.py` 的顶部说明。
-
-坑（长 narration 内存不足）：合成较长 narration 时可能在高负载机器上 OOM。`voice-clone.py` 已做缓解；仍失败时可把 narration 分段合成再用 ffmpeg 拼接，或切到其他后端。
-
-## 2c. 硬件精度注意事项
-
-后端特定的硬件精度选择（如低精度推理、避免不支持的 kernel）见 `scripts/voice-clone.py` 与 `scripts/transcribe.py` 的顶部说明。
-
-## 3. 全角中文冒号可能引入 TTS 停顿
-
-当全角冒号 `：` 后紧跟一个长复合句时，TTS 偶尔会在其后插入一段明显停顿。
-
-修复：改用 `——`、逗号，或在生成 TTS 之前断句。
+**修复：** 参考音频逐字稿的解析顺序、缓存位置与自动转写行为见 `scripts/voice-clone.py` 的顶部说明。`voice-clone.py` 已缓解长 narration 的内存压力；仍失败时可把 narration 分段合成再用 ffmpeg 拼接，或切到其他后端。
 
 ## 4. Gemini Deep Research 的 UI 自动化很脆
 
-`scripts/gemini-deep-research.py` 自动化的是一个消费级 web UI，selector 或流程变更都会让它崩。
+**历史症状：** 脚本出现 selector timeout、failed step 或运行时错误。
 
-修复：如果脚本因 selector timeout、failed step 或运行时错误失败，回退到有针对性的 `web_search` 调研。不要让项目卡在 Gemini UI 自动化上。
+**原因：** `scripts/gemini-deep-research.py` 自动化的是一个消费级 web UI，selector 或流程变更都会让它崩。
+
+**修复：** 回退到有针对性的 `web_search` 调研，不要让项目卡在 Gemini UI 自动化上。
 
 ## 5. MinerU 云端失败
 
-MinerU 云端可能因为 token、超时或 URL 抓取等原因失败。
+**历史症状：** MinerU 云端因为 token、超时或 URL 抓取等原因失败，包括云端错误 `-60007`。
 
-修复：
+**原因：** 云端 token 缺失或失效、URL 模式超时、云端服务错误。
+
+**修复：**
 - token 缺失或失效：允许 `parse-pdf.py` 在本地有 `mineru` 时回退到本地。
 - URL 模式云端超时：把 PDF 下下来，用 `--pdf` 重试。
 - 云端错误 `-60007`：本地重试。
 
 ## 6. Chrome CDP 的 profile 锁
 
-Chrome 启动时使用显式 `--profile-dir {work_dir}/chrome_profile` 指定的共享 profile。如果 Chrome 立刻退出，可能是另一个 Chrome 进程正占用该 profile。
+**历史症状：** Chrome 立刻退出，或复用 CDP 后新的启动配置没有生效。
 
-如果 CDP 已就绪，脚本会直接 attach；此次传入的 `--profile-dir` / `--headless` / `--chrome-path` / `--no-sandbox` 不会改变正在运行的 Chrome。stderr 会记录 warning，输出 JSON 的 `chrome.ignored_flags` 会列出这些被忽略的参数，`chrome.reused` 为 `true`。
+**原因：** 另一个 Chrome 进程可能正占用共享 profile。CDP 已就绪时脚本会直接 attach；此次传入的 `--profile-dir` / `--headless` / `--chrome-path` / `--no-sandbox` 不会改变正在运行的 Chrome。stderr 会记录 warning，输出 JSON 的 `chrome.ignored_flags` 会列出这些被忽略的参数，`chrome.reused` 为 `true`。
 
-修复：需要应用不同启动配置时，先关闭复用的 Chrome 再运行；profile 锁冲突时关闭冲突进程或换 `--profile-dir`。如果 CDP 端口 9222 被占用，传另一个 `--cdp-url`，比如 `http://localhost:9223`。
+**修复：** 需要应用不同启动配置时，先关闭复用的 Chrome 再运行；profile 锁冲突时关闭冲突进程或换 `--profile-dir`。如果 CDP 端口 9222 被占用，传另一个 `--cdp-url`，比如 `http://localhost:9223`。
 
-## 7. 视频下载必须顺序执行
+## 7. `harvest-pages.py` 返回 0 张图
 
-YouTube/Bilibili 经 yt-dlp 并行下载时容易被限速。
+**历史症状：** 页面抓取结果为空。
 
-修复：顺序遍历 `manifest.pending_downloads[]`（Phase 4.b 的步骤）。如果下载因地区封锁、年龄限制、410 或限速失败，保留 `download_required: true`；Phase 5（素材 catalog）会忽略尚未解决的 clip。
+**原因：** 页面加载慢、cookie banner 或懒加载。
 
-## 10. 剥掉视频片段的原始音轨
+**修复：** 调大 `--page-load-timeout`，必要时用共享 Chrome profile 先处理 cookie banner，再重跑抓取。
 
-素材视频本身可能包含解说、音乐或 UI 音效。最终视频里，唯一的解说人声只能是 `voice_clone/narration.mp3`。
+## 8. `vision-analyze.py` 返回 `delegate_to_agent`
 
-修复：Phase 5 用 `scripts/cut-clips.py` 把 catalog 的 `selected_clips` 切成 `-an` 的无音轨文件（`clip_path`）。这是传递给 HyperFrames sub-agent 的一项上游素材契约：composition 只用 `clip_path`，不用视频的 `local_path`。
+**历史症状：** `vision-analyze.py` 返回 `delegate_to_agent`，无法自动完成视觉分析。
 
-## 11. 在项目环境里使用 Python 3
+**原因：** 当前环境缺少可用 VLM 配置。
 
-激活项目 venv 后用 `python3`。不要假设所有机器上的 `python` 都指向 Python 3。
+**修复：** 设置 `VLM_API_KEY` / `VLM_BASE_URL` / `VLM_MODEL` 后重跑；如果没有 VLM，用 `view` 工具检查图片并手写分析结果。
 
-常见修复：
-- `playwright` import 出错：`pip install playwright`
-- TTS / ASR 后端依赖 import 出错：按 `scripts/voice-clone.py` / `scripts/transcribe.py` 的顶部说明安装对应后端的包
-- `mineru` 缺失：`pip install "mineru[pipeline]"`
+## 9. `warning: cue not found for scene ...`
 
-## 12. Paper mode 不要跳过主论文解析
+**历史症状：** 场景规划的 cue 锚点在对齐后的文本里找不到，`scripts/align-narration.py` 的 stderr 记录 warning；找不到的 cue 会被跳过，不阻塞流程。
 
-用户给了 PDF 或论文 URL 时，不能只靠模型训练数据概括论文。先解析主论文，产出 `harvest_page/main-paper/metadata.json`，再把论文 figure / table 并入统一素材流。
+**原因：** 通常是大小写、标点、TTS 文本与 transcript 不一致。
 
-修复：用 `scripts/parse-pdf.py` 解析本地 PDF 或 URL；云端失败时按 MinerU 条目回退到本地或本地文件模式。
+**修复：** 从实际 `transcribe/transcript.json` / 显示稿文本中挑 cue，避免凭 `narration.txt` 原文硬配。
 
-## 13. catalog 未建立前不要写脚本或匹配素材
+## 10. 未校准 ASR 会造成字幕文本错误
 
-Phase 6 只能引用 Phase 5 产出的 `material-catalog.json`。如果 catalog 还没建，脚本会凭空安排素材，后续 handoff 也无法追溯资源来源。
+**历史症状：** ASR 可能把 Latin words、产品名或模型名识别错，也可能把词粘在一起或在词中间断句。
 
-修复：先完成 vision analyze 和 catalog 生成。用户明确不抓素材（`fetch_materials = false`）时：标准模式按“无素材”路径处理；论文模式仍然走 Phase 5——论文自己的 figure / table 会进 catalog——既不要伪造 `material_ref`，也不要把论文图表丢掉。
+**原因：** ASR 的时间戳最接近音频，但文本不一定与显示稿一致。
 
-## 14. `harvest-pages.py` 返回 0 张图
-
-页面加载慢、cookie banner 或懒加载可能导致抓取结果为空。
-
-修复：调大 `--page-load-timeout`，必要时用共享 Chrome profile 先处理 cookie banner，再重跑抓取。
-
-## 15. `vision-analyze.py` 返回 `delegate_to_agent`
-
-这表示当前环境缺少可用 VLM 配置，脚本无法自动完成视觉分析。
-
-修复：设置 `VLM_API_KEY` / `VLM_BASE_URL` / `VLM_MODEL` 后重跑；如果没有 VLM，用 `view` 工具检查图片并手写分析结果。
-
-## 16. `warning: cue not found for scene ...`
-
-场景规划的 cue 锚点在对齐后的文本里找不到（`scripts/align-narration.py` 的 stderr 日志），通常是大小写、标点、TTS 文本与 transcript 不一致。找不到的 cue 会被跳过并记 warning，不阻塞流程。
-
-修复：从实际 `transcribe/transcript.json` / 显示稿文本中挑 cue，避免凭 `narration.txt` 原文硬配。
-
-## 17. 主 agent 不手写 composition HTML
-
-主 agent 只负责运行 `scripts/prepare-handoff.py <ws> composition`：它生成 `composition-handoff.md`，把 composition 委派包（`references/delegation/composition/`）与 modules（不含 `examples/`）物化到工作区，并按所选 design 预置字体。`composition/index.html`、storyboard、场景布局、动画、渲染前自查和渲染迭代都属于 Phase 8 coding sub-agent。
-
-修复：如果发现主 agent 已开始手写 HTML，停下并改为运行 `prepare-handoff.py`（重新生成 handoff、补全委派包与 modules 副本）、核对素材引用；让 composition sub-agent 接管 composition。
-
-## 18. 字幕文本不要直接照搬未校准 ASR
-
-ASR 的时间戳最接近音频，但文本可能把 Latin words、产品名或模型名识别错，也可能把词粘在一起或在词中间断句。最终字幕应来自 `transcribe/subtitle-units.json`：以显示稿为文本来源，ASR 只提供时间；低置信区段保留 ASR 文本并标记 `fallback`。
-
-修复：重跑 `scripts/align-narration.py`。如果 `narration.txt` 在 TTS 后改过，先重新生成 TTS 和 ASR；TTS 漏读的内容没有音频可依，会被丢弃并在 summary 里警告。
+**修复：** 最终字幕使用 `transcribe/subtitle-units.json`，以显示稿为文本来源，ASR 只提供时间；低置信区段保留 ASR 文本并标记 `fallback`。重跑 `scripts/align-narration.py`；如果 `narration.txt` 在 TTS 后改过，先重新生成 TTS 和 ASR。TTS 漏读的内容没有音频可依，会被丢弃并在 summary 里警告。

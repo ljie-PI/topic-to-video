@@ -3,7 +3,8 @@
 
 Phase 5 writes `selected_clips` as references (`{start, end, reason, ...}`) into
 a source video. This script materialises each one as `<ws>/clips/<video_id>_<start:.2f>-<end:.2f>.mp4`
-with the audio track stripped (SKILL.md guardrail 6), so composition embeds a
+with the audio track stripped (Phase 5 guardrails:
+`references/phases/05-material-catalog.md`), so composition embeds a
 short silent file instead of the whole original video. The clip's catalog
 entry gets `clip_path` (relative to the workspace, POSIX separators), and
 material-catalog.json is updated in place (atomic write).
@@ -21,7 +22,7 @@ A video's relative `local_path` is relative to `<workspace_dir>/harvest_page/`
 (the v2 manifest base); an absolute one (old catalogs) is used as is.
 
 Output: one JSON document on stdout.
-  {"success": true, "clips": [{"ref": "<video_id>:<start>-<end>", "clip_path": "clips/...", "skipped": false}],
+  {"success": true, "clips": [{"ref": "<slug>/<video_id>:<start>-<end>", "clip_path": "clips/...", "skipped": false}],
    "errors": []}
   A failed clip is {"ref": ..., "error": "...", "stderr_tail": "..."?} in `errors`
   and makes `success` false.
@@ -84,14 +85,15 @@ def load_catalog(ws: Path) -> dict[str, Any]:
 
 
 def iter_selected_clips(catalog: dict[str, Any]):
-    """Yield (video, clip) for every selected clip of every catalog video."""
+    """Yield (slug, video, clip) for every selected clip of every catalog video."""
     for entry in catalog['entries']:
         videos = entry.get('videos') if isinstance(entry, dict) else None
+        slug = entry.get('slug') if isinstance(entry, dict) else None
         for video in videos if isinstance(videos, list) else []:
             clips = video.get('selected_clips') if isinstance(video, dict) else None
             for clip in clips if isinstance(clips, list) else []:
                 if isinstance(clip, dict):
-                    yield video, clip
+                    yield slug, video, clip
 
 
 def source_path(ws: Path, video: dict[str, Any]) -> Path:
@@ -191,8 +193,8 @@ def main() -> int:
     errors: list[dict[str, Any]] = []
     catalog_changed = False
     try:
-        for video, clip in iter_selected_clips(catalog):
-            ref = f"{video.get('id')}:{clip.get('start')}-{clip.get('end')}"
+        for slug, video, clip in iter_selected_clips(catalog):
+            ref = f"{slug}/{video.get('id')}:{clip.get('start')}-{clip.get('end')}"
             try:
                 result, changed = process_clip(ws, video, clip)
             except (ClipError, media.FfmpegError, subprocess.TimeoutExpired) as exc:

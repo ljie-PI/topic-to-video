@@ -430,7 +430,7 @@ def test_timeline_paragraph_bounds(tmp_path: Path):
     assert timeline_data['total_s'] == 2.5
 
 
-def test_timeline_has_no_cues_without_scene_plan(tmp_path: Path):
+def test_timeline_has_no_cues_or_beats_without_scene_plan(tmp_path: Path):
     transcript = [
         {
             'begin': 0,
@@ -444,6 +444,7 @@ def test_timeline_has_no_cues_without_scene_plan(tmp_path: Path):
     )
     assert proc.returncode == 0
     assert 'cues' not in timeline_data
+    assert 'beats' not in timeline_data
 
 
 def test_timeline_cue_seconds_with_scene_plan(tmp_path: Path):
@@ -473,6 +474,75 @@ def test_timeline_cue_seconds_with_scene_plan(tmp_path: Path):
     ]
     # unmatched cue reported as a warning, not a failure
     assert any('s2' in warning for warning in result['summary']['warnings'])
+
+
+def test_timeline_beat_seconds_with_scene_plan(tmp_path: Path):
+    transcript = [
+        {
+            'begin': 1000,
+            'end': 2200,
+            'text': '这里有一个关键思路。',
+            'words': [
+                {'text': '这里', 'begin': 1000, 'end': 1300},
+                {'text': '有一个', 'begin': 1300, 'end': 1600},
+                {'text': '关键', 'begin': 1600, 'end': 1900},
+                {'text': '思路', 'begin': 1900, 'end': 2200},
+            ],
+        }
+    ]
+    scene_plan = [
+        {
+            'scene_id': 's1',
+            'paragraphs': [1],
+            'beats': [{'type': 'idea', 'text': '有一个关键思路。'}],
+        }
+    ]
+
+    proc, result, _, timeline_data = make_workspace(
+        tmp_path, '这里有一个关键思路。', {}, transcript, scene_plan=scene_plan
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert timeline_data['beats'] == [
+        {
+            'scene_id': 's1',
+            'type': 'idea',
+            'text': '有一个关键思路。',
+            'begin_s': 1.3,
+            'end_s': 2.2,
+        }
+    ]
+    assert result['summary']['beat_count'] == 1
+
+
+def test_unmatched_beat_warns_and_is_skipped(tmp_path: Path):
+    transcript = [
+        {
+            'begin': 0,
+            'end': 1200,
+            'text': '这里有一个关键思路。',
+            'words': [{'text': '这里有一个关键思路', 'begin': 0, 'end': 1200}],
+        }
+    ]
+    scene_plan = [
+        {
+            'scene_id': 's1',
+            'paragraphs': [1],
+            'beats': [{'type': 'question', 'text': '显示稿里不存在的问题'}],
+        }
+    ]
+
+    proc, result, _, timeline_data = make_workspace(
+        tmp_path, '这里有一个关键思路。', {}, transcript, scene_plan=scene_plan
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert timeline_data['beats'] == []
+    assert result['summary']['beat_count'] == 0
+    assert any(
+        'beat' in warning and 's1' in warning and '显示稿里不存在的问题' in warning
+        for warning in result['summary']['warnings']
+    )
 
 
 def test_timeline_scene_seconds_with_scene_plan(tmp_path: Path):

@@ -1,19 +1,19 @@
-"""Tests for scripts/text_align.py's align.json -> transcript.json conversion seam.
+"""Tests for the mlx alignment -> pipeline transcript schema adapter.
 
-The seam is the CLI: ``--align-json <in> --emit-transcript <out>`` performs a
-pure schema conversion (no model load): the mlx aligner's seconds-based
-align.json becomes the pipeline transcript schema (sentence list, all times in
-milliseconds). Repo convention: stdout = one JSON, exit codes 0 / 1 / 2.
+The adapter is a pure library function: the mlx aligner's seconds-based spans
+become sentence and word timestamps in integer milliseconds, with no audio,
+model, JSON file handling, or CLI involved.
 """
 from __future__ import annotations
 
-import json
-import subprocess
-import sys
-from pathlib import Path
+from types import SimpleNamespace
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / 'scripts' / 'text_align.py'
+from transcript_schema import (
+    build_transcript,
+    sentence_texts,
+    transcript_from_mlx_alignment,
+    transcript_from_torch_alignment,
+)
 
 ALIGN_JSON = {
     'audio': 'narration.wav',
@@ -54,42 +54,13 @@ EXPECTED_TRANSCRIPT = [
 ]
 
 
-def run_cli(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(SCRIPT), *args],
-        capture_output=True,
-        text=True,
-    )
+def test_convert_mlx_alignment_to_transcript():
+    assert transcript_from_mlx_alignment(ALIGN_JSON) == EXPECTED_TRANSCRIPT
 
 
-def parse_stdout(proc: subprocess.CompletedProcess) -> dict:
-    """stdout must be exactly one parseable JSON document."""
-    return json.loads(proc.stdout)
+def test_word_timestamps_are_integer_milliseconds():
+    transcript = transcript_from_mlx_alignment(ALIGN_JSON)
 
-
-def write_align_json(path: Path, payload) -> None:
-    path.write_text(json.dumps(payload, ensure_ascii=False), encoding='utf-8')
-
-
-def test_convert_align_json_to_transcript(tmp_path: Path):
-    src = tmp_path / 'narration.align.json'
-    out = tmp_path / 'transcript.json'
-    write_align_json(src, ALIGN_JSON)
-    proc = run_cli('--align-json', str(src), '--emit-transcript', str(out))
-    assert proc.returncode == 0, proc.stderr
-    result = parse_stdout(proc)
-    assert result['success'] is True
-    transcript = json.loads(out.read_text(encoding='utf-8'))
-    assert transcript == EXPECTED_TRANSCRIPT
-
-
-def test_word_timestamps_are_integer_milliseconds(tmp_path: Path):
-    src = tmp_path / 'narration.align.json'
-    out = tmp_path / 'transcript.json'
-    write_align_json(src, ALIGN_JSON)
-    proc = run_cli('--align-json', str(src), '--emit-transcript', str(out))
-    assert proc.returncode == 0, proc.stderr
-    transcript = json.loads(out.read_text(encoding='utf-8'))
     for sentence in transcript:
         assert set(sentence) == {'begin', 'end', 'text', 'words'}
         for field in ('begin', 'end'):
@@ -100,45 +71,48 @@ def test_word_timestamps_are_integer_milliseconds(tmp_path: Path):
             assert isinstance(word['end'], int)
 
 
-def test_empty_alignment_exits_1(tmp_path: Path):
-    src = tmp_path / 'narration.align.json'
-    out = tmp_path / 'transcript.json'
-    write_align_json(src, {'audio': 'x.wav', 'language': 'Chinese', 'words': [], 'sentences': []})
-    proc = run_cli('--align-json', str(src), '--emit-transcript', str(out))
-    assert proc.returncode == 1
-    result = parse_stdout(proc)
-    assert result['success'] is False
-    assert not out.exists()
+def test_empty_alignment_returns_empty_transcript():
+    alignment = {'audio': 'x.wav', 'language': 'Chinese', 'words': [], 'sentences': []}
+
+    assert transcript_from_mlx_alignment(alignment) == []
 
 
-def test_missing_align_json_exits_1(tmp_path: Path):
-    out = tmp_path / 'transcript.json'
-    proc = run_cli(
-        '--align-json', str(tmp_path / 'nope.json'), '--emit-transcript', str(out)
-    )
-    assert proc.returncode == 1
-    result = parse_stdout(proc)
-    assert result['success'] is False
-    assert not out.exists()
+def test_missing_alignment_fields_return_empty_transcript():
+    assert transcript_from_mlx_alignment({'audio': 'x.wav', 'language': 'Chinese'}) == []
 
 
-def test_invalid_align_json_exits_1(tmp_path: Path):
-    src = tmp_path / 'narration.align.json'
-    out = tmp_path / 'transcript.json'
-    src.write_text('{"words": [', encoding='utf-8')  # truncated JSON
-    proc = run_cli('--align-json', str(src), '--emit-transcript', str(out))
-    assert proc.returncode == 1
-    result = parse_stdout(proc)
-    assert result['success'] is False
-    assert not out.exists()
+def test_punctuation_only_targets_fall_back_to_one_sentence_without_losing_words():
+    words = [
+        {'text': 'Hello', 'begin': 0, 'end': 400},
+        {'text': 'world', 'begin': 400, 'end': 800},
+    ]
+
+    assert build_transcript(words, [{'text': '!!!'}]) == [{
+        'begin': 0,
+        'end': 800,
+        'text': 'Helloworld',
+        'words': words,
+    }]
 
 
-def test_conversion_needs_no_audio_or_model(tmp_path: Path):
-    """--align-json/--emit-transcript must not require --audio or a model dir."""
-    src = tmp_path / 'narration.align.json'
-    out = tmp_path / 'transcript.json'
-    write_align_json(src, ALIGN_JSON)
-    proc = run_cli('--align-json', str(src), '--emit-transcript', str(out))
-    assert proc.returncode == 0, proc.stderr
-    assert 'audio not found' not in proc.stderr
-    assert 'model not found' not in proc.stderr
+def test_sentence_texts_preserves_decimal_points_and_drops_unalignable_text():
+    assert sentence_texts('GPT 5.4 works!  ...\n下一章。') == [
+        'GPT 5.4 works!', '下一章。'
+    ]
+
+
+def test_torch_adapter_uses_original_text_and_converts_seconds_to_milliseconds():
+    items = [
+        SimpleNamespace(text='你', start_time=0.0, end_time=0.25),
+        SimpleNamespace(text='好', start_time=0.25, end_time=0.5),
+    ]
+
+    assert transcript_from_torch_alignment('你好。', items) == [{
+        'begin': 0,
+        'end': 500,
+        'text': '你好。',
+        'words': [
+            {'text': '你', 'begin': 0, 'end': 250},
+            {'text': '好', 'begin': 250, 'end': 500},
+        ],
+    }]

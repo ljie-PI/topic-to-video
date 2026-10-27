@@ -5,7 +5,7 @@ import argparse
 import json
 import sys
 from collections.abc import Callable
-from typing import Any
+from typing import Any, NoReturn
 
 
 class JsonArgumentParser(argparse.ArgumentParser):
@@ -28,6 +28,25 @@ def make_logger(tool_name: str) -> Callable[[str], None]:
 
 def print_json(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False))
+
+
+def fail(
+    tool_name: str,
+    message: str,
+    exit_code: int = 1,
+    *,
+    failed_step: int | str | None = None,
+    extra: dict[str, Any] | None = None,
+    log_message: str | None = None,
+) -> NoReturn:
+    make_logger(tool_name)(message if log_message is None else log_message)
+    payload: dict[str, Any] = {'success': False, 'error': message}
+    if failed_step is not None:
+        payload['failed_step'] = failed_step
+    if extra:
+        payload.update(extra)
+    print_json(payload)
+    raise SystemExit(exit_code)
 
 
 def run(main: Callable[[], int | None], tool_name: str) -> int:

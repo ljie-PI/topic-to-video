@@ -16,6 +16,14 @@
 
 Phase 5（素材 catalog）；若 `fetch_materials = false`，本 phase 跳过：标准模式下 Phase 5 也跳过，直接进入 Phase 6（脚本与场景规划，按"无素材"路径处理）；论文模式直接进入 Phase 5（仅论文素材）。
 
+## 护栏
+
+- **素材搜索是可选但推荐的。** `inputs.json` 里 `fetch_materials = false` 或用户自带全部视觉时跳过（Phase 4 / 5 一起跳过；论文模式只跳过 Phase 4，论文自己的 figure 仍由 Phase 5 进 catalog）。
+- **Chrome over CDP。** `harvest-pages.py` 和 `gemini-deep-research.py` 必须显式传 `--profile-dir {work_dir}/chrome_profile`。复用已运行的 CDP 时，启动参数不会生效；检查 stderr warning 和输出 JSON 的 `chrome.ignored_flags`，需要新配置就先关闭复用的 Chrome。
+- **视频下载顺序执行。** yt-dlp 并行时会被限速。
+- 历史坑见 `references/gotchas.md` #6（Chrome CDP 的 profile 锁）。
+- 历史坑见 `references/gotchas.md` #7（`harvest-pages.py` 返回 0 张图）。
+
 ---
 
 agent（LLM）先生成一批大概率能提供丰富视觉素材的 URL，再用整个列表 ONE 次 调用 `harvest-pages.py`。对每个普通渲染页，工具会抽出图片 / 视频，并默认录制一段自上而下的滚动视频；YouTube/Bilibili 直链页面会被列入 Phase 4.b，而不是直接在 Chrome 里打开。
