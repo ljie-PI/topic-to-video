@@ -30,6 +30,8 @@ python3 scripts/voice-clone.py \
 
 后端由环境变量选择，参考音色、参数和依赖见 `scripts/voice-clone.py` 的顶部说明。
 
+转录契约：Phase 7 的那条 voice-clone 命令始终尝试产出**本轮新鲜**的 transcript（直对齐失败自动回退 `transcribe.py`，成功 JSON 带 `transcript_method`）。不带 `--emit-transcript`、且后端不是 always 直对齐（如 dashscope）时，run 不会产出 transcript——这正是 Phase 7 命令始终带 `--emit-transcript` / `--transcript-output` 的原因。
+
 ## 2b. 参考音频需要 transcript
 
 声音克隆除了参考 WAV 还需要它对应的逐字稿。解析顺序、缓存位置与自动转写行为见 `scripts/voice-clone.py` 的顶部说明。
@@ -100,7 +102,7 @@ YouTube/Bilibili 经 yt-dlp 并行下载时容易被限速。
 
 Phase 6 只能引用 Phase 5 产出的 `material-catalog.json`。如果 catalog 还没建，脚本会凭空安排素材，后续 handoff 也无法追溯资源来源。
 
-修复：先完成 vision analyze 和 catalog 生成。用户明确跳过素材时，仍要在 Phase 6/9 中按“无素材”路径处理，不要伪造 `material_ref`。
+修复：先完成 vision analyze 和 catalog 生成。用户明确不抓素材（`fetch_materials = false`）时：标准模式按“无素材”路径处理；论文模式仍然走 Phase 5——论文自己的 figure / table 会进 catalog——既不要伪造 `material_ref`，也不要把论文图表丢掉。
 
 ## 14. `harvest-pages.py` 返回 0 张图
 

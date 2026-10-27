@@ -1,6 +1,6 @@
 # 委派约定（统一）
 
-Phase 6（脚本与场景规划）与 Phase 8（composition）委派给 coding agent 完成，共用本约定。Phase 5（素材 catalog）也按本约定的派发方式委派，但它的 handoff 由主 agent 按 `references/phases/05-material-catalog.md` 组织——`prepare-handoff.py` 只支持 `script` 和 `composition` 两个 step。
+Phase 6（脚本与场景规划）与 Phase 8（composition）委派给 coding agent 完成，共用本约定。Phase 5（素材 catalog）也按本约定的派发方式委派；`prepare-handoff.py` 目前只支持 `script` 和 `composition` 两个 step。
 
 ## 委派给谁
 

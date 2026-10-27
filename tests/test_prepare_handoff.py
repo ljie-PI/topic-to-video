@@ -699,13 +699,18 @@ class TestReviewRoundFixes:
         prepare(ws, 'script', '--refresh', script=skill_copy / 'scripts' / 'prepare-handoff.py')
         assert copy.read_bytes() == source.read_bytes()
 
-    def test_paper_mode_script_handoff_lists_the_paper_parse_doc(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, input_mode='paper')
+    def test_paper_mode_script_handoff_uses_self_contained_base_instructions(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, input_mode='paper', fetch_materials=False)
+        write(ws / 'material-catalog.json', '{"entries": []}')
 
         prepare(ws, 'script')
 
-        body = handoff_sections((ws / 'script-handoff.md').read_text(encoding='utf-8'))['Required References']
-        assert f'{REPO_ROOT}/references/phases/02-paper-parse.md' in body
+        handoff = (ws / 'script-handoff.md').read_text(encoding='utf-8')
+        sections = handoff_sections(handoff)
+        assert '02-paper-parse' not in handoff
+        assert '05-material-catalog' not in handoff
+        assert str(ws / 'material-catalog.json') in sections['Inputs']
+        assert str(ws / 'references/delegation/script/base-instructions.md') in sections['Required References']
 
     def test_placeholder_names_allow_uppercase_digits_and_hyphens(self, tmp_path: Path, skill_copy: Path):
         template = skill_copy / 'references' / 'delegation' / 'script' / 'handoff-template.md'
@@ -804,13 +809,14 @@ class TestDelegationDocs:
         assert 'composition-init/' in text
         assert text.index('composition-init/') < text.index('不用再装')
 
-    def test_base_instructions_no_longer_point_at_a_workspace_relative_paper_doc(self):
+    def test_base_instructions_contain_the_paper_narration_structure(self):
         text = (REPO_ROOT / 'references' / 'delegation' / 'script' / 'base-instructions.md').read_text(
             encoding='utf-8'
         )
 
-        assert '02-paper-parse' not in text  # the relative path dies in the workspace copy
-        assert 'Required References' in text
+        assert '02-paper-parse' not in text
+        assert '05-material-catalog' not in text
+        assert '论文模式沿用论文自身的逻辑流' in text
 
     def test_conventions_scope_the_script_to_script_and_composition(self):
         text = (REPO_ROOT / 'references' / 'delegation' / 'conventions.md').read_text(encoding='utf-8')

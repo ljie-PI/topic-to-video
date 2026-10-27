@@ -264,13 +264,6 @@ def script_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
     base = delegation / 'script' / 'base-instructions.md'
     sources: list[Path] = [SKILL_ROOT / DELEGATION / 'conventions.md', SKILL_ROOT / DELEGATION / 'script']
     references: list[Reference] = [(f'{base}（基础指令：叙事结构、写法要求、产物 schema）', [base])]
-    if inputs['input_mode'] == 'paper':
-        # Paper mode: the base instructions defer to the paper-parse doc, whose
-        # relative path does not resolve from the workspace copy — the handoff
-        # must carry the skill-side absolute path.
-        paper_doc = SKILL_ROOT / 'references' / 'phases' / '02-paper-parse.md'
-        references.append((f'{paper_doc}（论文模式：解析命令与产物契约）', [paper_doc]))
-        sources.append(paper_doc)
     if template:
         template_dir = SKILL_ROOT / 'modules' / 'templates' / template
         if not template_dir.is_dir():
@@ -289,12 +282,9 @@ def script_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
         references=[delegation / 'conventions.md', *(path for _, paths in references for path in paths)],
         sources=sources,
     )
-    if inputs['fetch_materials']:
-        catalog_doc = SKILL_ROOT / 'references' / 'phases' / '05-material-catalog.md'
-        plan.values['material_catalog'] = f'{ws / "material-catalog.json"}（素材 id 引用格式的定义见 {catalog_doc}）'
+    if inputs['fetch_materials'] or inputs['input_mode'] == 'paper':
+        plan.values['material_catalog'] = str(ws / 'material-catalog.json')
         plan.inputs.append(ws / 'material-catalog.json')
-        plan.references.append(catalog_doc)
-        plan.sources.append(catalog_doc)
     else:
         plan.values['material_catalog'] = '无（fetch_materials = false，没有素材）'
     return plan
@@ -382,7 +372,7 @@ def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
         ],
         sources=sources,
     )
-    if inputs['fetch_materials']:
+    if inputs['fetch_materials'] or inputs['input_mode'] == 'paper':
         plan.values['material_catalog'] = str(ws / 'material-catalog.json')
         plan.inputs.append(ws / 'material-catalog.json')
     else:

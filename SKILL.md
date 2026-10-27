@@ -20,12 +20,21 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 **禁止预读其他 phase 文档。** 每次只读 `pipeline-status` 指出的那一份 phase 文档；除此之外不要打开 `references/phases/` 下的任何其他文件。
 
-1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`（工作区目录必填）。它输出一个 JSON：已完成的 phase、下一个 phase、要读的文档、缺失 / 损坏的产物。
+1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`（工作区目录必填）。它输出一个 JSON：已完成的 phase、下一个 phase（`next_phase.reason` 说明原因：缺失 / 损坏 / stale）、要读的文档、缺失 / 损坏的产物。
 2. 只读它指出的那一份 phase 文档（`next_phase.doc`）。
 3. 按该文档执行；文档头部的「输入 / 输出 / 完成判据 / 下一步」是自包含的，不需要查其他 phase 文档。
 4. 回到第 1 步，直到脚本报告 `next_phase` 为 `null`（全部完成）。
 
-续跑与回退都由状态脚本驱动：某个 phase 的产物被删掉或写坏时，脚本会自动回退到那个 phase。用户说 "redo phase N" 时，删掉对应产物再跑状态脚本即可。不要自己扫描工作区猜进度，也不要把 Scratchpad 当进度记录——`inputs.json` 和各 phase 产物才是唯一状态。
+续跑、回退与重做都由状态脚本驱动。状态由三部分组成：`inputs.json`、各 phase 的产物，以及 `.pipeline/`（状态脚本记下的上游指纹，**只由状态脚本写，不要手改**）。
+
+- 某个 phase 的产物被删掉或写坏时，脚本回退到那个 phase（`reason` 为 `missing` / `corrupt`）。
+- 产物齐全，但它依赖的上游在它生成之后变过（比如改了 `script.txt`，或改了 `inputs.json` 的 layout），该 phase 判为 `stale`，`changed_upstream` 列出变化的上游，按它的 phase 文档重做。
+- `next_phase` 之后的 phase 一律是 `pending`：不进 `completed_phases`，也不检查；轮到它们时再判断。
+- 用户说 "redo phase N" 时，删掉对应产物或修改上游，再跑状态脚本。
+- 某个 stale 的 phase 确认不用重新生成（比如确定性的重跑得到了字节完全相同的结果）时，运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --restamp <phase_id>`，让脚本按当前文件重写它的指纹；该 phase 的产物必须全部合格，否则退出码为 1。
+- 输出里 `stamps_reset` 为 `true` 时，`.pipeline/stamps.json` 已损坏并被隔离为 `stamps.json.quarantined`：脚本不会把任何 phase 标为可信，也不会写回指纹。逐个确认 phase 的产物后，用 `--restamp <phase_id>` 重建对应指纹。
+
+不要自己扫描工作区猜进度，也不要把 Scratchpad 当进度记录。
 
 ## 核心护栏
 
@@ -36,13 +45,13 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 0. **写之前先调研。** Phase 3 是强制的。每个论断都通过 Gemini Deep Research + `web_search` 落地。
    ↳ DO NOT：调研之前写脚本；没有明确条件就跳过 Gemini；用户给了 PDF 还跳过 Phase 2；用训练数据描述一篇论文。
 1. **素材 catalog / vision 分析在 Phase 5，不是 Phase 6。** Phase 6 只引用 catalog 写脚本、匹配场景素材并规划屏幕文本块。
-   ↳ DO NOT：catalog 还没建就写解说或场景-素材匹配；跳过 vision-analyze。
+   ↳ DO NOT：catalog 还没建就写解说或场景-素材匹配；跳过 vision-analyze（论文模式下带 caption 的图表按 Phase 5 规则直接用 caption、不做 VLM，是设计行为，不算跳过）。
 
 ### TTS / ASR
 
 2. **TTS 后端由环境变量选择。** 配音脚本、参考音色、参数和依赖见 `scripts/voice-clone.py` 的顶部说明。**绝不**使用 `npx hyperframes tts`。
-3. **ASR 后端由环境变量选择。** transcript 必须带词级时间戳（schema 见 Phase 7 文档的接口契约）。后端、参数和依赖见 `scripts/transcribe.py` 的顶部说明；直对齐后端（voice-clone.py 的 mlx，或启用转写的 qwen3tts）由配音脚本直接写出 transcript，跳过 ASR。
-   ↳ DO NOT：用 `npx hyperframes transcribe`；接受没有词级时间戳的 transcript。
+3. **ASR 后端由环境变量选择。** transcript 必须带词级时间戳（schema 见 Phase 7 文档的接口契约）。后端、参数和依赖见 `scripts/transcribe.py` 的顶部说明。voice-clone.py 保证产出**本轮新鲜**的 transcript：直对齐优先，失败自动回退到 transcribe.py，成功 JSON 带 `transcript_method`（`direct_align` / `asr`）；`asr` 意味着转录来自 ASR，与朗读稿逐字一致不保证。即使主用直对齐（如 mlx），也要配置一种 ASR 后备（`DASHSCOPE_API_KEY` 或可用的 `ASR_BACKEND`），否则回退路径不可用。
+   ↳ DO NOT：用 `npx hyperframes transcribe`；接受没有词级时间戳的 transcript；沿用上一轮留下的 transcript。
 
 ### 字体与文本
 
@@ -54,7 +63,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 6. **每个资源都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。**视频材料一律剥音轨**：catalog 阶段 `ffmpeg -an` 输出；Phase 8 HTML 嵌入时 `<video>` 标签必须带 `muted playsinline` 兜底。
    ↳ DO NOT：嵌入整段原视频；切片段时不带 `-an`；`<video>` 漏 `muted`。
-7. **素材搜索是可选但推荐的。** `inputs.json` 里 `fetch_materials = false` 或用户自带全部视觉时跳过（Phase 4 / 5 一起跳过）。
+7. **素材搜索是可选但推荐的。** `inputs.json` 里 `fetch_materials = false` 或用户自带全部视觉时跳过（Phase 4 / 5 一起跳过；论文模式只跳过 Phase 4，论文自己的 figure 仍由 Phase 5 进 catalog）。
 
 ### Composition
 
@@ -70,7 +79,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 ## 输出约定
 
-所有脚本都把 JSON 输出到 stdout，人类可读 log 输出到 stderr，并使用以下退出码：`0`=成功，`1`=运行时错误，`2`=参数非法。`scripts/pipeline-status.py` 遵循同一约定，它的 JSON 额外携带 `completed_phases` / `next_phase` / `missing_products` / `corrupt_products` ——它是整个流程唯一的续跑入口，取代了过去的人工 checkpoint 表。
+所有脚本都把 JSON 输出到 stdout，人类可读 log 输出到 stderr，并使用以下退出码：`0`=成功，`1`=运行时错误，`2`=参数非法。`scripts/pipeline-status.py` 遵循同一约定，它的 JSON 额外携带 `phases` / `completed_phases` / `stale_phases` / `pending_phases` / `next_phase` / `missing_products` / `corrupt_products` ——它是整个流程唯一的续跑入口，取代了过去的人工 checkpoint 表。
 
 共享 Chrome profile：`{work_dir}/chrome_profile/` —— **不要**删除。
 
@@ -78,7 +87,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 | 脚本 | 用途 | 依赖 |
 | --- | --- | --- |
-| `pipeline-status.py` | 扫描工作区，输出已完成 / 下一个 phase、要读的文档、缺失或损坏的产物 | — |
+| `pipeline-status.py` | 扫描工作区，输出已完成 / 下一个 phase、要读的文档、缺失 / 损坏 / stale 的产物；`--restamp <phase_id>` 接受某个 stale phase 的现有产物 | — |
 | `prepare-handoff.py` | 委派步骤（script / composition）的准备：物化委派包（composition 另含 modules 与预置字体）、生成 handoff，输出可原样派发的 `dispatch_prompt` | — |
 | `fonts-download.sh` | 把仓库里预置的 WOFF2 字体（`resources/fonts/<design>/`）装进工程，不联网；`--refresh` 才从 Google Fonts 重新下载（维护用） | — |
 | `voice-clone.py` | TTS：把 `narration.txt` 合成 `voice_clone/narration.mp3`；后端由环境变量选择 | 见脚本顶部说明 |

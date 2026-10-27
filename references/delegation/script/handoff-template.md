@@ -15,7 +15,7 @@
 | `{{coding_agent}}` | `inputs.json` 的 `coding_agent` |
 | `{{duration}}` / `{{language}}` / `{{input_mode}}` / `{{template}}` | `inputs.json` 的对应字段（`template` 为 null 时写“无”） |
 | `{{material_catalog}}` | `fetch_materials` 为真：catalog 的路径和 id 引用格式文档；否则“无” |
-| `{{required_references}}` | 按叠加顺序编号：基础指令（工作区副本）→ 论文解析文档（论文模式才有，skill 侧绝对路径）→ 所选模板的旁白要求（skill 目录；未选模板或模板没有旁白要求则省略） |
+| `{{required_references}}` | 按叠加顺序编号：基础指令（工作区副本，含论文模式解说结构与素材引用格式）→ 所选模板的旁白要求（skill 目录；未选模板或模板没有旁白要求则省略） |
 | `{{additional_instructions}}` | 实际存在的 `narration-instructions.md`；没有写 `None` |
 
 ```markdown
