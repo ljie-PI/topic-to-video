@@ -12,14 +12,13 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / 'scripts'
-EXCLUDED_ENTRYPOINTS = {'narrate.py', 'tts_qwen.py'}
 MAIN_GUARD = re.compile(r"if __name__ == ['\"]__main__['\"]")
 
 ENTRYPOINTS = sorted(
     [
         path
         for path in SCRIPTS_DIR.glob('*.py')
-        if path.name not in EXCLUDED_ENTRYPOINTS and MAIN_GUARD.search(path.read_text(encoding='utf-8'))
+        if MAIN_GUARD.search(path.read_text(encoding='utf-8'))
     ]
     + list(SCRIPTS_DIR.glob('*.sh')),
     key=lambda path: path.name,

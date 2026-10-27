@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 """Forced alignment of a narration script to its TTS audio (mlx-audio).
 
-Library home of ``align_text`` / ``group_sentences``: the mlx direct-alignment
-path in voice-clone.py imports these helpers from here so that no pipeline
-script imports from the text_align.py CLI (issue #105). The mlx model import
-stays lazy inside align_text, so importing this module is cheap.
-
-The text_align.py CLI wraps this for interactive use and its align.json ->
-transcript.json conversion mode.
+Library home of ``align_text`` / ``group_sentences`` for the mlx direct-
+alignment path in voice-clone.py. The mlx model import stays lazy inside
+align_text, so importing this module is cheap. text_align.py re-exports
+align_text for compatibility with library callers.
 """
 from __future__ import annotations
 

@@ -1,35 +1,12 @@
-"""Shared helpers for voice-utils: resource monitoring, path resolution, metrics.
-
-Path resolution order for every configurable path:
-    1. explicit CLI argument (handled in each tool)
-    2. environment variable
-    3. default relative to the repository root
-       (the parent directory of this file's directory)
-"""
+"""Shared voice-utils helpers for resource monitoring and latency logging."""
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 import threading
 import time
-from pathlib import Path
 from typing import Any, Optional
-
-SCRIPT_DIR = Path(__file__).resolve().parent          # <repo>/scripts
-REPO_ROOT = SCRIPT_DIR.parent                          # repo root (contains models/)
-
-
-def resolve_path(cli_value: Optional[str], env_var: str, default: Path) -> Path:
-    """Resolve a path: CLI arg > env var > default."""
-    value = cli_value or os.environ.get(env_var)
-    path = Path(value) if value else Path(default)
-    return path.resolve()
-
-
-def default_models_dir() -> Path:
-    return REPO_ROOT / "models"
 
 
 class ResourceMonitor:
@@ -133,15 +110,6 @@ class ResourceMonitor:
         )
         summary["num_samples"] = len(self.samples)
         return summary
-
-
-def save_metrics(path: Path, metrics: dict[str, Any]) -> None:
-    """Write metrics JSON; the diagnostic line goes to stderr, never stdout."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(metrics, f, ensure_ascii=False, indent=2)
-    print(f"[metrics] saved -> {path}", file=sys.stderr)
 
 
 def log_latency(stage: str, started: float) -> float:
