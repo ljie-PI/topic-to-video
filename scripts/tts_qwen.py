@@ -25,7 +25,7 @@ def synthesize(
     language: str = "auto",
     ref_text: str | None = None,
     load_model_fn=None,
-) -> dict:
+) -> dict:  # pragma: no cover - requires a real mlx-audio TTS model on supported hardware.
     """Clone the reference voice and synthesize `text` into `output_path`.
 
     Returns a metrics dict (latencies + resources). `load_model_fn` lets

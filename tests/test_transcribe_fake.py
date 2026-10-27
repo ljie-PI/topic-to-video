@@ -64,6 +64,14 @@ def test_fake_asr_spreads_text_evenly_over_audio_duration(tmp_path: Path, silent
 
     transcript = json.loads(output.read_text(encoding='utf-8'))
     assert [sentence['text'] for sentence in transcript] == ['你好。', '再见。']
+    for sentence in transcript:
+        assert set(sentence) == {'begin', 'end', 'text', 'words'}
+        assert isinstance(sentence['begin'], int) and isinstance(sentence['end'], int)
+        assert 0 <= sentence['begin'] <= sentence['end']
+        for word in sentence['words']:
+            assert set(word) == {'text', 'begin', 'end'}
+            assert isinstance(word['begin'], int) and isinstance(word['end'], int)
+            assert 0 <= word['begin'] <= word['end']
     words = [word for sentence in transcript for word in sentence['words']]
     assert [word['text'] for word in words] == list(TEXT)
     # ffprobe measures the 3 s clip (an mp3 may add a few ms of padding).

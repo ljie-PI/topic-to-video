@@ -1,0 +1,8 @@
+# Run: coverage run -m pytest && coverage combine && coverage report --fail-under=75
+[run]
+source = scripts
+parallel = true
+patch = subprocess
+
+[report]
+show_missing = true

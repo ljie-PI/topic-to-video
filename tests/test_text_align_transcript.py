@@ -6,7 +6,14 @@ model, JSON file handling, or CLI involved.
 """
 from __future__ import annotations
 
-from transcript_schema import transcript_from_mlx_alignment
+from types import SimpleNamespace
+
+from transcript_schema import (
+    build_transcript,
+    sentence_texts,
+    transcript_from_mlx_alignment,
+    transcript_from_torch_alignment,
+)
 
 ALIGN_JSON = {
     'audio': 'narration.wav',
@@ -72,3 +79,40 @@ def test_empty_alignment_returns_empty_transcript():
 
 def test_missing_alignment_fields_return_empty_transcript():
     assert transcript_from_mlx_alignment({'audio': 'x.wav', 'language': 'Chinese'}) == []
+
+
+def test_punctuation_only_targets_fall_back_to_one_sentence_without_losing_words():
+    words = [
+        {'text': 'Hello', 'begin': 0, 'end': 400},
+        {'text': 'world', 'begin': 400, 'end': 800},
+    ]
+
+    assert build_transcript(words, [{'text': '!!!'}]) == [{
+        'begin': 0,
+        'end': 800,
+        'text': 'Helloworld',
+        'words': words,
+    }]
+
+
+def test_sentence_texts_preserves_decimal_points_and_drops_unalignable_text():
+    assert sentence_texts('GPT 5.4 works!  ...\n下一章。') == [
+        'GPT 5.4 works!', '下一章。'
+    ]
+
+
+def test_torch_adapter_uses_original_text_and_converts_seconds_to_milliseconds():
+    items = [
+        SimpleNamespace(text='你', start_time=0.0, end_time=0.25),
+        SimpleNamespace(text='好', start_time=0.25, end_time=0.5),
+    ]
+
+    assert transcript_from_torch_alignment('你好。', items) == [{
+        'begin': 0,
+        'end': 500,
+        'text': '你好。',
+        'words': [
+            {'text': '你', 'begin': 0, 'end': 250},
+            {'text': '好', 'begin': 250, 'end': 500},
+        ],
+    }]

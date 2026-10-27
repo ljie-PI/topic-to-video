@@ -14,6 +14,10 @@ from pathlib import Path
 
 import pytest
 
+import mlx_align
+import text_align
+import tts_qwen
+
 from cli_helpers import parse_stdout, run_cli
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -58,6 +62,12 @@ def test_voice_clone_fake_backend_emits_one_json_result_on_stdout(tmp_path: Path
     assert result['success'] is True
     assert result['backend'] == 'fake'
     assert result['transcript_method'] == 'direct_align'
+
+
+def test_text_align_reexports_the_mlx_align_public_function():
+    assert text_align.align_text is mlx_align.align_text
+    assert text_align.__all__ == ['align_text']
+    assert callable(tts_qwen.synthesize)
 
 
 def test_mlx_library_functions_import_without_mlx(monkeypatch: pytest.MonkeyPatch):

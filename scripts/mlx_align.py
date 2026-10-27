@@ -23,7 +23,7 @@ def align_text(
     model_path: str | Path | None = None,
     language: str = "Chinese",
     load_model_fn=None,
-) -> dict:
+) -> dict:  # pragma: no cover - requires a real mlx-audio aligner on supported hardware.
     """Align `text` to `audio_path` and return word/sentence timestamps.
 
     Returns {"words": [...], "sentences": [...], "align_s": float}.
