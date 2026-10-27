@@ -151,12 +151,18 @@ def test_jay_generic_performance_and_github_specific_overlay():
     jay = doc_text('modules/components/jay/jay.md')
     generic = jay.split('### 通用演法')[1].split('### 动作库')[0]
     generic_rows = [line for line in generic.splitlines() if line.startswith('| ')][1:]
-    assert len(generic_rows) == 11
+    assert len(generic_rows) == 6
     for cue in (
         '["wave", 3000]',
         'typing [切点 - 0.85, 切点 + 0.05]',
         '[该时刻, 1.0, "L"]',
         '[该时刻, 1.0, "U"]',
+        'beat → 画面',
+        '["laugh", 2200]',
+        '["wave", 3200]',
+    ):
+        assert cue in generic
+    for semantic_action in (
         '["smile", 2200]',
         '["idea", 2400]',
         '["question", 2400]',
@@ -164,10 +170,23 @@ def test_jay_generic_performance_and_github_specific_overlay():
         '["sigh", 2600]',
         '["shake", 1600]',
         '["nod-small", 1000]',
-        '["laugh", 2200]',
-        '["wave", 3200]',
     ):
-        assert cue in generic
+        assert semantic_action not in generic
+
+    action_library = jay.split('### 动作库（`acts`）')[1].split('### 常驻动作')[0]
+    assert action_library.count('| 动作 | 推荐时长 | 表现 | 适合的时刻 | 对应 beat |') == 2
+    for action, beat in (
+        ('`question`', 'question'),
+        ('`idea`', 'idea'),
+        ('`think`', 'caveat'),
+        ('`sigh`', 'caveat'),
+        ('`eureka`', 'highlight（数字）'),
+        ('`smile`', 'highlight（非数字）'),
+        ('`shake`', 'negation'),
+        ('`nod-small`', 'confirm'),
+    ):
+        row = next(line for line in action_library.splitlines() if line.startswith(f'| {action} |'))
+        assert row.endswith(f'| {beat} |')
 
     github = doc_text('modules/templates/github/github.md')
     overlay = github.split('## 5. 人物怎么演')[1]
@@ -190,3 +209,32 @@ def test_composition_requires_jay_for_presenter():
     assert '`VIDEO.jay` 按 `jay.md` 的通用演法编排' in layout_rules
     assert '有模板时再叠加模板的演法' in layout_rules
     assert 'node modules/components/jay/make-envelope.mjs voice_clone/narration.mp3' in layout_rules
+
+
+def test_scene_plan_beats_authoring_and_composition_contract():
+    script_base = doc_text('references/delegation/script/base-instructions.md')
+    assert '"beats": [{"type": "idea", "text": "原样取自显示稿的一小段"}]' in script_base
+    for beat_type in ('question', 'idea', 'caveat', 'highlight', 'negation', 'confirm'):
+        assert f'`{beat_type}`' in script_base
+    assert '8–30 个字符' in script_base
+    assert '平均每分钟不超过 4 个' in script_base
+    assert '两个 beat 的文本不能重叠' in script_base
+    assert '这个字段可以省略' in script_base
+
+    composition = doc_text('references/delegation/composition/base-instructions.md')
+    beat_mapping = composition.split('## 四、把语义节拍落到画面')[1].split('## 工作顺序')[0]
+    assert composition.count('| type | 有 Jay（presenter） | 没有 Jay |') == 1
+    for row in (
+        '| question | `["question", 2400]` | 按所选 design 第 6、7 节的强调写法，强调对应的提问文字 |',
+        '| idea | `["idea", 2400]` | 按所选 design 的强调写法，强调关键句或图示 |',
+        '| caveat | `["think", 2000]` 加一条不超过 4 个字的 `thoughts`，或 `["sigh", 2600]` | 对应信息用 `--c-warning` 左线的 callout 出现 |',
+        '| highlight | 数字类用 `["eureka", 2700]`，其他用 `["smile", 2200]` | 按所选 design 的强调写法，强调数字或关键词 |',
+        '| negation | `["shake", 1600]` | 对应项打 ✗，文字降为 `--c-ink2` |',
+        '| confirm | `["nod-small", 1000]` | 不加额外动效 |',
+    ):
+        assert row in beat_mapping
+    assert '动作从 `begin_s` 开始' in beat_mapping
+    assert '后一个顺延' in beat_mapping
+
+    github_narration = doc_text('modules/templates/github/narration.md')
+    assert '模板要求的锚点句仍然写进 `cues`，语义节拍写进 `beats`，两者互不影响' in github_narration

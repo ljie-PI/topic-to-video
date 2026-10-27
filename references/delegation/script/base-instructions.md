@@ -71,7 +71,8 @@ TTS 朗读稿由 `scripts/make-narration.py` 按词表确定性生成，不要�
      "material_candidates": [
        {"ref": "img_001", "score": 8, "reason": "对应旁白提到的 X"}
      ],
-     "cues": ["模板需要的锚点句摘录"]
+     "cues": ["模板需要的锚点句摘录"],
+     "beats": [{"type": "idea", "text": "原样取自显示稿的一小段"}]
    }
    ```
 
@@ -79,6 +80,7 @@ TTS 朗读稿由 `scripts/make-narration.py` 按词表确定性生成，不要�
    - `paragraphs`：覆盖的**段落序号（1 起）**；所有 scene 的段落并集必须覆盖 `script.txt` 的全部段落，段落可以属于多个 scene（合并 / 拆分时）。
    - `intent`：这场景要帮观众理解什么。
    - `template_scene` / `pattern_hints`：可选。选了模板时，`cues` 按模板的旁白要求（`modules/templates/<template>/narration.md`）摘录需要的锚点句——这些句子会用来从配音里算出秒数，务必原样取自显示稿。
+   - `beats`：可选的语义节拍列表，每项含 `type` 和 `text`。`type` 只能取 `question`（抛出问题）、`idea`（关键思路 / 原理）、`caveat`（限制 / 注意事项）、`highlight`（亮点 / 关键数字）、`negation`（否定 / 不推荐）、`confirm`（认同 / 讲完一个要点）。`text` 必须逐字取自显示稿，落在该 scene 的 `paragraphs` 范围内，长度 8–30 个字符。全片平均每分钟不超过 4 个；同一个 scene 里，两个 beat 的文本不能重叠。没有合适的时刻就不写，这个字段可以省略。
    - `facts`：这一段旁白依赖的关键事实（数字、实体、列表、代码）。
    - `material_candidates`：候选素材引用，每项含 `ref`、`score`（1–10）、`reason`。**只是候选，不做排他分配**；同一素材可以被多个 scene 候选。`ref` 的格式（即上面论文结构里说的 `material_ref`）：图片和视频用素材 id，id 必须存在于 `material-catalog.json`；视频 clip 用 `<video_id>:<start>-<end>`，秒数与 `selected_clips` 对应——数字间不加空格，起止时间要与 `selected_clips` 里的某一项相差不超过 0.01 秒。没有 catalog（`fetch_materials = false` 且不是论文模式）时留空列表。
    - **不包含** `layout_role` / `visual_role` / `display_text`——那是 composition 阶段的设计空间。

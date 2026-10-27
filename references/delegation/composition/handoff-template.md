@@ -29,7 +29,7 @@
 - 工作区：{{ws}}/
 - {{ws}}/voice_clone/narration.mp3：生成的配音（唯一音频来源，不重生成 TTS）
 - {{ws}}/transcribe/subtitle-units.json：字幕单元（text / begin_s / end_s，逐字使用）
-- {{ws}}/transcribe/timeline.json：段落与 cue 时间轴（scene 切分与 cue 锚点）
+- {{ws}}/transcribe/timeline.json：段落、cue 与语义节拍时间轴（scene 切分、cue 锚点与 beat 画面动作）
 - material-catalog.json：{{material_catalog}}
 - 视频 clip：解析到 catalog 里 `selected_clips[].clip_path`（相对工作区根），不用视频的 `local_path`
 - {{ws}}/scene-plan.json：叙事层场景规划（仅作参考，可合并 / 拆分 / 改选）

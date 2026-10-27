@@ -749,6 +749,78 @@ def scene_plan_problem(
     return result, problems.get('scene-plan.json')
 
 
+def scene_with_beats(beats) -> dict:
+    planned = scene('s1', [1, 2])
+    planned['beats'] = beats
+    return planned
+
+
+def test_scene_plan_valid_beats_pass_and_can_be_approved(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path,
+        [scene_with_beats([{'type': 'idea', 'text': '甲' * 8}])],
+        approve_script=True,
+    )
+
+    assert detail is None
+    assert 'scene-plan.json' not in result['corrupt_products']
+    assert '6-script-scene-plan' in result['completed_phases']
+    approval = read_approvals(tmp_path)['gates']['script']
+    assert 'scene-plan.json' in approval['products']
+
+
+def test_scene_plan_without_optional_beats_passes(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene('s1', [1, 2])], approve_script=True
+    )
+
+    assert detail is None
+    assert '6-script-scene-plan' in result['completed_phases']
+
+
+def test_scene_plan_beats_must_be_a_list(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene_with_beats({'type': 'idea', 'text': '甲' * 8})]
+    )
+
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert 'scene 0' in detail and 'beats' in detail and 'list' in detail
+
+
+def test_scene_plan_beat_type_must_be_allowed(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene_with_beats([{'type': 'feeling', 'text': '甲' * 8}])]
+    )
+
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert 'beats[0]' in detail and 'type' in detail and 'feeling' in detail
+
+
+@pytest.mark.parametrize(
+    'beat',
+    [
+        {'type': 'idea'},
+        {'type': 'idea', 'text': ''},
+        {'type': 'idea', 'text': 7},
+        'not-an-object',
+    ],
+)
+def test_scene_plan_beat_text_must_be_a_non_empty_string(tmp_path: Path, beat):
+    result, detail = scene_plan_problem(tmp_path, [scene_with_beats([beat])])
+
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert 'beats[0]' in detail and 'text' in detail
+
+
+def test_scene_plan_beat_text_must_appear_literally_in_script(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene_with_beats([{'type': 'idea', 'text': '不在显示稿里的节拍'}])]
+    )
+
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert 'beats[0]' in detail and 'script.txt' in detail
+
+
 def test_scene_plan_missing_a_paragraph_is_corrupt(tmp_path: Path):
     result, detail = scene_plan_problem(
         tmp_path, [scene('s1', [1]), scene('s2', [2])], script=THREE_PARAGRAPH_SCRIPT
@@ -979,6 +1051,60 @@ def test_corrupt_subtitle_units_falls_back_to_phase_7(tmp_path: Path):
     result = parse_result(proc)
     assert result['next_phase']['id'] == '7-voice-subtitles'
     assert 'transcribe/subtitle-units.json' in result['corrupt_products']
+
+
+def write_timeline_beats(ws: Path, beats) -> None:
+    timeline = {**TIMELINE, 'beats': beats}
+    write_json(ws / 'transcribe' / 'timeline.json', timeline)
+
+
+def test_timeline_valid_beats_pass(tmp_path: Path):
+    complete_through_voice_subtitles(tmp_path)
+    write_timeline_beats(
+        tmp_path,
+        [{
+            'scene_id': 'scene_1',
+            'type': 'idea',
+            'text': '大家好，这是关键思路',
+            'begin_s': 0.25,
+            'end_s': 1.5,
+        }],
+    )
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert 'transcribe/timeline.json' not in result['corrupt_products']
+    assert '7-voice-subtitles' in result['completed_phases']
+
+
+def test_timeline_without_optional_beats_passes(tmp_path: Path):
+    complete_through_voice_subtitles(tmp_path)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert '7-voice-subtitles' in result['completed_phases']
+
+
+@pytest.mark.parametrize(
+    'beats',
+    [
+        {'scene_id': 'scene_1', 'begin_s': 0, 'end_s': 1},
+        [{'scene_id': 'scene_1', 'end_s': 1}],
+        [{'scene_id': 'scene_1', 'begin_s': 0}],
+        [{'scene_id': 'scene_1', 'begin_s': '0', 'end_s': 1}],
+        [{'scene_id': 'scene_1', 'begin_s': False, 'end_s': 1}],
+        ['not-an-object'],
+    ],
+)
+def test_timeline_beats_require_numeric_begin_and_end(tmp_path: Path, beats):
+    complete_through_voice_subtitles(tmp_path)
+    write_timeline_beats(tmp_path, beats)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert 'transcribe/timeline.json' in result['corrupt_products']
+    detail = result['next_phase']['problems']['transcribe/timeline.json']
+    assert 'beats' in detail
 
 
 # --- phase 8 products: composition index.html + final.mp4 ------------------------

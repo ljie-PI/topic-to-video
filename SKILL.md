@@ -95,7 +95,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 | `voice-subtitles.py` | Phase 7 一条命令：配音、fresh transcript、字幕单元与时间轴；`--align-only` 只重跑对齐 | 见 voice-clone.py / transcribe.py 顶部说明 |
 | `voice-clone.py` | TTS：把 `narration.txt` 合成 `voice_clone/narration.mp3`；后端由环境变量选择 | 见脚本顶部说明 |
 | `transcribe.py` | ASR：输出带词级时间戳的 transcript；后端由环境变量选择 | 见脚本顶部说明 |
-| `align-narration.py` | 把 ASR 时间对齐回显示稿，生成字幕单元（subtitle-units.json）与时间轴（timeline.json） | — |
+| `align-narration.py` | 把 ASR 时间对齐回显示稿，生成字幕单元（subtitle-units.json）与段落 / cue / beat 时间轴（timeline.json） | — |
 | `check-composition.py` | composition 渲染前检查：越界 / reserved 区域侵入 / 文字溢出 / 资源与字体加载 / 字号下限 / 字幕一致性 | `playwright`、系统 Chrome |
 | `check-render.py` | 渲染后确定性检查：音轨与时长偏差 / 朝向分辨率 / 黑屏与黑尾 / 冻结（发现映射回 scene_id） | `ffmpeg` |
 | `make-contact-sheet.py` | 每 scene 中点帧拼 2×2 contact sheet（strict 加入场帧与切点帧），标注 scene_id 与时间戳 | `ffmpeg`、`Pillow` |

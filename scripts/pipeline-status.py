@@ -733,6 +733,9 @@ def paragraph_coverage_problem(scenes: list[dict[str, Any]], paragraph_count: in
     return f'{"; ".join(parts)} (script.txt has {paragraph_count} paragraphs)'
 
 
+BEAT_TYPES = {'question', 'idea', 'caveat', 'highlight', 'negation', 'confirm'}
+
+
 def check_scene_plan_product(ws: Path, relpath: str) -> CheckResult:
     """scene-plan.json: a non-empty JSON list of scenes; each scene has a
     scene_id and a non-empty paragraphs list (narrative-level plan from the
@@ -759,6 +762,26 @@ def check_scene_plan_product(ws: Path, relpath: str) -> CheckResult:
         problem = paragraph_coverage_problem(data, len(script_text.paragraphs(script)))
         if problem:
             return CheckResult(STATUS_CORRUPT, problem)
+    for index, scene in enumerate(data):
+        if 'beats' not in scene:
+            continue
+        beats = scene['beats']
+        if not isinstance(beats, list):
+            return CheckResult(STATUS_CORRUPT, f'scene {index} beats is not a list')
+        for position, beat in enumerate(beats):
+            label = f'scene {index} beats[{position}]'
+            if not isinstance(beat, dict):
+                return CheckResult(STATUS_CORRUPT, f'{label} must be an object with type and text')
+            if beat.get('type') not in BEAT_TYPES:
+                return CheckResult(
+                    STATUS_CORRUPT,
+                    f'{label} type must be one of {sorted(BEAT_TYPES)}, got {beat.get("type")!r}',
+                )
+            text = beat.get('text')
+            if not isinstance(text, str) or not text:
+                return CheckResult(STATUS_CORRUPT, f'{label} text must be a non-empty string')
+            if script_result.ok and text not in script:
+                return CheckResult(STATUS_CORRUPT, f'{label} text does not appear literally in script.txt')
     refs: list[str] = []
     for index, scene in enumerate(data):
         candidates = scene.get('material_candidates', [])
@@ -814,7 +837,7 @@ def check_subtitle_units(ws: Path, relpath: str) -> CheckResult:
 
 
 def check_timeline(ws: Path, relpath: str) -> CheckResult:
-    """timeline.json: {total_s, paragraphs: [{index, begin_s, end_s}]}; cues optional."""
+    """timeline.json: {total_s, paragraphs: [{index, begin_s, end_s}]}; cues/beats optional."""
     result, data = read_json_product(ws, relpath)
     if not result.ok:
         return result
@@ -835,6 +858,24 @@ def check_timeline(ws: Path, relpath: str) -> CheckResult:
             return CheckResult(
                 STATUS_CORRUPT, f'paragraph {index} missing numeric fields: {", ".join(missing)}'
             )
+    if 'beats' in data:
+        beats = data['beats']
+        if not isinstance(beats, list):
+            return CheckResult(STATUS_CORRUPT, 'beats is not a list')
+        for index, beat in enumerate(beats):
+            if not isinstance(beat, dict):
+                return CheckResult(STATUS_CORRUPT, f'beats[{index}] is not an object')
+            missing = [
+                field
+                for field in ('begin_s', 'end_s')
+                if isinstance(beat.get(field), bool)
+                or not isinstance(beat.get(field), (int, float))
+            ]
+            if missing:
+                return CheckResult(
+                    STATUS_CORRUPT,
+                    f'beats[{index}] missing numeric fields: {", ".join(missing)}',
+                )
     return OK
 
 

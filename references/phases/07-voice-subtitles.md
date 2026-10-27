@@ -6,11 +6,11 @@ Phase 6 产出的 `narration.txt`（朗读稿）+ `script.txt`（显示稿）+ `
 
 ## 输出
 
-`voice_clone/narration.mp3`（配音音频）+ `transcribe/transcript.json`（词级时间戳的句子列表）+ `transcribe/subtitle-units.json`（字幕单元）+ `transcribe/timeline.json`（段落 / cue 时间轴）。
+`voice_clone/narration.mp3`（配音音频）+ `transcribe/transcript.json`（词级时间戳的句子列表）+ `transcribe/subtitle-units.json`（字幕单元）+ `transcribe/timeline.json`（段落 / cue / beat 时间轴）。
 
 ## 完成判据
 
-`voice_clone/narration.mp3` 存在且非空（ffprobe duration 非零且合法）；`transcript.json` 存在、非空、JSON 可解析，是句子列表且每句含 `begin` / `end` / `text` / `words`；`subtitle-units.json` 存在且 `units` 非空；`timeline.json` 存在且 `paragraphs` 非空。
+`voice_clone/narration.mp3` 存在且非空（ffprobe duration 非零且合法）；`transcript.json` 存在、非空、JSON 可解析，是句子列表且每句含 `begin` / `end` / `text` / `words`；`subtitle-units.json` 存在且 `units` 非空；`timeline.json` 存在且 `paragraphs` 非空，可选 `beats` 是列表且每项都有数字 `begin_s` / `end_s`。
 
 ## 下一步
 
@@ -49,14 +49,14 @@ python3 scripts/voice-subtitles.py {work_dir}/{topic_name}
 
 #### 7.2 — 对齐规则与产物
 
-字幕宽度直接取自 `inputs.json` 的 `layout` 所对应的 `modules/layouts/<layout>.json`：命令把该文件交给 align-narration.py，由其读取 `caption` 段的 `width_px` / `font_size_px` / `max_lines`，每行宽度上限按 `int(width_px / font_size_px)` 折算成 CJK 单位。工作区存在 `scene-plan.json` 时命令自动传入，cue 的秒数会写进 `timeline.json`；没有场景规划时 `timeline.json` 只含段落起止。
+字幕宽度直接取自 `inputs.json` 的 `layout` 所对应的 `modules/layouts/<layout>.json`：命令把该文件交给 align-narration.py，由其读取 `caption` 段的 `width_px` / `font_size_px` / `max_lines`，每行宽度上限按 `int(width_px / font_size_px)` 折算成 CJK 单位。工作区存在 `scene-plan.json` 时命令自动传入，cue 和语义节拍 beat 的秒数会写进 `timeline.json`；找不到的 cue / beat 告警并跳过。没有场景规划时 `timeline.json` 只含段落起止，不含 `cues` / `beats` 字段。
 
 对齐规则：字幕文本以显示稿 `script.txt` 为准，transcript 只提供时间。脚本先把 transcript token 和朗读稿归一化（标点 / 空格 / 大小写不敏感，中文数字与阿拉伯数字等价）再做字符级对齐，然后通过偏移表映射回显示稿，品牌名和数字按显示形式出现。transcript 有而朗读稿没有的内容保留 transcript 文本，并在该字幕单元上标记 `fallback: true`；TTS 漏读的内容没有音频可依，会被丢弃并发出警告。分段先按句末标点切，超宽时在逗号、分号、顿号、冒号、破折号处断开，不在英文单词或数字内部断开，过短尾段均衡重切，不足 0.6 秒的单元并入相邻单元。详见 `scripts/align-narration.py` 的顶部说明。
 
 产物：
 
 - `transcribe/subtitle-units.json`：`units` 列表，每项含 `text` / `begin_s` / `end_s`（及 `begin_ms` / `end_ms` / `fallback` / `paragraph`）。
-- `transcribe/timeline.json`：`total_s`、每个段落的 `begin_s` / `end_s`；传入场景规划时另有 `scenes` 和 `cues`。
+- `transcribe/timeline.json`：`total_s`、每个段落的 `begin_s` / `end_s`；传入场景规划时另有 `scenes`、`cues` 和 `beats`，beat 每项含 `scene_id` / `type` / `text` / `begin_s` / `end_s`。
 
 若 `narration.txt` 在 TTS 后被改过，必须去掉 `--align-only`，重新生成配音 + transcript + 字幕产物（偏移表与音频都失效）。
 
