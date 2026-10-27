@@ -32,8 +32,6 @@ TTS 与字幕合并在同一个 phase：先配音并拿到词级时间戳（tran
 
 #### 7.1 — TTS 配音 + transcript
 
-如果 `voice_clone/narration.mp3` 已存在且非空、`transcribe/transcript.json` 已是合法的 transcript contract（见本节末尾），并且 `subtitle-units.json` 与 `timeline.json` 都已存在且可读取，则跳过整个 phase。
-
 直接使用 `scripts/voice-clone.py`。**不要**把脚本复制一份，也**不要**把解说文本粘进 Python 源码。
 
 ```bash
