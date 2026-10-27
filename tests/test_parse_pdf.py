@@ -90,6 +90,27 @@ def test_local_mineru_upserts_v2_manifest_with_dimensions_and_relative_paths(tmp
     check_paths(manifest)
 
 
+def test_main_and_related_paper_material_ids_remain_bare(tmp_path: Path):
+    pdf, harvest_dir, env = install_fake_mineru(tmp_path)
+    base_cmd = [sys.executable, str(SCRIPT), '--pdf', str(pdf), '--output-dir', str(harvest_dir)]
+
+    main = subprocess.run(base_cmd + ['--slug', 'main-paper'], capture_output=True, text=True, env=env, timeout=60)
+    assert main.returncode == 0, main.stderr
+    related = subprocess.run(
+        base_cmd + ['--slug', 'related-foo'], capture_output=True, text=True, env=env, timeout=60
+    )
+    assert related.returncode == 0, related.stderr
+
+    manifest = json.loads((harvest_dir / 'manifest.json').read_text(encoding='utf-8'))
+    entries = {entry['slug']: entry for entry in manifest['entries']}
+    assert entries['main-paper']['images'][0]['id'] == 'img_001'
+    assert entries['main-paper']['images'][0]['local_path'] == 'main-paper/images/img_001.png'
+    assert entries['main-paper']['paper_metadata']['figure_captions'] == {'img_001': 'Figure 1'}
+    assert entries['related-foo']['images'][0]['id'] == 'img_001'
+    assert entries['related-foo']['images'][0]['local_path'] == 'related-foo/images/img_001.png'
+    assert entries['related-foo']['paper_metadata']['figure_captions'] == {'img_001': 'Figure 1'}
+
+
 def test_nested_mineru_full_markdown_keeps_a_resolvable_relative_path(tmp_path: Path):
     pdf, harvest_dir, env = install_fake_mineru(tmp_path, FAKE_MINERU_NESTED='1')
 

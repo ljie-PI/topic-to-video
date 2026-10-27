@@ -102,7 +102,7 @@ YouTube/Bilibili 经 yt-dlp 并行下载时容易被限速。
 
 Phase 6 只能引用 Phase 5 产出的 `material-catalog.json`。如果 catalog 还没建，脚本会凭空安排素材，后续 handoff 也无法追溯资源来源。
 
-修复：先完成 vision analyze 和 catalog 生成。用户明确跳过素材时，仍要在 Phase 6/9 中按“无素材”路径处理，不要伪造 `material_ref`。
+修复：先完成 vision analyze 和 catalog 生成。用户明确不抓素材（`fetch_materials = false`）时：标准模式按“无素材”路径处理；论文模式仍然走 Phase 5——论文自己的 figure / table 会进 catalog——既不要伪造 `material_ref`，也不要把论文图表丢掉。
 
 ## 14. `harvest-pages.py` 返回 0 张图
 

@@ -237,6 +237,24 @@ def test_usage_error_exits_2(tmp_path: Path):
     assert proc.returncode == 2
     result = parse_result(proc)
     assert result['success'] is False
+    assert proc.stderr.startswith('[make-narration] bad arguments: ')
+    assert 'Traceback' not in proc.stderr
+
+
+def test_output_directory_error_exits_1_with_json(tmp_path: Path):
+    script_path, lexicon_path, out_dir = make_fixtures(tmp_path)
+    write_text(out_dir, 'not a directory')
+
+    proc = run_cli('--script', str(script_path), '--lexicon', str(lexicon_path),
+                   '--output-dir', str(out_dir))
+
+    assert proc.returncode == 1
+    assert proc.stdout, f'expected a JSON error instead of a traceback: {proc.stderr}'
+    result = parse_result(proc)
+    assert result['success'] is False
+    assert result['error']
+    assert proc.stderr.startswith('[make-narration] error: ')
+    assert 'Traceback' not in proc.stderr
 
 
 def test_missing_script_file_exits_1(tmp_path: Path):
