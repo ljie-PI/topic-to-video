@@ -76,6 +76,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import cli
+import clip_paths
 import script_text
 from composition_hash import composition_source_relpaths, composition_sources_fingerprint, visible_files
 from harvest_manifest import _stage_json as stage_json
@@ -287,11 +288,50 @@ def entry_label(index: int, entry: Any) -> str:
     return f'entry {slug!r}' if isinstance(slug, str) and slug else f'entry {index}'
 
 
-def check_material_catalog(ws: Path, relpath: str) -> CheckResult:
-    """material-catalog.json: non-empty `entries`; every image / video has a
-    non-empty string `id` and `semantic_description` (Phase 5's contract).
-    ids are not required to be unique: harvest-pages numbers each page's
-    images from img_001, so the same id recurs across entries."""
+def clip_problem(ws: Path, video: Any, clip: Any, *, require_file: bool) -> str | None:
+    """Why a selected clip's silent file (scripts/cut-clips.py) is unusable, or None.
+
+    With require_file=False only the catalog-side contract is checked (the
+    clip_path names the file this clip's current window would produce); True
+    also requires the file to exist on disk and be non-empty.
+    """
+    if not isinstance(clip, dict):
+        return 'is not an object'
+    clip_path = clip.get('clip_path')
+    if not isinstance(clip_path, str) or not clip_path.strip():
+        return 'has no non-empty string clip_path (run scripts/cut-clips.py)'
+    path = Path(clip_path)
+    if path.is_absolute() or '..' in path.parts:
+        return f'clip_path {clip_path!r} is not a relative path inside the workspace'
+    try:
+        expected = clip_paths.clip_relpath(
+            video.get('id') if isinstance(video, dict) else None,
+            clip.get('start'),
+            clip.get('end'),
+        )
+    except ValueError as exc:
+        return f'clip window is unusable: {exc}'
+    if clip_path != expected:
+        return (
+            f'clip_path {clip_path!r} does not name the file of this clip\'s current window '
+            f'({expected}; re-run scripts/cut-clips.py after editing a clip window)'
+        )
+    if not require_file:
+        return None
+    result = check_file_product(ws, clip_path)
+    if not result.ok:
+        return f'clip file {clip_path!r} is {result.detail or result.status} (run scripts/cut-clips.py)'
+    return None
+
+
+def _check_catalog(ws: Path, relpath: str, *, require_clip_files: bool) -> CheckResult:
+    """material-catalog.json, Phase 5's contract.
+
+    Structure (entries, ids, semantic_description, the clip_path contract) is
+    always checked; require_clip_files additionally demands every clip file
+    on disk. The two stay separate so a missing clip file does not also blind
+    scene-plan ref validation (see check_catalog_structure / load_catalog_index).
+    """
     entries_result = check_dict_entries_product(ws, relpath)
     if not entries_result.ok:
         return entries_result
@@ -315,7 +355,32 @@ def check_material_catalog(ws: Path, relpath: str) -> CheckResult:
                             STATUS_CORRUPT,
                             f'{where} (id {item.get("id")!r}) has no non-empty string {field}',
                         )
+                if kind != 'videos':
+                    continue
+                clips = item.get('selected_clips')
+                for clip_index, clip in enumerate(clips if isinstance(clips, list) else []):
+                    problem = clip_problem(ws, item, clip, require_file=require_clip_files)
+                    if problem:
+                        return CheckResult(
+                            STATUS_CORRUPT,
+                            f'{where} (id {item["id"]!r}) selected_clips[{clip_index}] {problem}',
+                        )
     return OK
+
+
+def check_material_catalog(ws: Path, relpath: str) -> CheckResult:
+    """material-catalog.json: non-empty `entries`; every image / video has a
+    non-empty string `id` and `semantic_description` (Phase 5's contract); every
+    video's selected clip has a `clip_path` naming a non-empty file in the
+    workspace (cut-clips.py). ids are not required to be unique:
+    harvest-pages numbers each page's images from img_001, so the same id
+    recurs across entries."""
+    return _check_catalog(ws, relpath, require_clip_files=True)
+
+
+def check_catalog_structure(ws: Path, relpath: str) -> CheckResult:
+    """The catalog's shape only — not whether the clip files exist on disk."""
+    return _check_catalog(ws, relpath, require_clip_files=False)
 
 
 @dataclass
@@ -328,9 +393,11 @@ class CatalogIndex:
 
 
 def load_catalog_index(ws: Path) -> CatalogIndex | None:
-    """The index of material-catalog.json, or None when it is not a valid catalog
-    (Phase 5 is reported on its own then)."""
-    if not check_material_catalog(ws, 'material-catalog.json').ok:
+    """The index of material-catalog.json, or None when its structure is not a
+    valid catalog (Phase 5 is reported on its own then). Deliberately checks
+    structure only: a missing clip file makes Phase 5 corrupt, but scene-plan
+    refs must still be validated against the catalog that exists."""
+    if not check_catalog_structure(ws, 'material-catalog.json').ok:
         return None
     _, data = read_json_product(ws, 'material-catalog.json')
     ids: set[str] = set()

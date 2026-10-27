@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -140,7 +141,12 @@ def pending_downloads(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _stage_json(path: Path, payload: dict[str, Any]) -> Path:
-    """Write and fsync a temporary file beside its atomic-rename target."""
+    """Write and fsync a temporary file beside its atomic-rename target.
+
+    mkstemp creates the temporary 0600; the replace must not turn a shared
+    manifest/catalog unreadable to the group or other users, so the target's
+    existing mode is kept (0644 for a file that does not exist yet).
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
     try:
@@ -149,6 +155,11 @@ def _stage_json(path: Path, payload: dict[str, Any]) -> Path:
             stream.write('\n')
             stream.flush()
             os.fsync(stream.fileno())
+        try:
+            mode = stat.S_IMODE(path.stat().st_mode)
+        except OSError:
+            mode = 0o644
+        os.chmod(temporary, mode)
         return Path(temporary)
     except Exception:
         try:

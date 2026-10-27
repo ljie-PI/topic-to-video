@@ -61,8 +61,8 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 ### 素材
 
-6. **每个资源都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。**视频材料一律剥音轨**：catalog 阶段 `ffmpeg -an` 输出；Phase 8 HTML 嵌入时 `<video>` 标签必须带 `muted playsinline` 兜底。
-   ↳ DO NOT：嵌入整段原视频；切片段时不带 `-an`；`<video>` 漏 `muted`。
+6. **每个资源都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。**视频材料一律剥音轨**：Phase 5 用 `scripts/cut-clips.py` 把每个 `selected_clip` 切成无音轨文件（`clip_path`，`-an`），composition 只用这些文件；Phase 8 HTML 嵌入时 `<video>` 标签必须带 `muted playsinline` 兜底。
+   ↳ DO NOT：嵌入整段原视频或视频的 `local_path`；切片段时不带 `-an`；`<video>` 漏 `muted`。
 7. **素材搜索是可选但推荐的。** `inputs.json` 里 `fetch_materials = false` 或用户自带全部视觉时跳过（Phase 4 / 5 一起跳过；论文模式只跳过 Phase 4，论文自己的 figure 仍由 Phase 5 进 catalog）。
 
 ### Composition
@@ -97,6 +97,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 | `check-render.py` | 渲染后确定性检查：音轨与时长偏差 / 朝向分辨率 / 黑屏与黑尾 / 冻结（发现映射回 scene_id） | `ffmpeg` |
 | `make-contact-sheet.py` | 每 scene 中点帧拼 2×2 contact sheet（strict 加入场帧与切点帧），标注 scene_id 与时间戳 | `ffmpeg`、`Pillow` |
 | `extract-frames.py` | ffmpeg 抽帧 | `ffmpeg` |
+| `cut-clips.py` | 把 catalog 的 `selected_clips` 切成无音轨片段文件（`clips/`），并写回 `clip_path` | `ffmpeg` |
 | `subtitle-parse.py` | SRT/VTT 解析 + 关键词过滤 | — |
 | `vision-analyze.py` | VLM 分析（或委派回 agent 的 `view`） | `VLM_*`（可选） |
 | `gemini-deep-research.py` | Gemini Deep Research 自动化 | `playwright`、已登录的 Chrome |

@@ -81,7 +81,7 @@ YouTube/Bilibili 经 yt-dlp 并行下载时容易被限速。
 
 素材视频本身可能包含解说、音乐或 UI 音效。最终视频里，唯一的解说人声只能是 `voice_clone/narration.mp3`。
 
-修复：切 catalog 视频片段时，用 `-an` 去掉原始音频。这是传递给 HyperFrames sub-agent 的一项上游素材契约。
+修复：Phase 5 用 `scripts/cut-clips.py` 把 catalog 的 `selected_clips` 切成 `-an` 的无音轨文件（`clip_path`）。这是传递给 HyperFrames sub-agent 的一项上游素材契约：composition 只用 `clip_path`，不用视频的 `local_path`。
 
 ## 11. 在项目环境里使用 Python 3
 
