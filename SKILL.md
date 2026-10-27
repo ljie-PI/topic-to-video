@@ -92,6 +92,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 | `pipeline-status.py` | 扫描工作区，输出已完成 / 下一个 phase、要读的文档、缺失 / 损坏 / stale 的产物；`--restamp <phase_id>` 接受某个 stale phase 的现有产物；`--approve <gate>` 在用户明确确认后记录 gate 及产物指纹 | — |
 | `prepare-handoff.py` | 委派步骤（script / composition）的准备：物化委派包（composition 另含 modules 与预置字体）、生成 handoff，输出可原样派发的 `dispatch_prompt` | — |
 | `fonts-download.sh` | 把仓库里预置的 WOFF2 字体（`resources/fonts/<design>/`）装进工程，不联网；`--refresh` 才从 Google Fonts 重新下载（维护用） | — |
+| `voice-subtitles.py` | Phase 7 一条命令：配音、fresh transcript、字幕单元与时间轴；`--align-only` 只重跑对齐 | 见 voice-clone.py / transcribe.py 顶部说明 |
 | `voice-clone.py` | TTS：把 `narration.txt` 合成 `voice_clone/narration.mp3`；后端由环境变量选择 | 见脚本顶部说明 |
 | `transcribe.py` | ASR：输出带词级时间戳的 transcript；后端由环境变量选择 | 见脚本顶部说明 |
 | `align-narration.py` | 把 ASR 时间对齐回显示稿，生成字幕单元（subtitle-units.json）与时间轴（timeline.json） | — |

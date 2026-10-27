@@ -20,17 +20,15 @@ transcript 里的数字可能是中文或阿拉伯写法（取决于后端与开
 
 不要把 `voice-clone.py` 复制一份，再把解说粘进 Python 源码。这种做法让 resume 和 review 都变得脆弱。
 
-修复：把解说放在 `narration.txt` 里，调用：
+修复：把解说放在 `narration.txt` 里，Phase 7 调用：
 
 ```bash
-python3 scripts/voice-clone.py \
-  --input-file {work_dir}/{topic_name}/narration.txt \
-  --output-dir {work_dir}/{topic_name}/voice_clone
+python3 scripts/voice-subtitles.py {work_dir}/{topic_name}
 ```
 
 后端由环境变量选择，参考音色、参数和依赖见 `scripts/voice-clone.py` 的顶部说明。
 
-转录契约：Phase 7 的那条 voice-clone 命令始终尝试产出**本轮新鲜**的 transcript（直对齐失败自动回退 `transcribe.py`，成功 JSON 带 `transcript_method`）。不带 `--emit-transcript`、且后端不是 always 直对齐（如 dashscope）时，run 不会产出 transcript——这正是 Phase 7 命令始终带 `--emit-transcript` / `--transcript-output` 的原因。
+转录契约：Phase 7 命令始终让 voice-clone.py 产出**本轮新鲜**的 transcript（直对齐失败自动回退 `transcribe.py`，成功 JSON 带 `transcript_method`）。直接调用 voice-clone.py 而不带 `--emit-transcript`、且后端不是 always 直对齐（如 dashscope）时，run 不会产出 transcript；voice-subtitles.py 会自动补上 `--emit-transcript` / `--transcript-output`。
 
 ## 2b. 参考音频需要 transcript
 

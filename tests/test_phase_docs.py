@@ -41,13 +41,21 @@ def test_every_product_checked_by_pipeline_status_is_named_in_the_phase_doc_outp
     assert not missing, f'{phase["doc"]} "## 输出" does not name: {missing}'
 
 
-def test_phase7_offers_one_voice_clone_command_without_a_manual_asr_fallback():
+def test_phase7_offers_one_voice_subtitles_command_without_manual_child_commands():
     doc = (REPO_ROOT / 'references/phases/07-voice-subtitles.md').read_text(encoding='utf-8')
-    section = doc.split('#### 7.1 —', 1)[1].split('#### 7.2 —', 1)[0]
 
-    assert 'python3 scripts/voice-clone.py' in section
-    assert 'python3 scripts/transcribe.py' not in section
-    assert '单独补跑转录' not in section
+    assert doc.count('python3 scripts/voice-subtitles.py {work_dir}/{topic_name}') == 1
+    assert 'python3 scripts/voice-clone.py \\\n' not in doc
+    assert 'python3 scripts/align-narration.py \\\n' not in doc
+    assert 'python3 scripts/transcribe.py' not in doc
+    assert 'failed_step' in doc
+    assert '单独补跑转录' not in doc
+
+    skill = (REPO_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+    assert '| `voice-subtitles.py` |' in skill
+    gotchas = (REPO_ROOT / 'references/gotchas.md').read_text(encoding='utf-8')
+    assert 'Phase 7 的那条 voice-clone 命令' not in gotchas
+    assert 'python3 scripts/voice-subtitles.py {work_dir}/{topic_name}' in gotchas
 
 
 def doc_text(relpath: str) -> str:
