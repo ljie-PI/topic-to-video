@@ -4,7 +4,7 @@
 
 ## 输入
 
-Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（若 `fetch_materials = false` 则没有 catalog，按“无素材”路径写纯旁白）+ `inputs.json`（目标时长、语言、input_mode、所选模板）+ 模板旁白要求（`modules/templates/<template>/narration.md`，如有）+ 项目指令 `narration-instructions.md`（如有）。
+Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（标准模式且 `fetch_materials = false` 时没有 catalog，按“无素材”路径写纯旁白；论文模式总有 catalog）+ `inputs.json`（目标时长、语言、input_mode、所选模板）+ 模板旁白要求（`modules/templates/<template>/narration.md`，如有）+ 项目指令 `narration-instructions.md`（如有）。
 
 ## 输出
 
@@ -16,8 +16,8 @@ Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（若 `fet
 
 - `script.txt`、`narration.txt` 存在且非空；`script.txt` 的字数（去掉所有空白）与 `inputs.json` 的 `duration`（分钟）× 60 × 7.5 的偏差在 ±15% 以内；
 - `tts-lexicon.json` 是可解析的非空 JSON map，键值都是非空字符串；
-- `narration-offsets.json` 是 `version` 为 1 的 JSON 对象，带 `segments` 列表；
-- `scene-plan.json` 是非空列表，每个 scene 有 `scene_id` 和整数 `paragraphs`；所有 scene 的段落并集恰好是 `script.txt` 的第 1 段到最后一段；`material_candidates[].ref` 都能在 catalog 里解析（素材 id，或 `<video_id>:<start>-<end>` 且与某个 `selected_clips` 的起止相差都不超过 0.01 秒）；`fetch_materials = false` 时没有 catalog，`material_candidates` 必须是空列表。
+- `narration-offsets.json` 是 `version` 为 1 的 JSON 对象，带非空的 `segments` 列表；它记录的 `script_length` / `narration_length` 等于当前 `script.txt` / `narration.txt` 的字符数；表里的 `script_sha256` / `narration_sha256`（make-narration 写入）必须等于当前两个文件的内容哈希——等长修改字符数看不出来，哈希躲不掉（改了 `script.txt` 就要重跑 make-narration）；
+- `scene-plan.json` 是非空列表，每个 scene 有 `scene_id` 和整数 `paragraphs`；所有 scene 的段落并集恰好是 `script.txt` 的第 1 段到最后一段；`material_candidates[].ref` 都能在 catalog 里解析（素材 id，或 `<video_id>:<start>-<end>` 且与某个 `selected_clips` 的起止相差都不超过 0.01 秒）；没有 catalog（`fetch_materials = false` 且不是论文模式）时，`material_candidates` 必须是空列表。
 
 通过后，把旁白和场景摘要交给用户确认，再进入 TTS。
 
@@ -31,13 +31,8 @@ Phase 7（配音与字幕）：只对 `narration.txt` 配音，并生成词级�
 
 **主 agent 不读委派包里的基础指令**（`references/delegation/script/base-instructions.md` 只给被委派的 agent 读）。主 agent 做三件事：
 
-1. 按 `references/delegation/script/handoff-template.md` 写出 `{work_dir}/{topic_name}/script-handoff.md`：填入 Coding Agent（`inputs.json` 的 `coding_agent`，默认 claude-code）、Inputs（research-brief / material-catalog / inputs.json 的实际路径）、Outputs、Required References（基础指令 → 模板旁白要求 → 项目指令，按叠加顺序）、Additional Instructions（实际存在的指令文件，没有写 None）。
-2. 按 `references/delegation/conventions.md` 派发，prompt 一句话：
-
-   ```text
-   读取 {work_dir}/{topic_name}/script-handoff.md 并按它执行；完成后报告产物路径。
-   ```
-
+1. 运行 `source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topic_name} script`。它把委派约定和 script 委派包拷进 `{work_dir}/{topic_name}/references/delegation/`（已存在的副本不覆盖，要覆盖加 `--refresh`），再按 `inputs.json` 和工作区里实际存在的文件生成 `{work_dir}/{topic_name}/script-handoff.md`：Coding Agent、Inputs、Outputs、Required References（基础指令 → 模板旁白要求）、Additional Instructions（实际存在的 `narration-instructions.md`，没有写 None），路径全是绝对路径。主 agent 不手写 handoff。
+2. 把输出 JSON 里的 `dispatch_prompt` 原样派发，派发方式见 `references/delegation/conventions.md`。
 3. script agent 返回后做 **Phase 6.2 的确定性校验**。
 
 ## Phase 6.2 — 主 agent 校验与用户确认

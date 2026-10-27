@@ -7,16 +7,28 @@ Backends (select via --backend or TTS_BACKEND env, default: auto):
              -> mlx; CUDA GPU -> qwen3tts; DASHSCOPE_API_KEY -> dashscope;
              otherwise exit 1 with a JSON error listing what is missing.
   mlx        mlx-audio Qwen3-TTS voice clone + Qwen3-ForcedAligner direct
-             alignment of the narration text (NO ASR step). Emits
-             narration.mp3 AND transcript.json (pipeline schema, ms).
+             alignment of the narration text. Emits narration.mp3 AND
+             transcript.json (pipeline schema, ms) on every run.
   qwen3tts   Local Qwen3-TTS (Apache-2.0) voice clone — reference WAV + its
              transcript via Qwen3-TTS-12Hz-1.7B-Base. Runs on the local GPU.
-             With --emit-transcript it additionally aligns narration text to
-             the audio with the torch Qwen3-ForcedAligner (when importable)
-             and writes transcript.json; if the aligner is unavailable the
-             transcript is simply absent (fall back to transcribe.py).
+             With --emit-transcript it first tries to align the narration
+             text to the audio with the torch Qwen3-ForcedAligner.
   dashscope  Aliyun DashScope CosyVoice (cloud fallback). Needs
-             DASHSCOPE_API_KEY + COSYVOICE_VOICE_ID.
+             DASHSCOPE_API_KEY + COSYVOICE_VOICE_ID. Has no direct aligner.
+  fake       TEST ONLY (测试用): silent mp3 plus a uniform-timing aligner, no
+             model. Only selectable explicitly (--backend fake / TTS_BACKEND=
+             fake); auto never picks it. See TTS_FAKE_ALIGN_FAIL below.
+
+Transcript contract: a run needs a transcript when --emit-transcript is passed
+or the backend always emits one (mlx, fake). Any file already at the transcript
+path is deleted before synthesis (it belongs to an earlier audio). The backend's
+own direct aligner runs first (transcript_method "direct_align"); when it
+writes nothing (aligner unavailable, alignment failed, or the backend has none)
+this script runs `transcribe.py <mp3> <transcript>` as a subprocess
+(transcript_method "asr"; ASR_BACKEND and the rest of the environment apply).
+When both fail the exit code is 1, the mp3 is kept and the JSON error lists
+every try under "transcript_attempts". So a run either leaves a fresh
+transcript or fails.
 
 Usage:
   source .venv/bin/activate
@@ -32,7 +44,7 @@ Usage:
   python3 voice-clone.py --input-file narration.txt --output-dir voice_clone
 
 Optional env:
-  TTS_BACKEND        auto (default) | mlx | qwen3tts | dashscope
+  TTS_BACKEND        auto (default) | mlx | qwen3tts | dashscope | fake (test only)
   TTS_REF_WAV        reference audio for cloning (required for mlx/qwen3tts;
                      legacy alias: VOXCPM_REF_WAV)
   TTS_REF_TEXT       transcript of the reference audio. Optional for mlx;
@@ -52,6 +64,8 @@ Optional env:
                      (default: mlx-community/Qwen3-ForcedAligner-0.6B-8bit)
   TTS_LANGUAGE_MLX   mlx TTS language code (default: auto)
   ALIGNER_LANGUAGE_MLX  mlx aligner language (default: Chinese)
+  TTS_FAKE_ALIGN_FAIL  1 makes the fake backend's aligner fail (exercises the
+                     ASR fallback in tests)
 
 Testing seam (documented; also used by the test-suite): the hardware/OS
 probes behind auto/--resolve-backend read these overrides when set:
@@ -61,8 +75,9 @@ probes behind auto/--resolve-backend read these overrides when set:
   TTS_DETECT_MLX_AUDIO  1 | 0                 (default: importlib find_spec)
 
 Outputs: {output_dir}/narration.mp3, plus {output_dir}/transcript.json
-(--transcript-output to redirect) for the mlx backend and for qwen3tts with
---emit-transcript when the aligner is available.
+(--transcript-output to redirect) whenever the run needs a transcript (see the
+transcript contract above); the success JSON then carries transcript_path and
+transcript_method.
 """
 from __future__ import annotations
 
@@ -79,8 +94,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
 
 import backend_select as bs
 import cli
+import fake_backend
 import media
 from backend_select import BackendUnavailableError, UnknownBackendError
+from transcript_schema import (
+    transcript_from_mlx_alignment,
+    transcript_from_torch_alignment,
+)
 
 # Reduce CUDA allocator fragmentation so long narrations don't OOM on smaller
 # cards (e.g. 11GB). Must be set before torch initializes the CUDA allocator;
@@ -189,7 +209,8 @@ log = cli.make_logger(TOOL_NAME)
 def parse_args() -> argparse.Namespace:
     parser = cli.JsonArgumentParser(
         TOOL_NAME,
-        description='Synthesize cloned-voice narration.',
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             'key env vars: TTS_BACKEND (default auto), TTS_REF_WAV / TTS_REF_TEXT, '
             'QWEN3TTS_MODEL, QWEN3_ALIGNER_MODEL, TTS_MODEL_MLX '
@@ -197,16 +218,17 @@ def parse_args() -> argparse.Namespace:
             f'(default {DEFAULT_ALIGNER_MODEL_MLX}), DASHSCOPE_API_KEY, '
             'COSYVOICE_VOICE_ID. Probe overrides for --resolve-backend: '
             'TTS_DETECT_PLATFORM / TTS_DETECT_MACHINE / TTS_DETECT_CUDA / '
-            'TTS_DETECT_MLX_AUDIO. Full docs: module docstring.'
+            'TTS_DETECT_MLX_AUDIO.'
         ),
     )
     parser.add_argument(
         '--backend',
-        choices=['auto', 'mlx', 'qwen3tts', 'dashscope'],
+        choices=['auto', *BACKENDS],
         default=None,
         help='TTS backend. Defaults to TTS_BACKEND env or "auto" (Apple '
              'Silicon + mlx-audio -> mlx; CUDA -> qwen3tts; DASHSCOPE_API_KEY '
-             '-> dashscope).',
+             '-> dashscope). "fake" is test-only (测试用): no model, never '
+             'chosen by auto.',
     )
     parser.add_argument(
         '--resolve-backend',
@@ -217,11 +239,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--emit-transcript',
         action='store_true',
-        help='qwen3tts only: after synthesis, align the narration text to the '
-             'audio with the torch Qwen3-ForcedAligner and write '
-             'transcript.json (skips the ASR step). If the aligner is not '
-             'importable, the transcript is skipped with a warning. Always '
-             'on for the mlx backend.',
+        help='Require a fresh transcript.json from this run: the backend\'s '
+             'direct aligner first, transcribe.py (ASR) when that writes '
+             'nothing; exit 1 (with transcript_attempts) if neither does. '
+             'Always on for backends that always emit one (mlx, fake).',
     )
     parser.add_argument(
         '--transcript-output',
@@ -441,20 +462,22 @@ def write_mp3(wav, sample_rate: int, output_path: Path, atempo: float | None) ->
 class TTSBackend(abc.ABC):
     """Common interface: synthesize narration text into an mp3 file.
 
-    Backends also declare whether they can emit ``transcript.json`` from a
-    local forced aligner (``transcript_capability``):
+    Two boolean flags declare the backend's relationship to transcripts;
+    ``main()`` owns the contract (stale-file removal, the direct-align -> ASR
+    fallback, the failure report) from them:
 
-    * ``'always'`` — mlx: the narration text is aligned straight onto the audio,
-      so the transcript is a normal product of every run;
-    * ``'opt_in'`` — qwen3tts: only with ``--emit-transcript`` (torch aligner);
-    * ``None`` — dashscope: no local aligner, fall back to transcribe.py.
-
-    ``main()`` owns the single emission call; backends only say whether the
-    transcript should be produced and provide the aligner for it.
+    * ``always_emits_transcript`` — mlx, fake: the narration text is aligned
+      straight onto the audio, so every run must leave a transcript, flag or
+      not;
+    * ``has_direct_aligner`` — mlx, qwen3tts, fake: can write transcript.json
+      from a local forced aligner via :meth:`emit_transcript`. Backends without
+      one (dashscope) go straight to ASR when a transcript is needed — no
+      fake direct-align attempt is recorded for them.
     """
 
     name: str
-    transcript_capability: str | None = None
+    always_emits_transcript: bool = False
+    has_direct_aligner: bool = False
 
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
@@ -465,10 +488,8 @@ class TTSBackend(abc.ABC):
         return Path(raw).expanduser() if raw else output_path.parent / 'transcript.json'
 
     def wants_transcript(self, emit_transcript: bool) -> bool:
-        """Whether this run should emit a transcript (capability + flag)."""
-        return self.transcript_capability == 'always' or (
-            self.transcript_capability == 'opt_in' and emit_transcript
-        )
+        """Whether this run must produce a transcript (flag or capability)."""
+        return emit_transcript or self.always_emits_transcript
 
     @abc.abstractmethod
     def synthesize(self, text: str, output_path: Path) -> Path | None:
@@ -486,15 +507,18 @@ class TTSBackend(abc.ABC):
         output_path: Path,
         transcript_path: Path,
         alignment_audio: Path | None = None,
-    ) -> bool:
-        """Write transcript.json when this backend has an aligner; False if not."""
-        return False
+    ) -> None:
+        """Write ``transcript_path`` with this backend's aligner; raise if it cannot."""
+        raise RuntimeError(f'{self.name} backend has no direct aligner')
 
     def cleanup(self) -> None:
         """Release any temporary audio kept for transcript emission."""
 
 
 def write_transcript(path: Path, sentences: list[dict]) -> None:
+    if not sentences:
+        # An empty transcript is never a valid product; let the caller fall back.
+        raise ValueError('aligner returned no timestamps')
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(sentences, ensure_ascii=False, indent=2), encoding='utf-8')
     log(f'wrote transcript: {path} ({len(sentences)} sentences)')
@@ -512,26 +536,19 @@ def scale_alignment_times(alignment: dict, factor: float) -> dict:
     return alignment
 
 
-def emit_transcript_via_torch_aligner(text: str, audio_path: Path, out_path: Path) -> bool:
+def emit_transcript_via_torch_aligner(text: str, audio_path: Path, out_path: Path) -> None:
     """Align narration text to the audio with the torch Qwen3-ForcedAligner
     and write the transcript schema (sentence list, ms) to ``out_path``.
 
-    Returns True when the transcript was written. When the aligner cannot be
-    imported, logs a warning and returns False — the phase then falls back to
-    transcribe.py (ASR) for transcript.json.
+    Raises when the aligner cannot be imported or returns no timestamps — the
+    caller then falls back to ASR (transcribe.py) for the transcript.
     """
     try:
         import torch
         from qwen_asr import Qwen3ForcedAligner
     except Exception as exc:  # noqa: BLE001 - any import failure => no aligner
-        log(
-            f'torch Qwen3-ForcedAligner unavailable ({exc}); transcript.json '
-            'not written — fall back to transcribe.py'
-        )
-        return False
+        raise RuntimeError(f'torch Qwen3-ForcedAligner unavailable ({exc})') from exc
     import gc
-
-    from transcribe import segment_into_sentences
 
     model_id = os.environ.get('QWEN3_ALIGNER_MODEL', DEFAULT_QWEN3_ALIGNER_MODEL)
     language = os.environ.get('QWEN3TTS_LANGUAGE', 'Chinese')
@@ -548,12 +565,7 @@ def emit_transcript_via_torch_aligner(text: str, audio_path: Path, out_path: Pat
         if use_cuda:
             torch.cuda.empty_cache()
     items = list(results[0]) if results else []
-    sentences = segment_into_sentences(text, items)
-    if not sentences:
-        log('warning: aligner returned no timestamps; transcript.json not written')
-        return False
-    write_transcript(out_path, sentences)
-    return True
+    write_transcript(out_path, transcript_from_torch_alignment(text, items))
 
 
 class MLXBackend(TTSBackend):
@@ -565,7 +577,8 @@ class MLXBackend(TTSBackend):
     """
 
     name = 'mlx'
-    transcript_capability = 'always'
+    always_emits_transcript = True
+    has_direct_aligner = True
 
     def __init__(self, args: argparse.Namespace) -> None:
         super().__init__(args)
@@ -611,33 +624,28 @@ class MLXBackend(TTSBackend):
         output_path: Path,
         transcript_path: Path,
         alignment_audio: Path | None = None,
-    ) -> bool:
+    ) -> None:
         """Align the narration text with mlx-audio and write transcript.json.
 
-        Failure is non-fatal: the mp3 is still usable via transcribe.py, so log
-        a warning and return False.
+        Raises on failure; the caller falls back to ASR, the mp3 is unaffected.
         """
-        from text_align import align_text, transcript_from_alignment
+        from mlx_align import align_text  # lazy: pulls mlx-audio
 
         aligner_model = os.environ.get('ALIGNER_MODEL_MLX', DEFAULT_ALIGNER_MODEL_MLX)
         align_language = os.environ.get('ALIGNER_LANGUAGE_MLX', 'Chinese')
         audio = alignment_audio or self._wav_path or output_path
-        try:
-            log(f'aligning narration text directly (model={aligner_model}, no ASR)')
-            alignment = align_text(
-                audio, text, model_path=aligner_model, language=align_language
-            )
-            if self._atempo and abs(self._atempo - 1.0) > 1e-3:
-                # The mp3 was re-timed after synthesis; scale timestamps to match.
-                alignment = scale_alignment_times(alignment, 1.0 / self._atempo)
-            write_transcript(transcript_path, transcript_from_alignment(alignment))
-            return True
-        except Exception as exc:  # noqa: BLE001 - audio still usable via ASR
-            log(
-                f'warning: mlx forced alignment failed ({exc}); transcript.json '
-                'not written — run transcribe.py for the transcript'
-            )
-            return False
+        log(f'aligning narration text directly (model={aligner_model}, no ASR)')
+        alignment = align_text(
+            audio, text, model_path=aligner_model, language=align_language
+        )
+        if not alignment.get('words') or not alignment.get('sentences'):
+            # Without sentences the schema would silently wrap the whole text
+            # in one span; that is a failed alignment, so ASR gets its turn.
+            raise ValueError('alignment has no sentences or no words')
+        if self._atempo and abs(self._atempo - 1.0) > 1e-3:
+            # The mp3 was re-timed after synthesis; scale timestamps to match.
+            alignment = scale_alignment_times(alignment, 1.0 / self._atempo)
+        write_transcript(transcript_path, transcript_from_mlx_alignment(alignment))
 
     def cleanup(self) -> None:
         if self._wav_path is None:
@@ -653,7 +661,7 @@ class Qwen3TTSBackend(TTSBackend):
     """Local Qwen3-TTS voice clone (reference WAV + its transcript)."""
 
     name = 'qwen3tts'
-    transcript_capability = 'opt_in'
+    has_direct_aligner = True
 
     def synthesize(self, text: str, output_path: Path) -> None:
         import gc
@@ -705,9 +713,9 @@ class Qwen3TTSBackend(TTSBackend):
         output_path: Path,
         transcript_path: Path,
         alignment_audio: Path | None = None,
-    ) -> bool:
-        """Opt-in transcript via the torch Qwen3-ForcedAligner (no ASR)."""
-        return emit_transcript_via_torch_aligner(text, output_path, transcript_path)
+    ) -> None:
+        """Transcript via the torch Qwen3-ForcedAligner (no ASR)."""
+        emit_transcript_via_torch_aligner(text, output_path, transcript_path)
 
 
 class CosyVoiceBackend(TTSBackend):
@@ -746,9 +754,125 @@ class CosyVoiceBackend(TTSBackend):
         output_path.write_bytes(audio)
 
 
+class FakeBackend(TTSBackend):
+    """Test-only: silent mp3 + a uniform-timing aligner, no model.
+
+    Only reachable through an explicit ``--backend fake`` / ``TTS_BACKEND=fake``
+    (auto never picks it). ``TTS_FAKE_ALIGN_FAIL=1`` makes the aligner fail so
+    the ASR fallback can be exercised.
+    """
+
+    name = 'fake'
+    always_emits_transcript = True
+    has_direct_aligner = True
+
+    def synthesize(self, text: str, output_path: Path) -> None:
+        duration_s = fake_backend.synthetic_duration_s(text)
+        log(f'writing {duration_s:.2f}s of silence (fake backend, test only)')
+        fake_backend.write_silent_mp3(output_path, duration_s)
+
+    def emit_transcript(
+        self,
+        text: str,
+        output_path: Path,
+        transcript_path: Path,
+        alignment_audio: Path | None = None,
+    ) -> None:
+        if os.environ.get('TTS_FAKE_ALIGN_FAIL') == '1':
+            raise RuntimeError('fake aligner failed (TTS_FAKE_ALIGN_FAIL=1)')
+        duration_s = media.probe_duration(output_path)
+        write_transcript(transcript_path, fake_backend.uniform_transcript(text, duration_s))
+
+
 BACKENDS: dict[str, type[TTSBackend]] = {
-    cls.name: cls for cls in (MLXBackend, Qwen3TTSBackend, CosyVoiceBackend)
+    cls.name: cls
+    for cls in (MLXBackend, Qwen3TTSBackend, CosyVoiceBackend, FakeBackend)
 }
+
+
+class TranscriptError(RuntimeError):
+    """Neither direct alignment nor ASR left a transcript; carries every attempt."""
+
+    def __init__(self, attempts: list[dict[str, str]]) -> None:
+        self.attempts = attempts
+        tries = '; '.join(f"{a['method']}: {a['error']}" for a in attempts)
+        super().__init__(f'no fresh transcript could be produced ({tries})')
+
+
+def transcribe_with_asr(audio_path: Path, transcript_path: Path) -> None:
+    """Run scripts/transcribe.py on the mp3; raise with its error when it fails.
+
+    The subprocess inherits the environment, so ASR_BACKEND and the backend
+    credentials apply as they would for a manual run. stdout may carry stray
+    lines (a chatty SDK printing before its JSON), so the LAST parseable JSON
+    line is the result; stderr is captured and its tail reported on failure.
+    """
+    script = Path(__file__).resolve().parent / 'transcribe.py'
+    log(f'running {script.name} (ASR) on {audio_path}')
+    proc = subprocess.run(
+        [sys.executable, str(script), str(audio_path), str(transcript_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    result: dict | None = None
+    for line in reversed([line for line in proc.stdout.splitlines() if line.strip()]):
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            result = parsed
+            break
+    stderr_tail = '\n'.join(proc.stderr.splitlines()[-5:])
+    if proc.returncode != 0 or result is None or result.get('success') is not True:
+        message = (
+            (result or {}).get('error')
+            or f'{script.name} exited {proc.returncode} without a JSON result'
+        )
+        if stderr_tail:
+            message = f'{message}; stderr: {stderr_tail}'
+        raise RuntimeError(message)
+    if not result.get('sentence_count') or not transcript_path.is_file():
+        raise RuntimeError(
+            f"{script.name} reported success but wrote no sentences"
+            + (f'; stderr: {stderr_tail}' if stderr_tail else '')
+        )
+
+
+def produce_transcript(
+    backend: TTSBackend,
+    text: str,
+    output_path: Path,
+    transcript_path: Path,
+    alignment_audio: Path | None,
+) -> str:
+    """Leave a fresh transcript at ``transcript_path``; return how it was made.
+
+    Direct alignment (the backend's own aligner, when it has one) comes first;
+    when it writes nothing, ASR via transcribe.py. Raises :class:`TranscriptError`
+    carrying every attempt actually made when neither does.
+    """
+    attempts: list[dict[str, str]] = []
+    if backend.has_direct_aligner:
+        try:
+            backend.emit_transcript(text, output_path, transcript_path, alignment_audio)
+            if not transcript_path.is_file():
+                raise RuntimeError('direct alignment wrote no transcript')
+            return 'direct_align'
+        except Exception as exc:  # noqa: BLE001 - any aligner failure => try ASR
+            log(f'direct alignment failed ({exc}); falling back to ASR')
+            attempts.append({'method': 'direct_align', 'error': str(exc)})
+        transcript_path.unlink(missing_ok=True)
+    try:
+        transcribe_with_asr(output_path, transcript_path)
+    except Exception as exc:  # noqa: BLE001 - reported as the second attempt
+        log(f'ASR failed ({exc})')
+        attempts.append({'method': 'asr', 'error': str(exc)})
+        transcript_path.unlink(missing_ok=True)
+        raise TranscriptError(attempts) from exc
+    return 'asr'
 
 
 def resolve_backend_cli(args: argparse.Namespace) -> int:
@@ -775,18 +899,36 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = (output_dir / 'narration.mp3').resolve()
 
-    # One transcript emission site for every backend: synthesize() returns
-    # the audio kept for alignment (mlx's pre-mp3 wav), the backend's
-    # transcript capability decides whether this run emits one, and
-    # cleanup() releases that audio in all cases.
+    # One transcript site for every backend: synthesize() returns the audio
+    # kept for alignment (mlx's pre-mp3 wav), wants_transcript() decides
+    # whether this run must leave a transcript, and cleanup() releases that
+    # audio in all cases.
     backend = backend_cls(args)
     transcript_path = backend.transcript_path(output_path)
+    # A transcript left by an earlier run describes that run's audio, never
+    # this one's: it must not survive a run that fails to produce its own.
+    if transcript_path.is_file():
+        log(f'removing stale transcript from an earlier run: {transcript_path}')
+        transcript_path.unlink()
+    transcript_method = None
     try:
         alignment_audio = backend.synthesize(input_text, output_path)
         if backend.wants_transcript(args.emit_transcript):
-            backend.emit_transcript(
-                input_text, output_path, transcript_path, alignment_audio
+            transcript_method = produce_transcript(
+                backend, input_text, output_path, transcript_path, alignment_audio
             )
+    except TranscriptError as exc:
+        # The mp3 is fine and stays; only the transcript is missing.
+        log(f'error: {exc}')
+        print_json(
+            {
+                'success': False,
+                'error': str(exc),
+                'output_path': str(output_path),
+                'transcript_attempts': exc.attempts,
+            }
+        )
+        return 1
     finally:
         backend.cleanup()
 
@@ -798,7 +940,8 @@ def main() -> int:
         'output_path': str(output_path),
         'duration_s': duration_s,
     }
-    if transcript_path.is_file():
+    if transcript_method is not None:
+        payload['transcript_method'] = transcript_method
         payload['transcript_path'] = str(transcript_path.resolve())
     print_json(payload)
     return 0

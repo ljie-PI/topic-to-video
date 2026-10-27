@@ -4,14 +4,19 @@ Word/character level ASR with a local-first backend.
 
 Backends (select via --backend or ASR_BACKEND env, default: auto):
   auto       Pick by environment: CUDA GPU -> qwen3; DASHSCOPE_API_KEY ->
-             dashscope; Apple Silicon (darwin/arm64) -> error: no ASR is
-             needed there — voice-clone.py's mlx backend aligns the narration
-             text directly and writes transcript.json itself.
+             dashscope; otherwise exit 1 with a JSON error listing what is
+             missing (Apple Silicon included: ASR is the fallback when
+             voice-clone.py's direct alignment fails, so it is never "not
+             needed").
   qwen3      Local Qwen3-ASR + Qwen3-ForcedAligner (Apache-2.0). Runs on the
              local GPU, returns char-level (CJK) / word-level (Latin)
              timestamps with optional ITN. No cloud key needed.
   dashscope  Aliyun DashScope non-realtime ASR (paraformer-v2, cloud
              fallback). Needs DASHSCOPE_API_KEY.
+  fake       TEST ONLY (测试用): "recognizes" the text in ASR_FAKE_TEXT, spread
+             evenly over the audio's ffprobe duration; no model. Only
+             selectable explicitly (--backend fake / ASR_BACKEND=fake); auto
+             never picks it.
 
 Usage:
   python3 transcribe.py <input.mp3|http(s)://...|oss://...> <output.json>
@@ -19,7 +24,9 @@ Usage:
   python3 transcribe.py --resolve-backend   # print the auto decision (no model)
 
 Optional env:
-  ASR_BACKEND           auto (default) | qwen3 | dashscope
+  ASR_BACKEND           auto (default) | qwen3 | dashscope | fake (test only)
+  ASR_FAKE_TEXT         (fake backend only, required) UTF-8 text the fake
+                        ASR "recognizes"; without it the fake backend errors
   # qwen3 backend:
   QWEN3_ASR_MODEL       default Qwen/Qwen3-ASR-1.7B
   QWEN3_ALIGNER_MODEL   default Qwen/Qwen3-ForcedAligner-0.6B
@@ -63,6 +70,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
 
 import backend_select as bs
+import cli
+import fake_backend
+import media
 from backend_select import BackendUnavailableError, UnknownBackendError
 from transcript_schema import transcript_from_torch_alignment
 
@@ -78,12 +88,8 @@ PROBE_PREFIX = 'ASR_DETECT'
 
 
 def _auto_backend(probes: dict[str, object]) -> tuple[str, dict[str, object]]:
-    """ASR auto order: CUDA -> qwen3; DASHSCOPE_API_KEY -> dashscope.
-
-    On Apple Silicon ASR is unnecessary (voice-clone.py's mlx backend emits
-    transcript.json via direct forced alignment), so auto raises
-    BackendUnavailableError pointing there.
-    """
+    """ASR auto order: CUDA -> qwen3; DASHSCOPE_API_KEY -> dashscope;
+    otherwise BackendUnavailableError listing what is missing."""
     missing: list[str] = []
     if probes['cuda']:
         return 'qwen3', probes
@@ -91,14 +97,6 @@ def _auto_backend(probes: dict[str, object]) -> tuple[str, dict[str, object]]:
     if probes['dashscope_key']:
         return 'dashscope', probes
     missing.append('DASHSCOPE_API_KEY (backend dashscope)')
-    if probes['platform'] == 'darwin' and probes['machine'] == 'arm64':
-        raise BackendUnavailableError(
-            'no ASR backend available, and none is needed: on Apple Silicon use '
-            "voice-clone.py's mlx backend — it aligns the narration text directly "
-            'and writes transcript.json itself (run voice-clone.py --resolve-backend)',
-            missing,
-            probes,
-        )
     raise BackendUnavailableError(
         'no usable ASR backend: ' + '; '.join(missing), missing, probes
     )
@@ -121,12 +119,10 @@ def resolve_backend_name(cli_backend: str | None) -> tuple[str, str, dict[str, o
     )
 
 
-def print_json(payload: dict[str, object]) -> None:
-    print(json.dumps(payload, ensure_ascii=False))
+TOOL_NAME = 'transcribe'
 
-
-def log(message: str) -> None:
-    print(f'[transcribe] {message}', file=sys.stderr)
+print_json = cli.print_json
+log = cli.make_logger(TOOL_NAME)
 
 
 def is_remote_audio(audio_arg: str) -> bool:
@@ -242,18 +238,6 @@ def apply_itn_to_sentences(sentences: list[dict]) -> list[dict]:
     return out
 
 
-def segment_into_sentences(full_text: str, items: list) -> list[dict]:
-    """Group a flat list of aligned tokens into the pipeline transcript schema.
-
-    Thin adapter over transcript_schema.transcript_from_torch_alignment: the
-    torch forced aligner returns one flat token list (``text`` / ``start_time``
-    / ``end_time``, seconds), while ``full_text`` retains punctuation and
-    supplies the sentence boundaries. The shared schema builder owns the
-    grouping walk (token-anchored, no word timing dropped or duplicated).
-    """
-    return transcript_from_torch_alignment(full_text, items)
-
-
 # --------------------------------------------------------------------------- #
 # Backend interface + implementations
 # --------------------------------------------------------------------------- #
@@ -312,11 +296,29 @@ class Qwen3ASRBackend(ASRBackend):
         if not items:
             log('warning: no aligned tokens returned')
             return []
-        sentences = segment_into_sentences(result.text or '', items)
+        sentences = transcript_from_torch_alignment(result.text or '', items)
         if itn_enabled():
             log('applying ITN (Chinese numerals -> Arabic digits); set ASR_ITN=0 to disable')
             sentences = apply_itn_to_sentences(sentences)
         return sentences
+
+
+class FakeASRBackend(ASRBackend):
+    """Test-only: the transcript is ASR_FAKE_TEXT spread evenly over the audio."""
+
+    name = 'fake'
+
+    def transcribe(self, audio_arg: str) -> list[dict]:
+        text = os.environ.get('ASR_FAKE_TEXT')
+        if not text:
+            raise RuntimeError(
+                'ASR_FAKE_TEXT is not set: the fake ASR backend needs the text to "recognize"'
+            )
+        if is_remote_audio(audio_arg) or not os.path.isfile(audio_arg):
+            raise FileNotFoundError(f'not found: {audio_arg}')
+        duration_s = media.probe_duration(audio_arg)
+        log(f'fake ASR (test only): spreading the text over {duration_s:.2f}s')
+        return fake_backend.uniform_transcript(text, duration_s)
 
 
 class ParaformerBackend(ASRBackend):
@@ -452,28 +454,23 @@ DEFAULT_QWEN3_ASR_MODEL = 'Qwen/Qwen3-ASR-1.7B'
 DEFAULT_QWEN3_ALIGNER_MODEL = 'Qwen/Qwen3-ForcedAligner-0.6B'
 
 BACKENDS: dict[str, type[ASRBackend]] = {
-    cls.name: cls for cls in (Qwen3ASRBackend, ParaformerBackend)
+    cls.name: cls for cls in (Qwen3ASRBackend, ParaformerBackend, FakeASRBackend)
 }
 
 
 # --------------------------------------------------------------------------- #
 
 
-class JsonArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
-        log(f'bad arguments: {message}')
-        print_json({'success': False, 'error': message})
-        raise SystemExit(2)
-
-
 def parse_args() -> argparse.Namespace:
-    parser = JsonArgumentParser(
-        description='Transcribe audio to word/char level timestamps.',
+    parser = cli.JsonArgumentParser(
+        TOOL_NAME,
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             'key env vars: ASR_BACKEND (default auto), QWEN3_ASR_MODEL, '
             'QWEN3_ALIGNER_MODEL, DASHSCOPE_API_KEY, ASR_MODEL. Probe overrides '
             'for --resolve-backend: ASR_DETECT_PLATFORM / ASR_DETECT_MACHINE / '
-            'ASR_DETECT_CUDA. Full docs: module docstring.'
+            'ASR_DETECT_CUDA.'
         ),
     )
     parser.add_argument('input', nargs='?', default=None,
@@ -484,7 +481,8 @@ def parse_args() -> argparse.Namespace:
         choices=['auto'] + sorted(BACKENDS),
         default=None,
         help='ASR backend. Defaults to ASR_BACKEND env or "auto" (CUDA -> '
-             'qwen3; DASHSCOPE_API_KEY -> dashscope).',
+             'qwen3; DASHSCOPE_API_KEY -> dashscope). "fake" is test-only '
+             '(测试用): no model, never chosen by auto.',
     )
     parser.add_argument(
         '--resolve-backend',
@@ -516,35 +514,28 @@ def main() -> int:
     except (UnknownBackendError, BackendUnavailableError) as exc:
         return bs.backend_error_response(exc, log=log, print_json=print_json)
 
-    try:
-        backend_cls = BACKENDS[backend_name]
-        sentences = backend_cls().transcribe(args.input)
+    backend_cls = BACKENDS[backend_name]
+    sentences = backend_cls().transcribe(args.input)
 
-        out_dir = os.path.dirname(os.path.abspath(args.output))
-        if out_dir:
-            os.makedirs(out_dir, exist_ok=True)
-        with open(args.output, 'w', encoding='utf-8') as f:
-            json.dump(sentences, f, ensure_ascii=False, indent=2)
+    out_dir = os.path.dirname(os.path.abspath(args.output))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    with open(args.output, 'w', encoding='utf-8') as f:
+        json.dump(sentences, f, ensure_ascii=False, indent=2)
 
-        total_words = sum(len(sentence['words']) for sentence in sentences)
-        log(f'wrote {args.output}: {len(sentences)} sentences, {total_words} words')
-        print_json(
-            {
-                'success': True,
-                'backend': backend_name,
-                'output_path': os.path.abspath(args.output),
-                'sentence_count': len(sentences),
-                'word_count': total_words,
-            }
-        )
-        return 0
-    except SystemExit:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        log(f'error: {exc}')
-        print_json({'success': False, 'error': str(exc)})
-        return 1
+    total_words = sum(len(sentence['words']) for sentence in sentences)
+    log(f'wrote {args.output}: {len(sentences)} sentences, {total_words} words')
+    print_json(
+        {
+            'success': True,
+            'backend': backend_name,
+            'output_path': os.path.abspath(args.output),
+            'sentence_count': len(sentences),
+            'word_count': total_words,
+        }
+    )
+    return 0
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(cli.run(main, TOOL_NAME))

@@ -44,7 +44,7 @@ templates/
   github/project-cover.md, .html          场景：项目封面
   github/brand/                           github-mark-white.svg
 examples/
-  github-trending/                        完整示例工程（27.2 秒），可以直接复制作为起点
+  github-trending/                        完整示例工程（27.2 秒），只在 skill 仓库里，委派场景下工作区没有 examples/
   jay-actions/                            人物动作演示：15 个动作加打字和瞥视逐个演一遍（59.9 秒）
 ```
 
@@ -59,8 +59,8 @@ examples/
 | 安排版面、确定区域坐标 | `layouts/<布局>.md` + 同名的 `.json`（机器可读区域定义，字幕脚本读它的 `caption` 段） |
 | 挂某个组件、写它的数据 | `components/<组件>/<组件>.md` |
 | 设计某个 scene 的画面（选形态、摆位置、配动效） | `patterns/<类>/<pattern>.md`，动效问题再看 `motion.md` |
-| 让人物做动作、配嘴型 | `components/jay/jay.md`；每个动作的样子见 `examples/jay-actions/` |
-| 看一个完整的成品怎么写 | `examples/github-trending/`（`index.html`、`data/video-data.js`、`tools/build-data.mjs`） |
+| 让人物做动作、配嘴型 | `components/jay/jay.md`；每个动作的样子见 `examples/jay-actions/`（示例只在 skill 仓库，工作区副本里没有） |
+| 看一个完整的成品怎么写 | `examples/github-trending/`（`index.html`、`data/video-data.js`、`tools/build-data.mjs`；示例只在 skill 仓库，工作区副本里没有） |
 
 ## 分层
 
@@ -75,11 +75,12 @@ examples/
 ## 组装一支视频
 
 1. **建工程**：
-   - 复制 `examples/github-trending/` 当起点；
-   - 或者 `npx hyperframes init <目录>` 新建。
+   - `npx hyperframes init` 不接受非空目录，而委派场景下 `composition/assets/fonts/` 已经预置——顺序必须是 init 先行：在工作区里 `npx hyperframes init composition-init/`，把生成的文件拷进 `composition/`（不要动 `assets/fonts/`），再删掉 `composition-init/`；
+   - 非委派场景（还没有 `composition/` 目录时）直接 `npx hyperframes init composition/`；
+   - `examples/` 只存在于 skill 仓库，工作区副本里没有；需要参考完整示例工程时从 skill 仓库的 `modules/examples/` 读。
 2. **主题**：
    - 把 `designs/<主题>/textures/` 复制到工程的 `assets/textures/`；
-   - 用 skill 根目录的 `bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/<主题>` 把字体装进工程，并在 `index.html` 的 `<head>` 里引入装进去的 CSS；
+   - 用 skill 根目录的 `bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/<主题>` 把字体装进工程，并在 `index.html` 的 `<head>` 里引入装进去的 CSS；委派场景下字体已经由 `prepare-handoff.py` 预置在 `composition/assets/fonts/`，不用再装，直接引入其中的 CSS；
    - 把主题文档里的变量代码放进 `index.html` 的 `:root`；
    - 根节点放一个铺满全屏的 `#ground`，背景用 `var(--ground)`。
 3. **模板**：按 `templates/<类型>/<类型>.md`：
@@ -93,11 +94,11 @@ examples/
    - 挂载点的 `data-composition-id` 用组件名或场景名。
 6. **数据**：
    - 写 `data/video-data.js`（`window.VIDEO = {…}`），在 `index.html` 的 `<head>` 里、GSAP 之后引入；
-   - 数据最好用脚本从字幕和配音生成，参考示例里的 `tools/build-data.mjs`；
+   - 数据最好用脚本从字幕和配音生成，参考示例里的 `tools/build-data.mjs`（示例只在 skill 仓库，工作区副本里没有）；
    - 嘴型用 `node modules/components/jay/make-envelope.mjs <配音>` 生成。
 7. **检查**：
-   - 跑 `npx hyperframes check`，修掉所有错误；
-   - 用 `npx hyperframes preview` 交给用户看，确认后再 `render`。
+   - `npx hyperframes check` 和 check-composition 都通过后再 `render`，`check` 的错误都要修掉；
+   - 只有人直接操作时才用 `npx hyperframes preview` 给人看，确认后再渲染；委派场景下由 sub-agent 直接渲染。
 
 ## 内容和外观分开
 

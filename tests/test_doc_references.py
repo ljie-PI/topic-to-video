@@ -19,6 +19,13 @@ LOCAL_REFERENCE = re.compile(r'`((?:references|modules)/[^`]+)`')
 PLACEHOLDER_CHARACTERS = frozenset('<{*')
 
 
+def test_doc_globs_match_at_least_one_file():
+    # Parametrized over these lists, an empty glob silently runs zero tests.
+    assert DOC_FILES, 'no doc files matched'
+    assert DELEGATION_DOCS, 'no delegation docs found'
+    assert PHASE_DOCS, 'no phase docs found'
+
+
 def logical_lines(path: Path) -> Iterator[tuple[int, str]]:
     """Join backslash-continued shell commands into single logical lines."""
     pending = ''
@@ -61,3 +68,27 @@ def test_documented_scripts_arguments_and_paths_exist(doc_path: Path):
                 failures.append(f'line {line_number}: missing path {relative_path}')
 
     assert not failures, f'{doc_path.relative_to(REPO_ROOT)}:\n' + '\n'.join(failures)
+
+
+# A delegated agent reads its delegation package, not the main agent's phase
+# docs, so what it needs must live in the package itself.
+DELEGATION_DOCS = sorted((REPO_ROOT / 'references' / 'delegation').glob('**/*.md'))
+PHASE_DOCS = sorted((REPO_ROOT / 'references' / 'phases').glob('*.md'))
+PAPER_PARSE_DOC = 'references/phases/02-paper-parse.md'
+CATALOG_DOC = 'references/phases/05-material-catalog.md'
+
+
+@pytest.mark.parametrize(
+    'doc_path',
+    [path for path in [*DELEGATION_DOCS, *PHASE_DOCS] if path.name != '02-paper-parse.md'],
+    ids=lambda path: str(path.relative_to(REPO_ROOT)),
+)
+def test_paper_parse_doc_is_referenced_by_no_other_phase_or_delegation_doc(doc_path: Path):
+    text = doc_path.read_text(encoding='utf-8')
+    assert '02-paper-parse' not in text, f'{doc_path.relative_to(REPO_ROOT)} points at {PAPER_PARSE_DOC}'
+
+
+@pytest.mark.parametrize('doc_path', DELEGATION_DOCS, ids=lambda path: str(path.relative_to(REPO_ROOT)))
+def test_delegation_docs_do_not_point_at_the_catalog_phase_doc(doc_path: Path):
+    text = doc_path.read_text(encoding='utf-8')
+    assert '05-material-catalog' not in text, f'{doc_path.relative_to(REPO_ROOT)} points at {CATALOG_DOC}'

@@ -6,7 +6,7 @@
 
 ## 输出
 
-`research-brief.md`（工作区根目录，落盘保存，不能只放在 scratchpad）。
+`research-brief.md`（工作区根目录，落盘保存，不能只放在 scratchpad）。论文模式下可选：`harvest_page/related-<short-name>/`（解析出的相关论文，最多 2 篇，论文 entry 已写入 `harvest_page/manifest.json`）。
 
 ## 完成判据
 
@@ -14,7 +14,7 @@
 
 ## 下一步
 
-Phase 4（素材抓取，若 `fetch_materials = true`）或 Phase 6（脚本与场景规划）。brief 里的 **Source URLs** 一节是交给 Phase 4 的显式接口。
+Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = false` 时，论文模式进 Phase 5（仅论文素材），其余进 Phase 6（脚本与场景规划）。brief 里的 **Source URLs** 一节是交给 Phase 4 的显式接口。
 
 ---
 
@@ -29,9 +29,9 @@ Phase 4（素材抓取，若 `fetch_materials = true`）或 Phase 6（脚本与�
      --profile-dir {work_dir}/chrome_profile
    ```
    - 自检只验证登录状态和 Deep Research 入口，不提交任何 prompt。输出 `{"success": true, "self_check": true}` 才算通过。
-   - **自检失败（未登录或入口失效，失败 JSON 带 `failed_step`）→ 不要重试提交，直接回退到人工 `web_search` 流程**（下面的 step 4-5 变成主路径），把 Gemini 的问题告诉用户。
+   - **自检失败（未登录或入口失效，失败 JSON 带 `failed_step`）→ 不要重试提交，直接回退到人工 `web_search` 流程**（下面的 step 5-6 变成主路径），把 Gemini 的问题告诉用户。
 3. **跑 Gemini Deep Research。** 这是主要的研究主干。
-   - 论文模式（`input_mode = "paper"`）时，用 Phase 2 文档里基于解析论文的 prompt 替换下面的标准 prompt。
+   - 论文模式（`input_mode = "paper"`）时，用文末「论文模式」小节里基于解析论文的 prompt 替换下面的标准 prompt。
 
    ```bash
    scripts/gemini-deep-research.py \
@@ -50,13 +50,24 @@ Phase 4（素材抓取，若 `fetch_materials = true`）或 Phase 6（脚本与�
      scripts/gemini-deep-research.py --output-dir {work_dir}/{topic_name}/ --resume \
        --profile-dir {work_dir}/chrome_profile
      ```
-   - **如果它失败了（selector timeout、运行时错误或其他步骤失败）：** 检查错误 JSON 里的 `failed_step` —— 提交前（step ≤ 6）的失败可以用 `--start-from-step N` 重试；提交后的失败用上一条的续跑命令。如果重试仍不通，回退到人工 `web_search` 流程（下面的 step 4-5 变成主路径），但不要让整个项目卡在消费级 Gemini UI 上。
-4. **找空缺。** 不论 Gemini 跑没跑成功，检查：哪些数字、人名、日期或技术细节缺失或没核实？列出来。
-5. **做有针对性的搜索。** 用 `web_search` 对每个空缺搜一下 —— 一般：Gemini 跑成功的话 2-4 次（填空），没跑则 3-6 次（完整研究）。示例：
+   - **如果它失败了（selector timeout、运行时错误或其他步骤失败）：** 检查错误 JSON 里的 `failed_step` —— 提交前（step ≤ 6）的失败可以用 `--start-from-step N` 重试；提交后的失败用上一条的续跑命令。如果重试仍不通，回退到人工 `web_search` 流程（下面的 step 5-6 变成主路径），但不要让整个项目卡在消费级 Gemini UI 上。
+4. **解析相关论文（可选，仅论文模式）。** 如果 Deep Research 的第 7 条回答指出了 1-2 篇有可用 PDF URL 的高相关论文（例如 arXiv），在这一步解析：
+
+   ```bash
+   python3 scripts/parse-pdf.py \
+     --url "https://arxiv.org/pdf/XXXX.XXXXX" \
+     --slug "related-{short-name}" \
+     --output-dir {work_dir}/{topic_name}/harvest_page/
+   ```
+   - 最多解析 2 篇。用户说"只看主论文"或没识别出明显相关工作，则跳过。
+   - 这一步不受 `fetch_materials` 影响：相关论文的 figure / table 同样写进 manifest，供 Phase 5 使用。
+   - 读相关论文解析出的 markdown（`harvest_page/related-<short-name>/metadata.json` 的 `paper_metadata.full_markdown_path`，相对 `harvest_page/`），把结论（它的方法 / 结果与主论文的关系）写进 `research-brief.md`。
+5. **找空缺。** 不论 Gemini 跑没跑成功，检查：哪些数字、人名、日期或技术细节缺失或没核实？列出来。
+6. **做有针对性的搜索。** 用 `web_search` 对每个空缺搜一下 —— 一般：Gemini 跑成功的话 2-4 次（填空），没跑则 3-6 次（完整研究）。示例：
    - "Boris Cherny Anthropic interview Sequoia 2026" → 确认姓名、日期、引文
    - "Claude Code MCP launch date" → 日期细节
    - "GPU vs CPU AI training memory bandwidth" → 技术数字
-6. **合成研究 brief，落盘为 `research-brief.md`。** 格式：
+7. **合成研究 brief，落盘为 `research-brief.md`。** 格式：
    ```
    ## Key facts (verified)
    - [fact, source]
@@ -81,10 +92,32 @@ Phase 4（素材抓取，若 `fetch_materials = true`）或 Phase 6（脚本与�
    2. 从 `gemini_deep_research_sources.json` 中筛选出符合 Phase 4 INCLUDE 类型的 URL（官方站、GitHub、docs、blog、YouTube —— 不要聚合页或社交 feed）。
    3. 通过 `web_search` 发现的、符合 INCLUDE 类型的 URL。
    目标 **10-15 个 source URL**，覆盖多样的视觉素材类型。
-7. **写脚本之前，把 `research-brief.md` 给用户看。** 通常 ~1 轮反馈。
+8. **写脚本之前，把 `research-brief.md` 给用户看。** 通常 ~1 轮反馈。
 
 **仅在以下情况跳过研究：**
 - 用户明确说"skip research, use this exact text" 且提供了完整内容
 - 主题只是把对方已经写好且整段提供的稿子重新念一遍
 
 **研究是迭代的：计划 2-3 轮搜索补漏，不要搜一次就开写。**
+
+---
+
+## 论文模式
+
+`input_mode = "paper"` 时，跑 Gemini Deep Research（step 3）把标准研究 prompt 替换为基于解析论文的版本。`{title}` 和 `{abstract}` 从磁盘读 `harvest_page/main-paper/metadata.json`：顶层 `title` 和 `paper_metadata.abstract`（都是 parse-pdf 写出的字段；恢复会话或开新会话后 stdout 已不存在，必须从这个文件取）：
+
+```
+"围绕论文《{title}》的背景调研：
+摘要：{abstract}
+
+请调研：
+1. 这篇论文解决什么问题？此前的最优方法（SOTA）是什么？
+2. 关键相关工作和它们与本工作的对比
+3. 发表以来的引用与影响力
+4. 基于本工作的后续进展
+5. 社区对本工作的批评或局限
+6. 现实世界的应用
+7. 最重要相关论文的 arXiv URL（供本 phase 解析相关论文）"
+```
+
+论文自身的 markdown 是**主要**内容来源。Deep Research 提供上下文——背景、影响、相关工作对比。调研的其余部分（解析相关论文、用 `web_search` 补漏、合成 `research-brief.md`）按上面的常规流程进行。

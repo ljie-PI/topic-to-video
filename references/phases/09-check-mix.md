@@ -84,7 +84,7 @@ python3 scripts/make-contact-sheet.py \
 所有 finding 统一为 `{"scene_id": str, "check": str, "issue": str, "time_s": float|null, "frame": str|null}`。确定性检查（check-render / check-composition）的 finding 原样拷进 qa-report；vision 检查的 finding 由主 agent 按同样形状写。`time_s` 填检测或快照时刻，没有对应时刻填 `null`；vision finding 的 `frame` 填相关 sheet 路径，确定性检查的 `frame` 为 `null`。`verdict` 为 `fail` 时进入修复轮，规则：
 
 1. 把 findings 反馈给 composition agent（Phase 8 委派约定），**只改受影响的 scene**；
-2. 重新渲染后**确定性检查全片重跑**；vision 只看受影响 scene 的帧（单独抽帧看即可，不必重拼整组 sheet）；
+2. 修复若改了 composition 的源文件（`index.html`、`compositions/`、`assets/`、`storyboard.md`），必须重跑 check-composition 用 `--output` 保存新报告，并**重新渲染** `final.mp4`——只重跑 check-render 会让报告和渲染比源文件旧，`pipeline-status` 会回退 Phase 8、卡住 Phase 9；然后确定性检查全片重跑；vision 只看受影响 scene 的帧（单独抽帧看即可，不必重拼整组 sheet）；
 3. **最多 2 轮**；finding 数不再下降就停止，把报告标为 `handed_off` 连同 sheet 一起交还用户定夺。
 
 修复轮结束（verdict 为 `pass`，或 `handed_off` 交给用户）后 `pipeline-status` 才会放行进 BGM 混音。
