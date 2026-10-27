@@ -8,12 +8,12 @@ ffmpeg / ffprobe are required.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
+
+from cli_helpers import parse_stdout, run_cli
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TRANSCRIBE = REPO_ROOT / 'scripts' / 'transcribe.py'
@@ -24,23 +24,9 @@ TEXT = '你好。再见。'  # 6 non-whitespace characters, two sentences
 
 
 def run_transcribe(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
-    clean = {
-        k: v for k, v in os.environ.items() if not k.startswith(_ENV_BLACKLIST_PREFIXES)
-    }
-    if env:
-        clean.update(env)
-    return subprocess.run(
-        [sys.executable, str(TRANSCRIBE), *args],
-        capture_output=True,
-        text=True,
-        env=clean,
-        timeout=60,
+    return run_cli(
+        TRANSCRIBE, *args, env=env or {}, blocked_prefixes=_ENV_BLACKLIST_PREFIXES
     )
-
-
-def parse_stdout(proc: subprocess.CompletedProcess) -> dict:
-    assert len(proc.stdout.splitlines()) == 1, proc.stdout
-    return json.loads(proc.stdout)
 
 
 @pytest.fixture
@@ -74,12 +60,12 @@ def test_fake_asr_spreads_text_evenly_over_audio_duration(tmp_path: Path, silent
     assert result['backend'] == 'fake'
     assert result['output_path'] == str(output.resolve())
     assert result['sentence_count'] == 2
-    assert result['word_count'] == 4  # punctuation is dropped from word tokens
+    assert result['word_count'] == 6
 
     transcript = json.loads(output.read_text(encoding='utf-8'))
     assert [sentence['text'] for sentence in transcript] == ['你好。', '再见。']
     words = [word for sentence in transcript for word in sentence['words']]
-    assert [word['text'] for word in words] == ['你', '好', '再', '见']
+    assert [word['text'] for word in words] == list(TEXT)
     # ffprobe measures the 3 s clip (an mp3 may add a few ms of padding).
     assert words[0]['begin'] == 0
     assert words[-1]['end'] == pytest.approx(3000, abs=100)

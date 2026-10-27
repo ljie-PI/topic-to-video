@@ -50,16 +50,7 @@ ffprobe -v error -show_entries format=duration \
 ```
 
 - 这一条命令保证**要么产出本轮新鲜的 transcript，要么失败**：它先删除目标路径上已有的 transcript，再用后端自带的直对齐；没写出来就自动以子进程运行 `scripts/transcribe.py`（`ASR_BACKEND` 等环境变量照常生效）。成功时输出 JSON 里的 `transcript_method` 是 `direct_align` 或 `asr`。
-- 失败（exit 1）时 `narration.mp3` 保留，JSON 的 `transcript_attempts` 按顺序列出每种方式（`direct_align`、`asr`）的 `error`：按错误补上缺的依赖或环境变量后，重跑同一条命令。**不要**沿用旧的 transcript，也不要手写。
-- 若只是转录步骤失败、不想重跑整段 TTS（重跑会重新合成整段音频，慢且时间轴抖动），mp3 已经保留，直接对它单独补跑转录：
-
-  ```bash
-  python3 scripts/transcribe.py \
-    {work_dir}/{topic_name}/voice_clone/narration.mp3 \
-    {work_dir}/{topic_name}/transcribe/transcript.json
-  ```
-
-  （`ASR_BACKEND` 等环境变量照常生效；跑完回到 7.2。）
+- 失败（exit 1）时 `narration.mp3` 保留，JSON 的 `transcript_attempts` 按顺序列出每种方式（`direct_align`、`asr`）的 `error`：按错误补上缺的依赖或环境变量后，重跑同一条 voice-clone 命令。**不要**沿用旧的 transcript，也不要手写或手动补跑 ASR。
 - 后端由环境选择；参数、依赖和 `--resolve-backend`（只打印决策、不加载模型）见 voice-clone.py 的 `--help`。
 
 脚本编写规范：

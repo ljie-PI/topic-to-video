@@ -3,11 +3,11 @@
 Word/character level ASR with a local-first backend.
 
 Backends (select via --backend or ASR_BACKEND env, default: auto):
-  auto       Pick by environment: CUDA GPU with the qwen_asr package ->
-             qwen3; DASHSCOPE_API_KEY -> dashscope; otherwise exit 1 with a
-             JSON error listing what is missing (Apple Silicon included: ASR
-             is the fallback when voice-clone.py's direct alignment fails, so
-             it is never "not needed").
+  auto       Pick by environment: CUDA GPU -> qwen3; DASHSCOPE_API_KEY ->
+             dashscope; otherwise exit 1 with a JSON error listing what is
+             missing (Apple Silicon included: ASR is the fallback when
+             voice-clone.py's direct alignment fails, so it is never "not
+             needed").
   qwen3      Local Qwen3-ASR + Qwen3-ForcedAligner (Apache-2.0). Runs on the
              local GPU, returns char-level (CJK) / word-level (Latin)
              timestamps with optional ITN. No cloud key needed.
@@ -60,7 +60,6 @@ from __future__ import annotations
 
 import abc
 import argparse
-import importlib.util
 import json
 import os
 import re
@@ -89,20 +88,12 @@ PROBE_PREFIX = 'ASR_DETECT'
 
 
 def _auto_backend(probes: dict[str, object]) -> tuple[str, dict[str, object]]:
-    """ASR auto order: CUDA + qwen_asr installed -> qwen3; DASHSCOPE_API_KEY ->
-    dashscope; otherwise BackendUnavailableError listing what is missing.
-
-    A CUDA machine without the qwen_asr package must not be sent down the
-    qwen3 path (it would fail at import and never reach dashscope), so the
-    package is probed with find_spec — cheap, and no model code runs.
-    """
+    """ASR auto order: CUDA -> qwen3; DASHSCOPE_API_KEY -> dashscope;
+    otherwise BackendUnavailableError listing what is missing."""
     missing: list[str] = []
     if probes['cuda']:
-        if importlib.util.find_spec('qwen_asr') is not None:
-            return 'qwen3', probes
-        missing.append('qwen_asr python package (backend qwen3)')
-    else:
-        missing.append('CUDA-capable GPU with torch (backend qwen3)')
+        return 'qwen3', probes
+    missing.append('CUDA-capable GPU with torch (backend qwen3)')
     if probes['dashscope_key']:
         return 'dashscope', probes
     missing.append('DASHSCOPE_API_KEY (backend dashscope)')

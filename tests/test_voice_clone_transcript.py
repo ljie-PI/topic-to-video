@@ -31,7 +31,7 @@ VOICE_CLONE = REPO_ROOT / 'scripts' / 'voice-clone.py'
 # Input env vars that must not leak from the host into a test run.
 _ENV_BLACKLIST_PREFIXES = ('TTS_', 'ASR_', 'ALIGN', 'QWEN3', 'DASHSCOPE_', 'COSYVOICE_')
 
-NARRATION = '大家好。今天我们来聊聊视频制作。'  # 15 characters, 13 alignable (punctuation dropped)
+NARRATION = '大家好。今天我们来聊聊视频制作。'  # 15 non-whitespace characters
 
 
 def run_voice_clone(
@@ -83,15 +83,15 @@ def test_fake_backend_direct_align_succeeds_without_asr(tmp_path: Path):
     assert result['transcript_method'] == 'direct_align'
     assert result['output_path'] == str((tmp_path / 'out' / 'narration.mp3').resolve())
     assert (tmp_path / 'out' / 'narration.mp3').stat().st_size > 0
-    # 13 alignable characters / 7.5 per second (punctuation does not count).
-    assert result['duration_s'] == pytest.approx(13 / 7.5, abs=0.15)
+    # 15 non-whitespace characters / 7.5 per second (punctuation counts).
+    assert result['duration_s'] == pytest.approx(15 / 7.5, abs=0.15)
 
     transcript_file = tmp_path / 'tr' / 'transcript.json'
     assert result['transcript_path'] == str(transcript_file.resolve())
     transcript = json.loads(transcript_file.read_text(encoding='utf-8'))
     assert [sentence['text'] for sentence in transcript] == ['大家好。', '今天我们来聊聊视频制作。']
     words = [word for sentence in transcript for word in sentence['words']]
-    assert ''.join(word['text'] for word in words) == '大家好今天我们来聊聊视频制作'  # punctuation dropped
+    assert ''.join(word['text'] for word in words) == NARRATION
     # Even spread over the whole audio: starts at 0, no gaps.
     assert words[0]['begin'] == 0
     assert all(a['end'] == b['begin'] for a, b in zip(words, words[1:]))

@@ -5,11 +5,9 @@ these helpers so the full synthesis + transcript path runs without loading any
 model. They are reachable ONLY by naming ``fake`` explicitly (``--backend``,
 ``TTS_BACKEND`` or ``ASR_BACKEND``); auto resolution never picks them.
 
-The fake "aligner" treats every alignable character as one word — letters and
-numbers only, punctuation dropped, mirroring ``transcript_schema.kept_chars``
-and the real aligners' token cleaning — spreads the words evenly over the
-audio duration, then groups them into sentences with the same
-``transcript_schema`` rules as the real aligners.
+The fake "aligner" treats every non-whitespace character as one word and
+spreads the words evenly over the audio duration, then groups them into
+sentences with the same ``transcript_schema`` rules as the real aligners.
 """
 from __future__ import annotations
 
@@ -17,7 +15,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import media
-from transcript_schema import kept_chars, transcript_from_torch_alignment
+from transcript_schema import transcript_from_torch_alignment
 
 # Synthetic speaking pace and the floor that keeps very short texts non-empty.
 CHARS_PER_SECOND = 7.5
@@ -25,8 +23,8 @@ MIN_DURATION_S = 1.0
 
 
 def alignable_chars(text: str) -> list[str]:
-    """Every alignable character (letters/numbers, punctuation dropped) is one fake word."""
-    return list(kept_chars(text))
+    """Every non-whitespace character (punctuation included) is one fake word."""
+    return [ch for ch in text if not ch.isspace()]
 
 
 def synthetic_duration_s(text: str) -> float:

@@ -17,21 +17,19 @@ ASR is the fallback when voice-clone's direct alignment fails).
 """
 from __future__ import annotations
 
-import importlib.util
-import json
-import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
+
+from cli_helpers import parse_stdout, run_cli as run_script
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VOICE_CLONE = REPO_ROOT / 'scripts' / 'voice-clone.py'
 TRANSCRIBE = REPO_ROOT / 'scripts' / 'transcribe.py'
 
 # Backend-affecting env vars that must not leak from the host into a test run.
-_ENV_BLACKLIST = [
+_ENV_BLACKLIST = (
     'TTS_BACKEND',
     'ASR_BACKEND',
     'DASHSCOPE_API_KEY',
@@ -43,23 +41,11 @@ _ENV_BLACKLIST = [
     'ASR_DETECT_PLATFORM',
     'ASR_DETECT_MACHINE',
     'ASR_DETECT_CUDA',
-]
+)
 
 
 def run_cli(script: Path, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
-    clean = {k: v for k, v in os.environ.items() if k not in _ENV_BLACKLIST}
-    if env:
-        clean.update(env)
-    return subprocess.run(
-        [sys.executable, str(script), *args],
-        capture_output=True,
-        text=True,
-        env=clean,
-    )
-
-
-def parse_stdout(proc: subprocess.CompletedProcess) -> dict:
-    return json.loads(proc.stdout)
+    return run_script(script, *args, env=env or {}, blocked=_ENV_BLACKLIST)
 
 
 # --- voice-clone.py --resolve-backend -----------------------------------------
@@ -204,66 +190,17 @@ def test_unknown_backend_cli_exits_2():
 # --- transcribe.py --resolve-backend ------------------------------------------
 
 
-def test_transcribe_resolve_auto_cuda_picks_qwen3(tmp_path):
-    # Auto only commits to qwen3 when the qwen_asr package is importable;
-    # the test machine may not have it, so stub it onto PYTHONPATH.
-    env = qwen_asr_stub_env(tmp_path)
-    env.update({'ASR_DETECT_PLATFORM': 'linux', 'ASR_DETECT_MACHINE': 'x86_64', 'ASR_DETECT_CUDA': '1'})
-    proc = run_cli(TRANSCRIBE, '--resolve-backend', env=env)
-
+def test_transcribe_resolve_auto_cuda_picks_qwen3():
+    proc = run_cli(
+        TRANSCRIBE,
+        '--resolve-backend',
+        env={'ASR_DETECT_PLATFORM': 'linux', 'ASR_DETECT_MACHINE': 'x86_64', 'ASR_DETECT_CUDA': '1'},
+    )
     assert proc.returncode == 0, proc.stderr
     result = parse_stdout(proc)
     assert result['success'] is True
     assert result['backend'] == 'qwen3'
     assert result['backend_source'] == 'auto'
-
-
-def qwen_asr_stub_env(tmp_path: Path) -> dict[str, str]:
-    """PYTHONPATH env with an importable (empty) qwen_asr package."""
-    package = tmp_path / 'fakepkg'
-    (package / 'qwen_asr').mkdir(parents=True)
-    (package / 'qwen_asr' / '__init__.py').write_text('', encoding='utf-8')
-    return {'PYTHONPATH': str(package)}
-
-
-def test_transcribe_resolve_auto_cuda_without_qwen_asr_falls_through_to_dashscope():
-    # A CUDA box that has torch but never installed qwen_asr must reach the
-    # DashScope fallback instead of dying at the qwen3 import.
-    if importlib.util.find_spec('qwen_asr') is not None:
-        pytest.skip('host has qwen_asr installed; the missing-package path needs it absent')
-    proc = run_cli(
-        TRANSCRIBE,
-        '--resolve-backend',
-        env={
-            'ASR_DETECT_PLATFORM': 'linux',
-            'ASR_DETECT_MACHINE': 'x86_64',
-            'ASR_DETECT_CUDA': '1',
-            'DASHSCOPE_API_KEY': 'sk-test',
-        },
-    )
-
-    assert proc.returncode == 0, proc.stderr
-    result = parse_stdout(proc)
-    assert result['backend'] == 'dashscope'
-
-
-def test_transcribe_resolve_auto_cuda_without_qwen_asr_package_errors_listing_it(tmp_path):
-    proc = run_cli(
-        TRANSCRIBE,
-        '--resolve-backend',
-        env={
-            'ASR_DETECT_PLATFORM': 'linux',
-            'ASR_DETECT_MACHINE': 'x86_64',
-            'ASR_DETECT_CUDA': '1',
-        },
-    )
-
-    if importlib.util.find_spec('qwen_asr') is not None:
-        pytest.skip('host has qwen_asr installed; the missing-package path needs it absent')
-    assert proc.returncode == 1
-    result = parse_stdout(proc)
-    assert result['success'] is False
-    assert 'qwen_asr python package' in result['error']
 
 
 def test_transcribe_resolve_auto_dashscope_key_picks_dashscope():
