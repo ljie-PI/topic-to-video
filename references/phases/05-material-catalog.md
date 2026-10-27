@@ -16,6 +16,12 @@
 
 Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产出的 catalog，不直接接触素材 `local_path`。
 
+## 护栏
+
+- **每个资源都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。**视频材料一律剥音轨**：Phase 5 用 `scripts/cut-clips.py` 把每个 `selected_clip` 切成无音轨文件（`clip_path`，`-an`），composition 只用这些文件；Phase 8 HTML 嵌入时 `<video>` 标签必须带 `muted playsinline` 兜底。
+  ↳ DO NOT：嵌入整段原视频或视频的 `local_path`；切片段时不带 `-an`；`<video>` 漏 `muted`。
+- 历史坑见 `references/gotchas.md` #8（`vision-analyze.py` 返回 `delegate_to_agent`）。
+
 **素材引用采用方案 A（slug-qualified ref）。** 素材 `id` 保持 harvester 写出的文件 stem，只在所属 entry 内唯一，不改 harvester / manifest 的 id。Phase 6 的图片 / 视频 ref 必须写成 `<slug>/<id>`，视频 clip 必须写成 `<slug>/<video_id>:<start>-<end>`；`slug` 是 `entries[*].slug`，解析时只查该 entry。两个 entry 可以各有 `img_001`，同一个 video id 也可以出现在多个 entry，它们由不同 slug 明确区分；裸 id 不是有效 ref。Phase 8 按同一契约把图片解析到该 entry 的 `local_path`，把 clip 解析到该 entry 的 `selected_clips[].clip_path`。
 
 ---

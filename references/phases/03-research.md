@@ -16,6 +16,12 @@
 
 Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = false` 时，论文模式进 Phase 5（仅论文素材），其余进 Phase 6（脚本与场景规划）。brief 里的 **Source URLs** 一节是交给 Phase 4 的显式接口。
 
+## 护栏
+
+- **Chrome over CDP。** `harvest-pages.py` 和 `gemini-deep-research.py` 必须显式传 `--profile-dir {work_dir}/chrome_profile`。复用已运行的 CDP 时，启动参数不会生效；检查 stderr warning 和输出 JSON 的 `chrome.ignored_flags`，需要新配置就先关闭复用的 Chrome。
+- 历史坑见 `references/gotchas.md` #4（Gemini Deep Research 的 UI 自动化）。
+- 历史坑见 `references/gotchas.md` #6（Chrome CDP 的 profile 锁）。
+
 ---
 
 **永远不要单凭自己的训练数据写脚本。** 每一个论断都要扎根在新鲜、可引用的来源上。

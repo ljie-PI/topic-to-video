@@ -16,6 +16,17 @@ Phase 6 产出的 `narration.txt`（朗读稿）+ `script.txt`（显示稿）+ `
 
 Phase 8（composition，委派）：sub-agent 用字幕单元、时间轴和素材 catalog 完成画面与渲染；字体由 Phase 8 准备阶段按所选 design 预置。
 
+## 护栏
+
+- **TTS 后端由环境变量选择。** 配音脚本、参考音色、参数和依赖见 `scripts/voice-clone.py` 的顶部说明。**绝不**使用 `npx hyperframes tts`。
+- **ASR 后端由环境变量选择。** transcript 必须带词级时间戳（schema 见 Phase 7 文档的接口契约）。后端、参数和依赖见 `scripts/transcribe.py` 的顶部说明。voice-clone.py 保证产出**本轮新鲜**的 transcript：直对齐优先，失败自动回退到 transcribe.py，成功 JSON 带 `transcript_method`（`direct_align` / `asr`）；`asr` 意味着转录来自 ASR，与朗读稿逐字一致不保证。即使主用直对齐（如 mlx），也要配置一种 ASR 后备（`DASHSCOPE_API_KEY` 或可用的 `ASR_BACKEND`），否则回退路径不可用。
+  ↳ DO NOT：用 `npx hyperframes transcribe`；接受没有词级时间戳的 transcript；沿用上一轮留下的 transcript。
+- 历史坑见 `references/gotchas.md` #1（HyperFrames Transcribe 的中文故障与外部 transcript）。
+- 历史坑见 `references/gotchas.md` #2（ASR 数字归一化与 CER）。
+- 历史坑见 `references/gotchas.md` #3（参考音频与长 narration）。
+- 历史坑见 `references/gotchas.md` #9（cue not found）。
+- 历史坑见 `references/gotchas.md` #10（未校准 ASR 的字幕文本）。
+
 ---
 
 TTS 与字幕合并在同一个 phase：先配音并拿到词级时间戳（transcript），再把时间对齐回显示稿生成字幕单元。本阶段为下游的 HyperFrames sub-agent 准备音频与时间轴输入；`topic-to-video` 主 agent **不**负责设计 scene、写 `info_units`、把素材映射到布局，或者生成 HyperFrames 的 HTML。
@@ -82,8 +93,3 @@ TTS 和 ASR 的 CLI 参数、输出路径、transcript schema 固定不变；后
   ```
 
   每个句子含 `begin`、`end`、`text` 和词级 `words`；每个词含 `text`、`begin`、`end`；时间单位是**毫秒**。token 是否带标点、带空格，数字用中文还是阿拉伯写法，都不做假设（下游对齐自行归一化）。直对齐路径写出的 transcript.json 满足同一 schema（文本与朗读稿逐字一致）。
-
-**两条不变量**：
-
-1. 绝不使用 HyperFrames 自带的 `tts` / `transcribe`。
-2. transcript 必须带词级时间戳。

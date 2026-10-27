@@ -16,6 +16,15 @@ Phase 7 的 `voice_clone/narration.mp3` + `transcribe/subtitle-units.json` / `tr
 
 Phase 9（检查与混音）：渲染后 QA（`check-render.py` 确定性检查 + `make-contact-sheet.py` 拼图 + 按 `qa_level` 三档的 vision 检查，修复轮最多 2 轮）通过后混入 BGM，得到最终交付文件。
 
+## 护栏
+
+- **预先 stage 确定性的 WOFF2 字体。** Phase 8 的 `scripts/prepare-handoff.py` 按所选 design 调用 `scripts/fonts-download.sh`，预置到 composition 工程的 `assets/fonts/`，handoff 指向该目录。
+  ↳ DO NOT：让主 agent 处理 composition 的字体 CSS。
+- **字体实现归 HyperFrames。** Phase 8 sub-agent 使用本地字体，并按 `hyperframes` skill 中的排版规则处理。
+- **Composition 委派给 coding agent。** 主 agent 只运行 `scripts/prepare-handoff.py <ws> composition`：它生成 `composition-handoff.md`，把 composition 委派包（`references/delegation/composition/`）与 modules（不含 `examples/`）物化到工作区，再按所选 design 预置字体；委派约定与指令叠加顺序见 `references/delegation/conventions.md`。
+  ↳ DO NOT：手写 `composition/index.html`、挑选低层 animation / effect skill，或在本 session 里修 HyperFrames lint；除非用户明确指定，否则由 Phase 8 sub-agent 选择。
+- **Scene 设计归 HyperFrames。** 切分、素材映射、布局、视觉层级、动画、lint/inspect 与渲染迭代都发生在 Phase 8。
+
 ---
 
 本 phase 整体委派给 coding agent 完成：storyboard、画面组装、渲染前自查与渲染由 composition agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认 claude-code；派发 prompt 只有一句话，让对方读 handoff）。composition agent 使用 `hyperframes`、`hyperframes-cli` 与 `hyperframes-animation` skills；主 agent 不读委派包里的基础指令。

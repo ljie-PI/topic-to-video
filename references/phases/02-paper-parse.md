@@ -18,6 +18,10 @@
 
 论文解析并入素材流后，进入 Phase 3（调研）：论文 markdown 是主要内容来源，Deep Research 只提供背景与上下文。
 
+## 护栏
+
+- 历史坑见 `references/gotchas.md` #5（MinerU 云端失败）。
+
 ---
 
 ## 解析主论文

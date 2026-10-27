@@ -55,7 +55,7 @@ def test_phase7_offers_one_voice_subtitles_command_without_manual_child_commands
     assert '| `voice-subtitles.py` |' in skill
     gotchas = (REPO_ROOT / 'references/gotchas.md').read_text(encoding='utf-8')
     assert 'Phase 7 的那条 voice-clone 命令' not in gotchas
-    assert 'python3 scripts/voice-subtitles.py {work_dir}/{topic_name}' in gotchas
+    assert 'python3 scripts/voice-subtitles.py {work_dir}/{topic_name}' not in gotchas
 
 
 def doc_text(relpath: str) -> str:

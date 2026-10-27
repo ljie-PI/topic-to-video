@@ -16,6 +16,10 @@ Phase 8 产出的 `composition/renders/final.mp4` + `transcribe/timeline.json` +
 
 无——这是最后一个 phase。把成片与 contact sheet 交给用户过目。
 
+## 护栏
+
+无
+
 ---
 
 渲染完成后，QA 分确定性检查、vision 检查、修复轮三步，全程**不做全片抽帧**；最后混入 BGM。检查集由 `inputs.json` 的 `qa_level` 决定（缺省视为 `standard`）：

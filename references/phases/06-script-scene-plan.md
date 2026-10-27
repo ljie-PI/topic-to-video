@@ -25,6 +25,11 @@ Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（标准�
 
 Phase 7（配音与字幕）：只对 `narration.txt` 配音，并生成词级时间戳与字幕单元。
 
+## 护栏
+
+- **素材 catalog / vision 分析在 Phase 5，不是 Phase 6。** Phase 6 只引用 catalog 写脚本、匹配场景素材并规划屏幕文本块。
+  ↳ DO NOT：catalog 还没建就写解说或场景-素材匹配；跳过 vision-analyze（论文模式下带 caption 的图表按 Phase 5 规则直接用 caption、不做 VLM，是设计行为，不算跳过）。
+
 ---
 
 ## Phase 6.1 — 委派 script agent

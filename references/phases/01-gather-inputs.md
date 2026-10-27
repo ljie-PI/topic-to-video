@@ -30,6 +30,10 @@
 
 跑 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}` 确认下一个 phase：论文模式（`input_mode = "paper"`）下一个是 Phase 2（解析论文），否则直接进 Phase 3（调研）。
 
+## 护栏
+
+无
+
 ---
 
 一次问一个问题，逐项确认：
