@@ -56,7 +56,7 @@
 
 ### 字号下限
 
-每个主题必须在「字号下限」那一行写明两条下限，写法固定为“阅读文字不小于 N px，界面小字不小于 M px”。渲染前检查（check-composition）从这一行读出两个数，分别当硬门槛：
+每个主题必须在文档的「字号下限」那一行写明两条下限，并在 `<名>.json` 的 `min_font_px.reading` / `min_font_px.ui` 写入相同的数。渲染前检查（check-composition）通过 `--design <名>.json` 读取 JSON，把两个数分别当硬门槛；文档与 JSON 的一致性由测试保证：
 
 - **阅读文字**（正文、列表、说明）不小于 N；
 - **界面小字**（面板标题栏、按钮、小标签）不小于 M，只适用于放在 `data-text-role="ui"` 元素里的文字，任何主题的 M 都不得低于 **22px**；
@@ -68,7 +68,23 @@
 - 字体的 `@font-face` 也写在 `index.html` 里，组件只读 `--font-sans` 和 `--font-mono`。
 - 模板可以在主题变量之后再写一段 `:root { … }`，覆盖其中几个变量，加入这类视频专属的颜色。例如 GitHub 模板把方格换成贡献图的绿色。
 
-## 字体清单（fonts.json）
+## 机器契约与字体清单（<名>.json）
+
+每个主题都有 `<名>.md` 和 `<名>.json`：文档供人和 LLM 阅读，同名 JSON 是脚本读取的机器契约。JSON 的 `tokens` 必须完整定义上面的变量，值与文档 CSS 代码块一致；`min_font_px` 和 `caption_font_px` 与文档的字号下限一致。结构如下：
+
+```json
+{
+  "design": "<主题>",
+  "tokens": {"--c-canvas": "...", "--font-sans": "...", "--motion-easing": "..."},
+  "min_font_px": {"reading": 26, "ui": 22},
+  "caption_font_px": 36,
+  "fonts": {
+    "css_filename": "<主题>-fonts.css",
+    "rename": {"Google 家族名": "主题字体别名"},
+    "css2_families": ["Family+Name:wght@400;700"]
+  }
+}
+```
 
 每个主题的字体已经下载好，提交在仓库的 `resources/fonts/<主题>/`（一份 CSS 加它引用的 WOFF2）。字体都按 SIL Open Font License 1.1 分发，许可文本在 `resources/fonts/licenses/`；新增字体家族时把它的 OFL.txt 一起放进去。视频工程用字体时只拷贝，不联网：
 
@@ -78,21 +94,11 @@ bash scripts/fonts-download.sh <目标目录> --theme modules/designs/<主题>
 bash scripts/fonts-download.sh <目标目录> <主题>
 ```
 
-每个主题目录里的 `fonts.json` 是这些字体的来源清单，只在维护时用：新建主题、或者想换字体版本时，改好 `fonts.json` 后运行 `bash scripts/fonts-download.sh --refresh --theme <主题>`，脚本从 Google Fonts 重新下载并覆盖 `resources/fonts/<主题>/`，再把结果提交进仓库。
+`<名>.json` 的 `fonts` 段是这些字体的来源清单，只在维护时用：新建主题、或者想换字体版本时，改好清单后运行 `bash scripts/fonts-download.sh --refresh --theme <主题>`，脚本从 Google Fonts 重新下载并覆盖 `resources/fonts/<主题>/`，再把结果提交进仓库。
 
-清单格式：
-
-```json
-{
-  "css_filename": "<主题>-fonts.css",
-  "rename": true,
-  "css2_families": ["Noto+Sans+SC:wght@400;500;700", "IBM+Plex+Mono:wght@400;600"]
-}
-```
-
-- `css2_families`：Google Fonts css2 API 的 `family=` 参数，每项一个家族（含轴规格），`--refresh` 时脚本把它们用 `&` 拼成 `https://fonts.googleapis.com/css2?family=…&display=swap`。
-- `css_filename`：`resources/fonts/<主题>/` 里、以及装进工程后的 CSS 文件名；视频工程在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/<css_filename>">` 引入。
-- `rename`：为 `true` 时把 Google 家族名改成短别名（`Noto Sans SC` → `NotoSansSC`，`IBM Plex Mono` → `IBMPlexMono`），主题文档里的 `--font-*` 栈用短别名；为 `false` 时保留 Google 原名（github 主题用全名）。
+- `fonts.css2_families`：Google Fonts css2 API 的 `family=` 参数，每项一个家族（含轴规格），`--refresh` 时脚本把它们用 `&` 拼成 `https://fonts.googleapis.com/css2?family=…&display=swap`。
+- `fonts.css_filename`：`resources/fonts/<主题>/` 里、以及装进工程后的 CSS 文件名；视频工程在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/<css_filename>">` 引入。
+- `fonts.rename`：Google 家族名到主题字体别名的逐项映射；刷新时只按这张表改名。不需要改名时用 `{}`（github 主题保留 Google 全名）。
 
 ## 现有主题
 
@@ -117,7 +123,7 @@ bash scripts/fonts-download.sh <目标目录> <主题>
 | "深色"、"暗黑"、"科技"、"未来"、"premium" | design 写 default，配色按下面的 Dark Premium 草案覆盖（见下） |
 | "手绘"、"手写" | 目前没有手绘主题：告诉用户，并用 default |
 
-以下两套配色已有完整 token 草案，还没有迁入主题目录，所以**不能**写进 `inputs.json` 的 `design`（状态脚本只接受 `modules/designs/` 下现有的主题）。用户点名时：`design` 写 `default`，先和用户确认，再把草案的配色换算成 `--c-*` 变量写进项目的 `composition-instructions.md`，作为对 default 变量的覆盖；字体仍用 default 的字体（草案列出的字体没有放进仓库）。正式迁入主题目录时，写好 `<名>.md` 和 `fonts.json`，按上面的方法 `--refresh` 并提交字体。
+以下两套配色已有完整 token 草案，还没有迁入主题目录，所以**不能**写进 `inputs.json` 的 `design`（状态脚本只接受 `modules/designs/` 下现有的主题）。用户点名时：`design` 写 `default`，先和用户确认，再把草案的配色换算成 `--c-*` 变量写进项目的 `composition-instructions.md`，作为对 default 变量的覆盖；字体仍用 default 的字体（草案列出的字体没有放进仓库）。正式迁入主题目录时，写好 `<名>.md` 和 `<名>.json`，按上面的方法 `--refresh` 并提交字体。
 
 ### Warm Editorial（杂志跨页、精致、新闻感）
 

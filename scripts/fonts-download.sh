@@ -7,10 +7,10 @@
 #     target_dir defaults to ./fonts; style (legacy) is a theme name or all
 #
 # Fonts are committed under resources/fonts/<theme>/: the CSS named by the
-# theme's fonts.json css_filename plus the WOFF2 files it references.
+# theme's <theme>.json fonts.css_filename plus the WOFF2 files it references.
 # Installing copies that directory into target_dir and never touches the
 # network. --refresh is the maintenance path: it re-downloads the families in
-# modules/designs/<theme>/fonts.json from Google Fonts into
+# modules/designs/<theme>/<theme>.json from Google Fonts into
 # resources/fonts/<theme>/, replacing what is there, so the result can be
 # committed.
 #
@@ -41,8 +41,6 @@ REPO = Path(sys.argv[1]).parent
 DESIGNS = REPO / 'modules' / 'designs'
 RESOURCES = Path(os.environ.get('FONTS_RESOURCES_DIR') or REPO / 'resources' / 'fonts')
 CSS2_URL = os.environ.get('FONTS_CSS2_URL') or 'https://fonts.googleapis.com/css2'
-# Short family aliases used by themes whose fonts.json sets "rename": true.
-RENAMES = {"'Noto Sans SC'": "'NotoSansSC'", "'IBM Plex Mono'": "'IBMPlexMono'"}
 # A modern browser UA makes Google Fonts serve real WOFF2 (unicode-range
 # subsets, variable axes kept); a bare UA gets static TrueType per instance.
 HEADERS = {
@@ -94,33 +92,45 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return args
 
 
+def contract_path(theme: Path) -> Path:
+    return theme / f'{theme.name}.json'
+
+
 def known_themes() -> list[str]:
-    return sorted(manifest.parent.name for manifest in DESIGNS.glob('*/fonts.json'))
+    return sorted(path.parent.name for path in DESIGNS.glob('*/*.json') if path.stem == path.parent.name)
 
 
 def resolve_manifests(spec: str) -> list[Path]:
     if spec == 'all':
-        return sorted(DESIGNS.glob('*/fonts.json'))
+        return [contract_path(DESIGNS / theme) for theme in known_themes()]
     # A bare theme name always means modules/designs/<name>, whatever the
     # working directory contains; only path-like specs are resolved as paths.
-    if '/' not in spec and (DESIGNS / spec / 'fonts.json').is_file():
-        return [DESIGNS / spec / 'fonts.json']
+    if '/' not in spec and contract_path(DESIGNS / spec).is_file():
+        return [contract_path(DESIGNS / spec)]
     for base in (Path.cwd(), REPO):
         path = base / spec
-        if path.is_file() and path.name == 'fonts.json':
+        if path.is_file() and path.suffix == '.json' and path.stem == path.parent.name:
             return [path]
-        if path.is_dir() and (path / 'fonts.json').is_file():
-            return [path / 'fonts.json']
+        if path.is_dir() and contract_path(path).is_file():
+            return [contract_path(path)]
     raise BadArguments(f"unknown theme '{spec}'. Expected one of: {' '.join(known_themes())} all")
 
 
 def load_manifest(path: Path) -> dict:
-    manifest = json.loads(path.read_text(encoding='utf-8'))
+    contract = json.loads(path.read_text(encoding='utf-8'))
+    manifest = contract.get('fonts') if isinstance(contract, dict) else None
+    if not isinstance(manifest, dict):
+        raise ValueError(f'design {path}: fonts must be an object')
     families = manifest.get('css2_families')
     if not isinstance(families, list) or not families:
-        raise ValueError(f'manifest {path}: css2_families must be a non-empty list')
+        raise ValueError(f'design {path}: fonts.css2_families must be a non-empty list')
     if not isinstance(manifest.get('css_filename'), str) or not manifest['css_filename']:
-        raise ValueError(f'manifest {path}: css_filename must be a non-empty string')
+        raise ValueError(f'design {path}: fonts.css_filename must be a non-empty string')
+    rename = manifest.get('rename')
+    if not isinstance(rename, dict) or not all(
+        isinstance(old, str) and isinstance(new, str) for old, new in rename.items()
+    ):
+        raise ValueError(f'design {path}: fonts.rename must be a string mapping')
     return manifest
 
 
@@ -188,9 +198,8 @@ def refresh(manifest_path: Path, dry_run: bool) -> list[str]:
             log(f'downloading {filename}')
             (staging / filename).write_bytes(fetch(url))
             css = css.replace(url, filename)
-        if manifest.get('rename'):
-            for old, new in RENAMES.items():
-                css = css.replace(old, new)
+        for old, new in manifest['rename'].items():
+            css = css.replace(f"'{old}'", f"'{new}'")
         (staging / manifest['css_filename']).write_text(css, encoding='utf-8')
         shutil.rmtree(previous, ignore_errors=True)
         if out.exists():
@@ -212,7 +221,7 @@ def main(argv: list[str]) -> int:
     try:
         args = parse_args(argv)
         if args.refresh and args.spec != 'all' and (
-            '/' in args.spec or not (DESIGNS / args.spec / 'fonts.json').is_file()
+            '/' in args.spec or not contract_path(DESIGNS / args.spec).is_file()
         ):
             # Refresh rewrites committed fonts, so it only takes theme names
             # under modules/designs, never paths to other manifests.

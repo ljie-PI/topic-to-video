@@ -333,6 +333,7 @@ def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
     base = delegation / 'composition' / 'base-instructions.md'
     modules_doc = modules / 'modules.md'
     design_doc = modules / 'designs' / design / f'{design}.md'
+    design_json = modules / 'designs' / design / f'{design}.json'
     design_contract = modules / 'designs' / 'designs.md'
     layout_text, skill_layout_paths = layout_reference(SKILL_ROOT / 'modules', layout)
     layout_paths = [modules / path.relative_to(SKILL_ROOT / 'modules') for path in skill_layout_paths]
@@ -352,14 +353,17 @@ def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
     references: list[Reference] = [
         (f'{base}（基础指令：输入契约、design、layout 区域、工作顺序）', [base]),
         (f'{modules_doc}（模块库入口与组装约定）', [modules_doc]),
-        (f'{design_doc}（所选 design；token 契约见 {design_contract}）', [design_doc, design_contract]),
+        (
+            f'{design_doc} + {design_json}（所选 design；token 契约见 {design_contract}）',
+            [design_doc, design_json, design_contract],
+        ),
         (f'{layout_item}（所选 layout 的区域定义）', layout_paths),
     ]
     sources.extend(
         source(path)
         for path in [
             SKILL_ROOT / 'modules' / 'designs' / design / f'{design}.md',
-            SKILL_ROOT / 'modules' / 'designs' / design / 'fonts.json',
+            SKILL_ROOT / 'modules' / 'designs' / design / f'{design}.json',
             *layout_reference(SKILL_ROOT / 'modules', layout)[1],
         ]
     )
@@ -433,8 +437,8 @@ def render_handoff(ws: Path, step: str, inputs: dict[str, Any], plan: Plan) -> s
         'venv_activate_q': shlex.quote(str(SKILL_ROOT / '.venv' / 'bin' / 'activate')),
         'composition_dir_q': shlex.quote(str(ws / 'composition')),
         'layout_json_q': shlex.quote(str(ws / 'modules' / 'layouts' / f'{layout}.json')),
-        'design_doc_q': shlex.quote(
-            str(ws / 'modules' / 'designs' / design / f'{design}.md')
+        'design_json_q': shlex.quote(
+            str(ws / 'modules' / 'designs' / design / f'{design}.json')
         ),
         'subtitle_units_q': shlex.quote(str(ws / 'transcribe' / 'subtitle-units.json')),
         'timeline_q': shlex.quote(str(ws / 'transcribe' / 'timeline.json')),

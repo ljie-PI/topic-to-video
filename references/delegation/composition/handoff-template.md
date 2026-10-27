@@ -14,7 +14,7 @@
 | `{{coding_agent}}` | `inputs.json` 的 `coding_agent` |
 | `{{design}}` / `{{layout}}` / `{{template}}` / `{{orientation}}` | `inputs.json` 的对应字段（`template` 为 null 时写“无”） |
 | `{{material_catalog}}` | `fetch_materials` 为真：catalog 的路径；否则“无（无素材，画面用纯排版）” |
-| `{{required_references}}` | 按叠加顺序编号：基础指令 → `modules.md` → design 文档 → layout 的 json 与文档 → 所选模板的文档（`template` 为 null 时省略）→ pattern / 组件目录（固定一句，按 storyboard 需要自行阅读）。全部指向工作区副本 |
+| `{{required_references}}` | 按叠加顺序编号：基础指令 → `modules.md` → design 文档与 `<design>.json` 机器契约 → layout 的 json 与文档 → 所选模板的文档（`template` 为 null 时省略）→ pattern / 组件目录（固定一句，按 storyboard 需要自行阅读）。全部指向工作区副本 |
 | `{{additional_instructions}}` | 实际存在的 `composition-instructions.md` 和旧项目的 `style-prompt.md`；都没有写 `None` |
 
 ```markdown
@@ -51,7 +51,7 @@
 - cd {{composition_dir_q}} && npx hyperframes check
 - source {{venv_activate_q}} && python3 {{skill_root_q}}/scripts/check-composition.py {{composition_dir_q}} \
     --layout {{layout_json_q}} \
-    --design-doc {{design_doc_q}} \
+    --design {{design_json_q}} \
     --subtitle-units {{subtitle_units_q}} \
     --timeline {{timeline_q}} \
     --output {{check_report_q}}

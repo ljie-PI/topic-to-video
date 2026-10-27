@@ -28,10 +28,9 @@ Inputs:
                   caption spec.
   --min-font-size design minimum reading-text size in px, with
                   --min-ui-font-size (default: same) for UI text.
-                  Alternatively --design-doc parses both from a theme doc's
-                  字号下限 line ("阅读文字不小于 <N>px" / "界面小字不小于
-                  <N>px"; without labels the first "不小于 <N>px" is the
-                  reading minimum). One of the two is required.
+                  Alternatively --design reads min_font_px.reading and
+                  min_font_px.ui from a theme's design JSON. One of the two
+                  is required.
   --subtitle-units subtitle-units.json for the caption check (optional).
   --timeline      timeline.json; its scenes list ({scene_id, begin_s,
                   end_s}) drives scene timing. Without it, scene roots are
@@ -118,9 +117,9 @@ def parse_args() -> argparse.Namespace:
                       help='Design minimum reading-text font size in px.')
     font.add_argument('--min-ui-font-size', type=int, default=None,
                       help='Minimum for text inside [data-text-role="ui"] (default: --min-font-size).')
-    font.add_argument('--design-doc', default=None,
-                      help='Theme doc (modules/designs/<theme>/<theme>.md); the reading-text and '
-                           'UI-text minimums are parsed from its 字号下限 line.')
+    font.add_argument('--design', default=None,
+                      help='Theme design JSON (modules/designs/<theme>/<theme>.json); the reading-text '
+                           'and UI-text minimums come from min_font_px.')
     parser.add_argument('--subtitle-units', default=None,
                         help='subtitle-units.json used for the caption check (optional).')
     parser.add_argument('--timeline', default=None,
@@ -143,8 +142,8 @@ def parse_args() -> argparse.Namespace:
         help='Write the raw Chrome-collected snapshot list for fixtures or debugging.',
     )
     args = parser.parse_args()
-    if args.min_font_size is None and args.design_doc is None:
-        parser.error('design minimum font size required: pass --min-font-size or --design-doc')
+    if args.min_font_size is None and args.design is None:
+        parser.error('design minimum font size required: pass --min-font-size or --design')
     if args.min_font_size is not None and args.min_font_size <= 0:
         parser.error('--min-font-size must be positive')
     if args.min_ui_font_size is not None and args.min_ui_font_size <= 0:
@@ -159,19 +158,14 @@ def load_font_floors(args: argparse.Namespace) -> Tuple[int, int]:
     """(reading-text minimum, UI-text minimum) in px."""
     if args.min_font_size is not None:
         return args.min_font_size, args.min_ui_font_size or args.min_font_size
-    text = Path(args.design_doc).read_text(encoding='utf-8')
-    # The floor line is the first one naming 字号下限 that also carries a value.
-    lines = [line for line in text.splitlines() if '字号下限' in line and '不小于' in line]
-    haystack = lines[0] if lines else text
-    reading = re.search(r'阅读文字不小于\s*(\d+)\s*px', haystack) or re.search(
-        r'不小于\s*(\d+)\s*px', haystack
-    )
-    if not reading:
-        raise ValueError(f'could not find a "不小于 <N>px" font size floor in {args.design_doc}')
-    ui = re.search(r'界面小字不小于\s*(\d+)\s*px', haystack)
-    reading_min = int(reading.group(1))
-    ui_min = args.min_ui_font_size or (int(ui.group(1)) if ui else reading_min)
-    return reading_min, ui_min
+    design = json.loads(Path(args.design).read_text(encoding='utf-8'))
+    floors = design.get('min_font_px') if isinstance(design, dict) else None
+    if not isinstance(floors, dict):
+        raise ValueError(f'design {args.design}: min_font_px must be an object')
+    reading_min, ui_min = floors.get('reading'), floors.get('ui')
+    if any(isinstance(value, bool) or not isinstance(value, int) or value <= 0 for value in (reading_min, ui_min)):
+        raise ValueError(f'design {args.design}: min_font_px.reading and min_font_px.ui must be positive integers')
+    return reading_min, args.min_ui_font_size or ui_min
 
 
 def load_layout(path: str) -> Dict[str, Any]:

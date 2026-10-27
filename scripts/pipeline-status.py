@@ -522,8 +522,8 @@ def duration_minutes(value: Any) -> float | None:
 
 
 def is_design_dir(path: Path) -> bool:
-    """A design is a dir holding <name>/<name>.md and the fonts.json manifest."""
-    return (path / f'{path.name}.md').is_file() and (path / 'fonts.json').is_file()
+    """A design is a dir holding its <name>.md doc and <name>.json contract."""
+    return (path / f'{path.name}.md').is_file() and (path / f'{path.name}.json').is_file()
 
 
 def available_designs() -> list[str]:

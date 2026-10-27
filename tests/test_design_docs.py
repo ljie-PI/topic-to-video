@@ -1,9 +1,4 @@
-"""Design docs carry the font floors check-composition enforces.
-
-check-composition reads the reading-text and UI-text minimums from each theme
-doc's 字号下限 line; this pins the parse against the real docs so wording
-changes cannot silently move the hard gate.
-"""
+"""Every design JSON supplies the floors check-composition enforces."""
 from __future__ import annotations
 
 import argparse
@@ -25,11 +20,13 @@ def load_check_composition():
     return module
 
 
-def test_every_design_doc_yields_reading_and_ui_floors():
+def test_every_design_json_yields_reading_and_ui_floors():
     module = load_check_composition()
     assert [d.name for d in DESIGNS] == ['default', 'github', 'producthunt']
     for design in DESIGNS:
         args = argparse.Namespace(
-            min_font_size=None, min_ui_font_size=None, design_doc=str(design / f'{design.name}.md')
+            min_font_size=None,
+            min_ui_font_size=None,
+            design=str(design / f'{design.name}.json'),
         )
         assert module.load_font_floors(args) == (26, 22), design.name

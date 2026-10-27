@@ -389,7 +389,7 @@ class TestCompositionHandoff:
         assert f'cd {ws}/composition && npx hyperframes check' in text
         assert f'source {REPO_ROOT}/.venv/bin/activate && python3 {REPO_ROOT}/scripts/check-composition.py' in text
         assert f'--layout {ws}/modules/layouts/stage.json' in text
-        assert f'--design-doc {ws}/modules/designs/default/default.md' in text
+        assert f'--design {ws}/modules/designs/default/default.json' in text
         assert f'--output {ws}/composition/check-composition.json' in text
         assert 'python3 scripts/' not in text
 
@@ -442,7 +442,11 @@ class TestCompositionHandoff:
         assert [rel(absolute_paths(item)) for item in items] == [
             ['references/delegation/composition/base-instructions.md'],
             ['modules/modules.md'],
-            ['modules/designs/designs.md', 'modules/designs/producthunt/producthunt.md'],
+            [
+                'modules/designs/designs.md',
+                'modules/designs/producthunt/producthunt.json',
+                'modules/designs/producthunt/producthunt.md',
+            ],
             ['modules/layouts/portrait.json', 'modules/layouts/portrait.md'],
             ['modules/templates/github/github.md'],
             ['modules/components', 'modules/patterns'],

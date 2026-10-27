@@ -1,9 +1,0 @@
-{
-  "css_filename": "github-fonts.css",
-  "rename": false,
-  "css2_families": [
-    "Noto+Sans:wdth,wght@62.5..100,100..900",
-    "Noto+Sans+SC:wght@100..900",
-    "Noto+Sans+Mono:wdth,wght@62.5..100,100..900"
-  ]
-}

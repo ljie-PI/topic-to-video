@@ -1520,7 +1520,10 @@ def test_removed_design_accepted_from_workspace_copy(tmp_path: Path):
     copy = tmp_path / 'modules' / 'designs' / 'moon'
     copy.mkdir(parents=True)
     (copy / 'moon.md').write_text('# moon', encoding='utf-8')
-    write_json(copy / 'fonts.json', {'css_filename': 'moon-fonts.css', 'css2_families': ['X']})
+    write_json(copy / 'moon.json', {
+        'design': 'moon',
+        'fonts': {'css_filename': 'moon-fonts.css', 'css2_families': ['X']},
+    })
     result = parse_result(run_cli(str(tmp_path)))
     assert 'inputs.json' not in result['corrupt_products']
     assert result['next_phase']['id'] != '1-gather-inputs'

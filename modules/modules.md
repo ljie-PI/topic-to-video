@@ -18,10 +18,10 @@
 ```
 modules.md                                 本文档：入口、组装流程、约定
 designs/
-  designs.md                              主题变量约定（token 契约：--c-* 颜色 / --font-* / --motion-* / 字号下限）、字体清单格式、备选配色
-  default/default.md, fonts.json, textures/   主题：燕麦纸（暖燕麦棉纸 + 低饱和墨灰与灰薰衣草）；paper.jpg
-  github/github.md, fonts.json, textures/   主题：纸本（冷灰棉纸 + 低饱和 GitHub 色）；paper.jpg、slate.jpg
-  producthunt/producthunt.md, fonts.json, textures/   主题：亚麻纸（粉调亚麻纸 + 低饱和墨蓝与陶土橙）；paper.jpg
+  designs.md                              主题变量约定（token 契约：--c-* 颜色 / --font-* / --motion-* / 字号下限）、design JSON 与字体清单格式、备选配色
+  default/default.md, default.json, textures/   主题：燕麦纸（暖燕麦棉纸 + 低饱和墨灰与灰薰衣草）；paper.jpg
+  github/github.md, github.json, textures/   主题：纸本（冷灰棉纸 + 低饱和 GitHub 色）；paper.jpg、slate.jpg
+  producthunt/producthunt.md, producthunt.json, textures/   主题：亚麻纸（粉调亚麻纸 + 低饱和墨蓝与陶土橙）；paper.jpg
 layouts/
   presenter.md, presenter.json            布局：讲解模式（人物右下角主持，主 / 副展示区，上下界面条）
   stage.md, stage.json                    布局：舞台模式（1920×1080，无主持人，主展示区贯穿，全局字幕区）
@@ -55,7 +55,7 @@ examples/
 | 要做的事 | 先读 |
 |---|---|
 | 做一类已有模板的视频（如 GitHub 热榜） | `templates/<类型>/<类型>.md`，再看它用到的场景和组件文档 |
-| 选外观 / 新建主题 | `designs/designs.md`，再看具体主题 |
+| 选外观 / 新建主题 | `designs/designs.md`，再看具体主题的 `<主题>.md` + `<主题>.json`（机器可读 token、字号与字体契约） |
 | 安排版面、确定区域坐标 | `layouts/<布局>.md` + 同名的 `.json`（机器可读区域定义，字幕脚本读它的 `caption` 段） |
 | 挂某个组件、写它的数据 | `components/<组件>/<组件>.md` |
 | 设计某个 scene 的画面（选形态、摆位置、配动效） | `patterns/<类>/<pattern>.md`，动效问题再看 `motion.md` |
@@ -128,7 +128,7 @@ window.VIDEO = {
 
 ## 扩展约定
 
-- **新主题**：按 `designs/designs.md` 定义全部变量（颜色 + 字体 + 运动 token + 字号下限），并写一份 `fonts.json` 字体清单。文档和清单都放 `designs/<名>/`，文档名 `<名>.md`。
+- **新主题**：按 `designs/designs.md` 定义全部变量（颜色 + 字体 + 运动 token + 字号下限），同时写 `<名>.md` 和 `<名>.json`，都放在 `designs/<名>/`。JSON 是机器契约：`tokens` 与文档 CSS 一致，另含 `min_font_px`、`caption_font_px` 和 `fonts` 字体清单。
 - **新布局**：写清每个区域的坐标、尺寸、层级，以及哪个组件填哪个区域；再放一份同名 `.json` 区域定义（`canvas` / `regions` / `caption`），数值与文档一致。放 `layouts/<名>.md`。
 - **新组件**：
   - 不带内容，只读主题变量，位置默认按某个布局；
