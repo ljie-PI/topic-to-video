@@ -16,6 +16,8 @@
 
 Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产出的 catalog，不直接接触素材 `local_path`。
 
+**素材引用采用方案 A（slug-qualified ref）。** 素材 `id` 保持 harvester 写出的文件 stem，只在所属 entry 内唯一，不改 harvester / manifest 的 id。Phase 6 的图片 / 视频 ref 必须写成 `<slug>/<id>`，视频 clip 必须写成 `<slug>/<video_id>:<start>-<end>`；`slug` 是 `entries[*].slug`，解析时只查该 entry。两个 entry 可以各有 `img_001`，同一个 video id 也可以出现在多个 entry，它们由不同 slug 明确区分；裸 id 不是有效 ref。Phase 8 按同一契约把图片解析到该 entry 的 `local_path`，把 clip 解析到该 entry 的 `selected_clips[].clip_path`。
+
 ---
 
 **优先委派给 coding agent。** 本阶段 context 消耗大（要对很多图片 / 帧做视觉分析，30-50+ 次工具调用）。按 `references/delegation/conventions.md` 的统一委派约定派发（默认 claude-code，派发 prompt 一句话，让被委派的 agent 自己读输入）。主 agent 只做四件事：

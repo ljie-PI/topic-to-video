@@ -153,6 +153,15 @@ class TestHandoffContent:
 
         assert sections['Coding Agent'] == 'codex'
 
+    def test_script_handoff_renders_slug_qualified_material_ref_formats(self, tmp_path: Path):
+        ws = make_workspace(tmp_path)
+        prepare(ws, 'script')
+
+        outputs = handoff_sections((ws / 'script-handoff.md').read_text(encoding='utf-8'))['Outputs']
+
+        assert '`<slug>/<id>`' in outputs
+        assert '`<slug>/<video_id>:<start>-<end>`' in outputs
+
     def test_research_brief_is_a_required_path_and_the_catalog_follows_fetch_materials(self, tmp_path: Path):
         ws = make_workspace(tmp_path, fetch_materials=False)
         prepare(ws, 'script')

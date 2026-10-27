@@ -11,7 +11,7 @@
 - **配音**：只用主 agent 生成的 `voice_clone/narration.mp3`，不重生成 TTS、不用任何其他音频来源；画面与解说的同步以这份音频为最终边界。
 - **字幕**：字幕文本来自 `transcribe/subtitle-units.json` 的字幕单元，逐字使用，不自己改写、不重新断句。字幕单元已按句末标点分段，句内只在 `，；、：——`（含半角 `, ; :`）处断开、绝不在单词或数字中间切断：单元边界不可改动（禁止重新排序、合并或拆分），逐单元原样上屏。
 - **时间**：段落、cue 与语义节拍 beat 的起止秒来自 `transcribe/timeline.json`；scene 切分、cue 锚点和 beat 对齐以它为准。
-- **素材**：画面素材只来自 `material-catalog.json`。图片用素材 id，解析到 `local_path`：catalog 沿用 v2 harvest manifest 的路径，所有相对 `local_path` 都以 `{work_dir}/{topic_name}/harvest_page/` 为 base（不是 `composition/` 或当前目录），旧 catalog 的绝对路径原样使用。视频 clip 用 `<video_id>:<start>-<end>`，一律解析到对应 `selected_clips[].clip_path`（Phase 5 已切好的无音轨片段文件，相对工作区根 `{work_dir}/{topic_name}/`），不使用视频的 `local_path`、不嵌入整段原视频；场景规划只引用了视频 id 时，从该视频的 `selected_clips` 里挑片段。读取或复制进 composition 前先按此规则解析。视频仍然静音播放（`<video>` 带 `muted playsinline`）。
+- **素材**：画面素材只来自 `material-catalog.json`。图片 / 视频 ref 用 `<slug>/<id>`，先定位 `entries[*].slug` 对应的 entry，再在该 entry 内按 id 找素材；裸 id 无效。图片解析到该 entry 的 `local_path`：catalog 沿用 v2 harvest manifest 的路径，所有相对 `local_path` 都以 `{work_dir}/{topic_name}/harvest_page/` 为 base（不是 `composition/` 或当前目录），旧 catalog 的绝对路径原样使用。视频 clip 用 `<slug>/<video_id>:<start>-<end>`，一律解析到该 entry 对应的 `selected_clips[].clip_path`（Phase 5 已切好的无音轨片段文件，相对工作区根 `{work_dir}/{topic_name}/`），不使用视频的 `local_path`、不嵌入整段原视频；场景规划只引用了 `<slug>/<video_id>` 时，从该 entry 的视频 `selected_clips` 里挑片段。同一个 video id 出现在多个 entry 时，slug 决定使用哪一个 entry 的片段，不能跨 entry 匹配窗口。读取或复制进 composition 前先按此规则解析。视频仍然静音播放（`<video>` 带 `muted playsinline`）。
 - **字体**：只用主 agent 预置的字体目录（`composition/assets/fonts/`，由所选 design 决定），不依赖系统字体。
 
 ## 二、必须参考 design

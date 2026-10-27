@@ -38,7 +38,7 @@
 scripts/cut-clips.py {work_dir}/{topic_name}
 ```
 
-对 catalog 里每个视频的每个 `selected_clip`，切出 `{work_dir}/{topic_name}/clips/<video_id>_<start:.2f>-<end:.2f>.mp4`（`-an` 去掉音轨，libx264 重编码），在该 clip 上写入 `clip_path`（相对工作区），并原地更新 `material-catalog.json`（原子写、保留原文件权限）。视频的相对 `local_path` 以 `harvest_page/` 为 base，绝对路径原样使用。目标文件已存在且非空时跳过，所以改过 catalog 后可以直接重跑。输出 JSON：`{"success": true, "clips": [{"ref": "<video_id>:<start>-<end>", "clip_path": ..., "skipped": false}], "errors": []}`；只要有一个 clip 失败就退出 1（已切好的保留且 catalog 增量写回），按 `errors` 里的 `ref` 与原因修 catalog（窗口、`local_path`）后重跑。
+对 catalog 里每个视频的每个 `selected_clip`，切出 `{work_dir}/{topic_name}/clips/<video_id>_<start:.2f>-<end:.2f>.mp4`（`-an` 去掉音轨，libx264 重编码），在该 clip 上写入 `clip_path`（相对工作区），并原地更新 `material-catalog.json`（原子写、保留原文件权限）。视频的相对 `local_path` 以 `harvest_page/` 为 base，绝对路径原样使用。目标文件已存在且非空时跳过，所以改过 catalog 后可以直接重跑。输出 JSON：`{"success": true, "clips": [{"ref": "<slug>/<video_id>:<start>-<end>", "clip_path": ..., "skipped": false}], "errors": []}`；只要有一个 clip 失败就退出 1（已切好的保留且 catalog 增量写回），按 `errors` 里的 `ref` 与原因修 catalog（窗口、`local_path`）后重跑。
 
 **`material-catalog.json` 的结构：**
 
@@ -84,8 +84,8 @@ scripts/cut-clips.py {work_dir}/{topic_name}
 ```
 
 - `entries[*].slug` 在每个 URL 上唯一，与 harvest 输出目录名一致。
-- 每张图 / 每个视频都带一个 `id`（harvester 写出的文件 stem，例如 `img_001` 或 YouTube video id）。Phase 6 起通过 **`material_ref`** 引用素材：图片 / 视频用素材 id，视频 clip 用 `<video_id>:<start>-<end>`（秒，与 `selected_clips` 对应）。Phase 8 的 composition agent 负责解析 `material_ref`：图片解析到 catalog entry 的 `local_path`，视频 clip 一律解析到 `selected_clips[].clip_path`（见下），不再使用视频的 `local_path`；主 agent 永远不直接碰 `local_path`。
-- `selected_clips[].clip_path` 指向无音轨的片段文件，相对**工作区根**（不同于图片 / 视频 `local_path` 的 `harvest_page/` base）；Phase 6 的 `<video_id>:<start>-<end>` 引用对应的就是它。composition 嵌入视频时只用 `clip_path`。
+- 每张图 / 每个视频都带一个 `id`（harvester 写出的文件 stem，例如 `img_001` 或 YouTube video id），只在所属 entry 内唯一，不改 harvester / manifest 的 id。Phase 6 起通过 **`material_ref`** 引用素材：图片 / 视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>`（秒，与该 slug entry 的 `selected_clips` 对应），裸 id 无效。Phase 8 的 composition agent 负责按 slug + id 解析 `material_ref`：图片解析到该 catalog entry 的 `local_path`，视频 clip 一律解析到该 entry 的 `selected_clips[].clip_path`（见下），不再使用视频的 `local_path`；主 agent 永远不直接碰 `local_path`。
+- `selected_clips[].clip_path` 指向无音轨的片段文件，相对**工作区根**（不同于图片 / 视频 `local_path` 的 `harvest_page/` base）；Phase 6 的 `<slug>/<video_id>:<start>-<end>` 引用对应的就是它。composition 嵌入视频时只用 `clip_path`。
 - `semantic_description` 是结合话题 context 生成的叙事锚点描述（"适合用于说明 X 概念 / Y 论点"），而非纯粹的图像内容描述；Phase 6 的场景规划（`material_candidates`）和 Phase 8 的 composition agent 都依赖它做匹配决策。
 - **`width` / `height` 必须透传**：图片由 harvester 抓取时记录；视频由 `video-download.py --harvest-dir` 通过 ffprobe 写入 manifest，构建 catalog 时直接搬过来。Phase 8 的 HyperFrames sub-agent 用这两个字段为每个素材容器设置正确的宽高比，**禁止猜或假设 16:9**。若个别素材缺失（旧 manifest、抓取失败），catalog 里写 `null` 而不是省略字段。
 - `aspect_ratio`、`ratio_bucket`、`layout_affordance`、`focal_region` 是布局提示字段，优先由 Phase 5 根据 `width` / `height`、视觉分析和 topic context 写入；旧 catalog 缺失时，可按 `width / height` 推断。`ratio_bucket` 建议按 `r = width / height` 判定：`ultra-wide` / `strip` `r >= 2.4`；`wide` `1.20 <= r < 2.4`；`square-ish` `0.90 <= r < 1.20`；`tall` `0.50 <= r < 0.90`；`ultra-tall` `r < 0.50`。`tall` / `ultra-tall` 素材写入 `layout_affordance: ["viewport_reveal"]`，并提供 `focal_region`、start / mid / end 关键区域说明或 avoid-region。

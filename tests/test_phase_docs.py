@@ -133,6 +133,34 @@ def test_catalog_delegation_package_documents_the_paper_only_path():
     assert 'focal_region' in section
 
 
+def test_material_ref_contract_is_slug_qualified_across_phase_and_delegation_docs():
+    phase_5 = doc_text('references/phases/05-material-catalog.md')
+    assert '方案 A' in phase_5
+    assert '只在所属 entry 内唯一' in phase_5
+    assert '不改 harvester / manifest 的 id' in phase_5
+
+    qualified_ref = '`<slug>/<id>`'
+    qualified_clip = '`<slug>/<video_id>:<start>-<end>`'
+    for doc in (
+        'references/phases/05-material-catalog.md',
+        'references/phases/06-script-scene-plan.md',
+        'references/delegation/catalog/base-instructions.md',
+        'references/delegation/script/base-instructions.md',
+        'references/delegation/script/handoff-template.md',
+        'references/delegation/composition/base-instructions.md',
+        'references/delegation/composition/handoff-template.md',
+    ):
+        text = doc_text(doc)
+        assert qualified_ref in text, doc
+        assert qualified_clip in text, doc
+
+    script_base = doc_text('references/delegation/script/base-instructions.md')
+    assert '"ref": "example/img_001"' in script_base
+    assert '裸 id' in script_base
+    composition_base = doc_text('references/delegation/composition/base-instructions.md')
+    assert '同一个 video id 出现在多个 entry' in composition_base
+
+
 def test_phase_1_selects_presenter_for_an_untemplated_host_request():
     phase_1 = doc_text('references/phases/01-gather-inputs.md')
 

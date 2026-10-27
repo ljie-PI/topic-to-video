@@ -169,8 +169,8 @@ INPUTS_FIELD_PREFIX = 'inputs.json#'
 CHARS_PER_SECOND = 7.5
 SCRIPT_LENGTH_TOLERANCE = 0.15
 
-# A scene-plan clip ref "<video_id>:<start>-<end>" must match a catalog
-# selected_clips entry to within this many seconds on both ends.
+# A scene-plan clip ref "<slug>/<video_id>:<start>-<end>" must match a
+# selected_clips entry in that catalog entry to within this many seconds on both ends.
 CLIP_REF_TOLERANCE_S = 0.01
 
 # inputs.json's duration is minutes: a number, or a string of a number plus an
@@ -178,7 +178,7 @@ CLIP_REF_TOLERANCE_S = 0.01
 # is rejected rather than read as that many minutes.
 DURATION_TEXT = re.compile(r'^\s*(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|分钟|分)?\s*$', re.IGNORECASE)
 
-# The window of a clip ref "<video_id>:<start>-<end>", in seconds, written exactly so.
+# The window of a clip ref "<slug>/<video_id>:<start>-<end>", in seconds, written exactly so.
 CLIP_WINDOW = re.compile(r'^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$')
 
 
@@ -422,8 +422,8 @@ def check_catalog_structure(ws: Path, relpath: str) -> CheckResult:
 
 @dataclass
 class CatalogIndex:
-    """What scene-plan refs can point at: every image / video id, plus each
-    video's selected clip windows as (start_s, end_s)."""
+    """What scene-plan refs can point at: slug-qualified image / video ids,
+    plus each qualified video id's selected clip windows as (start_s, end_s)."""
 
     ids: set[str]
     clips: dict[str, list[tuple[float, float]]]
@@ -440,11 +440,15 @@ def load_catalog_index(ws: Path) -> CatalogIndex | None:
     ids: set[str] = set()
     clips: dict[str, list[tuple[float, float]]] = {}
     for entry in data['entries']:
+        slug = entry.get('slug')
+        if not isinstance(slug, str) or not slug:
+            continue
         for image in entry.get('images', []):
-            ids.add(image['id'])
+            ids.add(f'{slug}/{image["id"]}')
         for video in entry.get('videos', []):
-            ids.add(video['id'])
-            windows = clips.setdefault(video['id'], [])
+            video_ref = f'{slug}/{video["id"]}'
+            ids.add(video_ref)
+            windows = clips.setdefault(video_ref, [])
             for clip in video.get('selected_clips') or []:
                 bounds = [clip.get(key) if isinstance(clip, dict) else None for key in ('start', 'end')]
                 if all(isinstance(b, (int, float)) and not isinstance(b, bool) for b in bounds):
@@ -453,12 +457,16 @@ def load_catalog_index(ws: Path) -> CatalogIndex | None:
 
 
 def ref_resolves(ref: str, index: CatalogIndex) -> bool:
-    """A material ref is a catalog id, or `<video_id>:<start>-<end>` naming one
-    of that video's selected clips."""
+    """Resolve `<slug>/<id>`, or `<slug>/<video_id>:<start>-<end>` naming one
+    of that entry's selected clips. Bare ids are deliberately ambiguous."""
+    slug, slash, material_ref = ref.partition('/')
+    if not slash or not slug or not material_ref or '/' in material_ref:
+        return False
     if ref in index.ids:
         return True
-    video_id, colon, window = ref.rpartition(':')
-    if not colon or video_id not in index.clips:
+    video_id, colon, window = material_ref.rpartition(':')
+    video_ref = f'{slug}/{video_id}'
+    if not colon or video_ref not in index.clips:
         return False
     bounds = CLIP_WINDOW.match(window)
     if not bounds:
@@ -466,7 +474,7 @@ def ref_resolves(ref: str, index: CatalogIndex) -> bool:
     start, end = float(bounds.group(1)), float(bounds.group(2))
     return any(
         abs(start - clip_start) <= CLIP_REF_TOLERANCE_S and abs(end - clip_end) <= CLIP_REF_TOLERANCE_S
-        for clip_start, clip_end in index.clips[video_id]
+        for clip_start, clip_end in index.clips[video_ref]
     )
 
 

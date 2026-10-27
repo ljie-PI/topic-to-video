@@ -128,9 +128,13 @@ SCENE_PLAN = [
         'paragraphs': [1, 2],
         'intent': '开场与背景',
         'facts': [],
-        'material_candidates': [{'ref': 'img_001', 'score': 8, 'reason': '对应开场'}],
+        'material_candidates': [{'ref': 'example/img_001', 'score': 8, 'reason': '对应开场'}],
         'cues': [],
     }
+]
+
+SCENE_PLAN_PAPER = [
+    {**SCENE_PLAN[0], 'material_candidates': [{'ref': 'main-paper/img_001', 'score': 8, 'reason': '论文图'}]}
 ]
 
 # Without a catalog phase (no fetch_materials, not a paper) there is nothing to refer to.
@@ -273,7 +277,8 @@ def complete_through_script(ws: Path, *, approved: bool = True, **inputs_overrid
     write_json(ws / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
     inputs = {**INPUTS, **inputs_overrides}
     has_catalog = inputs['fetch_materials'] or inputs['input_mode'] == 'paper'
-    write_json(ws / 'scene-plan.json', SCENE_PLAN if has_catalog else SCENE_PLAN_NO_MATERIALS)
+    scene_plan = SCENE_PLAN_PAPER if inputs['input_mode'] == 'paper' else SCENE_PLAN
+    write_json(ws / 'scene-plan.json', scene_plan if has_catalog else SCENE_PLAN_NO_MATERIALS)
     if approved:
         approve(ws, 'script')
 
@@ -736,10 +741,18 @@ def scene(scene_id: str, paragraphs, candidates=()) -> dict:
 
 
 def scene_plan_problem(
-    tmp_path: Path, scenes, *, script: str = SCRIPT_TXT, approve_script: bool = False, **inputs_overrides
+    tmp_path: Path,
+    scenes,
+    *,
+    script: str = SCRIPT_TXT,
+    approve_script: bool = False,
+    catalog: dict | None = None,
+    **inputs_overrides,
 ) -> tuple[dict, str | None]:
     """Run a Phase 6 workspace whose scene-plan.json is `scenes`; returns (result, scene-plan detail)."""
-    complete_through_script(tmp_path, **inputs_overrides)
+    complete_through_script(tmp_path, approved=False, **inputs_overrides)
+    if catalog is not None:
+        write_json(tmp_path / 'material-catalog.json', catalog)
     write_script(tmp_path, script)
     write_json(tmp_path / 'scene-plan.json', scenes)
     if approve_script:
@@ -888,7 +901,13 @@ def candidates(*refs) -> list[dict]:
 
 @pytest.mark.parametrize(
     'ref',
-    ['img_001', 'vid_001', 'vid_001:12.0-18.5', 'vid_001:12-18.5', 'vid_001:12.005-18.495'],
+    [
+        'example/img_001',
+        'example/vid_001',
+        'example/vid_001:12.0-18.5',
+        'example/vid_001:12-18.5',
+        'example/vid_001:12.005-18.495',
+    ],
 )
 def test_scene_plan_accepts_refs_that_resolve(tmp_path: Path, ref: str):
     result, detail = scene_plan_problem(tmp_path, [scene('s1', [1, 2], candidates(ref))], approve_script=True)
@@ -896,29 +915,89 @@ def test_scene_plan_accepts_refs_that_resolve(tmp_path: Path, ref: str):
     assert '6-script-scene-plan' in result['completed_phases']
 
 
-def test_scene_plan_ref_missing_from_catalog_is_corrupt(tmp_path: Path):
-    result, detail = scene_plan_problem(tmp_path, [scene('s1', [1, 2], candidates('img_001', 'img_999'))])
+def test_scene_plan_duplicate_image_ids_resolve_by_entry_slug(tmp_path: Path):
+    catalog = catalog_with()
+    other = json.loads(json.dumps(catalog['entries'][0]))
+    other['slug'] = 'other'
+    other['videos'] = []
+    catalog['entries'].append(other)
+
+    result, detail = scene_plan_problem(
+        tmp_path,
+        [scene('s1', [1, 2], candidates('example/img_001', 'other/img_001'))],
+        approve_script=True,
+        catalog=catalog,
+    )
+
+    assert detail is None
+    assert '6-script-scene-plan' in result['completed_phases']
+
+
+@pytest.mark.parametrize('ref', ['missing/img_001', 'example/img_999'])
+def test_scene_plan_ref_with_nonexistent_slug_or_id_is_corrupt(tmp_path: Path, ref: str):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene('s1', [1, 2], candidates('example/img_001', ref))]
+    )
+
     assert result['next_phase']['id'] == '6-script-scene-plan'
     assert 'scene-plan.json' in result['corrupt_products']
-    assert "'img_999'" in detail and "'img_001'" not in detail, detail
+    assert repr(ref) in detail and "'example/img_001'" not in detail, detail
+
+
+def test_scene_plan_bare_material_id_is_corrupt(tmp_path: Path):
+    result, detail = scene_plan_problem(
+        tmp_path, [scene('s1', [1, 2], candidates('example/img_001', 'img_001'))]
+    )
+
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert "'img_001'" in detail and "'example/img_001'" not in detail, detail
+
+
+def test_scene_plan_duplicate_video_ids_and_clip_windows_are_scoped_by_slug(tmp_path: Path):
+    catalog = catalog_with()
+    other = json.loads(json.dumps(catalog['entries'][0]))
+    other['slug'] = 'other'
+    other_clip = other['videos'][0]['selected_clips'][0]
+    other_clip['start'], other_clip['end'] = 20.0, 22.0
+    other_clip['clip_path'] = 'clips/vid_001_20.00-22.00.mp4'
+    catalog['entries'].append(other)
+    write_clip(tmp_path / other_clip['clip_path'])
+    valid_refs = (
+        'example/vid_001',
+        'other/vid_001',
+        'example/vid_001:12.0-18.5',
+        'other/vid_001:20.0-22.0',
+    )
+    wrong_entry_window = 'other/vid_001:12.0-18.5'
+
+    result, detail = scene_plan_problem(
+        tmp_path,
+        [scene('s1', [1, 2], candidates(*valid_refs, wrong_entry_window))],
+        catalog=catalog,
+    )
+
+    assert 'scene-plan.json' in result['corrupt_products']
+    assert repr(wrong_entry_window) in detail, detail
+    for ref in valid_refs:
+        assert repr(ref) not in detail, detail
 
 
 @pytest.mark.parametrize(
     'ref',
     [
-        'vid_001:13.0-18.5',  # start differs by 1.0
-        'vid_001:12.0-18.6',  # end differs by 0.1
-        'vid_999:12.0-18.5',  # no such video
-        'img_001:12.0-18.5',  # an image has no clips
-        'vid_001:abc-def',
-        'vid_001:12.0',
-        'vid_001:12.0-18.5-20',
-        'vid_001:',
+        'example/vid_001:13.0-18.5',  # start differs by 1.0
+        'example/vid_001:12.0-18.6',  # end differs by 0.1
+        'example/vid_999:12.0-18.5',  # no such video
+        'example/img_001:12.0-18.5',  # an image has no clips
+        'example/vid_001:abc-def',
+        'example/vid_001:12.0',
+        'example/vid_001:12.0-18.5-20',
+        'example/vid_001:',
         ':12.0-18.5',
-        'vid_001:12.0 - 18.5',  # float() would accept these; the documented form has no spaces
-        'vid_001: 12-18.5',
-        'vid_001:+12-18.5',
-        'vid_001:1_2-18.5',
+        'example/vid_001:12.0 - 18.5',  # float() would accept these; the documented form has no spaces
+        'example/vid_001: 12-18.5',
+        'example/vid_001:+12-18.5',
+        'example/vid_001:1_2-18.5',
     ],
 )
 def test_scene_plan_clip_ref_that_matches_no_selected_clip_is_corrupt(tmp_path: Path, ref: str):
@@ -928,17 +1007,20 @@ def test_scene_plan_clip_ref_that_matches_no_selected_clip_is_corrupt(tmp_path: 
 
 
 def test_scene_plan_lists_every_invalid_ref(tmp_path: Path):
-    scenes = [scene('s1', [1], candidates('nope_1')), scene('s2', [2], candidates('img_001', 'nope_2'))]
+    scenes = [
+        scene('s1', [1], candidates('example/nope_1')),
+        scene('s2', [2], candidates('example/img_001', 'example/nope_2')),
+    ]
     _, detail = scene_plan_problem(tmp_path, scenes)
-    assert "'nope_1'" in detail and "'nope_2'" in detail, detail
+    assert "'example/nope_1'" in detail and "'example/nope_2'" in detail, detail
 
 
 def test_scene_plan_without_catalog_phase_must_have_no_candidates(tmp_path: Path):
     result, detail = scene_plan_problem(
-        tmp_path, [scene('s1', [1, 2], candidates('img_001'))], fetch_materials=False
+        tmp_path, [scene('s1', [1, 2], candidates('example/img_001'))], fetch_materials=False
     )
     assert 'scene-plan.json' in result['corrupt_products']
-    assert 'fetch_materials' in detail and "'img_001'" in detail, detail
+    assert 'fetch_materials' in detail and "'example/img_001'" in detail, detail
 
 
 def test_scene_plan_without_catalog_phase_and_no_candidates_is_accepted(tmp_path: Path):
@@ -1372,7 +1454,7 @@ def test_paper_mode_without_fetch_full_run(tmp_path: Path):
 
 def test_paper_mode_without_fetch_scene_plan_refs_resolve_against_the_catalog(tmp_path: Path):
     result, detail = scene_plan_problem(
-        tmp_path, [scene('s1', [1, 2], candidates('img_001'))],
+        tmp_path, [scene('s1', [1, 2], candidates('main-paper/img_001'))],
         input_mode='paper', fetch_materials=False, approve_script=True,
     )
     assert detail is None
@@ -1381,10 +1463,11 @@ def test_paper_mode_without_fetch_scene_plan_refs_resolve_against_the_catalog(tm
 
 def test_paper_mode_without_fetch_scene_plan_ref_missing_from_catalog_is_corrupt(tmp_path: Path):
     result, detail = scene_plan_problem(
-        tmp_path, [scene('s1', [1, 2], candidates('nope_1'))], input_mode='paper', fetch_materials=False
+        tmp_path, [scene('s1', [1, 2], candidates('main-paper/nope_1'))],
+        input_mode='paper', fetch_materials=False,
     )
     assert 'scene-plan.json' in result['corrupt_products']
-    assert "'nope_1'" in detail, detail
+    assert "'main-paper/nope_1'" in detail, detail
 
 
 def test_no_fetch_full_run(tmp_path: Path):
