@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Prepare the handoff of a delegated step: materialize its package, fill the handoff.
 
-The main agent delegates the script (Phase 6) and composition (Phase 8) steps
-to a coding agent, which reads a handoff file. The handoff is deterministic,
+The main agent delegates the catalog (Phase 5), script (Phase 6) and
+composition (Phase 8) steps to a coding agent, which reads a handoff file.
+The handoff is deterministic,
 so this script generates it instead of the main agent filling a prose
 template by hand. Per call it does three things:
 
@@ -22,7 +23,7 @@ template by hand. Per call it does three things:
      exist, is an error.
 
 Usage:
-  python3 scripts/prepare-handoff.py <workspace_dir> <script|composition> [--refresh]
+  python3 scripts/prepare-handoff.py <workspace_dir> <catalog|script|composition> [--refresh]
 
 Output: one JSON document on stdout,
   {"success": true, "handoff_path": "...", "materialized": [...],
@@ -54,7 +55,7 @@ TOOL_NAME = 'prepare-handoff'
 
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 
-STEPS = ['script', 'composition']
+STEPS = ['catalog', 'script', 'composition']
 
 DELEGATION = Path('references') / 'delegation'
 
@@ -258,6 +259,25 @@ def instruction_list(ws: Path, *names: str) -> str:
     return '\n'.join(f'- {file}' for file in files) if files else 'None'
 
 
+def catalog_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
+    delegation = ws / DELEGATION
+    base = delegation / 'catalog' / 'base-instructions.md'
+    return Plan(
+        values={
+            'required_references': numbered([f'{base}（基础指令：素材处理、catalog schema、仅论文素材路径、切片段）']),
+            'additional_instructions': 'None',
+        },
+        inputs=[
+            ws / 'harvest_page' / 'manifest.json',
+            ws / 'research-brief.md',
+            ws / 'vision_analyze' / 'topic-context.txt',
+            ws / 'inputs.json',
+        ],
+        references=[delegation / 'conventions.md', base],
+        sources=[SKILL_ROOT / DELEGATION / 'conventions.md', SKILL_ROOT / DELEGATION / 'catalog'],
+    )
+
+
 def script_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
     template = inputs['template']
     delegation = ws / DELEGATION
@@ -380,7 +400,7 @@ def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
     return plan
 
 
-STEP_PLANS = {'script': script_plan, 'composition': composition_plan}
+STEP_PLANS = {'catalog': catalog_plan, 'script': script_plan, 'composition': composition_plan}
 
 
 def read_template(step: str) -> str:
@@ -407,6 +427,7 @@ def render_handoff(ws: Path, step: str, inputs: dict[str, Any], plan: Plan) -> s
     values = {
         'topic_name': ws.name,
         'ws': str(ws),
+        'ws_q': shlex.quote(str(ws)),
         'skill_root': str(SKILL_ROOT),
         'skill_root_q': shlex.quote(str(SKILL_ROOT)),
         'venv_activate_q': shlex.quote(str(SKILL_ROOT / '.venv' / 'bin' / 'activate')),

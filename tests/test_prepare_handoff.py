@@ -47,8 +47,11 @@ def make_workspace(tmp_path: Path, step: str = 'script', **overrides) -> Path:
     inputs = {**INPUTS, **overrides}
     write(ws / 'inputs.json', json.dumps(inputs, ensure_ascii=False))
     write(ws / 'research-brief.md', '# brief\n')
-    if inputs['fetch_materials']:
+    if inputs['fetch_materials'] and step != 'catalog':
         write(ws / 'material-catalog.json', '{"entries": []}')
+    if step == 'catalog':
+        write(ws / 'harvest_page' / 'manifest.json', '{"entries": []}')
+        write(ws / 'vision_analyze' / 'topic-context.txt', '话题摘要\n')
     if step == 'composition':
         write(ws / 'script.txt', '甲\n\n乙\n')
         write(ws / 'scene-plan.json', '[]')
@@ -249,6 +252,99 @@ class TestMaterialization:
         assert (package / 'handoff-template.md').is_file()
         assert (package / 'base-instructions.md').read_text(encoding='utf-8') == 'edited'
         assert rerun['materialized'] == [str(package)]
+
+
+class TestCatalogHandoff:
+    def test_writes_a_five_section_handoff_of_absolute_paths(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'catalog')
+
+        result = prepare(ws, 'catalog')
+
+        handoff = ws / 'catalog-handoff.md'
+        assert result['handoff_path'] == str(handoff)
+        assert result['dispatch_prompt'] == f'读取 {handoff} 并按它执行；完成后报告产物路径。'
+        assert result['fonts'] is None
+        text = handoff.read_text(encoding='utf-8')
+        assert text.startswith('# catalog-handoff — demo-topic')
+        assert list(handoff_sections(text)) == SECTIONS
+        assert '{{' not in text and '}}' not in text
+        assert pointed_at_paths_that_do_not_exist(text) == {
+            ws / 'material-catalog.json',
+            ws / 'extract_frames',
+            ws / 'clips',
+        }
+
+    def test_inputs_outputs_and_cut_clips_command(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'catalog')
+        prepare(ws, 'catalog')
+
+        sections = handoff_sections((ws / 'catalog-handoff.md').read_text(encoding='utf-8'))
+        inputs = sections['Inputs']
+        for relative in (
+            'harvest_page/manifest.json',
+            'research-brief.md',
+            'vision_analyze/topic-context.txt',
+            'inputs.json',
+        ):
+            assert f'{ws}/{relative}' in inputs
+        outputs = sections['Outputs']
+        for relative in ('material-catalog.json', 'extract_frames/', 'vision_analyze/', 'clips/'):
+            assert f'{ws}/{relative}' in outputs
+        assert (
+            f'source {REPO_ROOT}/.venv/bin/activate && '
+            f'python3 {REPO_ROOT}/scripts/cut-clips.py {ws}'
+        ) in outputs
+        assert 'python3 scripts/' not in outputs
+
+    def test_required_references_and_fixed_none_additional_instructions(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'catalog')
+        write(ws / 'narration-instructions.md', 'not for catalog')
+        write(ws / 'composition-instructions.md', 'not for catalog')
+        prepare(ws, 'catalog')
+
+        sections = handoff_sections((ws / 'catalog-handoff.md').read_text(encoding='utf-8'))
+
+        base = ws / 'references' / 'delegation' / 'catalog' / 'base-instructions.md'
+        assert absolute_paths(sections['Required References']) == {
+            base,
+            ws / 'references' / 'delegation' / 'conventions.md',
+        }
+        assert sections['Additional Instructions'] == 'None'
+
+
+class TestCatalogMaterialization:
+    def test_catalog_package_and_conventions_are_copied_without_modules_or_fonts(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'catalog')
+
+        result = prepare(ws, 'catalog', env={'FONTS_RESOURCES_DIR': str(tmp_path / 'no-fonts')})
+
+        delegation = ws / 'references' / 'delegation'
+        source = REPO_ROOT / 'references' / 'delegation'
+        assert (delegation / 'conventions.md').read_bytes() == (source / 'conventions.md').read_bytes()
+        for name in ('base-instructions.md', 'handoff-template.md'):
+            assert (delegation / 'catalog' / name).read_bytes() == (source / 'catalog' / name).read_bytes()
+        assert not (delegation / 'script').exists()
+        assert not (delegation / 'composition').exists()
+        assert not (ws / 'modules').exists()
+        assert not (ws / 'composition').exists()
+        assert result['materialized'] == [str(delegation / 'conventions.md'), str(delegation / 'catalog')]
+
+    def test_rerun_keeps_an_edited_copy_and_refresh_restores_it(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'catalog')
+        prepare(ws, 'catalog')
+        copy = ws / 'references' / 'delegation' / 'catalog' / 'base-instructions.md'
+        copy.write_text('edited by the user', encoding='utf-8')
+
+        rerun = prepare(ws, 'catalog')
+
+        assert copy.read_text(encoding='utf-8') == 'edited by the user'
+        assert rerun['materialized'] == []
+
+        refreshed = prepare(ws, 'catalog', '--refresh')
+
+        source = REPO_ROOT / 'references' / 'delegation' / 'catalog' / 'base-instructions.md'
+        assert copy.read_bytes() == source.read_bytes()
+        assert str(ws / 'references' / 'delegation' / 'catalog') in refreshed['materialized']
 
 
 COMPOSITION_PRODUCTS = {
@@ -455,11 +551,11 @@ class TestFailures:
     def test_unknown_step_is_a_bad_argument(self, tmp_path: Path):
         ws = make_workspace(tmp_path)
 
-        proc, result = run_cli(str(ws), 'catalog')
+        proc, result = run_cli(str(ws), 'not-a-step')
 
         assert proc.returncode == 2
         assert result['success'] is False
-        assert not (ws / 'catalog-handoff.md').exists()
+        assert not (ws / 'not-a-step-handoff.md').exists()
 
     def test_missing_arguments_are_bad_arguments(self):
         proc, result = run_cli()
@@ -746,6 +842,7 @@ class TestDelegationDocs:
     """The docs the main agent follows hand it prepare-handoff.py, not a template to fill."""
 
     @pytest.mark.parametrize('doc, step', [
+        ('references/phases/05-material-catalog.md', 'catalog'),
         ('references/phases/06-script-scene-plan.md', 'script'),
         ('references/phases/08-composition.md', 'composition'),
     ])
@@ -818,8 +915,50 @@ class TestDelegationDocs:
         assert '05-material-catalog' not in text
         assert '论文模式沿用论文自身的逻辑流' in text
 
-    def test_conventions_scope_the_script_to_script_and_composition(self):
+    def test_conventions_list_all_three_delegation_packages(self):
         text = (REPO_ROOT / 'references' / 'delegation' / 'conventions.md').read_text(encoding='utf-8')
 
-        assert '只支持 `script` 和 `composition`' in text
+        for step in ('catalog', 'script', 'composition'):
+            assert f'`references/delegation/{step}/`' in text
+        assert '只支持 `script` 和 `composition`' not in text
         assert '重新运行一次 `prepare-handoff.py`' in text
+
+    def test_phase_5_keeps_main_agent_workflow_and_inline_fallback(self):
+        text = (REPO_ROOT / 'references' / 'phases' / '05-material-catalog.md').read_text(encoding='utf-8')
+
+        assert '写进委派 prompt' not in text
+        assert '把摘要内容直接写进委派 prompt' not in text
+        assert '主 agent 只做四件事' in text
+        assert '200 字以内' in text
+        assert '3-5 个核心论点或关键概念' in text
+        assert 'pipeline-status.py {work_dir}/{topic_name}' in text
+        assert '没有 sub-agent 工具' in text
+        assert 'references/delegation/catalog/base-instructions.md' in text
+        assert '一次处理一条 manifest entry' in text
+        assert '增量写入 `material-catalog.json`' in text
+        assert '`material-catalog.json` 的结构' not in text
+        assert '**Mode 1（显式 VLM）' not in text
+
+    def test_catalog_base_instructions_contain_all_delegated_rules(self):
+        text = (REPO_ROOT / 'references' / 'delegation' / 'catalog' / 'base-instructions.md').read_text(encoding='utf-8')
+
+        for required in (
+            '**路径 base（必须保持一致）',
+            '1. **抽帧**',
+            '2. **解析字幕**',
+            '**Mode 1（显式 VLM）',
+            '**Mode 2（主 agent 直接分析）',
+            '**Paper-origin entries',
+            '4. **组合**',
+            '5. **过滤：**',
+            '**切片段（所有 entry 的 catalog 写完之后，运行一次）',
+            'scripts/cut-clips.py {work_dir}/{topic_name}',
+            '`material-catalog.json` 的结构',
+            '## 仅论文素材（`input_mode = "paper"` 且 `fetch_materials = false`）',
+        ):
+            assert required in text
+
+    def test_skill_tool_table_includes_the_catalog_step(self):
+        text = (REPO_ROOT / 'SKILL.md').read_text(encoding='utf-8')
+
+        assert '| `prepare-handoff.py` | 委派步骤（catalog / script / composition）' in text

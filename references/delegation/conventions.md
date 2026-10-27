@@ -1,6 +1,6 @@
 # 委派约定（统一）
 
-Phase 6（脚本与场景规划）与 Phase 8（composition）委派给 coding agent 完成，共用本约定。Phase 5（素材 catalog）也按本约定的派发方式委派；`prepare-handoff.py` 目前只支持 `script` 和 `composition` 两个 step。
+Phase 5（素材 catalog）、Phase 6（脚本与场景规划）与 Phase 8（composition）委派给 coding agent 完成，共用本约定。三个委派包分别是 `references/delegation/catalog/`、`references/delegation/script/`、`references/delegation/composition/`；handoff 都由 `prepare-handoff.py` 生成。
 
 ## 委派给谁
 
@@ -30,8 +30,8 @@ Phase 6（脚本与场景规划）与 Phase 8（composition）委派给 coding a
 
 1. **委派包的基础指令**（`references/delegation/<step>/base-instructions.md`）；
 2. **所选模板的指令**：script 步骤读 `modules/templates/<template>/narration.md`（旁白要求）；composition 步骤读模板的组装说明。未选模板则跳过；
-3. **工作区里的项目指令文件**，每步一份：script 步骤读 `<work_dir>/<topic_name>/narration-instructions.md`，composition 步骤读 `<work_dir>/<topic_name>/composition-instructions.md`。旧项目的 `style-prompt.md` 视为 composition 项目指令的一部分，由 composition 步骤读取；
-4. **用户在对话中提出的要求**，由主 agent 追加写入第 3 项对应的项目指令文件（`narration-instructions.md` / `composition-instructions.md`），再委派。**追加必须在运行 `prepare-handoff.py` 之前**：Additional Instructions 在生成 handoff 时计算一次，之后才写的指令不会出现在已生成的 handoff 里——这时重新运行一次 `prepare-handoff.py`（幂等；已物化的副本不会被覆盖）再派发。
+3. **工作区里的项目指令文件**：script 步骤读 `<work_dir>/<topic_name>/narration-instructions.md`，composition 步骤读 `<work_dir>/<topic_name>/composition-instructions.md`。旧项目的 `style-prompt.md` 视为 composition 项目指令的一部分，由 composition 步骤读取；catalog 步骤没有项目指令文件，Additional Instructions 固定写 None；
+4. **用户在对话中提出的要求**，script / composition 步骤由主 agent 追加写入第 3 项对应的项目指令文件（`narration-instructions.md` / `composition-instructions.md`），再委派。**追加必须在运行 `prepare-handoff.py` 之前**：Additional Instructions 在生成 handoff 时计算一次，之后才写的指令不会出现在已生成的 handoff 里——这时重新运行一次 `prepare-handoff.py`（幂等；已物化的副本不会被覆盖）再派发。
 
 项目指令文件都是可选的：不存在就跳过，但 handoff 的 Additional Instructions 一节始终保留，写 None 或实际文件列表。
 
@@ -47,4 +47,4 @@ Phase 6（脚本与场景规划）与 Phase 8（composition）委派给 coding a
 
 handoff 由 `scripts/prepare-handoff.py <ws> <step> [--refresh]` 生成，主 agent 不手写：脚本把本约定和 `references/delegation/<step>/` 拷进 `<ws>/references/delegation/`（composition 另外把 `modules/`（不含 `examples/`）拷进 `<ws>/modules/`，并按所选 design 预置字体），再按模板填出 `<ws>/<step>-handoff.md`。已存在的副本不覆盖，`--refresh` 才覆盖。派发的 prompt 只有上面那一句。
 
-handoff 里的路径全是绝对路径，命令里的 skill 脚本写成 `source <skill_root>/.venv/bin/activate && python3 <skill_root>/scripts/<x>.py ...`，不依赖当前目录。委派包文档里的相对路径：`scripts/` 与 `references/phases/` 相对 skill 根目录；`references/delegation/` 相对工作区（那里有物化的副本）；`modules/` 在 composition 步骤相对工作区副本，在 script 步骤相对 skill 根目录（script 步骤不拷 modules）。
+handoff 里的路径全是绝对路径，命令里的 skill 脚本写成 `source <skill_root>/.venv/bin/activate && python3 <skill_root>/scripts/<x>.py ...`，不依赖当前目录。委派包文档里的相对路径：`scripts/` 与 `references/phases/` 相对 skill 根目录；`references/delegation/` 相对工作区（那里有物化的副本）；`modules/` 在 composition 步骤相对工作区副本，在 script 步骤相对 skill 根目录（script 与 catalog 步骤都不拷 modules）。

@@ -122,8 +122,8 @@ def test_phase_4_no_longer_documents_merging_the_parsed_paper():
     assert 'Paper mode' not in doc_text('references/phases/04-material-harvest.md')
 
 
-def test_phase_5_documents_the_paper_only_path():
-    catalog = doc_text('references/phases/05-material-catalog.md')
+def test_catalog_delegation_package_documents_the_paper_only_path():
+    catalog = doc_text('references/delegation/catalog/base-instructions.md')
     section = catalog.split('## 仅论文素材')[1]
     assert 'score: 8' in section and 'caption' in section
     # An empty caption means no caption: those figures go through the VLM step.
