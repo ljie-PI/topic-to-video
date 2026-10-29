@@ -4,7 +4,7 @@
 
 这份文档只规定外观，任何类型的视频都能用。
 
-背景贴图在 `designs/default/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体已经放在仓库的 `resources/fonts/default/`，安装方式见 1.4。
+背景贴图在 `designs/default/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体已经放在仓库的 `resources/fonts/`（CSS 在 `default/`，WOFF2 在共用的 `files/`），安装方式见 1.4。
 
 | 文件 | 用途 |
 |---|---|
@@ -86,7 +86,7 @@
 }
 ```
 
-字体已经下载好放在仓库的 `resources/fonts/default/`。安装：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/default`，把 NotoSansSC（中文和正文）、IBMPlexMono（代码、数字、路径）的 WOFF2 和一份 `default-fonts.css` 拷进工程，不联网。在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/default-fonts.css">` 引入，CSS 里的字体名就是上面变量用的 `NotoSansSC` / `IBMPlexMono`。
+字体已经下载好放在仓库的 `resources/fonts/`（CSS 在 `default/`，WOFF2 在共用的 `files/`）。安装：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/default`，把 NotoSansSC（中文和正文）、IBMPlexMono（代码、数字、路径）的 WOFF2 和一份 `default-fonts.css` 拷进工程，不联网。在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/default-fonts.css">` 引入，CSS 里的字体名就是上面变量用的 `NotoSansSC` / `IBMPlexMono`。
 
 ---
 

@@ -86,7 +86,7 @@
 }
 ```
 
-每个主题的字体已经下载好，提交在仓库的 `resources/fonts/<主题>/`（一份 CSS 加它引用的 WOFF2）。字体都按 SIL Open Font License 1.1 分发，许可文本在 `resources/fonts/licenses/`；新增字体家族时把它的 OFL.txt 一起放进去。视频工程用字体时只拷贝，不联网：
+每个主题的字体已经下载好，提交在仓库的 `resources/fonts/`：主题自己的目录 `resources/fonts/<主题>/` 里只放一份 CSS，它引用的 WOFF2 放在所有主题共用的字体池 `resources/fonts/files/`（文件名是 Google Fonts 下载地址的哈希）。多个主题用同一个字体家族时，WOFF2 只存一份，新增主题不会复制字体文件。字体都按 SIL Open Font License 1.1 分发，许可文本在 `resources/fonts/licenses/`；新增字体家族时把它的 OFL.txt 一起放进去。视频工程用字体时只拷贝，不联网：
 
 ```bash
 bash scripts/fonts-download.sh <目标目录> --theme modules/designs/<主题>
@@ -94,10 +94,10 @@ bash scripts/fonts-download.sh <目标目录> --theme modules/designs/<主题>
 bash scripts/fonts-download.sh <目标目录> <主题>
 ```
 
-`<名>.json` 的 `fonts` 段是这些字体的来源清单，只在维护时用：新建主题、或者想换字体版本时，改好清单后运行 `bash scripts/fonts-download.sh --refresh --theme <主题>`，脚本从 Google Fonts 重新下载并覆盖 `resources/fonts/<主题>/`，再把结果提交进仓库。
+`<名>.json` 的 `fonts` 段是这些字体的来源清单，只在维护时用：新建主题、或者想换字体版本时，改好清单后运行 `bash scripts/fonts-download.sh --refresh --theme <主题>`，脚本从 Google Fonts 重新下载，覆盖 `resources/fonts/<主题>/` 里的 CSS，只往字体池里补缺的 WOFF2（池里已有的不再下载），并清掉不再被任何主题 CSS 引用的 WOFF2，再把结果提交进仓库。
 
 - `fonts.css2_families`：Google Fonts css2 API 的 `family=` 参数，每项一个家族（含轴规格），`--refresh` 时脚本把它们用 `&` 拼成 `https://fonts.googleapis.com/css2?family=…&display=swap`。
-- `fonts.css_filename`：`resources/fonts/<主题>/` 里、以及装进工程后的 CSS 文件名；视频工程在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/<css_filename>">` 引入。
+- `fonts.css_filename`：`resources/fonts/<主题>/` 里、以及装进工程后的 CSS 文件名（装进工程时，CSS 和它引用的 WOFF2 平铺在目标目录里）；视频工程在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/<css_filename>">` 引入。
 - `fonts.rename`：Google 家族名到主题字体别名的逐项映射；刷新时只按这张表改名。不需要改名时用 `{}`（github 主题保留 Google 全名）。
 
 ## 现有主题

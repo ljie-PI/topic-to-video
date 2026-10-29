@@ -48,7 +48,7 @@ examples/
   jay-actions/                            人物动作演示：15 个动作加打字和瞥视逐个演一遍（59.9 秒）
 ```
 
-主题字体已经下载好放在仓库的 `resources/fonts/<主题>/`，用 skill 根目录的 `scripts/fonts-download.sh` 拷进视频工程，不联网，例如 `bash scripts/fonts-download.sh <视频工程>/assets/fonts --theme modules/designs/github`（旧的具名风格 `github` 等价）。
+主题字体已经下载好放在仓库的 `resources/fonts/`（每个主题一份 CSS，WOFF2 在共用的 `resources/fonts/files/`），用 skill 根目录的 `scripts/fonts-download.sh` 拷进视频工程，不联网，例如 `bash scripts/fonts-download.sh <视频工程>/assets/fonts --theme modules/designs/github`（旧的具名风格 `github` 等价）。
 
 ## 读哪份文档
 
