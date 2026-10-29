@@ -6,13 +6,16 @@
 #   bash fonts-download.sh --refresh (--theme <theme_dir|theme_name> | style) [--dry-run]
 #     target_dir defaults to ./fonts; style (legacy) is a theme name or all
 #
-# Fonts are committed under resources/fonts/<theme>/: the CSS named by the
-# theme's <theme>.json fonts.css_filename plus the WOFF2 files it references.
-# Installing copies that directory into target_dir and never touches the
-# network. --refresh is the maintenance path: it re-downloads the families in
-# modules/designs/<theme>/<theme>.json from Google Fonts into
-# resources/fonts/<theme>/, replacing what is there, so the result can be
-# committed.
+# Fonts are committed under resources/fonts/: each theme keeps only its CSS in
+# resources/fonts/<theme>/<fonts.css_filename>, and the WOFF2 files it
+# references live once, named by the hash of their Google Fonts URL, in the
+# shared pool resources/fonts/files/. Themes using the same families therefore
+# share the same files. Installing copies the theme's CSS plus the pool files
+# it references into target_dir and never touches the network. --refresh is
+# the maintenance path: it re-downloads the families in
+# modules/designs/<theme>/<theme>.json from Google Fonts, replaces the theme's
+# CSS, adds only the pool files that are missing, and prunes pool files no
+# theme references any more, so the result can be committed.
 #
 # Output: one JSON document on stdout, logs on stderr; exit 0 = success,
 # 1 = runtime error, 2 = invalid arguments.
@@ -40,6 +43,7 @@ from pathlib import Path
 REPO = Path(sys.argv[1]).parent
 DESIGNS = REPO / 'modules' / 'designs'
 RESOURCES = Path(os.environ.get('FONTS_RESOURCES_DIR') or REPO / 'resources' / 'fonts')
+POOL = RESOURCES / 'files'
 CSS2_URL = os.environ.get('FONTS_CSS2_URL') or 'https://fonts.googleapis.com/css2'
 # A modern browser UA makes Google Fonts serve real WOFF2 (unicode-range
 # subsets, variable axes kept); a bare UA gets static TrueType per instance.
@@ -134,22 +138,57 @@ def load_manifest(path: Path) -> dict:
     return manifest
 
 
-def install(manifest_path: Path, target: Path, dry_run: bool) -> list[str]:
-    theme = manifest_path.parent.name
-    manifest = load_manifest(manifest_path)
-    source = RESOURCES / theme
-    if not (source / manifest['css_filename']).is_file():
+def css_refs(css: str) -> list[str]:
+    """The bare WOFF2 file names a theme CSS references, in order, once each."""
+    refs = [ref.strip('\'" ') for ref in re.findall(r'url\(([^)]+)\)', css)]
+    for ref in refs:
+        if Path(ref).name != ref:
+            raise ValueError(f'font reference {ref!r} must be a bare file name in the shared pool')
+    return list(dict.fromkeys(refs))
+
+
+def theme_files(theme: str, manifest: dict) -> list[Path]:
+    """The vendored CSS of a theme followed by the pool files it references."""
+    css = RESOURCES / theme / manifest['css_filename']
+    if not css.is_file():
         raise FileNotFoundError(
-            f'no vendored fonts for theme {theme} in {source}; '
+            f'no vendored fonts for theme {theme} in {css.parent}; '
             f'run: bash scripts/fonts-download.sh --refresh --theme {theme}'
         )
-    files = sorted(p for p in source.iterdir() if p.is_file() and p.suffix in ('.css', '.woff2'))
+    refs = css_refs(css.read_text(encoding='utf-8'))
+    missing = [ref for ref in refs if not (POOL / ref).is_file()]
+    if missing:
+        raise FileNotFoundError(
+            f'theme {theme} references fonts missing from the shared pool {POOL}: {", ".join(missing)}; '
+            f'run: bash scripts/fonts-download.sh --refresh --theme {theme}'
+        )
+    return [css, *sorted(POOL / ref for ref in refs)]
+
+
+def install(manifest_path: Path, target: Path, dry_run: bool) -> list[str]:
+    theme = manifest_path.parent.name
+    files = theme_files(theme, load_manifest(manifest_path))
     if not dry_run:
         target.mkdir(parents=True, exist_ok=True)
         for file in files:
             shutil.copyfile(file, target / file.name)
     log(f"{'would install' if dry_run else 'installed'} {len(files)} files for {theme} into {target}")
     return [str((target / file.name).resolve()) for file in files]
+
+
+def prune_pool() -> None:
+    """Delete pool files that no theme CSS references (a refresh can orphan them)."""
+    if not POOL.is_dir():
+        return
+    referenced = {
+        ref
+        for css in RESOURCES.glob('[!.]*/*.css')
+        for ref in css_refs(css.read_text(encoding='utf-8'))
+    }
+    for file in sorted(POOL.iterdir()):
+        if file.name not in referenced:
+            log(f'pruning unreferenced {file.name}')
+            file.unlink()
 
 
 def fetch(url: str, attempts: int = 3) -> bytes:
@@ -187,25 +226,33 @@ def refresh(manifest_path: Path, dry_run: bool) -> list[str]:
         raise ValueError(f'no font URLs found in the CSS for {theme}')
     # Download into a hidden staging dir and swap it in only when complete, so
     # a failed refresh leaves the committed fonts untouched and no debris.
+    # staging/fonts holds the pool files this theme adds, staging/css the new
+    # theme dir.
     staging = RESOURCES / f'.{theme}.partial'
     previous = RESOURCES / f'.{theme}.previous'
     shutil.rmtree(staging, ignore_errors=True)
-    staging.mkdir(parents=True)
+    (staging / 'fonts').mkdir(parents=True)
+    (staging / 'css').mkdir()
     try:
-        for index, url in enumerate(urls):
-            digest = hashlib.sha256(url.encode('utf-8')).hexdigest()[:12]
-            filename = f'{theme}-{index:02d}-{digest}.woff2'
-            log(f'downloading {filename}')
-            (staging / filename).write_bytes(fetch(url))
+        for url in urls:
+            filename = hashlib.sha256(url.encode('utf-8')).hexdigest()[:12] + '.woff2'
+            if (POOL / filename).is_file():
+                log(f'reusing {filename}')
+            else:
+                log(f'downloading {filename}')
+                (staging / 'fonts' / filename).write_bytes(fetch(url))
             css = css.replace(url, filename)
         for old, new in manifest['rename'].items():
             css = css.replace(f"'{old}'", f"'{new}'")
-        (staging / manifest['css_filename']).write_text(css, encoding='utf-8')
+        (staging / 'css' / manifest['css_filename']).write_text(css, encoding='utf-8')
+        POOL.mkdir(parents=True, exist_ok=True)
+        for file in (staging / 'fonts').iterdir():
+            file.replace(POOL / file.name)
         shutil.rmtree(previous, ignore_errors=True)
         if out.exists():
             out.rename(previous)
         try:
-            staging.rename(out)
+            (staging / 'css').rename(out)
         except OSError:
             if previous.exists() and not out.exists():
                 previous.rename(out)
@@ -213,8 +260,10 @@ def refresh(manifest_path: Path, dry_run: bool) -> list[str]:
         shutil.rmtree(previous, ignore_errors=True)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
-    log(f'refreshed {theme}: {len(urls)} font files in {out}')
-    return sorted(str(p.resolve()) for p in out.iterdir())
+    prune_pool()
+    files = theme_files(theme, manifest)
+    log(f'refreshed {theme}: {len(urls)} font files in {POOL}, css in {out}')
+    return [str(file.resolve()) for file in files]
 
 
 def main(argv: list[str]) -> int:

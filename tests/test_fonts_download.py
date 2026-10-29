@@ -1,12 +1,15 @@
 """CLI tests for scripts/fonts-download.sh.
 
-Installing copies the fonts committed under resources/fonts/<theme>/ and never
-touches the network; --refresh re-downloads a theme's families and is tested
-against a local HTTP server standing in for Google Fonts (FONTS_CSS2_URL),
-writing into a tmp resources dir (FONTS_RESOURCES_DIR).
+Each theme commits only its CSS under resources/fonts/<theme>/; the WOFF2 files
+it references live once in the shared pool resources/fonts/files/. Installing
+copies the CSS plus the pool files it references and never touches the
+network; --refresh re-downloads a theme's families and is tested against a
+local HTTP server standing in for Google Fonts (FONTS_CSS2_URL), writing into a
+tmp resources dir (FONTS_RESOURCES_DIR).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -46,16 +49,48 @@ def css_references(css: str) -> list[str]:
     return re.findall(r'url\(([^)]+)\)', css)
 
 
+FONTS = REPO_ROOT / 'resources' / 'fonts'
+POOL = FONTS / 'files'
+
+
+def vendored_css(design: str) -> str:
+    return (FONTS / design / load_fonts(design)['css_filename']).read_text()
+
+
 def test_every_design_has_complete_vendored_fonts():
     for design in DESIGNS:
-        manifest = load_fonts(design)
-        vendored = REPO_ROOT / 'resources' / 'fonts' / design
-        css = (vendored / manifest['css_filename']).read_text()
-        refs = css_references(css)
+        refs = css_references(vendored_css(design))
         assert refs, design
         for ref in refs:
-            assert not ref.startswith('http'), (design, ref)
-            assert (vendored / ref).is_file(), (design, ref)
+            assert re.fullmatch(r'[0-9a-f]{12}\.woff2', ref), (design, ref)
+            assert (POOL / ref).is_file(), (design, ref)
+
+
+def test_a_design_directory_holds_only_its_css():
+    for design in DESIGNS:
+        assert [p.name for p in (FONTS / design).iterdir()] == [load_fonts(design)['css_filename']]
+
+
+def test_shared_pool_has_no_unreferenced_or_duplicate_files():
+    referenced = {ref for design in DESIGNS for ref in css_references(vendored_css(design))}
+    pooled = {p.name for p in POOL.iterdir()}
+    assert pooled == referenced
+
+    by_content: dict[str, list[str]] = {}
+    for font in POOL.iterdir():
+        by_content.setdefault(hashlib.sha256(font.read_bytes()).hexdigest(), []).append(font.name)
+    assert [names for names in by_content.values() if len(names) > 1] == []
+
+
+def test_designs_with_the_same_font_source_share_the_same_pool_files():
+    by_source: dict[str, list[list[str]]] = {}
+    for design in DESIGNS:
+        manifest = load_fonts(design)
+        source = json.dumps({k: manifest[k] for k in ('css2_families', 'rename')}, sort_keys=True)
+        by_source.setdefault(source, []).append(css_references(vendored_css(design)))
+
+    for refs in by_source.values():
+        assert all(r == refs[0] for r in refs)
 
 
 def test_install_copies_vendored_fonts_without_network(tmp_path: Path):
@@ -63,9 +98,23 @@ def test_install_copies_vendored_fonts_without_network(tmp_path: Path):
     assert proc.returncode == 0, proc.stderr
     assert result['success'] is True and result['mode'] == 'install'
     css = (tmp_path / 'fonts' / 'github-fonts.css').read_text()
-    for ref in css_references(css):
-        assert (tmp_path / 'fonts' / ref).is_file()
-    assert len(result['files']) == len(list((tmp_path / 'fonts').iterdir()))
+    assert css == vendored_css('github')
+    refs = css_references(css)
+    for ref in refs:
+        assert (tmp_path / 'fonts' / ref).read_bytes() == (POOL / ref).read_bytes()
+    installed = sorted(p.name for p in (tmp_path / 'fonts').iterdir())
+    assert installed == sorted(['github-fonts.css', *refs])
+    assert len(result['files']) == len(installed)
+
+
+def test_install_copies_only_the_files_the_design_references(tmp_path: Path):
+    github = set(css_references(vendored_css('github')))
+    default = set(css_references(vendored_css('default')))
+    assert github != default  # the pool holds both; each install takes just its own
+
+    run(str(tmp_path), '--theme', 'default', env=NO_NETWORK)
+
+    assert {p.name for p in tmp_path.glob('*.woff2')} == default
 
 
 def test_install_legacy_named_style(tmp_path: Path):
@@ -94,6 +143,52 @@ def test_missing_vendored_fonts_point_at_refresh(tmp_path: Path):
     proc, result = run(str(tmp_path / 'out'), '--theme', 'github', env={'FONTS_RESOURCES_DIR': str(tmp_path / 'empty')})
     assert proc.returncode == 1
     assert '--refresh --theme github' in result['error']
+
+
+def make_resources(root: Path, css: str, pool: dict[str, bytes]) -> Path:
+    resources = root / 'resources'
+    (resources / 'github').mkdir(parents=True)
+    (resources / 'github' / 'github-fonts.css').write_text(css)
+    if pool:
+        (resources / 'files').mkdir()
+    for name, data in pool.items():
+        (resources / 'files' / name).write_bytes(data)
+    return resources
+
+
+def test_install_names_pool_files_missing_for_a_design(tmp_path: Path):
+    resources = make_resources(
+        tmp_path,
+        "@font-face { src: url('have.woff2'); }\n@font-face { src: url(lost.woff2); }",
+        {'have.woff2': b'x'},
+    )
+
+    proc, result = run(str(tmp_path / 'out'), '--theme', 'github', env={'FONTS_RESOURCES_DIR': str(resources)})
+
+    assert proc.returncode == 1 and result['success'] is False
+    assert 'lost.woff2' in result['error'] and 'have.woff2' not in result['error']
+    assert '--refresh --theme github' in result['error']
+    assert not (tmp_path / 'out').exists()
+
+
+def test_install_installs_quoted_references(tmp_path: Path):
+    resources = make_resources(tmp_path, "@font-face { src: url('q.woff2'); }", {'q.woff2': b'font'})
+
+    proc, _ = run(str(tmp_path / 'out'), '--theme', 'github', env={'FONTS_RESOURCES_DIR': str(resources)})
+
+    assert proc.returncode == 0, proc.stderr
+    assert (tmp_path / 'out' / 'q.woff2').read_bytes() == b'font'
+
+
+@pytest.mark.parametrize('ref', ['../files/a.woff2', 'sub/a.woff2', 'https://example.test/a.woff2'])
+def test_install_rejects_references_that_are_not_bare_pool_names(tmp_path: Path, ref: str):
+    resources = make_resources(tmp_path, f'@font-face {{ src: url({ref}); }}', {'a.woff2': b'x'})
+
+    proc, result = run(str(tmp_path / 'out'), '--theme', 'github', env={'FONTS_RESOURCES_DIR': str(resources)})
+
+    assert proc.returncode == 1 and result['success'] is False
+    assert 'bare file name' in result['error']
+    assert not (tmp_path / 'out').exists()
 
 
 def test_refresh_requires_a_theme():
@@ -142,6 +237,7 @@ class FakeGoogleFonts(BaseHTTPRequestHandler):
                 % (port, port)
             ).encode()
         elif self.path.endswith('.woff2'):
+            self.server.font_requests.append(self.path)
             body = self.font_bytes
         else:
             self.send_error(404)
@@ -197,28 +293,72 @@ def test_failed_refresh_keeps_committed_fonts_and_leaves_no_debris(tmp_path: Pat
     assert sorted(p.name for p in resources.iterdir()) == ['default']
 
 
-def test_refresh_downloads_into_resources_and_replaces_stale_files(tmp_path: Path):
+@pytest.fixture
+def google_fonts():
     server = ThreadingHTTPServer(('127.0.0.1', 0), FakeGoogleFonts)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        resources = tmp_path / 'resources'
-        (resources / 'default').mkdir(parents=True)
-        (resources / 'default' / 'stale.woff2').write_bytes(b'old')
-        env = {
-            'FONTS_RESOURCES_DIR': str(resources),
-            'FONTS_CSS2_URL': f'http://127.0.0.1:{server.server_address[1]}/css2',
-        }
-        proc, result = run('--refresh', '--theme', 'default', env=env)
-    finally:
-        server.shutdown()
+    server.font_requests = []
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield server
+    server.shutdown()
+
+
+def refresh_env(resources: Path, server: ThreadingHTTPServer) -> dict[str, str]:
+    return {
+        'FONTS_RESOURCES_DIR': str(resources),
+        'FONTS_CSS2_URL': f'http://127.0.0.1:{server.server_address[1]}/css2',
+    }
+
+
+def test_refresh_downloads_into_the_pool_and_replaces_the_theme_dir(tmp_path: Path, google_fonts):
+    resources = tmp_path / 'resources'
+    (resources / 'default').mkdir(parents=True)
+    (resources / 'default' / 'stale.woff2').write_bytes(b'old')
+
+    proc, result = run('--refresh', '--theme', 'default', env=refresh_env(resources, google_fonts))
+
     assert proc.returncode == 0, proc.stderr
     assert result['mode'] == 'refresh'
     out = resources / 'default'
-    assert not (out / 'stale.woff2').exists()
+    assert [p.name for p in out.iterdir()] == ['default-fonts.css']
     css = (out / 'default-fonts.css').read_text()
     assert "'NotoSansSC'" in css and "'IBMPlexMono'" in css  # default renames families
     refs = css_references(css)
     assert len(refs) == 2
     for ref in refs:
-        assert (out / ref).read_bytes() == FakeGoogleFonts.font_bytes
+        assert (resources / 'files' / ref).read_bytes() == FakeGoogleFonts.font_bytes
+    assert sorted(p.name for p in (resources / 'files').iterdir()) == sorted(refs)
+    assert sorted(result['files']) == sorted(str(p.resolve()) for p in [out / 'default-fonts.css', *(resources / 'files' / r for r in refs)])
+    assert sorted(p.name for p in resources.iterdir()) == ['default', 'files']  # no staging debris
+
+
+def test_refresh_reuses_pool_files_across_designs(tmp_path: Path, google_fonts):
+    resources = tmp_path / 'resources'
+    env = refresh_env(resources, google_fonts)
+
+    run('--refresh', '--theme', 'default', env=env)
+    assert len(google_fonts.font_requests) == 2
+    proc, _ = run('--refresh', '--theme', 'producthunt', env=env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert len(google_fonts.font_requests) == 2  # producthunt downloaded nothing new
+    assert css_references((resources / 'default' / 'default-fonts.css').read_text()) == css_references(
+        (resources / 'producthunt' / 'producthunt-fonts.css').read_text()
+    )
+    assert len(list((resources / 'files').iterdir())) == 2
+
+
+def test_refresh_prunes_pool_files_no_design_references(tmp_path: Path, google_fonts):
+    resources = tmp_path / 'resources'
+    (resources / 'files').mkdir(parents=True)
+    (resources / 'files' / 'orphan.woff2').write_bytes(b'unused')
+    (resources / 'files' / 'other.woff2').write_bytes(b'used by another theme')
+    (resources / 'other').mkdir()
+    (resources / 'other' / 'other-fonts.css').write_text('@font-face { src: url(other.woff2); }')
+
+    proc, _ = run('--refresh', '--theme', 'default', env=refresh_env(resources, google_fonts))
+
+    assert proc.returncode == 0, proc.stderr
+    pooled = {p.name for p in (resources / 'files').iterdir()}
+    assert 'orphan.woff2' not in pooled
+    assert 'other.woff2' in pooled
+    assert len(pooled) == 3  # the two new fonts plus the other theme's

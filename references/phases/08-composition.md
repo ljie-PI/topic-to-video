@@ -41,7 +41,7 @@ source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topi
 
 1. **委派包**：复制 `references/delegation/conventions.md` 与 `references/delegation/composition/` → `{work_dir}/{topic_name}/references/delegation/`，保持相对路径不变。
 2. **modules 库**：复制整个 `modules/` 目录（**不含 `examples/`**）→ `{work_dir}/{topic_name}/modules/`。已存在的副本不覆盖；要用 skill 里的最新版覆盖，加 `--refresh`。
-3. **字体预置**（由 `inputs.json` 的 design 决定）：每次调用都运行 `fonts-download.sh`，把仓库 `resources/fonts/<design>/` 里的字体拷进 `composition/assets/fonts/`，不联网。失败时脚本 exit 1，输出里带 `fonts-download.sh` 的错误 JSON。
+3. **字体预置**（由 `inputs.json` 的 design 决定）：每次调用都运行 `fonts-download.sh`，把仓库 `resources/fonts/<design>/` 里的 CSS 和它引用的字体（在共用池 `resources/fonts/files/`）拷进 `composition/assets/fonts/`，不联网。失败时脚本 exit 1，输出里带 `fonts-download.sh` 的错误 JSON。
 
 design textures、组件和模板资源不在这里拷：用哪些由 composition agent 写完 storyboard 才知道，由它自己从工作区的 `modules/` 拷进 `composition/`。
 

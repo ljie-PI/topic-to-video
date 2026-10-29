@@ -4,7 +4,7 @@
 
 这份文档只规定外观，任何类型的视频都能用。Product Hunt 自己的品牌元素（P 字标、猫、Logotype）不在这里，需要时放进模板。
 
-背景贴图在 `designs/producthunt/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体已经放在仓库的 `resources/fonts/producthunt/`，安装方式见 1.4。
+背景贴图在 `designs/producthunt/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体已经放在仓库的 `resources/fonts/`（CSS 在 `producthunt/`，WOFF2 在共用的 `files/`），安装方式见 1.4。
 
 | 文件 | 用途 |
 |---|---|
@@ -86,7 +86,7 @@
 }
 ```
 
-字体已经下载好放在仓库的 `resources/fonts/producthunt/`。安装：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/producthunt`，把 NotoSansSC（中文和正文）、IBMPlexMono（数字、upvote、英文数据）的 WOFF2 和一份 `producthunt-fonts.css` 拷进工程，不联网。在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/producthunt-fonts.css">` 引入，CSS 里的字体名就是上面变量用的 `NotoSansSC` / `IBMPlexMono`。
+字体已经下载好放在仓库的 `resources/fonts/`（CSS 在 `producthunt/`，WOFF2 在共用的 `files/`）。安装：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/producthunt`，把 NotoSansSC（中文和正文）、IBMPlexMono（数字、upvote、英文数据）的 WOFF2 和一份 `producthunt-fonts.css` 拷进工程，不联网。在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/producthunt-fonts.css">` 引入，CSS 里的字体名就是上面变量用的 `NotoSansSC` / `IBMPlexMono`。
 
 ---
 

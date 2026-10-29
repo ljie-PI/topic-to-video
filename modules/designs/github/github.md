@@ -4,7 +4,7 @@
 
 这份文档只规定外观，任何类型的视频都能用。GitHub 专属的内容（Octocat 标志、语言色点、仓库卡片、Star 按钮、贡献图配色等）不在这里，在 `templates/github/github.md`。
 
-背景贴图在 `designs/github/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体已经放在仓库的 `resources/fonts/github/`，安装方式见 1.5。
+背景贴图在 `designs/github/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体已经放在仓库的 `resources/fonts/`（CSS 在 `github/`，WOFF2 在共用的 `files/`），安装方式见 1.5。
 
 | 文件 | 用途 |
 |---|---|
@@ -98,7 +98,7 @@
 }
 ```
 
-字体已经下载好放在仓库的 `resources/fonts/github/`。安装：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/github`，把 Noto Sans（英文和数字）、Noto Sans SC（中文）、Noto Sans Mono（代码、文件名）三种可变字重（100–900）的 WOFF2 和一份 `github-fonts.css` 拷进工程，不联网。
+字体已经下载好放在仓库的 `resources/fonts/`（CSS 在 `github/`，WOFF2 在共用的 `files/`）。安装：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/github`，把 Noto Sans（英文和数字）、Noto Sans SC（中文）、Noto Sans Mono（代码、文件名）三种可变字重（100–900）的 WOFF2 和一份 `github-fonts.css` 拷进工程，不联网。
 
 字体在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/github-fonts.css">` 引入，CSS 里的字体名就是上面变量用的 `Noto Sans` / `Noto Sans SC` / `Noto Sans Mono`。
 
