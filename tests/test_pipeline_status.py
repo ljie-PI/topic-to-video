@@ -47,8 +47,8 @@ RESEARCH_BRIEF = (
     '- https://example.com/article — official site\n'
 )
 
-# duration '5min' -> 5 * 60 * 7.5 = 2250 characters, here as two paragraphs.
-SCRIPT_TXT = '甲' * 1125 + '\n\n' + '乙' * 1125 + '\n'
+# duration '5min' -> 5 * 60 * 7 = 2100 characters, here as two paragraphs.
+SCRIPT_TXT = '甲' * 1050 + '\n\n' + '乙' * 1050 + '\n'
 
 # cut-clips.py writes this flat, two-decimal path and records it as clip_path.
 CLIP_PATH = 'clips/vid_001_12.00-18.50.mp4'
@@ -138,6 +138,7 @@ SCENE_PLAN = [
         'scene_id': 'scene_1',
         'paragraphs': [1, 2],
         'intent': '开场与背景',
+        'content_plan': '先用结论开场，再按背景、对比、限制的顺序展开。',
         'facts': [],
         'material_candidates': [{'ref': 'example/img_001', 'score': 8, 'reason': '对应开场'}],
         'cues': [],
@@ -675,10 +676,10 @@ def test_truncated_narration_offsets_fall_back_to_phase_6(tmp_path: Path):
 
 # --- phase 6 check: script.txt length against the target duration ---------------
 #
-# duration 5 min -> 5 * 60 s * 7.5 chars/s = 2250 characters, +-15% = 1912.5 .. 2587.5.
+# duration 5 min -> 5 * 60 s * 7 chars/s = 2100 characters, +-15% = 1785 .. 2415.
 
 
-@pytest.mark.parametrize('chars', [2700, 1800])
+@pytest.mark.parametrize('chars', [2520, 1680])
 def test_script_20_percent_off_target_is_corrupt(tmp_path: Path, chars: int):
     complete_through_script(tmp_path)
     write_text(tmp_path / 'script.txt', script_of(chars))
@@ -686,10 +687,10 @@ def test_script_20_percent_off_target_is_corrupt(tmp_path: Path, chars: int):
     assert result['next_phase']['id'] == '6-script-scene-plan'
     assert 'script.txt' in result['corrupt_products']
     detail = result['next_phase']['problems']['script.txt']
-    assert str(chars) in detail and '2250' in detail and '20.0%' in detail, detail
+    assert str(chars) in detail and '2100' in detail and '20.0%' in detail, detail
 
 
-@pytest.mark.parametrize('chars', [2565, 1935])
+@pytest.mark.parametrize('chars', [2394, 1806])
 def test_script_14_percent_off_target_is_accepted(tmp_path: Path, chars: int):
     complete_through_script(tmp_path)
     write_script(tmp_path, script_of(chars))
@@ -700,8 +701,8 @@ def test_script_14_percent_off_target_is_accepted(tmp_path: Path, chars: int):
 
 def test_script_length_ignores_whitespace(tmp_path: Path):
     complete_through_script(tmp_path)
-    # 2250 characters, padded with spaces, full-width spaces and extra blank lines.
-    padded = '甲 ' * 1125 + '\n\n\n　　' + '乙\t' * 1125 + '\n\n'
+    # 2100 characters, padded with spaces, full-width spaces and extra blank lines.
+    padded = '甲 ' * 1050 + '\n\n\n　　' + '乙\t' * 1050 + '\n\n'
     write_script(tmp_path, padded)
     approve(tmp_path, 'script')
     result = parse_result(run_cli(str(tmp_path)))
@@ -709,10 +710,10 @@ def test_script_length_ignores_whitespace(tmp_path: Path):
 
 
 def test_script_length_target_follows_numeric_duration(tmp_path: Path):
-    complete_through_script(tmp_path, approved=False, duration=1)  # 1 min -> 450 characters
+    complete_through_script(tmp_path, approved=False, duration=1)  # 1 min -> 420 characters
     result = parse_result(run_cli(str(tmp_path)))
     assert 'script.txt' in result['corrupt_products']
-    assert '450' in result['next_phase']['problems']['script.txt']
+    assert '420' in result['next_phase']['problems']['script.txt']
 
 
 def test_script_length_is_not_checked_while_duration_is_invalid(tmp_path: Path):
@@ -754,7 +755,7 @@ def test_scene_plan_missing_paragraphs_falls_back_to_phase_6(tmp_path: Path):
 
 # --- phase 6 check: scene-plan paragraphs cover script.txt exactly --------------
 
-THREE_PARAGRAPH_SCRIPT = '甲' * 750 + '\n\n' + '乙' * 750 + '\n\n' + '丙' * 750 + '\n'  # 2250 characters
+THREE_PARAGRAPH_SCRIPT = '甲' * 700 + '\n\n' + '乙' * 700 + '\n\n' + '丙' * 700 + '\n'  # 2100 characters
 
 
 def scene(scene_id: str, paragraphs, candidates=()) -> dict:
@@ -762,6 +763,7 @@ def scene(scene_id: str, paragraphs, candidates=()) -> dict:
         'scene_id': scene_id,
         'paragraphs': paragraphs,
         'intent': scene_id,
+        'content_plan': f'{scene_id} 的内容与演绎方式',
         'facts': [],
         'material_candidates': list(candidates),
         'cues': [],
@@ -792,17 +794,9 @@ def scene_plan_problem(
     return result, problems.get('scene-plan.json')
 
 
-def scene_with_beats(beats) -> dict:
-    planned = scene('s1', [1, 2])
-    planned['beats'] = beats
-    return planned
-
-
-def test_scene_plan_valid_beats_pass_and_can_be_approved(tmp_path: Path):
+def test_scene_plan_with_content_plan_passes_and_can_be_approved(tmp_path: Path):
     result, detail = scene_plan_problem(
-        tmp_path,
-        [scene_with_beats([{'type': 'idea', 'text': '甲' * 8}])],
-        approve_script=True,
+        tmp_path, [scene('s1', [1, 2])], approve_script=True
     )
 
     assert detail is None
@@ -812,56 +806,52 @@ def test_scene_plan_valid_beats_pass_and_can_be_approved(tmp_path: Path):
     assert 'scene-plan.json' in approval['products']
 
 
-def test_scene_plan_without_optional_beats_passes(tmp_path: Path):
-    result, detail = scene_plan_problem(
-        tmp_path, [scene('s1', [1, 2])], approve_script=True
-    )
+@pytest.mark.parametrize('field', ['intent', 'content_plan'])
+@pytest.mark.parametrize('value', [None, '', '   ', 7])
+def test_scene_plan_requires_a_non_empty_intent_and_content_plan(
+    tmp_path: Path, field: str, value
+):
+    planned = scene('s1', [1, 2])
+    planned[field] = value
 
-    assert detail is None
-    assert '6-script-scene-plan' in result['completed_phases']
-
-
-def test_scene_plan_beats_must_be_a_list(tmp_path: Path):
-    result, detail = scene_plan_problem(
-        tmp_path, [scene_with_beats({'type': 'idea', 'text': '甲' * 8})]
-    )
+    result, detail = scene_plan_problem(tmp_path, [planned])
 
     assert 'scene-plan.json' in result['corrupt_products']
-    assert 'scene 0' in detail and 'beats' in detail and 'list' in detail
+    assert f'scene 0 {field}' in detail, detail
 
 
-def test_scene_plan_beat_type_must_be_allowed(tmp_path: Path):
-    result, detail = scene_plan_problem(
-        tmp_path, [scene_with_beats([{'type': 'feeling', 'text': '甲' * 8}])]
-    )
+@pytest.mark.parametrize('field', ['intent', 'content_plan'])
+def test_scene_plan_requires_the_planning_fields(tmp_path: Path, field: str):
+    planned = scene('s1', [1, 2])
+    del planned[field]
+
+    result, detail = scene_plan_problem(tmp_path, [planned])
 
     assert 'scene-plan.json' in result['corrupt_products']
-    assert 'beats[0]' in detail and 'type' in detail and 'feeling' in detail
+    assert field in detail, detail
 
 
 @pytest.mark.parametrize(
-    'beat',
+    'removed, value',
     [
-        {'type': 'idea'},
-        {'type': 'idea', 'text': ''},
-        {'type': 'idea', 'text': 7},
-        'not-an-object',
+        ('template_scene', 'project-cover'),
+        ('template_scene', None),
+        ('pattern_hints', ['leaderboard']),
+        ('pattern_hints', []),
+        ('beats', [{'type': 'idea', 'text': '甲' * 8}]),
+        ('beats', []),
     ],
 )
-def test_scene_plan_beat_text_must_be_a_non_empty_string(tmp_path: Path, beat):
-    result, detail = scene_plan_problem(tmp_path, [scene_with_beats([beat])])
+def test_scene_plan_rejects_fields_that_belong_to_composition(
+    tmp_path: Path, removed: str, value
+):
+    planned = scene('s1', [1, 2])
+    planned[removed] = value
+
+    result, detail = scene_plan_problem(tmp_path, [planned])
 
     assert 'scene-plan.json' in result['corrupt_products']
-    assert 'beats[0]' in detail and 'text' in detail
-
-
-def test_scene_plan_beat_text_must_appear_literally_in_script(tmp_path: Path):
-    result, detail = scene_plan_problem(
-        tmp_path, [scene_with_beats([{'type': 'idea', 'text': '不在显示稿里的节拍'}])]
-    )
-
-    assert 'scene-plan.json' in result['corrupt_products']
-    assert 'beats[0]' in detail and 'script.txt' in detail
+    assert removed in detail and 'scene 0' in detail, detail
 
 
 def test_scene_plan_missing_a_paragraph_is_corrupt(tmp_path: Path):
@@ -1167,31 +1157,11 @@ def test_corrupt_subtitle_units_falls_back_to_phase_8(tmp_path: Path):
     assert 'composition/assets/subtitle-units.json' in result['corrupt_products']
 
 
-def write_timeline_beats(ws: Path, beats) -> None:
-    timeline = {**TIMELINE, 'beats': beats}
-    write_json(ws / 'transcribe' / 'timeline.json', timeline)
+def write_timeline_with(ws: Path, **fields) -> None:
+    write_json(ws / 'transcribe' / 'timeline.json', {**TIMELINE, **fields})
 
 
-def test_timeline_valid_beats_pass(tmp_path: Path):
-    complete_through_voice_subtitles(tmp_path)
-    write_timeline_beats(
-        tmp_path,
-        [{
-            'scene_id': 'scene_1',
-            'type': 'idea',
-            'text': '大家好，这是关键思路',
-            'begin_s': 0.25,
-            'end_s': 1.5,
-        }],
-    )
-
-    result = parse_result(run_cli(str(tmp_path)))
-
-    assert 'transcribe/timeline.json' not in result['corrupt_products']
-    assert '7-voice-subtitles' in result['completed_phases']
-
-
-def test_timeline_without_optional_beats_passes(tmp_path: Path):
+def test_timeline_without_optional_scenes_or_cues_passes(tmp_path: Path):
     complete_through_voice_subtitles(tmp_path)
 
     result = parse_result(run_cli(str(tmp_path)))
@@ -1199,20 +1169,10 @@ def test_timeline_without_optional_beats_passes(tmp_path: Path):
     assert '7-voice-subtitles' in result['completed_phases']
 
 
-@pytest.mark.parametrize(
-    'beats',
-    [
-        {'scene_id': 'scene_1', 'begin_s': 0, 'end_s': 1},
-        [{'scene_id': 'scene_1', 'end_s': 1}],
-        [{'scene_id': 'scene_1', 'begin_s': 0}],
-        [{'scene_id': 'scene_1', 'begin_s': '0', 'end_s': 1}],
-        [{'scene_id': 'scene_1', 'begin_s': False, 'end_s': 1}],
-        ['not-an-object'],
-    ],
-)
-def test_timeline_beats_require_numeric_begin_and_end(tmp_path: Path, beats):
+@pytest.mark.parametrize('beats', [[], [{'begin_s': 0, 'end_s': 1}]])
+def test_timeline_with_beats_is_rejected(tmp_path: Path, beats):
     complete_through_voice_subtitles(tmp_path)
-    write_timeline_beats(tmp_path, beats)
+    write_timeline_with(tmp_path, beats=beats)
 
     result = parse_result(run_cli(str(tmp_path)))
 
@@ -1956,7 +1916,7 @@ def test_second_run_leaves_the_stamp_file_untouched(tmp_path: Path):
 
 # --- stale: a phase whose upstream changed after it was built ---------------------
 
-EDITED_SCRIPT_TXT = '甲' * 1125 + '\n\n' + '丙' * 1125 + '\n'  # same length as SCRIPT_TXT, other content
+EDITED_SCRIPT_TXT = '甲' * 1050 + '\n\n' + '丙' * 1050 + '\n'  # same length as SCRIPT_TXT, other content
 
 
 def settle(ws: Path, **inputs_overrides) -> dict:
@@ -2498,9 +2458,9 @@ def offsets_problem(ws: Path) -> str:
 
 def test_script_edited_after_make_narration_sends_phase_6_back(tmp_path: Path):
     settle(tmp_path)
-    write_text(tmp_path / 'script.txt', '甲' * 1125 + '\n\n' + '乙' * 1130 + '\n')  # 5 characters longer
+    write_text(tmp_path / 'script.txt', '甲' * 1050 + '\n\n' + '乙' * 1055 + '\n')  # 5 characters longer
     detail = offsets_problem(tmp_path)
-    assert 'script_length' in detail and 'script.txt' in detail and '2253' in detail and '2258' in detail, detail
+    assert 'script_length' in detail and 'script.txt' in detail and '2103' in detail and '2108' in detail, detail
     assert 'make-narration' in detail
 
 
@@ -2847,7 +2807,7 @@ def test_script_gate_records_only_its_contract_products(tmp_path: Path):
     assert waiting['next_phase']['reason'] == 'awaiting_approval'
     assert waiting['next_phase']['gate'] == 'script'
     assert waiting['next_phase']['instruction'] == (
-        '把旁白和每个 scene 的 scene_id + intent 交给用户确认；确认后运行 '
+        '把旁白和每个 scene 的 scene_id + intent + content_plan 摘要交给用户确认；确认后运行 '
         '`python3 scripts/pipeline-status.py <ws> --approve script`'
     )
     assert waiting['pending_phases'] == ['7-voice-subtitles', '8-composition', '9-check-mix']
@@ -3341,6 +3301,21 @@ def test_template_must_be_null_or_a_plain_name_in_phase_8(tmp_path: Path, value)
     assert result['next_phase']['reason'] == 'corrupt'
     assert 'inputs.json#template' in result['next_phase']['problems']
     assert '1-gather-inputs' in result['completed_phases']
+
+
+def test_composition_must_write_the_template_choice(tmp_path: Path):
+    """模板选择归 composition：未写回字段时不能以旧行为当作“不用模板”。"""
+    complete_through_voice_subtitles(tmp_path)
+    inputs = json.loads((tmp_path / 'inputs.json').read_text(encoding='utf-8'))
+    inputs.pop('template', None)
+    write_json(tmp_path / 'inputs.json', inputs)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '8-composition'
+    assert result['next_phase']['reason'] == 'corrupt'
+    assert 'inputs.json#template' in result['next_phase']['problems']
+    assert 'not set' in result['next_phase']['problems']['inputs.json#template']
 
 
 @pytest.mark.parametrize('field', ['narration_requests', 'composition_requests'])

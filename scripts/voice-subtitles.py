@@ -6,8 +6,11 @@
   python3 scripts/voice-subtitles.py <workspace> --align-only
 
 本阶段与最终排版无关：它只产出音频、本轮 fresh transcript 与时间轴（段落以及
-scene / cue / beat 秒数），不读 layout、不确定字幕宽度 / 字号 / 行数。字幕单元
-由 Phase 8 在 layout 定下之后用 align-narration.py --mode subtitles 生成。
+scene / cue 秒数），不读 layout、不确定字幕宽度 / 字号 / 行数。字幕单元由
+Phase 8 在 layout 定下之后用 align-narration.py --mode subtitles 生成。
+
+不指定 TTS 语速：实际节奏由后端与文本决定，写稿的字数估算（约 7 字符/秒）不是
+传给 TTS 的参数。
 
 workspace 需要 narration.txt、narration-offsets.json、script.txt 和 inputs.json。
 已存在的 scene-plan.json 会自动传给对齐器。stdout 是一个 JSON 结果；子进程的

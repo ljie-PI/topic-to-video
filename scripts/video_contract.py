@@ -295,6 +295,30 @@ def effective_resource(skill_root: Path, ws: Path, relpath: str, *, refresh: boo
     return copy if copy.exists() else skill_root / relpath
 
 
+# --- scene-plan.json ---------------------------------------------------------
+#
+# script agent 的场景规划只描述内容与叙事：模板、pattern、动作属于 composition
+# 的设计空间，因此这些字段已从契约中删除，出现即视为不符合当前契约。完整
+# scene-plan 与 composition 自己的 cue 声明共用这条规则，但只有前者要求
+# intent / content_plan（那由 pipeline-status 检查，对齐器只读 cues）。
+
+REMOVED_SCENE_FIELDS = ('template_scene', 'pattern_hints', 'beats')
+
+
+def removed_scene_fields_problem(scenes: list[Any]) -> str | None:
+    """scene 列表里出现已移除字段的原因，或 None。"""
+    for index, scene in enumerate(scenes):
+        if not isinstance(scene, dict):
+            continue
+        for name in REMOVED_SCENE_FIELDS:
+            if name in scene:
+                return (
+                    f'scene {index} has removed field {name!r}: template / pattern / act '
+                    'choices belong to composition; rewrite the scene plan without it'
+                )
+    return None
+
+
 # --- narration-offsets.json --------------------------------------------------
 
 NARRATION_OFFSETS_VERSION = 1

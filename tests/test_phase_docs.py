@@ -288,7 +288,7 @@ def test_paper_mode_instructions_live_in_the_phase_or_package_that_uses_them():
     # adding related-paper slug or material-ID namespacing rules.
     assert '''Phase 6 撰写旁白时，论文模式沿用论文自身的逻辑流，而非通用的主题结构：
 
-1. Hook —— 这篇论文为什么重要 / 它要解决什么问题
+1. Hook —— 三句以内（见上面「开场钩子」）说明这篇论文要解决什么问题、为什么重要
 2. Background —— 先前的工作和 SOTA（来自 Deep Research）
 3. Key insight / approach（来自论文摘要 + 引言，引用论文中的 figure）
 4. Method walkthrough（用 `material_ref` 引用论文 figure）
@@ -450,25 +450,28 @@ def test_phase_1_owns_the_qa_field_without_asking_or_explaining_it_all():
     assert 'contact sheet' not in phase_1
 
 
-def test_template_is_a_phase_8_decision():
+def test_template_is_chosen_by_the_composition_agent():
     phase_1 = doc_text('references/phases/01-gather-inputs.md')
     phase_6 = doc_text('references/phases/06-script-scene-plan.md')
     phase_8 = doc_text('references/phases/08-composition.md')
+    composition = doc_text('references/delegation/composition/base-instructions.md')
 
     # Phase 1 不选模板，也不提后续字幕流程。
     assert '| `template`' not in phase_1
-    assert '模板是 Phase 8 的画面选择' in phase_1
+    assert '模板由 Phase 8 的 composition agent 决定' in phase_1
     assert 'Phase 7' not in phase_1
     # Phase 6 不读模板、不依赖它。
     assert '模板不在本阶段输入里' in phase_6
     assert 'narration.md' not in phase_6
-    # Phase 8 先定 layout 与模板，再准备 handoff。
-    assert text_index(phase_8, '#### 8.0 — 选 layout 与 template') < text_index(
+    # Phase 8 只准备 layout，模板由被委派的 agent 自己选并写回。
+    assert text_index(phase_8, '#### 8.0 — 选 layout') < text_index(
         phase_8, '#### 8.1 — 物化与字体'
     )
-    assert '不命中就不选' in phase_8
+    assert '模板不在这一步决定' in phase_8
     assert '约束优先于模板' in phase_8
-    assert '`template` 为 null 时 handoff 里写“无”' in phase_8
+    assert 'template` 缺省时 handoff 写“未选择（由本阶段决定）”，并仍给出模板目录；为 null 时写“无（不使用模板）”' in phase_8
+    assert '不命中就不用' in composition
+    assert '把 `template` 字段写回 `inputs.json`' in composition
 
 
 def test_paper_key_figures_are_declared_and_checked_end_to_end():
@@ -512,7 +515,7 @@ def test_phase_1_says_nothing_about_layout():
 
     # 画面决定归 Phase 8。
     phase_8 = doc_text('references/phases/08-composition.md')
-    assert '先定 layout' in phase_8
+    assert '按 `orientation` 选 layout' in phase_8
     assert 'presenter' in phase_8 and 'stage' in phase_8
 
     presenter = doc_text('modules/layouts/presenter.md')
@@ -530,7 +533,7 @@ def test_jay_generic_performance_and_github_specific_overlay():
         'typing [切点 - 0.85, 切点 + 0.05]',
         '[该时刻, 1.0, "L"]',
         '[该时刻, 1.0, "U"]',
-        'beat → 画面',
+        '从下面的动作库挑一个合适的动作',
         '["laugh", 2200]',
         '["wave", 3200]',
     ):
@@ -547,19 +550,11 @@ def test_jay_generic_performance_and_github_specific_overlay():
         assert semantic_action not in generic
 
     action_library = jay.split('### 动作库（`acts`）')[1].split('### 常驻动作')[0]
-    assert action_library.count('| 动作 | 推荐时长 | 表现 | 适合的时刻 | 对应 beat |') == 2
-    for action, beat in (
-        ('`question`', 'question'),
-        ('`idea`', 'idea'),
-        ('`think`', 'caveat'),
-        ('`sigh`', 'caveat'),
-        ('`eureka`', 'highlight（数字）'),
-        ('`smile`', 'highlight（非数字）'),
-        ('`shake`', 'negation'),
-        ('`nod-small`', 'confirm'),
-    ):
-        row = next(line for line in action_library.splitlines() if line.startswith(f'| {action} |'))
-        assert row.endswith(f'| {beat} |')
+    # 动作库不再按已删除的语义节拍分类：四列，按“适合的时刻”选。
+    assert action_library.count('| 动作 | 推荐时长 | 表现 | 适合的时刻 |') == 2
+    assert '对应 beat' not in jay
+    for action in ('`question`', '`idea`', '`think`', '`eureka`', '`shake`', '`nod-small`'):
+        assert action in action_library
 
     github = doc_text('modules/templates/github/github.md')
     overlay = github.split('## 5. 人物怎么演')[1]
@@ -584,31 +579,29 @@ def test_composition_requires_jay_for_presenter():
     assert 'node modules/components/jay/make-envelope.mjs voice_clone/narration.mp3' in layout_rules
 
 
-def test_scene_plan_beats_authoring_and_composition_contract():
+def test_scene_plan_content_plan_and_opening_hook_contract():
     script_base = doc_text('references/delegation/script/base-instructions.md')
-    assert '"beats": [{"type": "idea", "text": "原样取自显示稿的一小段"}]' in script_base
-    for beat_type in ('question', 'idea', 'caveat', 'highlight', 'negation', 'confirm'):
-        assert f'`{beat_type}`' in script_base
-    assert '8–30 个字符' in script_base
-    assert '平均每分钟不超过 4 个' in script_base
-    assert '两个 beat 的文本不能重叠' in script_base
-    assert '这个字段可以省略' in script_base
+    # 场景规划只到叙事层：内容与演绎方式，不预设模板 / pattern / 动作。
+    assert '"content_plan": "用哪些内容、按什么顺序和方式讲，来达成 intent"' in script_base
+    assert '**不包含** `template_scene` / `pattern_hints` / `beats`' in script_base
+    assert '`content_plan`：这场景讲什么、怎样展开' in script_base
+    # 开场钩子：三句以内、方法可选、事实有据。
+    assert '整个钩子不超过三句短句' in script_base
+    assert '一种主钩子' in script_base
+    assert '不要为了钩子编造事实' in script_base
+    # 稿长按 7 字符/秒：不是 TTS 语速参数。
+    assert '7 字符/秒' in script_base and '5min ≈ 2100 chars' in script_base
+    assert '不指定 speech rate' in script_base
+    assert '7.5 字符/秒' not in script_base
 
     composition = doc_text('references/delegation/composition/base-instructions.md')
-    beat_mapping = composition.split('## 四、把语义节拍落到画面')[1].split('## 工作顺序')[0]
-    assert composition.count('| type | 有 Jay（presenter） | 没有 Jay |') == 1
-    for row in (
-        '| question | `["question", 2400]` | 按所选 design 第 6、7 节的强调写法，强调对应的提问文字 |',
-        '| idea | `["idea", 2400]` | 按所选 design 的强调写法，强调关键句或图示 |',
-        '| caveat | `["think", 2000]` 加一条不超过 4 个字的 `thoughts`，或 `["sigh", 2600]` | 对应信息用 `--c-warning` 左线的 callout 出现 |',
-        '| highlight | 数字类用 `["eureka", 2700]`，其他用 `["smile", 2200]` | 按所选 design 的强调写法，强调数字或关键词 |',
-        '| negation | `["shake", 1600]` | 对应项打 ✗，文字降为 `--c-ink2` |',
-        '| confirm | `["nod-small", 1000]` | 不加额外动效 |',
-    ):
-        assert row in beat_mapping
-    assert '动作从 `begin_s` 开始' in beat_mapping
-    assert '后一个顺延' in beat_mapping
+    # 模板与 pattern 归 composition，不再按上游节拍映射动作。
+    assert '## 四、内容演绎与模板选择' in composition
+    assert '模板归你选' in composition and 'pattern 是建议' in composition
+    assert 'beat → 画面' not in composition
+    assert '语义节拍' not in composition
+    assert '把 `template` 字段写回 `inputs.json`' in composition
 
-    # 模板不再给旁白下指令：它是 Phase 8 的画面选择。
+    # 模板不再给旁白下指令：它由 composition 阶段选。
     assert not (REPO_ROOT / 'modules' / 'templates' / 'github' / 'narration.md').exists()
-    assert '是 Phase 8 的画面选择' in script_base
+    assert '由 composition 阶段决定' in script_base

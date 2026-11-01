@@ -493,7 +493,7 @@ class TestCompositionHandoff:
         inputs = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))['Inputs']
 
         assert '- material-catalog.json：无（' in inputs
-        assert f'design github、layout presenter、template 无、orientation landscape' in inputs
+        assert f'design github、layout presenter、template 无（不使用模板）、orientation landscape' in inputs
 
     def test_required_references_follow_the_overlay_order(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition', template='github', design='producthunt', layout='presenter', orientation='landscape')
@@ -521,22 +521,40 @@ class TestCompositionHandoff:
                 'modules/designs/producthunt/producthunt.md',
             ],
             ['modules/layouts/presenter.json', 'modules/layouts/presenter.md'],
+            ['modules/templates/templates.md'],
             ['modules/templates/github/github.json', 'modules/templates/github/github.md'],
             ['modules/components', 'modules/patterns'],
         ]
         assert items[-1].startswith('按 storyboard 需要，自行阅读 ')
         assert 'modules/examples' not in body
 
-    def test_null_template_drops_the_template_item(self, tmp_path: Path):
+    def test_the_template_overview_is_always_listed(self, tmp_path: Path):
+        """模板由本阶段的 agent 选：不先给目录，它就无从决定。"""
         ws = make_workspace(tmp_path, 'composition', template=None)
         prepare(ws, 'composition')
 
         body = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))['Required References']
 
-        # base, modules.md, design, layout, patterns/components
-        assert len(re.findall(r'^\d+\. ', body, flags=re.MULTILINE)) == 5
-        assert 'modules/templates' not in body
+        # base, modules.md, design, layout, template overview, patterns/components
+        assert len(re.findall(r'^\d+\. ', body, flags=re.MULTILINE)) == 6
+        assert 'modules/templates/templates.md' in body
+        assert 'modules/templates/github' not in body
         assert 'modules/examples' not in body
+
+    def test_an_unset_template_is_dispatched_as_not_yet_chosen(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'composition')
+        inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
+        inputs.pop('template')
+        (ws / 'inputs.json').write_text(json.dumps(inputs, ensure_ascii=False), encoding='utf-8')
+
+        result = prepare(ws, 'composition')
+
+        assert result['success'] is True
+        inputs_section = handoff_sections(
+            (ws / 'composition-handoff.md').read_text(encoding='utf-8')
+        )['Inputs']
+        assert 'template 未选择（由本阶段决定）' in inputs_section
+        assert 'template 无' not in inputs_section
 
     def test_additional_instructions_inline_the_composition_requests(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition')

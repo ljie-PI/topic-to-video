@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """把 ASR 转写对齐到旁白稿，并在需要时构建字幕单元。
 
-两个明确的输出模式，共享同一套对齐核心（字符映射、ASR 归一化、段落 / cue /
-beat 定位、字幕分段）：
+两个明确的输出模式，共享同一套对齐核心（字符映射、ASR 归一化、段落 / cue
+定位、字幕分段）：
 
-  --mode timing     只生成时间轴（paragraphs / scenes / cues / beats）。不读 layout，
+  --mode timing     只生成时间轴（paragraphs / scenes / cues）。不读 layout，
                     不要求字幕宽度 / 字号 / 行数，不产生字幕单元。
   --mode subtitles  只按最终 layout 的字幕规格切分字幕单元，写到指定路径。
                     不覆写 Phase 7 的时间轴。
@@ -30,8 +30,10 @@ beat 定位、字幕分段）：
                  caption 规格取自其 `caption` 对象
                  （{width_px, font_size_px, max_lines}）。
                  --layout 与那三个显式参数二者必居其一。
-  --scene-plan   可选的场景规划 JSON；当 scene 带有 `cues` / `beats` 时，它们的
-                 秒数会写进 timeline.json。
+  --scene-plan   可选的场景规划 JSON；scene 带 `cues` 时，它们的秒数会写进
+                 timeline.json。`scene_id` / `paragraphs` / `cues` 是全部被读取的
+                 字段，所以 composition 自己的 cue 声明也能直接传给这个参数。已
+                 移除的字段（template_scene / pattern_hints / beats）会被拒绝。
 
 对齐：
   两侧都做归一化（NFKC、转小写、只留字母数字、中文数字 -> 阿拉伯数字），再用
@@ -62,9 +64,8 @@ beat 定位、字幕分段）：
   timeline.json : {"version": 1, "total_s", "paragraphs": [{index, begin_s,
     end_s}]}；带 --scene-plan 时还会加上 "scenes" 列表 [{scene_id, begin_s,
     end_s}]（场景边界由各 scene 覆盖的段落推导），以及 "cues" 列表
-    [{scene_id, cue, begin_s, end_s}] 和 "beats" 列表
-    [{scene_id, type, text, begin_s, end_s}]（无法定位的 scenes / cues / beats
-    会作为警告报告并省略）。
+    [{scene_id, cue, begin_s, end_s}]（无法定位的 scenes / cues 会作为警告
+    报告并省略）。
 
 输出约定：
   stdout : 一个 JSON 对象
@@ -183,7 +184,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--scene-plan',
         default=None,
-        help='Optional scene plan JSON with per-scene cues/beats; enables their seconds in timeline.json.',
+        help='Optional scene plan JSON with per-scene cues; enables their seconds in timeline.json.',
     )
     args = parser.parse_args()
     caption_given = [args.width, args.font_size, args.max_lines, args.layout]
@@ -715,7 +716,7 @@ def merge_short_units(
     return units, merged_count
 
 
-# --- timeline 的 scenes、cues 与 beats ---------------------------------------
+# --- timeline 的 scenes 与 cues ----------------------------------------------
 
 
 def locate_scenes(
@@ -822,32 +823,6 @@ def locate_cues(
     return cues
 
 
-def locate_beats(
-    scene_plan: list[dict[str, Any]],
-    atoms_by_paragraph: dict[int, list[Atom]],
-    warnings: list[str],
-) -> list[dict[str, Any]]:
-    beats: list[dict[str, Any]] = []
-    for scene_id, beat, text, found in _locate_scene_texts(
-        scene_plan, atoms_by_paragraph, 'beats', lambda beat: str(beat.get('text', ''))
-    ):
-        if found is None:
-            warning = f'beat not found for scene {scene_id!r}: {text[:40]!r}'
-            warnings.append(warning)
-            log(f'warning: {warning}')
-            continue
-        beats.append(
-            {
-                'scene_id': scene_id,
-                'type': beat.get('type'),
-                'text': beat.get('text'),
-                'begin_s': round(found[0] / 1000, 3),
-                'end_s': round(found[1] / 1000, 3),
-            }
-        )
-    return beats
-
-
 # --- 主流程 ------------------------------------------------------------------
 
 
@@ -940,18 +915,20 @@ def scene_clock(
     scene_plan_path: str | None,
     atoms_by_paragraph: dict[int, list[Atom]],
     warnings: list[str],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    """可选的 scene-plan 推导出的 (scenes, cues, beats) 时间。"""
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """可选的 scene-plan 推导出的 (scenes, cues) 时间。"""
     if not scene_plan_path:
-        return [], [], []
+        return [], []
     with open(scene_plan_path, encoding='utf-8') as file:
         scene_plan = json.load(file)
     if not isinstance(scene_plan, list):
         raise ValueError(f'scene plan {scene_plan_path} root must be a list')
+    removed = video_contract.removed_scene_fields_problem(scene_plan)
+    if removed:
+        raise ValueError(f'scene plan {scene_plan_path}: {removed}')
     return (
         locate_scenes(scene_plan, atoms_by_paragraph, warnings),
         locate_cues(scene_plan, atoms_by_paragraph, warnings),
-        locate_beats(scene_plan, atoms_by_paragraph, warnings),
     )
 
 
@@ -983,7 +960,7 @@ def align(args: argparse.Namespace) -> dict[str, Any]:
     if args.mode == 'timing':
         # 时间轴与字幕容量无关：不读 layout，也不要求任何 caption 参数。
         paragraphs, total_s = build_timeline(atoms_by_paragraph, span_count, warnings)
-        scenes, cues, beats = scene_clock(args.scene_plan, atoms_by_paragraph, warnings)
+        scenes, cues = scene_clock(args.scene_plan, atoms_by_paragraph, warnings)
         return {
             'timeline': {
                 'version': 1,
@@ -991,13 +968,11 @@ def align(args: argparse.Namespace) -> dict[str, Any]:
                 'paragraphs': paragraphs,
                 **({'scenes': scenes} if args.scene_plan else {}),
                 **({'cues': cues} if args.scene_plan else {}),
-                **({'beats': beats} if args.scene_plan else {}),
             },
             'summary': {
                 'paragraph_count': len(paragraphs),
                 'total_s': total_s,
                 'cue_count': len(cues),
-                'beat_count': len(beats),
                 'warnings': warnings,
             },
         }
