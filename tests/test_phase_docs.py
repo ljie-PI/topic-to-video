@@ -41,6 +41,32 @@ def test_every_product_checked_by_pipeline_status_is_named_in_the_phase_doc_outp
     assert not missing, f'{phase["doc"]} "## 输出" does not name: {missing}'
 
 
+def test_review_policy_is_opt_in_and_consistent_across_skill_and_phase_docs():
+    skill = doc_text('SKILL.md')
+    phase1 = doc_text('references/phases/01-gather-inputs.md')
+    research = doc_text('references/phases/03-research.md')
+    script = doc_text('references/phases/06-script-scene-plan.md')
+
+    for text in (skill, phase1, research, script):
+        assert 'approval_gates' in text
+        assert '全自动' in text
+        assert '`[]`' in text
+    assert '不主动询问是否审稿' in skill
+    assert '不主动询问是否审稿' in phase1
+    assert '普通“继续”' in skill
+    assert '不要用批量 `--approve`' in skill
+    assert '校验合格后默认自动继续' in research
+    assert '校验通过后默认自动进入 TTS' in script
+    for text, gate in ((research, 'research-brief'), (script, 'script')):
+        assert f'`approval_gates` 包含 `{gate}` 时' in text
+        assert '未启用此 gate 时，不额外找用户审稿' in text
+        assert '不用 `--approve` 代替' in text
+    assert '只有启用了 `script` gate 才需重新确认' in script
+    script_base = doc_text('references/delegation/script/base-instructions.md')
+    assert '`approval_gates` 包含 `script` 时才由主 agent 找用户确认' in script_base
+    assert '你不自行批准或决定取消审稿' in script_base
+
+
 def test_phase7_offers_one_voice_subtitles_command_without_manual_child_commands():
     doc = (REPO_ROOT / 'references/phases/07-voice-subtitles.md').read_text(encoding='utf-8')
 

@@ -10,7 +10,7 @@
 
 ## 完成判据
 
-`research-brief.md` 存在且非空，包含 Key facts / Quotes / Numbers、Source URLs 等小节。写脚本之前先把 brief 给用户过目（通常 ~1 轮反馈）。
+`research-brief.md` 存在且非空，包含 Key facts / Quotes / Numbers、Source URLs 等小节。校验合格后默认自动继续；只有 `inputs.json` 的 `approval_gates` 包含 `research-brief` 时，才先把 brief 给用户过目并确认。
 
 ## 下一步
 
@@ -98,7 +98,7 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
    2. 从 `gemini_deep_research_sources.json` 中筛选出符合 Phase 4 INCLUDE 类型的 URL（官方站、GitHub、docs、blog、YouTube —— 不要聚合页或社交 feed）。
    3. 通过 `web_search` 发现的、符合 INCLUDE 类型的 URL。
    目标 **10-15 个 source URL**，覆盖多样的视觉素材类型。
-8. **写脚本之前，把 `research-brief.md` 给用户看。** 通常 ~1 轮反馈。用户确认后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve research-brief`；除非用户已经明确确认，否则不要自己执行 `--approve`。
+8. **跑状态脚本，默认自动继续。** 只有 `next_phase.reason` 为 `awaiting_approval` 且 `gate` 为 `research-brief` 时，把 `research-brief.md` 给用户看，明确确认后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve research-brief`。未确认前不要自己批准或进入下游；用户明确授权后续全自动时，把 `inputs.json` 的 `approval_gates` 改为 `[]` 再跑状态脚本，不用 `--approve` 代替。未启用此 gate 时，不额外找用户审稿。
 
 **仅在以下情况跳过研究：**
 - 用户明确说"skip research, use this exact text" 且提供了完整内容

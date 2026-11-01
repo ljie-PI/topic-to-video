@@ -236,7 +236,7 @@ def complete_through_research(ws: Path, *, approved: bool = True, **inputs_overr
     if inputs_overrides.get('input_mode') == 'paper':
         write_paper_metadata(ws)
     write_text(ws / 'research-brief.md', RESEARCH_BRIEF)
-    if approved:
+    if approved and 'research-brief' in inputs_overrides.get('approval_gates', []):
         approve(ws, 'research-brief')
 
 
@@ -279,7 +279,7 @@ def complete_through_script(ws: Path, *, approved: bool = True, **inputs_overrid
     has_catalog = inputs['fetch_materials'] or inputs['input_mode'] == 'paper'
     scene_plan = SCENE_PLAN_PAPER if inputs['input_mode'] == 'paper' else SCENE_PLAN
     write_json(ws / 'scene-plan.json', scene_plan if has_catalog else SCENE_PLAN_NO_MATERIALS)
-    if approved:
+    if approved and 'script' in inputs_overrides.get('approval_gates', []):
         approve(ws, 'script')
 
 
@@ -750,6 +750,8 @@ def scene_plan_problem(
     **inputs_overrides,
 ) -> tuple[dict, str | None]:
     """Run a Phase 6 workspace whose scene-plan.json is `scenes`; returns (result, scene-plan detail)."""
+    if approve_script:
+        inputs_overrides.setdefault('approval_gates', ['script'])
     complete_through_script(tmp_path, approved=False, **inputs_overrides)
     if catalog is not None:
         write_json(tmp_path / 'material-catalog.json', catalog)
@@ -1892,7 +1894,7 @@ def test_directory_products_are_not_fingerprinted(tmp_path: Path):
 def test_phases_that_are_not_completed_get_no_stamp(tmp_path: Path):
     complete_all(tmp_path)
     (tmp_path / 'research-brief.md').unlink()
-    (tmp_path / '.pipeline' / 'stamps.json').unlink()  # scan as a fresh workspace, not with old stamps
+    assert not (tmp_path / '.pipeline' / 'stamps.json').exists()  # fixtures no longer stamp via approvals
     parse_result(run_cli(str(tmp_path)))
     assert list(read_stamps(tmp_path)['phases']) == ['1-gather-inputs']
 
@@ -2065,7 +2067,7 @@ def test_a_newly_created_optional_upstream_file_makes_its_phase_stale(tmp_path: 
 
 
 def test_reapproving_an_edited_product_stales_the_next_phase(tmp_path: Path):
-    settle(tmp_path)
+    settle(tmp_path, approval_gates=['research-brief'])
     edited = RESEARCH_BRIEF + '- one more fact [source]\n'
     write_text(tmp_path / 'research-brief.md', edited)
     waiting = parse_result(run_cli(str(tmp_path)))
@@ -2605,7 +2607,7 @@ def test_storyboard_edited_after_the_render_sends_phase_8_back(tmp_path: Path):
     assert 'storyboard.md' in result['next_phase']['problems'][REPORT]
 
 
-# --- user approval gates: .pipeline/approvals.json --------------------------------
+# --- opt-in user approval gates: inputs.json + .pipeline/approvals.json -----------
 
 
 def approve(ws: Path, gate: str) -> dict:
@@ -2618,8 +2620,8 @@ def read_approvals(ws: Path) -> dict:
     return json.loads((ws / '.pipeline' / 'approvals.json').read_text(encoding='utf-8'))
 
 
-def test_legacy_research_waits_for_approval_and_later_phases_are_pending(tmp_path: Path):
-    complete_through_research(tmp_path, approved=False)
+def test_requested_research_waits_for_approval_and_later_phases_are_pending(tmp_path: Path):
+    complete_through_research(tmp_path, approved=False, approval_gates=['research-brief'])
 
     result = parse_result(run_cli(str(tmp_path)))
 
@@ -2641,7 +2643,7 @@ def test_legacy_research_waits_for_approval_and_later_phases_are_pending(tmp_pat
 
 
 def test_approving_research_records_product_hash_and_completes_the_gate(tmp_path: Path):
-    complete_through_research(tmp_path, approved=False)
+    complete_through_research(tmp_path, approved=False, approval_gates=['research-brief'])
 
     result = approve(tmp_path, 'research-brief')
 
@@ -2659,7 +2661,7 @@ def test_approving_research_records_product_hash_and_completes_the_gate(tmp_path
 
 
 def test_changing_an_approved_research_brief_requires_confirmation_again(tmp_path: Path):
-    complete_through_research(tmp_path, approved=False)
+    complete_through_research(tmp_path, approved=False, approval_gates=['research-brief'])
     approve(tmp_path, 'research-brief')
     write_text(tmp_path / 'research-brief.md', RESEARCH_BRIEF + '- another verified fact [source]\n')
 
@@ -2671,8 +2673,7 @@ def test_changing_an_approved_research_brief_requires_confirmation_again(tmp_pat
 
 
 def test_script_gate_records_only_its_contract_products(tmp_path: Path):
-    complete_through_script(tmp_path, approved=False)
-    approve(tmp_path, 'research-brief')
+    complete_through_script(tmp_path, approved=False, approval_gates=['script'])
     waiting = parse_result(run_cli(str(tmp_path)))
     assert waiting['next_phase']['id'] == '6-script-scene-plan'
     assert waiting['next_phase']['reason'] == 'awaiting_approval'
@@ -2695,11 +2696,16 @@ def test_script_gate_records_only_its_contract_products(tmp_path: Path):
     }
 
 
-def test_changing_script_after_approval_returns_to_the_gate(tmp_path: Path):
-    complete_through_script(tmp_path, approved=False)
-    approve(tmp_path, 'research-brief')
+@pytest.mark.parametrize('product', ['script.txt', 'tts-lexicon.json', 'scene-plan.json'])
+def test_changing_script_gate_products_after_approval_returns_to_the_gate(tmp_path: Path, product: str):
+    complete_through_script(tmp_path, approved=False, approval_gates=['script'])
     approve(tmp_path, 'script')
-    write_script(tmp_path, EDITED_SCRIPT_TXT)
+    if product == 'script.txt':
+        write_script(tmp_path, EDITED_SCRIPT_TXT)
+    elif product == 'tts-lexicon.json':
+        write_json(tmp_path / product, {'OpenHuman': '欧鹏休曼'})
+    else:
+        write_json(tmp_path / product, [{**SCENE_PLAN[0], 'intent': '更新后的开场'}])
 
     result = parse_result(run_cli(str(tmp_path)))
 
@@ -2729,3 +2735,124 @@ def test_approve_rejects_an_unknown_gate_with_exit_2(tmp_path: Path):
 
     assert proc.returncode == 2
     assert 'unknown' in parse_result(proc)['error']
+
+
+@pytest.mark.parametrize('policy', [{}, {'approval_gates': []}])
+def test_default_and_explicit_auto_complete_without_approval_records(tmp_path: Path, policy: dict):
+    complete_all(tmp_path, **policy)
+
+    for _ in range(2):  # Resume also stays automatic, including legacy inputs.
+        proc = run_cli(str(tmp_path))
+        assert proc.returncode == 0, proc.stderr
+        result = parse_result(proc)
+        assert result['approval_gates'] == []
+        assert result['next_phase'] is None
+        assert not result['pending_phases']
+        assert not result['stale_phases']
+    assert not (tmp_path / '.pipeline' / 'approvals.json').exists()
+
+
+@pytest.mark.parametrize('record', [
+    'not json',
+    json.dumps({'version': 99, 'gates': {}}),
+    json.dumps({'version': 1, 'gates': {'research-brief': {'products': {}}}}),
+])
+@pytest.mark.parametrize('requested', [False, True])
+def test_unusable_approval_records_only_block_requested_review(tmp_path: Path, record: str, requested: bool):
+    gates = ['research-brief'] if requested else []
+    complete_through_research(tmp_path, approved=False, approval_gates=gates)
+    write_text(tmp_path / '.pipeline' / 'approvals.json', record)
+
+    proc = run_cli(str(tmp_path))
+    assert proc.returncode == 0, proc.stderr
+    result = parse_result(proc)
+    assert result['approval_gates'] == gates
+    if requested:
+        assert result['next_phase']['reason'] == 'awaiting_approval'
+        assert result['next_phase']['gate'] == 'research-brief'
+    else:
+        assert result['next_phase']['id'] == '4-material-harvest'
+        assert '3-research' in result['completed_phases']
+    assert (tmp_path / '.pipeline' / 'approvals.json').read_text(encoding='utf-8') == record
+
+
+@pytest.mark.parametrize('gates', [
+    None, True, 'script', {}, ['unknown'], ['SCRIPT'], [1], [[]], [{}],
+    ['script', 'script'],
+])
+def test_invalid_approval_gates_are_corrupt_inputs(tmp_path: Path, gates):
+    complete_through_inputs(tmp_path, approval_gates=gates)
+
+    proc = run_cli(str(tmp_path))
+    assert proc.returncode == 0, proc.stderr
+    result = parse_result(proc)
+    assert result['next_phase']['id'] == '1-gather-inputs'
+    assert result['next_phase']['reason'] == 'corrupt'
+    assert 'approval_gates' in result['next_phase']['problems']['inputs.json']
+
+
+def test_enabling_review_and_authorizing_auto_do_not_stale_existing_products(tmp_path: Path):
+    settle(tmp_path)
+    before = read_stamps(tmp_path)['phases']
+    assert not (tmp_path / '.pipeline' / 'approvals.json').exists()
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'approval_gates': ['research-brief', 'script']})
+
+    waiting = parse_result(run_cli(str(tmp_path)))
+    assert waiting['next_phase']['gate'] == 'research-brief'
+    assert waiting['next_phase']['reason'] == 'awaiting_approval'
+    assert waiting['pending_phases'] == PHASE_IDS[3:]
+    assert waiting['stale_phases'] == []
+
+    # Approving this draft must not cancel the separate request to review the script.
+    waiting = approve(tmp_path, 'research-brief')
+    assert waiting['next_phase']['gate'] == 'script'
+    assert waiting['next_phase']['reason'] == 'awaiting_approval'
+    assert waiting['pending_phases'] == PHASE_IDS[6:]
+    assert waiting['stale_phases'] == []
+    approvals_before_auto = read_approvals(tmp_path)
+
+    # Explicit user authorization to finish automatically changes policy, not approvals.
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'approval_gates': []})
+    for _ in range(2):
+        resumed = parse_result(run_cli(str(tmp_path)))
+        assert resumed['approval_gates'] == []
+        assert resumed['next_phase'] is None
+        assert resumed['stale_phases'] == []
+    assert read_approvals(tmp_path) == approvals_before_auto
+    assert set(approvals_before_auto['gates']) == {'research-brief'}
+    after = read_stamps(tmp_path)['phases']
+    assert {key: value for key, value in after.items() if key != '1-gather-inputs'} == {
+        key: value for key, value in before.items() if key != '1-gather-inputs'
+    }
+
+
+def test_disabling_unapproved_review_resumes_without_manufacturing_approval(tmp_path: Path):
+    complete_through_script(tmp_path, approved=False, approval_gates=['script'])
+    assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'awaiting_approval'
+
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'approval_gates': []})
+    resumed = parse_result(run_cli(str(tmp_path)))
+    assert resumed['next_phase']['id'] == '7-voice-subtitles'
+    assert '6-script-scene-plan' in resumed['completed_phases']
+    assert not (tmp_path / '.pipeline' / 'approvals.json').exists()
+
+
+def test_corrupt_products_take_precedence_over_requested_approval(tmp_path: Path):
+    complete_through_research(tmp_path, approved=False, approval_gates=['research-brief'])
+    write_text(tmp_path / 'research-brief.md', '   \n')
+    assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'corrupt'
+
+    write_text(tmp_path / 'research-brief.md', RESEARCH_BRIEF)
+    assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'awaiting_approval'
+
+
+def test_restamp_does_not_bypass_requested_review(tmp_path: Path):
+    complete_through_research(tmp_path, approved=False, approval_gates=['research-brief'])
+    assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'awaiting_approval'
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'language': 'en', 'approval_gates': ['research-brief']})
+    assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'stale'
+
+    proc = run_cli(str(tmp_path), '--restamp', '3-research')
+    assert proc.returncode == 0, proc.stderr
+    assert parse_result(proc)['next_phase']['reason'] == 'awaiting_approval'
+    assert not (tmp_path / '.pipeline' / 'approvals.json').exists()

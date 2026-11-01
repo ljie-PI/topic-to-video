@@ -29,11 +29,14 @@ it is not checked, not stamped and not reported as completed. --restamp
 <phase_id> accepts the current products of a phase as built from the current
 upstream (its products must pass their checks).
 
-User gates: research-brief (Phase 3) and script (Phase 6) also require a
-matching approval in {workspace}/.pipeline/approvals.json. --approve <gate>
-records the current product hashes only after every product of that phase
-passes; editing an approved product returns the phase to awaiting_approval.
-Legacy workspaces without approvals must confirm both gates once.
+User gates are opt-in: inputs.json's optional approval_gates lists the
+requested gates, research-brief (Phase 3) and/or script (Phase 6). Missing or
+[] means fully automatic, including legacy workspaces. Only requested gates
+require matching approval in {workspace}/.pipeline/approvals.json. --approve
+<gate> records the current product hashes only after every product of that
+phase passes; editing an approved product reopens a requested gate. Explicit
+user authorization to run automatically is recorded by clearing approval_gates,
+not by manufacturing approvals. Changing this policy does not stale products.
 
 Robustness: scanning never aborts on state-file problems. An unreadable
 optional upstream counts as absent; an unusable stamps.json is quarantined
@@ -58,6 +61,7 @@ skipped_phases / missing_products / corrupt_products it carries
   phases          [{id, status}] for every phase; status is completed,
                   skipped, missing, corrupt, stale, awaiting_approval or pending
   stale_phases, pending_phases
+  approval_gates    requested user-review gates from inputs.json (default: [])
   stamps_reset      true when stamps.json was unusable and is now quarantined:
                   every phase may be stale; rebuild stamps with --restamp
   next_phase      {id, title, doc, reason, problems}; reason is missing,
@@ -136,6 +140,8 @@ QUARANTINED_STAMPS = 'stamps.json.quarantined'
 FPCACHE_PATH = '.pipeline/fpcache.json'
 FPCACHE_VERSION = 1
 
+# inputs.json#approval_gates opts into user review (default: []); it is policy,
+# not a build input, so changing it must not invalidate generated products.
 # User confirmation is durable state, tied to the exact products the user saw.
 APPROVALS_PATH = '.pipeline/approvals.json'
 APPROVALS_VERSION = 1
@@ -578,6 +584,17 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
         return CheckResult(
             STATUS_CORRUPT,
             f'field qa_level must be one of quick / standard / strict, got {data["qa_level"]!r}',
+        ), None
+    approval_gates = data.get('approval_gates', [])
+    if (
+        not isinstance(approval_gates, list)
+        or any(not isinstance(gate, str) or gate not in GATES for gate in approval_gates)
+        or len(set(approval_gates)) != len(approval_gates)
+    ):
+        return CheckResult(
+            STATUS_CORRUPT,
+            f'field approval_gates must be a list of distinct gate names ({", ".join(GATES)}); '
+            f'use [] for fully automatic, got {approval_gates!r}',
         ), None
     return OK, data
 
@@ -1508,6 +1525,7 @@ def reconcile_stamp(phase: dict[str, Any], stamps: Stamps, fingerprints: Fingerp
 
 def scan_workspace(ws: Path, stamps: Stamps, approvals: Approvals, cache: FpCache) -> dict[str, Any]:
     _, inputs = load_inputs(ws)
+    approval_gates = inputs.get('approval_gates', []) if inputs else []
     fingerprints = Fingerprinter(ws, cache)
 
     statuses: list[dict[str, str]] = []
@@ -1528,7 +1546,7 @@ def scan_workspace(ws: Path, stamps: Stamps, approvals: Approvals, cache: FpCach
             changed_upstream = reconcile_stamp(phase, stamps, fingerprints)
             if not changed_upstream:
                 gate = phase.get('gate')
-                if gate is not None:
+                if gate in approval_gates:
                     products = {relpath: fingerprints.file(relpath) for relpath in GATES[gate]['products']}
                     if not approvals.matches(gate, products):
                         statuses.append({'id': phase['id'], 'status': PHASE_AWAITING_APPROVAL})
@@ -1579,6 +1597,7 @@ def scan_workspace(ws: Path, stamps: Stamps, approvals: Approvals, cache: FpCach
         'workspace': str(ws.resolve()),
         'input_mode': inputs.get('input_mode') if inputs else None,
         'fetch_materials': inputs.get('fetch_materials') if inputs else None,
+        'approval_gates': approval_gates,
         'stamps_reset': stamps.reset,
         'phases': statuses,
         'completed_phases': ids_with(PHASE_COMPLETED),
