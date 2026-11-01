@@ -2,7 +2,7 @@
 
 ## 输入
 
-- `harvest_page/manifest.json`（Phase 4 产出；论文 entry 由 Phase 2 / Phase 3 写入）；
+- `harvest_page/manifest.json`（Phase 4 产出且已做过尺寸 / 清晰度筛选；论文 entry 由 Phase 2 / Phase 3 写入）；
 - `research-brief.md`（提炼话题 context 摘要）；
 - `fetch_materials = false` 时 Phase 4 跳过：标准模式下本 phase 也一起跳过；论文模式（`input_mode = "paper"`）下本 phase 照常进行，走委派包基础指令里的「仅论文素材」路径。
 
@@ -28,9 +28,11 @@
 
 - 每条 `semantic_description` 是否真的描述了这张图 / 这段画面，而不是照标语。
 - 打分是否过低（<5 / 10）却仍留在 catalog 里，或者高质量的却漏掉了。
-- `selected_clips` 的起止是否真的落在有内容的位置（关键动作 / 界面的那几秒）。
+- `selected_clips` 的起止是否真的落在有内容的位置（关键动作 / 界面的那几秒），并且所选片段本身清楚可用。
 - 论文条目是否按 caption 规则处理，缺失 caption 的是否跑了视觉分析。
 - 论文模式：方法、模型结构、关键实验结果等关键图是否都在 `required_material_refs` 里，一张不漏（确实没图的写 `[]`）；关掉网络素材抓取也不影响这批图。该字段只声明“必须用”，不代替 Phase 6 / Phase 8 真的把它们用上。
+
+Phase 4 已把太小、看不清的 web 素材从 manifest 中剔除；本阶段**不要**回原目录把已剔除的素材重新加回 catalog。发现被保留的素材实际不可用时，把它从 catalog 去掉（或退回 Phase 4 重做），不要拿低清素材凑数。
 
 不合格就重做本阶段（委派时交回原 agent，并写明哪几条不对）；不要靠手改 catalog 绕过去。素材本身不对属于上一阶段的问题，按 `references/pipeline-control.md` 登记 `4-material-harvest` 重做，不要在本阶段凑合选片段。
 

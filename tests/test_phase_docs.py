@@ -7,11 +7,14 @@ names would be demanded of an agent that was never told to write it.
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 import sys
 from pathlib import Path
 
 import pytest
+
+import harvest_manifest  # scripts/ 由 conftest.py 加入 sys.path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -65,6 +68,176 @@ def test_review_policy_is_opt_in_and_consistent_across_skill_and_phase_docs():
     script_base = doc_text('references/delegation/script/base-instructions.md')
     assert '`approval_gates` 包含 `script` 时才由主 agent 找用户确认' in script_base
     assert '你不自行批准或决定取消审稿' in script_base
+
+
+def test_phase_4_filters_media_before_phase_5():
+    harvest = doc_text('references/phases/04-material-harvest.md')
+    catalog = doc_text('references/phases/05-material-catalog.md')
+
+    # 筛选是 Phase 4 的最后一步，标题层级与 4.a / 4.b 一致。
+    assert harvest.count('\n### Phase 4.c') == 1
+    assert harvest.index('### Phase 4.b') < harvest.index('### Phase 4.c')
+
+    section = harvest.split('### Phase 4.c', 1)[1]
+    # 尺寸门槛：位图沿用初抓门槛，视频用旋转无关的短边 / 长边。
+    assert '宽 ≥500 px 且 高 ≥300 px' in section
+    assert '短边 ≥360 px 且 长边 ≥640 px' in section
+    assert '短边 ≥720 px 且 长边 ≥1280 px' in section
+    assert 'SVG' in section
+    # 清晰度靠看图 / 代表帧，不引入模糊度算法。
+    assert '--max-frames 3' in section
+    assert '--max-width' in section
+    assert '不加 OpenCV' in section
+    # 筛选结果写回 manifest，而不是只写进 notes。
+    assert 'upsert_entries' in section
+    assert 'scroll_recording' in section
+    assert '原始媒体文件保留' in section
+
+    # 下游只看筛选后的 manifest。
+    assert '已做过尺寸 / 清晰度筛选' in catalog
+    assert '回原目录' in catalog
+    base = doc_text('references/delegation/catalog/base-instructions.md')
+    assert '不要扫描 `images/` / `videos/` 目录' in base
+
+
+def test_phase_4_documents_the_url_list_file_and_both_halves():
+    harvest = doc_text('references/phases/04-material-harvest.md')
+    script = doc_text('scripts/harvest-pages.py')
+
+    # Phase 4.a / 4.b 是同一阶段内的两个步骤，标题层级必须一致。
+    assert harvest.count('\n### Phase 4.a') == 1
+    assert harvest.count('\n### Phase 4.b') == 1
+    assert harvest.index('### Phase 4.a') < harvest.index('### Phase 4.b')
+
+    # URL 走文件，不在命令行上展开列表。
+    assert 'harvest-urls.txt' in harvest
+    assert '--urls-file' in harvest
+    assert '不要在命令行上展开' in harvest
+    assert '--urls-file' in script
+
+    # 清单是 Phase 4 自己生成的，不能直接把手研究文件当最终清单。
+    assert '不是阶段产物' in harvest
+
+
+def test_phase_4_output_examples_are_parseable_json():
+    harvest = doc_text('references/phases/04-material-harvest.md')
+    blocks = [json.loads(raw) for raw in re.findall(r'```json\n(.*?)```', harvest, re.DOTALL)]
+
+    manifest = next(block for block in blocks if 'version' in block)
+    assert manifest['version'] == 2
+    assert set(manifest) == {
+        'version', 'entries', 'pending_downloads', 'harvest_batches', 'updated_at',
+    }
+    page_entry, video_entry = manifest['entries']
+    assert page_entry['images'] and page_entry['scroll_recording']
+    assert video_entry['images'] == [] and video_entry['scroll_recording'] is None
+    assert video_entry['videos'][0]['download_required'] is True
+    assert manifest['pending_downloads'][0]['source_slug'] == video_entry['slug']
+
+    # 持久化的媒体路径相对 harvest_page/，不能出现绝对路径。
+    paths = [page_entry['images'][0]['local_path'],
+             page_entry['scroll_recording']['local_path'],
+             video_entry['videos'][0]['suggested_output_dir']]
+    assert all(not path.startswith('/') for path in paths)
+
+    # 批次 stdout 与磁盘 manifest 不是同一个结构。
+    batch = next(block for block in blocks if 'batch_size' in block)
+    assert 'chrome' in batch and 'version' not in batch
+    assert len(batch['entries']) == batch['batch_size']
+
+    # 下载结果：stdout 用绝对路径，manifest 更新用相对路径。
+    download = next(block for block in blocks if 'files' in block)
+    assert download['manifest_updated'] is True
+    assert all(path.startswith('/') for path in download['files'])
+    updated = next(block for block in blocks if 'download_required' in block and 'id' in block)
+    assert updated['download_required'] is False and updated['downloaded'] is True
+    assert not updated['local_path'].startswith('/')
+
+
+RECORDING_EXTENSIONS = {'playwright': '.webm', 'cdp_screencast': '.mp4'}
+
+
+def test_phase_4_examples_match_the_slugs_and_recording_backend_they_claim():
+    """示例得是真实输出：slug 来自实际规则，录制扩展名来自实际后端。"""
+    harvest = doc_text('references/phases/04-material-harvest.md')
+    blocks = [json.loads(raw) for raw in re.findall(r'```json\n(.*?)```', harvest, re.DOTALL)]
+    manifest = next(block for block in blocks if 'version' in block)
+
+    for entry in manifest['entries']:
+        assert entry['slug'] == harvest_manifest.slug_for_url(entry['url'])
+        for image in entry['images']:
+            assert image['local_path'].startswith(f'{entry["slug"]}/')
+        for video in entry['videos']:
+            assert not video['suggested_output_dir'].startswith('/')
+            assert video['suggested_output_dir'] == f'{entry["slug"]}/videos'
+        recording = entry['scroll_recording']
+        if recording is not None:
+            assert recording['local_path'].startswith(f'{entry["slug"]}/recording/')
+            expected = RECORDING_EXTENSIONS[recording['method']]
+            assert recording['local_path'].endswith(expected), (
+                f'{recording["method"]} 录制应是 {expected}'
+            )
+
+    # 下载示例的目录、stdout 与 manifest 更新指向同一个 slug。
+    video_slug = manifest['pending_downloads'][0]['source_slug']
+    download = next(block for block in blocks if 'files' in block)
+    assert download['output_dir'].endswith(f'{video_slug}/videos')
+    assert all(f'{video_slug}/videos/' in path for path in download['files'])
+    updated = next(block for block in blocks if 'download_required' in block and 'id' in block)
+    assert updated['local_path'].startswith(f'{video_slug}/videos/')
+    assert updated['id'] in updated['local_path']
+
+
+def test_phase_4_separates_script_checks_from_the_executor_check():
+    harvest = doc_text('references/phases/04-material-harvest.md')
+    criteria = harvest.split('## 完成判据', 1)[1].split('## 执行后自检')[0]
+
+    # pipeline-status 只校验 manifest 结构，下载是否逐项尝试是执行者的工作。
+    assert 'pipeline-status' in criteria
+    assert '它**不**检查下载是否尝试过' in criteria
+    assert '执行者核对' in criteria
+
+
+def test_login_gated_sources_are_harvestable_in_every_phase_that_filters_them():
+    research = doc_text('references/phases/03-research.md')
+    harvest = doc_text('references/phases/04-material-harvest.md')
+
+    # 上游不能把它们提前滤掉，否则 Phase 4 根本看不到这些 URL。
+    assert '不是聚合页或社交 feed' not in research
+    research_sources = research.split('## Source URLs (for Phase 4 harvest)')[1]
+    assert '需要登录才能看全的页面不必提前排除' in research_sources
+
+    # Phase 4 不再用“需要登录”当排除理由，而是尽量用共享 profile 的登录态。
+    exclude = harvest.partition('**EXCLUDE**')[2].split('URL 来源（按优先级）')[0]
+    assert '社交媒体 feed' not in exclude
+    assert '需要登录' not in exclude
+    assert '不因“可能需要登录”提前排除' in harvest
+    assert 'cookies' in harvest and 'localStorage' in harvest
+
+
+def test_restricted_sources_are_recorded_and_reported_at_delivery():
+    harvest = doc_text('references/phases/04-material-harvest.md')
+    check_mix = doc_text('references/phases/09-check-mix.md')
+
+    assert 'search-notes.md' in harvest
+    assert '登录墙' in harvest
+
+    assert 'search-notes.md' in check_mix
+    delivery = check_mix.split('#### 9.6')[1]
+    assert '--redo 4-material-harvest' in delivery
+    assert 'qa-report.json' in delivery
+    assert '不是阶段产物' in delivery
+
+
+def test_catalog_package_skips_videos_without_a_local_file():
+    catalog = doc_text('references/delegation/catalog/base-instructions.md')
+    _, steps = catalog.split('**每一条 harvest entry（每个 URL 一条）：**', 1)
+
+    rule = steps.split('1. **抽帧**')[0]
+    assert 'download_required: true' in rule
+    assert '跳过这个视频' in rule
+    # 素材没下到与工作区文件损坏是两件事，不能混着跳过。
+    assert '工作区损坏' in rule
 
 
 def test_phase7_owns_the_voice_subtitles_command_instead_of_the_skill_entry():

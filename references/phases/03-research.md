@@ -23,7 +23,7 @@
 - 要用的每个关键事实、数字、日期和引文都能指到具体出处，不是从记忆里补的。
 - 没核实的点已经删掉，或在 `Open questions / contradictions` 里写清楚，不会当成事实写进旁白。
 - 用这些材料能就用户关心的几个问题讲成一段连贯的话；讲不成就是材料不够，继续搜或找用户缩小范围，不要硬写。
-- **Source URLs** 里的页面能用来找画面（官方站、文档、仓库、演示视频），不是聚合页或社交 feed。
+- **Source URLs** 里的页面能用来找画面（官方站、文档、仓库、演示视频），不是聚合页；社交页面只取与主题相关的帖子 / 时间线，不整页凑数。
 
 内容确实不够或讲不通时，改简报并重跑状态脚本；需要时补搜（在上面的额度内）。用户说这稿不行、但又没说改什么时先问清；确认要重写而暂无文件变化时，按 `references/pipeline-control.md` 用 `--redo 3-research` 登记，改完再 `--finish`。
 
@@ -117,8 +117,10 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
    ```
    **Source URLs** 一节是关键 —— 它是显式交给 Phase 4 的接口。来源：
    1. 用户提供的 URL（永远第一条）。
-   2. 从 `gemini_deep_research_sources.json` 中筛选出符合 Phase 4 INCLUDE 类型的 URL（官方站、GitHub、docs、blog、YouTube —— 不要聚合页或社交 feed）。
+   2. 从 `gemini_deep_research_sources.json` 中筛选出符合 Phase 4 INCLUDE 类型的 URL（官方站、GitHub、docs、blog、YouTube、相关社交帖子 —— 不要聚合页或搜索结果页）。
    3. 通过 `web_search` 发现的、符合 INCLUDE 类型的 URL。
+
+   需要登录才能看全的页面不必提前排除：那是 Phase 4 用共享 profile 登录态去试的事，掉头返回会丢掉整条来源。
 
    数量按需要来：按相关性和来源质量挑，能盖住主要视觉来源就够；不为凑数添无关页面，也不要求每个讲解点都有对应页面。
 8. **跑状态脚本，默认自动继续。** 只有 `next_phase.reason` 为 `awaiting_approval` 且 `gate` 为 `research-brief` 时，把 `research-brief.md` 给用户看，明确确认后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve research-brief`。未确认前不要自己批准或进入下游；用户明确授权后续全自动时，把 `inputs.json` 的 `approval_gates` 改为 `[]` 再跑状态脚本，不用 `--approve` 代替。未启用此 gate 时，不额外找用户审稿。

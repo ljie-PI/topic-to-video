@@ -6,6 +6,10 @@
 
 **每一条 harvest entry（每个 URL 一条）：**
 
+**先判断能不能用：** 只有本地文件真实存在的媒体才能进入 catalog。视频带 `download_required: true`、下载失败、或 `local_path` 缺失 / 文件不存在时，跳过这个视频（不抽帧、不选片段、不写进 catalog），同一 entry 里已成功的图片 / 视频照常处理。来源未获取（地区限制、需登录、已下线）与“应该有的本地文件丢了”不同：后者是工作区损坏，按恢复流程处理，不能用跳过来掩盖。
+
+**只按 manifest 工作：** Phase 4.c 已把太小、看不清的 web 素材从 `images[]` / `videos[]` 中剔除。不要扫描 `images/` / `videos/` 目录把已被剔除的文件重新加回 catalog。保留的素材如果实际不可用（模糊、内容认不出），不要写进 catalog 凑数。论文 entry 不受这条影响。
+
 1. **抽帧**：对 `entry.videos` 里的每个视频，以及 `entry.scroll_recording`（如果有）：
    ```bash
    scripts/extract-frames.py <video> \
