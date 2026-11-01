@@ -34,6 +34,15 @@ def guardrails(relpath: str) -> str:
     return section(doc_text(relpath), '护栏')
 
 
+def failure_handling(relpath: str) -> str:
+    """Where a phase doc keeps its recovery rules: 护栏, plus 异常恢复 if present."""
+    doc = doc_text(relpath)
+    parts = [section(doc, '护栏')]
+    if '## 异常恢复' in doc:
+        parts.append(section(doc, '异常恢复'))
+    return '\n'.join(parts)
+
+
 def test_skill_keeps_only_cross_phase_guardrails_and_the_output_convention():
     skill = doc_text('SKILL.md')
     core = section(skill, '核心护栏')
@@ -129,14 +138,28 @@ def test_phase_specific_rules_move_to_their_owning_phase(relpath: str, required:
     ('references/phases/04-material-harvest.md', ('profile 被别的进程占着', '`--cdp-url`')),
     ('references/phases/05-material-catalog.md', ('`delegate_to_agent`', 'Mode 2')),
     ('references/phases/07-voice-subtitles.md', ('外部 transcript', '`npx hyperframes transcribe`')),
-    ('references/phases/07-voice-subtitles.md', ('OOM', '分段合成')),
+    ('references/phases/07-voice-subtitles.md', ('OOM', '报告阻塞')),
 ])
 def test_every_phase_keeps_the_recovery_it_needs_when_a_tool_fails(relpath: str, required: tuple):
     # Each case is a failure a phase has actually hit, plus the remedy that keeps
     # the agent from stalling or silently skipping the step.
-    text = guardrails(relpath)
+    text = failure_handling(relpath)
     for phrase in required:
-        assert phrase in text, f'{relpath} guardrails lost: {phrase}'
+        assert phrase in text, f'{relpath} lost: {phrase}'
+
+
+def test_phase7_recovery_says_how_to_resume_without_faking_audio():
+    recovery = section(doc_text('references/phases/07-voice-subtitles.md'), '异常恢复')
+
+    # An external transcript only helps if the run reuses this run's audio: the
+    # default command deletes whatever sits at the transcript path.
+    assert '`--align-only`' in recovery
+    assert '会先删掉这个路径上已有的 transcript' in recovery
+    assert '没有时间戳的纯文本不能用' in recovery
+    # Chunked audio cannot be stitched back into one timeline, so the only
+    # recovery offered is another configured backend.
+    assert '分段合成' not in recovery
+    assert '报告阻塞' in recovery
 
 
 def test_troubleshooting_is_not_outsourced_to_a_shared_gotcha_file():

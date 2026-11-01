@@ -95,6 +95,25 @@ def test_punctuation_only_targets_fall_back_to_one_sentence_without_losing_words
     }]
 
 
+def test_a_token_crossing_a_sentence_boundary_stays_in_the_sentence_it_completes():
+    # The quota is character-based, so a single token can overflow the sentence it
+    # completes. Keeping it whole is what guarantees no word time is lost or
+    # duplicated; the overflow carries over to the next sentence instead of
+    # splitting the token.
+    words = [
+        {'text': 'GPT5', 'begin': 0, 'end': 400},
+        {'text': '发布', 'begin': 400, 'end': 800},
+    ]
+
+    transcript = build_transcript(words, [{'text': 'GPT'}, {'text': '5发布'}])
+
+    assert [sentence['text'] for sentence in transcript] == ['GPT', '5发布']
+    grouped = [word['text'] for sentence in transcript for word in sentence['words']]
+    assert grouped == [word['text'] for word in words]
+    # The whole token belongs to the sentence it finished, not to both.
+    assert [word['text'] for word in transcript[0]['words']] == ['GPT5']
+
+
 def test_sentence_texts_preserves_decimal_points_and_drops_unalignable_text():
     assert sentence_texts('GPT 5.4 works!  ...\n下一章。') == [
         'GPT 5.4 works!', '下一章。'
