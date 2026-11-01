@@ -94,6 +94,8 @@ scripts/cut-clips.py {work_dir}/{topic_name}
 
 **输出：** `extract_frames/<slug>/<video-name>/`、`vision_analyze/<slug>/`、`material-catalog.json`、`clips/`。
 
+报告前自己先过一遍：每条 `semantic_description` 是否真的描述这张图 / 这段画面的作用（不是照标语）；评分是否与素材质量相符（<5 的应该已经过滤）；`selected_clips` 的起止是否落在有内容的位置；论文条目是否按 caption 规则处理。不合格就自己重做再报告；如果问题是 manifest 里素材本身不够或不对，在报告里写明建议回补哪类页面，不要用低质量素材凑数。
+
 ## 仅论文素材（`input_mode = "paper"` 且 `fetch_materials = false`）
 
 Phase 4 被跳过，`harvest_page/manifest.json` 里只有 Phase 2 / Phase 3 写入的论文条目（`main-paper`，加上 Phase 3 解析的相关论文），没有 web 页面、视频和滚动录像。论文自己的 figure / table 是论文模式的**首选**素材，不因为不抓 web 素材而丢掉。流程与上文相同（抽帧 / 字幕步骤对论文 entry 是空操作：论文 entry 没有视频、没有 `selected_clips`），只有视觉分析一步按第 3 步的 Paper-origin 规则：带非空 caption 的 figure / table 直接用 caption 作为 `semantic_description`、`score: 8`，**不做视觉分析**；caption 缺失或为空的才跑 VLM。

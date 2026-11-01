@@ -14,6 +14,16 @@
 
 `harvest_page/main-paper/metadata.json` 存在、非空、JSON 可解析，`source_type = "paper_pdf"` 且 `paper_metadata` 字段齐全；`harvest_page/manifest.json` 里必须有 slug 为 `main-paper` 的论文 entry（状态脚本校验两者；不通过则回退到本 phase 重跑——旧工作区可能只有 metadata.json 没有 manifest entry，重跑 parse-pdf 会幂等补上）。
 
+## 执行后自检
+
+解析成功不等于解析对。脚本判断格式与文件是否存在，下面几项自己看一眼：
+
+- `title` / `abstract` 是不是这篇论文（URL 或文件名对不上就是抓错了）。
+- 解析出的 markdown 有没有明显缺页、整段乱码、公式变空白。
+- `figure_captions` / `table_captions` 与图片文件是否对得上；某张图明显配错标题时，在 catalog 阶段前修正或标注。
+
+发现缺页或乱码就重跑解析（带上已下载的 PDF 或 `--pdf`），不要带着残缺的正文去写旁白。本阶段不做论文内容是否理解正确的判断，那是 Phase 3 和 Phase 6 的事。
+
 ## 下一步
 
 论文解析并入素材流后，进入 Phase 3（调研）：论文 markdown 是主要内容来源，Deep Research 只提供背景与上下文。

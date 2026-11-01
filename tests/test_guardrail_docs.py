@@ -32,10 +32,11 @@ def test_skill_keeps_only_cross_phase_guardrails_and_the_output_convention():
     skill = doc_text('SKILL.md')
     core = section(skill, '核心护栏')
 
-    assert len(re.findall(r'^\d+\. \*\*', core, flags=re.MULTILINE)) == 5
+    assert len(re.findall(r'^\d+\. \*\*', core, flags=re.MULTILINE)) == 6
     for required in (
         '写之前先调研',
         '进度只看 pipeline-status',
+        '每步自检',
         '委派步骤（Phase 5 / 6 / 8）',
         '每个素材都能追溯到 `material-catalog.json`',
         'source .venv/bin/activate',
@@ -51,7 +52,11 @@ def test_skill_keeps_only_cross_phase_guardrails_and_the_output_convention():
         '视频下载顺序执行',
     ):
         assert moved not in core
-    assert '所有脚本都把 JSON 输出到 stdout' in section(skill, '输出约定')
+    # The convention says what the status JSON is for; it no longer promises a
+    # log format nobody depends on.
+    output = section(skill, '输出约定')
+    assert '输出到 stdout' in output and '不能当作阶段完成的依据' in output
+    assert '人类可读' not in skill
 
 
 def test_skill_delegation_guardrail_preserves_the_phase5_fallback():
@@ -163,7 +168,10 @@ def test_every_retained_gotcha_is_linked_from_its_phase_guardrails():
     assert linked == retained
 
 
-def test_skill_tool_table_matches_every_executable_cli_script():
+def test_every_executable_script_is_documented_at_its_point_of_use():
+    # The entry no longer keeps a table of every tool; the guarantee that matters
+    # is that no CLI is left undocumented, and that it is documented where it is
+    # used.
     scripts = REPO_ROOT / 'scripts'
     expected = {
         path.name
@@ -171,8 +179,16 @@ def test_skill_tool_table_matches_every_executable_cli_script():
         if re.search(r"^if __name__ == ['\"]__main__['\"]:", path.read_text(encoding='utf-8'), flags=re.MULTILINE)
     }
     expected.add('fonts-download.sh')
-    tools = section(doc_text('SKILL.md'), '工具与依赖')
-    documented = set(re.findall(r'^\| `([^`]+\.(?:py|sh))` \|', tools, flags=re.MULTILINE))
+    docs = [doc_text('SKILL.md'), doc_text('references/pipeline-control.md')]
+    docs += [path.read_text(encoding='utf-8') for path in PHASE_DOCS]
+    docs += sorted(
+        path.read_text(encoding='utf-8')
+        for path in (REPO_ROOT / 'references' / 'delegation').glob('**/*.md')
+    )
+    documented = {name for name in expected if any(name in text for text in docs)}
 
     assert documented == expected
     assert 'make-narration.py' in documented
+    # And the entry itself does not grow the duplicate table back.
+    assert '| `prepare-handoff.py` |' not in doc_text('SKILL.md')
+    assert '| `voice-subtitles.py` |' not in doc_text('SKILL.md')

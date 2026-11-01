@@ -12,6 +12,14 @@ Phase 8 产出的 `composition/renders/final.mp4` + `transcribe/timeline.json` +
 
 `qa/qa-report.json` 存在且含 `findings` + `verdict` 两部分（修复轮结束后 verdict 为 `pass` 或 `handed_off`）；`final_with_bgm.mp4` 存在且非空；解说音量不变，BGM 按默认线性增益 `0.03` 垫在底下。
 
+## 执行后自检
+
+本阶段的检查已经写在下面的流程里（确定性检查 + 按 `qa_level` 的 vision 检查 + 最多两轮修复），不需要额外再看别的东西。根据问题类型决定退回哪一层，而不是硬改：
+
+- 黑屏、冻结、音画时长不符、渲染残缺：留在本阶段，交回 composition agent 修。
+- 画面与旁白对不上：可能是叙事或场景计划的问题，按 `references/pipeline-control.md` 找到对应阶段，不要只改画面。
+- 两轮后 finding 数不再下降：把报告标为 `handed_off` 连同 sheet 交回用户，不要反复重试。
+
 ## 下一步
 
 无——这是最后一个 phase。把成片与 contact sheet 交给用户过目。

@@ -21,6 +21,17 @@ Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（标准�
 
 校验通过后默认自动进入 TTS；只有 `inputs.json` 的 `approval_gates` 包含 `script` 时，才把旁白和场景摘要交给用户确认，再运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve script`。未明确确认前不要自己批准。
 
+## 执行后自检
+
+`pipeline-status` 会判定字数、段落覆盖、素材引用、朗读稿与显示稿的一致性（见上）。这些通过后，script agent 自己（主 agent 验收时再核一次）判断：
+
+- 每个事实、数字、人名、日期都能在 `research-brief.md` 里找到；没有的就删除或标“据报道”。
+- 叙事是否连贯：开头有没有钩子、各部分是不是一个意思、段落之间有没有断裂或重复。
+- 场景计划的 `intent` 与对应段落是否对得上；引用的素材是不是真的能讲这段内容。
+- 用户要求（语气、结尾不要 CTA、模板风格）是否都体现出来了。
+
+不合格就重写：委派时交回 script agent，并指明是事实、结构还是引用的问题。发现是上游不足（证据不够、素材不对）时，回报主 agent，按 `references/pipeline-control.md` 登记更早的阶段重做，不要在旁白里编造补充。
+
 ## 下一步
 
 Phase 7（配音与字幕）：只对 `narration.txt` 配音，并生成词级时间戳与字幕单元。

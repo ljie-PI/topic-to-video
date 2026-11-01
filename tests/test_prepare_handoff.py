@@ -971,7 +971,8 @@ class TestDelegationDocs:
         ):
             assert required in text
 
-    def test_skill_tool_table_includes_the_catalog_step(self):
+    def test_skill_entry_points_at_the_delegation_prep_script(self):
         text = (REPO_ROOT / 'SKILL.md').read_text(encoding='utf-8')
 
-        assert '| `prepare-handoff.py` | 委派步骤（catalog / script / composition）' in text
+        assert '`scripts/prepare-handoff.py`：委派步骤的准备' in text
+        assert 'dispatch_prompt' in text

@@ -12,6 +12,16 @@ Phase 6 产出的 `narration.txt`（朗读稿）+ `script.txt`（显示稿）+ `
 
 `voice_clone/narration.mp3` 存在且非空（ffprobe duration 非零且合法）；`transcript.json` 存在、非空、JSON 可解析，是句子列表且每句含 `begin` / `end` / `text` / `words`；`subtitle-units.json` 存在且 `units` 非空；`timeline.json` 存在且 `paragraphs` 非空，可选 `beats` 是列表且每项都有数字 `begin_s` / `end_s`。
 
+## 执行后自检
+
+这一步以工具结果为主，不需要重新评价稿件内容：
+
+- `voice-subtitles.py` 退出码为 0；非 0 时按 `failed_step` 处理（见下），不要手写或手动补跑子命令。
+- 输出 JSON 的 `transcript_method` 与 `warnings` 看一眼：有 `fallback: true` 单元或漏读告警就核对该段朗读稿是否被重复或吞掉。
+- 用户报告的读音问题（品牌名、数字、英文缩写）通过词表修正，然后重跑本阶段，不改 `narration.txt`。
+
+内容本身（该不该这么讲）已在上一步确定；这里只保证声音与时间对得上。
+
 ## 下一步
 
 Phase 8（composition，委派）：sub-agent 用字幕单元、时间轴和素材 catalog 完成画面与渲染；字体由 Phase 8 准备阶段按所选 design 预置。

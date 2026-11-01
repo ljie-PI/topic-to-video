@@ -6,6 +6,7 @@ JSON, exit codes 0 / 1 / 2). Fixture workspaces are built in tmp dirs.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import subprocess
@@ -34,7 +35,17 @@ INPUTS = {
     'qa_level': 'standard',
 }
 
-RESEARCH_BRIEF = '# research brief\n\n## Key facts (verified)\n- fact [source]\n'
+RESEARCH_BRIEF = (
+    '# research brief\n\n'
+    '## Key facts (verified)\n'
+    '- fact [source]\n\n'
+    '## Quotes (verbatim if possible)\n'
+    '- "quote" — Person, [source]\n\n'
+    '## Numbers / dates\n'
+    '- 1, unit, [source]\n\n'
+    '## Source URLs (for Phase 4 harvest)\n'
+    '- https://example.com/article — official site\n'
+)
 
 # duration '5min' -> 5 * 60 * 7.5 = 2250 characters, here as two paragraphs.
 SCRIPT_TXT = '甲' * 1125 + '\n\n' + '乙' * 1125 + '\n'
@@ -2283,31 +2294,81 @@ def test_unusable_stamps_file_is_quarantined_and_reported(tmp_path: Path, conten
     assert (tmp_path / '.pipeline' / 'stamps.json.quarantined').read_text(encoding='utf-8') == content
 
 
-def test_quarantined_stamps_are_not_saved_until_they_are_rebuilt(tmp_path: Path):
+def test_quarantined_stamps_keep_every_phase_unverified_until_it_is_accepted(tmp_path: Path):
     complete_all(tmp_path)
     write_text(tmp_path / '.pipeline' / 'stamps.json', 'garbage')
 
-    first = parse_result(run_cli(str(tmp_path)))
-    second = parse_result(run_cli(str(tmp_path)))
-
-    for result in (first, second):
+    for _ in range(2):
+        result = parse_result(run_cli(str(tmp_path)))
         assert result['stamps_reset'] is True
+        # Nothing was accepted yet, so there is nothing to record as built.
         assert not (tmp_path / '.pipeline' / 'stamps.json').exists()
+        assert result['next_phase']['id'] == '1-gather-inputs'
+        assert result['next_phase']['reason'] == 'unverified'
+        assert result['completed_phases'] == []
 
 
-def test_restamp_rebuilds_quarantined_stamps(tmp_path: Path):
+def test_accepting_every_phase_resolves_the_quarantined_stamps(tmp_path: Path):
     settle(tmp_path)
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'qa_level': 'strict'})
     write_text(tmp_path / '.pipeline' / 'stamps.json', 'garbage')
 
-    proc = run_cli(str(tmp_path), '--restamp', '9-check-mix')
+    # Accepting one phase is not enough: the other phases stay unknown.
+    first = parse_result(run_cli(str(tmp_path), '--restamp', '1-gather-inputs'))
+    assert first['stamps_reset'] is True
+    assert list(read_stamps(tmp_path)['phases']) == ['1-gather-inputs']
+    assert first['next_phase']['id'] == '3-research'
+    assert first['next_phase']['reason'] == 'unverified'
 
-    assert proc.returncode == 0
-    result = parse_result(proc)
-    assert result['stamps_reset'] is False
+    for phase_id in (phase for phase in PHASE_IDS if phase != '2-paper-parse'):
+        proc = run_cli(str(tmp_path), '--restamp', phase_id)
+        assert proc.returncode == 0, proc.stderr
+
+    resolved = parse_result(run_cli(str(tmp_path)))
+    assert resolved['stamps_reset'] is False
     assert not (tmp_path / '.pipeline' / 'stamps.json.quarantined').exists()
     assert (tmp_path / '.pipeline' / 'stamps.json').is_file()
-    assert parse_result(run_cli(str(tmp_path)))['next_phase'] is None
+    assert resolved['next_phase'] is None
+
+
+def test_last_acceptance_keeps_quarantine_if_saving_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    settle(tmp_path)
+    write_text(tmp_path / '.pipeline' / 'stamps.json', 'garbage')
+    parse_result(run_cli(str(tmp_path)))  # Quarantine the unusable stamps.
+    for phase_id in PHASE_IDS:
+        if phase_id not in ('2-paper-parse', '9-check-mix'):
+            proc = run_cli(str(tmp_path), '--restamp', phase_id)
+            assert proc.returncode == 0, proc.stderr
+
+    spec = importlib.util.spec_from_file_location('pipeline_status_recovery_test', SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # @dataclass resolves its module here.
+    spec.loader.exec_module(module)
+    stamps = module.Stamps(tmp_path)
+    phase = module.PHASES_BY_ID['9-check-mix']
+    fingerprints = module.Fingerprinter(tmp_path)
+    stamps.put(phase['id'], fingerprints.upstream(phase), fingerprints.products(phase))
+    before = (tmp_path / '.pipeline' / 'stamps.json').read_bytes()
+
+    def fail_save():
+        raise OSError('simulated stamps write failure')
+
+    monkeypatch.setattr(stamps, 'save', fail_save)
+    with pytest.raises(OSError, match='simulated stamps write failure'):
+        stamps.resolve_quarantine()
+
+    # The marker must survive until the full record is on disk; another run
+    # cannot quietly treat the last phase as a new, implicitly trusted phase.
+    assert stamps.reset is True
+    assert (tmp_path / '.pipeline' / 'stamps.json.quarantined').exists()
+    assert (tmp_path / '.pipeline' / 'stamps.json').read_bytes() == before
+    retry = parse_result(run_cli(str(tmp_path)))
+    assert retry['next_phase']['id'] == '9-check-mix'
+    assert retry['next_phase']['reason'] == 'unverified'
+
+    recovered = parse_result(run_cli(str(tmp_path), '--restamp', '9-check-mix'))
+    assert recovered['next_phase'] is None
+    assert recovered['stamps_reset'] is False
+    assert not (tmp_path / '.pipeline' / 'stamps.json.quarantined').exists()
 
 
 def test_deleting_the_pipeline_dir_starts_over_from_the_current_files(tmp_path: Path):
@@ -2856,3 +2917,307 @@ def test_restamp_does_not_bypass_requested_review(tmp_path: Path):
     assert proc.returncode == 0, proc.stderr
     assert parse_result(proc)['next_phase']['reason'] == 'awaiting_approval'
     assert not (tmp_path / '.pipeline' / 'approvals.json').exists()
+
+
+# --- redo requests: products that pass can still be asked to be redone -----------
+#
+# A user or the agent itself can find a phase's content wrong while every file is
+# still in place. Files alone cannot express that, and deleting shared products
+# (the harvest manifest, the catalog) to force a rollback loses other phases' work.
+
+
+def redo(ws: Path, phase_id: str, reason: str = '内容不合格，需要重做') -> dict:
+    proc = run_cli(str(ws), '--redo', phase_id, '--reason', reason)
+    assert proc.returncode == 0, proc.stderr
+    return parse_result(proc)
+
+
+def finish(ws: Path, phase_id: str) -> subprocess.CompletedProcess:
+    return run_cli(str(ws), '--finish', phase_id)
+
+
+def read_redos(ws: Path) -> dict:
+    return json.loads((ws / '.pipeline' / 'redos.json').read_text(encoding='utf-8'))
+
+
+def test_a_redo_request_stops_the_phase_from_counting_as_completed(tmp_path: Path):
+    settle(tmp_path)
+    before = (tmp_path / 'script.txt').read_bytes()
+
+    result = redo(tmp_path, '6-script-scene-plan', '第三段重复，合并后重写')
+
+    assert result['next_phase'] == {
+        'id': '6-script-scene-plan',
+        'title': '脚本与场景规划（委派）',
+        'doc': 'references/phases/06-script-scene-plan.md',
+        'reason': 'redo',
+        'redo_reason': '第三段重复，合并后重写',
+        'problems': {},
+    }
+    assert statuses(result)['6-script-scene-plan'] == 'redo_requested'
+    assert result['redo_phases'] == ['6-script-scene-plan']
+    assert result['pending_phases'] == PHASE_IDS[6:]
+    assert '6-script-scene-plan' not in result['completed_phases']
+    assert result['stale_phases'] == []
+    # The products stay in place: a redo is a request, not a deletion.
+    assert (tmp_path / 'script.txt').read_bytes() == before
+    assert read_redos(tmp_path)['requests']['6-script-scene-plan']['reason'] == '第三段重复，合并后重写'
+
+
+def test_a_redo_request_survives_plain_runs_and_product_edits(tmp_path: Path):
+    settle(tmp_path)
+    redo(tmp_path, '6-script-scene-plan')
+
+    # Rewriting the products is not the signal that ends a redo: only --finish is.
+    write_script(tmp_path, EDITED_SCRIPT_TXT)
+
+    for _ in range(2):
+        result = parse_result(run_cli(str(tmp_path)))
+        assert result['next_phase']['reason'] == 'redo'
+        assert result['next_phase']['id'] == '6-script-scene-plan'
+    # Even a file rewritten to the very same bytes cannot clear the request.
+    write_script(tmp_path, SCRIPT_TXT)
+    assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'redo'
+
+
+def test_finish_accepts_a_redo_once_its_products_pass(tmp_path: Path):
+    settle(tmp_path)
+    redo(tmp_path, '6-script-scene-plan')
+    write_script(tmp_path, EDITED_SCRIPT_TXT)
+
+    proc = finish(tmp_path, '6-script-scene-plan')
+
+    assert proc.returncode == 0, proc.stderr
+    result = parse_result(proc)
+    assert result['redo_phases'] == []
+    assert statuses(result)['6-script-scene-plan'] == 'completed'
+    assert not (tmp_path / '.pipeline' / 'redos.json').exists()
+    # The redo changed script.txt, so the phases built from it must be redone.
+    assert result['next_phase']['id'] == '7-voice-subtitles'
+    assert result['next_phase']['reason'] == 'stale'
+    assert set(result['next_phase']['changed_upstream']) == {'script.txt', 'narration.txt', 'narration-offsets.json'}
+
+
+def test_finish_does_not_skip_the_phase_novelty_check(tmp_path: Path):
+    settle(tmp_path)
+    # An input changed before the redo was requested: the products are the old build.
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'qa_level': 'strict'})
+    assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'stale'
+    redo(tmp_path, '9-check-mix')
+
+    # The rerun is deterministic and produces the very same bytes.
+    for relpath in ('qa/qa-report.json', 'composition/renders/final_with_bgm.mp4'):
+        product = tmp_path / relpath
+        product.write_bytes(product.read_bytes())
+
+    proc = finish(tmp_path, '9-check-mix')
+
+    # Finishing clears the request but still refuses to accept the old build.
+    assert proc.returncode == 2
+    result = parse_result(proc)
+    assert result['success'] is False
+    assert 'restamp' in result['error']
+    assert result['changed_upstream'] == ['inputs.json#qa_level']
+    assert not (tmp_path / '.pipeline' / 'redos.json').exists()
+    assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'stale'
+
+    # Accepting a byte-identical rerun is what --restamp is for.
+    accepted = parse_result(run_cli(str(tmp_path), '--restamp', '9-check-mix'))
+    assert statuses(accepted)['9-check-mix'] == 'completed'
+    assert accepted['next_phase'] is None
+
+
+def test_finishing_a_redo_does_not_accept_the_other_unverified_phases(tmp_path: Path):
+    settle(tmp_path)
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'qa_level': 'strict'})  # Phase 9 goes stale
+    redo(tmp_path, '3-research', '核对简报')
+    write_text(tmp_path / '.pipeline' / 'stamps.json', 'garbage')  # none of the stamps are usable
+
+    proc = finish(tmp_path, '3-research')
+
+    assert proc.returncode == 0, proc.stderr
+    result = parse_result(proc)
+    # Only the finished phase was accepted, and only it was recorded.
+    assert result['completed_phases'] == []
+    assert result['stamps_reset'] is True
+    assert result['next_phase']['id'] == '1-gather-inputs'
+    assert result['next_phase']['reason'] == 'unverified'
+    assert statuses(result)['9-check-mix'] == 'pending'
+    recorded = read_stamps(tmp_path)['phases']
+    assert list(recorded) == ['3-research']
+    # The old table is still quarantined until every phase is accepted again.
+    assert (tmp_path / '.pipeline' / 'stamps.json.quarantined').exists()
+
+
+def test_finish_refuses_products_that_do_not_pass(tmp_path: Path):
+    settle(tmp_path)
+    redo(tmp_path, '6-script-scene-plan')
+    (tmp_path / 'script.txt').unlink()
+
+    proc = finish(tmp_path, '6-script-scene-plan')
+
+    assert proc.returncode == 2
+    result = parse_result(proc)
+    assert result['success'] is False
+    assert '6-script-scene-plan' in result['error']
+    assert 'script.txt' in result['problems']
+    # The request is cleared first (as agreed), and the phase still has to be redone:
+    # the plain scan reports the missing product.
+    assert not (tmp_path / '.pipeline' / 'redos.json').exists()
+    assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'missing'
+
+
+def test_finish_without_a_pending_redo_is_refused(tmp_path: Path):
+    settle(tmp_path)
+    proc = finish(tmp_path, '6-script-scene-plan')
+    assert proc.returncode == 2
+    result = parse_result(proc)
+    assert result['success'] is False
+    assert 'no redo is pending' in result['error']
+
+
+def test_redo_requests_are_worked_off_earliest_first(tmp_path: Path):
+    settle(tmp_path)
+    redo(tmp_path, '3-research', '事实需要重核')
+    redo(tmp_path, '6-script-scene-plan', '叙事重复')
+
+    first = parse_result(run_cli(str(tmp_path)))
+    assert first['next_phase']['id'] == '3-research'
+    assert first['next_phase']['redo_reason'] == '事实需要重核'
+    # Phases after the next one are pending, never inspected: only the earliest
+    # request is reported, and the later one is not lost.
+    assert first['redo_phases'] == ['3-research']
+    assert first['pending_phases'] == PHASE_IDS[3:]
+
+    assert finish(tmp_path, '3-research').returncode == 0
+    second = parse_result(run_cli(str(tmp_path)))
+    assert second['next_phase']['id'] == '6-script-scene-plan'
+    assert second['next_phase']['reason'] == 'redo'
+    assert second['next_phase']['redo_reason'] == '叙事重复'
+
+
+def test_restamp_and_approve_do_not_bypass_a_pending_redo(tmp_path: Path):
+    complete_through_research(tmp_path, approved=False, approval_gates=['research-brief'])
+    redo(tmp_path, '3-research')
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'language': 'en', 'approval_gates': ['research-brief']})
+
+    restamp = run_cli(str(tmp_path), '--restamp', '3-research')
+    assert restamp.returncode == 1
+    assert 'redo is pending' in parse_result(restamp)['error']
+
+    approve_proc = run_cli(str(tmp_path), '--approve', 'research-brief')
+    assert approve_proc.returncode == 2
+    assert 'redo is pending' in parse_result(approve_proc)['error']
+    assert not (tmp_path / '.pipeline' / 'approvals.json').exists()
+
+
+def test_a_redo_of_a_skipped_phase_is_refused(tmp_path: Path):
+    settle(tmp_path)  # standard mode: Phase 2 does not apply
+    proc = run_cli(str(tmp_path), '--redo', '2-paper-parse', '--reason', '重做')
+    assert proc.returncode == 1
+    result = parse_result(proc)
+    assert result['success'] is False
+    assert 'skipped' in result['error']
+
+
+@pytest.mark.parametrize(
+    'args',
+    [
+        ('--redo',),  # no phase
+        ('--redo', '6-script-scene-plan'),  # no reason
+        ('--redo', '6-script-scene-plan', '--reason', '   '),  # blank reason
+        ('--reason', '重做'),  # reason without --redo
+        ('--finish',),  # no phase
+        ('--redo', '6-script-scene-plan', '--reason', 'x', '--finish', '6-script-scene-plan'),
+        ('--redo', '10-publish', '--reason', 'x'),  # unknown phase
+        ('--finish', '10-publish'),
+        ('--restamp', '6-script-scene-plan', '--reason', 'x'),  # reason only applies to --redo
+    ],
+)
+def test_redo_and_finish_usage_errors_exit_2(tmp_path: Path, args: tuple[str, ...]):
+    settle(tmp_path)
+    proc = run_cli(str(tmp_path), *args)
+    assert proc.returncode == 2
+    assert parse_result(proc)['success'] is False
+
+
+# --- optional material_search_requests: a platform search the user asked for ------
+
+
+def test_adding_a_material_search_request_restales_only_the_harvest(tmp_path: Path):
+    settle(tmp_path)
+
+    write_json(
+        tmp_path / 'inputs.json',
+        {**INPUTS, 'material_search_requests': ['去 Google 图片搜 Roblox 的界面截图']},
+    )
+    result = parse_result(run_cli(str(tmp_path)))
+
+    # Recording the request alone changes nothing: whether a redo is needed is not
+    # inferred from the files or the inputs, only from an explicit request.
+    assert result['next_phase'] is None
+    assert result['stale_phases'] == []
+
+    scheduled = redo(tmp_path, '4-material-harvest', '执行用户要求的平台搜索')
+    assert scheduled['next_phase']['id'] == '4-material-harvest'
+    assert scheduled['next_phase']['reason'] == 'redo'
+    assert scheduled['next_phase']['redo_reason'] == '执行用户要求的平台搜索'
+
+
+@pytest.mark.parametrize(
+    'content',
+    [
+        '{broken',  # truncated
+        '[]',
+        '{"version": 2, "requests": {}}',
+        '{"version": 1}',  # no requests object
+    ],
+)
+def test_an_unusable_redo_file_fails_the_run_instead_of_dropping_the_request(
+    tmp_path: Path, content: str
+):
+    settle(tmp_path)
+    redo(tmp_path, '6-script-scene-plan')
+    write_text(tmp_path / '.pipeline' / 'redos.json', content)
+
+    proc = run_cli(str(tmp_path))
+
+    assert proc.returncode == 1
+    result = parse_result(proc)
+    assert result['success'] is False
+    assert 'redos.json' in result['error']
+    # Every action refuses as well: a pending request must never be lost quietly.
+    for args in (('--finish', '6-script-scene-plan'), ('--redo', '6-script-scene-plan', '--reason', 'x')):
+        failing = run_cli(str(tmp_path), *args)
+        assert failing.returncode == 1
+        assert parse_result(failing)['success'] is False
+    # The evidence is left in place for inspection.
+    assert (tmp_path / '.pipeline' / 'redos.json').read_text(encoding='utf-8') == content
+
+
+@pytest.mark.parametrize('section', ['## Key facts', '## Quotes', '## Numbers', '## Source URLs'])
+def test_research_brief_must_carry_the_sections_downstream_reads(tmp_path: Path, section: str):
+    complete_through_inputs(tmp_path, fetch_materials=False)
+    without = '\n'.join(
+        line for line in RESEARCH_BRIEF.splitlines() if not line.startswith(section)
+    )
+    write_text(tmp_path / 'research-brief.md', without + '\n')
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '3-research'
+    assert result['next_phase']['reason'] == 'corrupt'
+    assert f'## {section.lstrip("# ")}' in result['next_phase']['problems']['research-brief.md']
+
+
+@pytest.mark.parametrize('value', ['https://example.com', [], None, [''], ['  '], ['ok', 3]])
+def test_material_search_requests_must_be_a_list_of_non_empty_strings(tmp_path: Path, value):
+    complete_through_inputs(tmp_path, material_search_requests=value)
+    result = parse_result(run_cli(str(tmp_path)))
+
+    if value == []:
+        assert result['completed_phases'] == ['1-gather-inputs']  # an empty list asks for nothing
+        return
+    assert result['next_phase']['id'] == '1-gather-inputs'
+    assert result['next_phase']['reason'] == 'corrupt'
+    assert 'material_search_requests' in result['next_phase']['problems']['inputs.json']

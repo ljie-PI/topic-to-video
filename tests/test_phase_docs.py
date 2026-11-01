@@ -67,7 +67,7 @@ def test_review_policy_is_opt_in_and_consistent_across_skill_and_phase_docs():
     assert '你不自行批准或决定取消审稿' in script_base
 
 
-def test_phase7_offers_one_voice_subtitles_command_without_manual_child_commands():
+def test_phase7_owns_the_voice_subtitles_command_instead_of_the_skill_entry():
     doc = (REPO_ROOT / 'references/phases/07-voice-subtitles.md').read_text(encoding='utf-8')
 
     assert doc.count('python3 scripts/voice-subtitles.py {work_dir}/{topic_name}') == 1
@@ -77,8 +77,11 @@ def test_phase7_offers_one_voice_subtitles_command_without_manual_child_commands
     assert 'failed_step' in doc
     assert '单独补跑转录' not in doc
 
+    # The entry stopped keeping a full script table; the phase doc is where the
+    # command, its flags and its failure handling live.
     skill = (REPO_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-    assert '| `voice-subtitles.py` |' in skill
+    assert '--align-only' in doc
+    assert '| `voice-subtitles.py` |' not in skill
     gotchas = (REPO_ROOT / 'references/gotchas.md').read_text(encoding='utf-8')
     assert 'Phase 7 的那条 voice-clone 命令' not in gotchas
     assert 'python3 scripts/voice-subtitles.py {work_dir}/{topic_name}' not in gotchas
@@ -102,7 +105,7 @@ def test_paper_mode_instructions_live_in_the_phase_or_package_that_uses_them():
     deep_research_at = research.index('3. **跑 Gemini Deep Research。**')
     related_at = research.index('4. **解析相关论文（可选，仅论文模式）。**')
     gaps_at = research.index('5. **找空缺。**')
-    search_at = research.index('6. **做有针对性的搜索。**')
+    search_at = research.index('6. **按缺口搜索。**')
     brief_at = research.index('7. **合成研究 brief')
     assert deep_research_at < related_at < gaps_at < search_at < brief_at
     related_section = research[related_at:gaps_at]
@@ -142,6 +145,58 @@ def test_phase_1_assures_paper_figures_at_the_visual_material_question():
     assert visual_question_at < assurance_at < input_detection_at
     assert phase_1.count(assurance) == 1
     assert '评分过滤仍然适用' not in phase_1
+
+
+def test_every_phase_doc_names_what_to_check_after_running_it():
+    # A phase whose products pass can still be wrong; each doc says what the
+    # agent judges itself, right after the criteria the script enforces.
+    for phase in PHASES:
+        text = doc_text(phase['doc'])
+        assert '## 执行后自检' in text, f'{phase["doc"]} has no "## 执行后自检"'
+        criteria = text.index('## 完成判据')
+        self_check = text.index('## 执行后自检')
+        next_step = text.index('## 下一步')
+        assert criteria < self_check < next_step, f'{phase["doc"]} puts the self-check elsewhere'
+
+
+def test_the_entry_leaves_duration_and_orientation_to_the_phase_docs():
+    skill = doc_text('SKILL.md')
+    phase_1 = doc_text('references/phases/01-gather-inputs.md')
+
+    # The description decides when the skill applies; length and orientation are
+    # asked for in Phase 1, not promised as entry conditions.
+    for worded in ('3-10 分钟', '3–10 分钟', '横屏或竖屏'):
+        assert worded not in skill, f'SKILL.md still promises {worded}'
+    assert '没有默认值' in phase_1
+    assert '用户没说就问一句' in phase_1
+
+
+def test_search_and_redo_rules_are_stated_once_and_linked():
+    skill = doc_text('SKILL.md')
+    research = doc_text('references/phases/03-research.md')
+    harvest = doc_text('references/phases/04-material-harvest.md')
+    control = doc_text('references/pipeline-control.md')
+
+    # Adaptive search with a cap instead of fixed counts and URL quotas.
+    assert '10-15' not in research and '10-15' not in harvest
+    assert '2-3 轮' not in research
+    assert '最多 8 次' in research
+    assert '连续两轮' in research
+    assert 'search-notes.md' in research
+
+    # Redo is an explicit request, not an inference from changed files.
+    assert '--redo' in skill and '--finish' in skill
+    assert 'references/pipeline-control.md' in skill
+    assert '--redo' in control and '--finish' in control
+    assert '不要把一次修复意见当成风格规则' in control
+    # A user who names a platform search must still be served without making it
+    # the default.
+    assert 'material_search_requests' in phase_1_doc()
+    assert 'material_search_requests' in harvest
+
+
+def phase_1_doc() -> str:
+    return doc_text('references/phases/01-gather-inputs.md')
 
 
 def test_phase_4_no_longer_documents_merging_the_parsed_paper():

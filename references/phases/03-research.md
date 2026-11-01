@@ -10,7 +10,18 @@
 
 ## 完成判据
 
-`research-brief.md` 存在且非空，包含 Key facts / Quotes / Numbers、Source URLs 等小节。校验合格后默认自动继续；只有 `inputs.json` 的 `approval_gates` 包含 `research-brief` 时，才先把 brief 给用户过目并确认。
+`research-brief.md` 存在且非空，并且含下面四个小节（标题按模板写）：`## Key facts`、`## Quotes`、`## Numbers`、`## Source URLs`；`## Open questions / contradictions` 可选。小节里的内容是否可信由执行后自检判断，脚本只保证下游能按小节取。校验合格后默认自动继续；只有 `inputs.json` 的 `approval_gates` 包含 `research-brief` 时，才先把 brief 给用户过目并确认。
+
+## 执行后自检
+
+`pipeline-status` 只检查简报存在、各必需小节都在。下面这几项要自己判断：
+
+- 要用的每个关键事实、数字、日期和引文都能指到具体出处，不是从记忆里补的。
+- 没核实的点已经删掉，或在 `Open questions / contradictions` 里写清楚，不会当成事实写进旁白。
+- 用这些材料能就用户关心的几个问题讲成一段连贯的话；讲不成就是材料不够，继续搜或找用户缩小范围，不要硬写。
+- **Source URLs** 里的页面能用来找画面（官方站、文档、仓库、演示视频），不是聚合页或社交 feed。
+
+内容确实不够或讲不通时，改简报并重跑状态脚本；需要时补搜（在上面的额度内）。用户说这稿不行、但又没说改什么时先问清；确认要重写而暂无文件变化时，按 `references/pipeline-control.md` 用 `--redo 3-research` 登记，改完再 `--finish`。
 
 ## 下一步
 
@@ -68,11 +79,19 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
    - 最多解析 2 篇。用户说"只看主论文"或没识别出明显相关工作，则跳过。
    - 这一步不受 `fetch_materials` 影响：相关论文的 figure / table 同样写进 manifest，供 Phase 5 使用。
    - 读相关论文解析出的 markdown（`harvest_page/related-<short-name>/metadata.json` 的 `paper_metadata.full_markdown_path`，相对 `harvest_page/`），把结论（它的方法 / 结果与主论文的关系）写进 `research-brief.md`。
-5. **找空缺。** 不论 Gemini 跑没跑成功，检查：哪些数字、人名、日期或技术细节缺失或没核实？列出来。
-6. **做有针对性的搜索。** 用 `web_search` 对每个空缺搜一下 —— 一般：Gemini 跑成功的话 2-4 次（填空），没跑则 3-6 次（完整研究）。示例：
-   - "Boris Cherny Anthropic interview Sequoia 2026" → 确认姓名、日期、引文
-   - "Claude Code MCP launch date" → 日期细节
+5. **找空缺。** 不论 Gemini 跑没跑成功，先列出这段视频要讲的几个核心问题，再标出每处缺什么：定义、关键数字、原始出处，还是某个结论有冲突。写不成一句话的“核心问题”说明还没想清楚，先问用户或继续看材料。
+6. **按缺口搜索。** 每次只为最影响讲解的一个缺口搜一次：先说清这次要解决什么，再写关键词。读完结果做三件事——打开重要出处核实（搜索摘要不能当证据）、把已确认的事实补进简报草稿、据此删掉没依据的结论或标为“据报道”。然后看还有没有影响讲解的缺口，有明确目标才继续。关键词可以按结果改写：换概念的别名、直接找原始来源、限定年份或机构、找图示或演示视频。示例：
+   - "Claude Code MCP launch date" → 确认发布日期
+   - "Boris Cherny Anthropic interview Sequoia" → 核实姓名与引文
    - "GPU vs CPU AI training memory bandwidth" → 技术数字
+
+   **什么时候停（三种情况都算正常结束）：**
+
+   - **资料够了：** 要讲的核心问题已有足够信息，能组织成连贯的讲解；要用的数字、日期、人名和引文都能指到出处；有争议的结论已有对照说明。三项都满足就停，用了两次也是正常。
+   - **没进展：** 连续两轮换了关键词或来源，仍只得到重复、无关或不能核实的信息，就停。能舍弃的枝节舍弃；缺的正好是用户要听的核心内容时，说明缺什么，请用户补材料或确认缩小范围——不能宣布调研合格。
+   - **到上限：** 一次制作里 agent 主动搜索合计最多 8 次（调研与素材补搜共用这份次数），用满就停，未解决的问题写进简报。不要为了凑次数或凑来源数量继续搜。
+
+   计数：一次搜索查询并读完结果算一次；一批发出多个查询时每个分别计。打开来源核实不算；Gemini 自己的搜索不纳入。续跑沿用已用次数，不因换对话而重置。查过什么、为什么停，简单记在工作区的 `search-notes.md` 即可（不是阶段产物，不参与状态判断）。
 7. **合成研究 brief，落盘为 `research-brief.md`。** 格式：
    ```
    ## Key facts (verified)
@@ -97,14 +116,13 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
    1. 用户提供的 URL（永远第一条）。
    2. 从 `gemini_deep_research_sources.json` 中筛选出符合 Phase 4 INCLUDE 类型的 URL（官方站、GitHub、docs、blog、YouTube —— 不要聚合页或社交 feed）。
    3. 通过 `web_search` 发现的、符合 INCLUDE 类型的 URL。
-   目标 **10-15 个 source URL**，覆盖多样的视觉素材类型。
+
+   数量按需要来：按相关性和来源质量挑，能盖住主要视觉来源就够；不为凑数添无关页面，也不要求每个讲解点都有对应页面。
 8. **跑状态脚本，默认自动继续。** 只有 `next_phase.reason` 为 `awaiting_approval` 且 `gate` 为 `research-brief` 时，把 `research-brief.md` 给用户看，明确确认后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve research-brief`。未确认前不要自己批准或进入下游；用户明确授权后续全自动时，把 `inputs.json` 的 `approval_gates` 改为 `[]` 再跑状态脚本，不用 `--approve` 代替。未启用此 gate 时，不额外找用户审稿。
 
 **仅在以下情况跳过研究：**
 - 用户明确说"skip research, use this exact text" 且提供了完整内容
 - 主题只是把对方已经写好且整段提供的稿子重新念一遍
-
-**研究是迭代的：计划 2-3 轮搜索补漏，不要搜一次就开写。**
 
 ---
 
