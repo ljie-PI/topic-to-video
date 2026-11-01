@@ -12,7 +12,7 @@
 | `{{skill_root}}` | skill 根目录的绝对路径（散文里用） |
 | `{{skill_root_q}}` / `{{venv_activate_q}}` | skill 根目录 / venv activate 脚本的 shell 引号版：**命令行里必须用引号版**（路径可能含空格） |
 | `{{script_txt_q}}` / `{{lexicon_q}}` / `{{output_dir_q}}` | make-narration 命令里三条路径的 shell 引号版 |
-| `{{coding_agent}}` | `inputs.json` 的 `coding_agent` |
+| `{{coding_agent}}` / `{{coding_model_instruction}}` | 按 `inputs.json.delegation.script` 与全局 `coding_agent` 解析的有效 agent / model；未指定 model 时模型说明为空 |
 | `{{duration}}` / `{{language}}` / `{{input_mode}}` | `inputs.json` 的对应字段 |
 | `{{material_catalog}}` | `fetch_materials` 为真：catalog 的路径；图片 / 视频 ref 用 `<slug>/<id>`，clip 用 `<slug>/<video_id>:<start>-<end>`；否则“无” |
 | `{{required_references}}` | 按叠加顺序编号：基础指令（工作区副本，含论文模式解说结构与素材引用格式）。模板是 Phase 8 的画面选择，不在这里 |
@@ -24,6 +24,7 @@
 ## Coding Agent
 
 {{coding_agent}}
+{{coding_model_instruction}}
 
 ## Inputs
 

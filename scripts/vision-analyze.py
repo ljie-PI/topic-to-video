@@ -60,7 +60,7 @@ log = cli.make_logger(TOOL_NAME)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = cli.JsonArgumentParser(TOOL_NAME, description='Analyze images with an OpenAI-compatible vision model or delegate to the main agent.')
+    parser = cli.JsonArgumentParser(TOOL_NAME, description='Analyze images with an OpenAI-compatible vision model or delegate to the calling agent.')
     parser.add_argument('--prompt', required=True, help='Analysis prompt or question.')
     parser.add_argument('--images', required=True, nargs='+', help='One or more local image paths or http/https URLs.')
     parser.add_argument('--context-file', help='UTF-8 topic context to include with the analysis request.')

@@ -108,6 +108,7 @@ import script_text
 import video_contract
 from composition_hash import composition_source_relpaths, composition_sources_fingerprint, visible_files
 from harvest_manifest import _stage_json as stage_json, stored_path_problem
+from delegation_config import validate_delegation
 
 TOOL_NAME = 'pipeline-status'
 
@@ -765,6 +766,10 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
         ), None
     if not isinstance(data['fetch_materials'], bool):
         return CheckResult(STATUS_CORRUPT, 'field fetch_materials is not a boolean'), None
+    try:
+        validate_delegation(data)
+    except ValueError as exc:
+        return CheckResult(STATUS_CORRUPT, str(exc)), None
     orientation = video_contract.orientation_problem(data['orientation'])
     if orientation:
         return CheckResult(STATUS_CORRUPT, orientation), None
@@ -1337,7 +1342,11 @@ PHASES: list[dict[str, Any]] = [
         'title': '素材 catalog',
         'doc': 'references/phases/05-material-catalog.md',
         'applies': 'fetch_or_paper',
-        'upstream': ['harvest_page/manifest.json', 'research-brief.md'],
+        'upstream': [
+            'harvest_page/manifest.json',
+            'research-brief.md',
+            'catalog-instructions.md',  # 可选：用户的素材理解 / 筛选要求
+        ],
         'products': {'material-catalog.json': check_material_catalog},
     },
     {
