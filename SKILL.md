@@ -11,17 +11,17 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 - **Web 调研** 在写脚本之前获取准确的内容
 - **HyperFrames** 用于下游 HTML composition + 渲染（delegated）
-- **TTS / ASR** 生成配音并拿回词级时间戳；后端由环境变量选择，参数和依赖见两个脚本的 `--help`
+- **配音与对齐** 生成配音，并产出字幕分段与画面同步所需的时间轴（词级 transcript 是对齐的中间产物，接口契约见 Phase 7 文档）；后端由环境变量选择，参数和依赖见两个脚本的 `--help`
 - 一份 design / layout / template 选择，约束下游 composition 的外观与版面
 
 **输出：** `{work_dir}/{topic_name}/composition/renders/final.mp4`，可直接发布（由 Phase 8 coding sub-agent 产出）；Phase 9 混入 BGM 后得到 `final_with_bgm.mp4`。
 
 ## 工作流：一个循环
 
-**禁止预读其他 phase 文档。** 每次只读 `pipeline-status` 指出的那一份 phase 文档；除此之外不要打开 `references/phases/` 下的任何其他文件。
+**按需加载 phase 文档。** 每次加载 `pipeline-status` 指出的那一份 phase 文档，不要一次性把 `references/phases/` 全部读进来。排查上下游接口或核对产物来源时可以查阅其他文档；读文档不等于执行它，阶段推进只由状态脚本和用户确认决定。
 
 1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`（工作区目录必填）。它输出一个 JSON：已完成的 phase、下一个 phase（`next_phase.reason` 说明原因：缺失 / 损坏 / stale）、要读的文档、缺失 / 损坏的产物。
-2. 只读它指出的那一份 phase 文档（`next_phase.doc`）。
+2. 读它指出的那一份 phase 文档（`next_phase.doc`）。
 3. 按该文档执行；文档头部的「输入 / 输出 / 完成判据 / 下一步」是自包含的，不需要查其他 phase 文档。
 4. 回到第 1 步，直到脚本报告 `next_phase` 为 `null`（全部完成）。
 
