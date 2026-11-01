@@ -82,9 +82,6 @@ def test_phase7_owns_the_voice_subtitles_command_instead_of_the_skill_entry():
     skill = (REPO_ROOT / 'SKILL.md').read_text(encoding='utf-8')
     assert '--align-only' in doc
     assert '| `voice-subtitles.py` |' not in skill
-    gotchas = (REPO_ROOT / 'references/gotchas.md').read_text(encoding='utf-8')
-    assert 'Phase 7 的那条 voice-clone 命令' not in gotchas
-    assert 'python3 scripts/voice-subtitles.py {work_dir}/{topic_name}' not in gotchas
 
 
 def doc_text(relpath: str) -> str:

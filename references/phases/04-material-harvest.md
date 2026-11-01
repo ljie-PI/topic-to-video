@@ -30,10 +30,9 @@ Phase 5（素材 catalog）；若 `fetch_materials = false`，本 phase 跳过�
 ## 护栏
 
 - **素材搜索是可选但推荐的。** `inputs.json` 里 `fetch_materials = false` 或用户自带全部视觉时跳过（Phase 4 / 5 一起跳过；论文模式只跳过 Phase 4，论文自己的 figure 仍由 Phase 5 进 catalog）。
-- **Chrome over CDP。** `harvest-pages.py` 和 `gemini-deep-research.py` 必须显式传 `--profile-dir {work_dir}/chrome_profile`。复用已运行的 CDP 时，启动参数不会生效；检查 stderr warning 和输出 JSON 的 `chrome.ignored_flags`，需要新配置就先关闭复用的 Chrome。
+- **Chrome over CDP。** `harvest-pages.py` 和 `gemini-deep-research.py` 必须显式传 `--profile-dir {work_dir}/chrome_profile`。复用已运行的 CDP 时，启动参数不会生效；检查 stderr warning 和输出 JSON 的 `chrome.ignored_flags`，需要新配置就先关闭复用的 Chrome。Chrome 启动即退出通常是 profile 被别的进程占着：关掉冲突进程或换 `--profile-dir`；9222 被占用时传另一个 `--cdp-url`，比如 `http://localhost:9223`。
 - **视频下载顺序执行。** yt-dlp 并行时会被限速。
-- 历史坑见 `references/gotchas.md` #6（Chrome CDP 的 profile 锁）。
-- 历史坑见 `references/gotchas.md` #7（`harvest-pages.py` 返回 0 张图）。
+- **`harvest-pages.py` 返回 0 张图时先怀疑加载。** 调大 `--page-load-timeout`；仍是 0 就复用 `{work_dir}/chrome_profile` 先手动处理 cookie banner、等懒加载出来，再重跑抓取。
 
 ---
 

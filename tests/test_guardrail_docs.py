@@ -1,4 +1,10 @@
-"""Guardrails live at their point of use; gotchas remain maintainer notes."""
+"""Guardrails live at their point of use, including the recovery rules.
+
+Troubleshooting used to sit in a separate references/gotchas.md that each phase
+linked by number. Recovery is part of the rule that prevents the failure, so it
+lives in the owning phase's guardrails: the agent only reads one phase doc and
+still needs to know what to do when a tool breaks.
+"""
 from __future__ import annotations
 
 import re
@@ -115,57 +121,30 @@ def test_phase_specific_rules_move_to_their_owning_phase(relpath: str, required:
     assert required in guardrails(relpath)
 
 
-def test_gotchas_are_continuous_maintainer_notes_without_duplicate_rules():
-    gotchas = doc_text('references/gotchas.md')
-
-    assert gotchas.startswith('# 维护者笔记：历史症状 → 原因 → 修复\n')
-    numbers = [int(value) for value in re.findall(r'^## (\d+)\.', gotchas, flags=re.MULTILINE)]
-    assert numbers == list(range(1, len(numbers) + 1))
-    assert len(numbers) == 10
-    assert 'HyperFrames Transcribe 的中文下载与 UTF-8 故障' in gotchas
-    assert '未校准 ASR 会造成字幕文本错误' in gotchas
-    for removed in (
-        '中文场景下避免使用 HyperFrames Transcribe',
-        '不要编辑 TTS 脚本源码',
-        '硬件精度注意事项',
-        '全角中文冒号可能引入 TTS 停顿',
-        '视频下载必须顺序执行',
-        '剥掉视频片段的原始音轨',
-        '在项目环境里使用 Python 3',
-        'Paper mode 不要跳过主论文解析',
-        'catalog 未建立前不要写脚本或匹配素材',
-        '主 agent 不手写 composition HTML',
-        '字幕文本不要直接照搬未校准 ASR',
-    ):
-        assert removed not in gotchas
+@pytest.mark.parametrize('relpath, required', [
+    ('references/phases/02-paper-parse.md', ('MinerU 云端失败', '`-60007`', '`--pdf` 重试')),
+    ('references/phases/03-research.md', ('Gemini UI 自动化很脆', '`web_search` 并把问题告诉用户')),
+    ('references/phases/03-research.md', ('profile 被别的进程占着', '`--cdp-url`')),
+    ('references/phases/04-material-harvest.md', ('返回 0 张图', '`--page-load-timeout`')),
+    ('references/phases/04-material-harvest.md', ('profile 被别的进程占着', '`--cdp-url`')),
+    ('references/phases/05-material-catalog.md', ('`delegate_to_agent`', 'Mode 2')),
+    ('references/phases/07-voice-subtitles.md', ('外部 transcript', '`npx hyperframes transcribe`')),
+    ('references/phases/07-voice-subtitles.md', ('OOM', '分段合成')),
+])
+def test_every_phase_keeps_the_recovery_it_needs_when_a_tool_fails(relpath: str, required: tuple):
+    # Each case is a failure a phase has actually hit, plus the remedy that keeps
+    # the agent from stalling or silently skipping the step.
+    text = guardrails(relpath)
+    for phrase in required:
+        assert phrase in text, f'{relpath} guardrails lost: {phrase}'
 
 
-def test_every_retained_gotcha_is_linked_from_its_phase_guardrails():
-    gotchas = doc_text('references/gotchas.md')
-    retained = {int(value) for value in re.findall(r'^## (\d+)\.', gotchas, flags=re.MULTILINE)}
-    expected_links = {
-        '01-gather-inputs.md': set(),
-        '02-paper-parse.md': {5},
-        '03-research.md': {4, 6},
-        '04-material-harvest.md': {6, 7},
-        '05-material-catalog.md': {8},
-        '06-script-scene-plan.md': set(),
-        '07-voice-subtitles.md': {1, 2, 3, 9, 10},
-        '08-composition.md': set(),
-        '09-check-mix.md': set(),
-    }
-    linked = set()
+def test_troubleshooting_is_not_outsourced_to_a_shared_gotcha_file():
+    # The agent reads exactly one phase doc; a symptom there with its remedy in
+    # another file is a dead end.
+    assert not (REPO_ROOT / 'references' / 'gotchas.md').exists()
     for doc_path in PHASE_DOCS:
-        refs = {
-            int(value)
-            for value in re.findall(
-                r'历史坑见 `references/gotchas\.md` #(\d+)',
-                guardrails(str(doc_path.relative_to(REPO_ROOT))),
-            )
-        }
-        assert refs == expected_links[doc_path.name]
-        linked.update(refs)
-    assert linked == retained
+        assert 'gotchas' not in doc_path.read_text(encoding='utf-8'), doc_path.name
 
 
 def test_every_executable_script_is_documented_at_its_point_of_use():

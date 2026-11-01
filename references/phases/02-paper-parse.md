@@ -30,7 +30,7 @@
 
 ## 护栏
 
-- 历史坑见 `references/gotchas.md` #5（MinerU 云端失败）。
+- **MinerU 云端失败时换路径，不要卡在解析上。** token 缺失或失效时让 `parse-pdf.py` 回退到本地 `mineru`；URL 模式超时先把 PDF 下下来，再用 `--pdf` 重试；云端错误 `-60007` 直接本地重试。
 
 ---
 

@@ -29,9 +29,8 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
 
 ## 护栏
 
-- **Chrome over CDP。** `harvest-pages.py` 和 `gemini-deep-research.py` 必须显式传 `--profile-dir {work_dir}/chrome_profile`。复用已运行的 CDP 时，启动参数不会生效；检查 stderr warning 和输出 JSON 的 `chrome.ignored_flags`，需要新配置就先关闭复用的 Chrome。
-- 历史坑见 `references/gotchas.md` #4（Gemini Deep Research 的 UI 自动化）。
-- 历史坑见 `references/gotchas.md` #6（Chrome CDP 的 profile 锁）。
+- **Chrome over CDP。** `harvest-pages.py` 和 `gemini-deep-research.py` 必须显式传 `--profile-dir {work_dir}/chrome_profile`。复用已运行的 CDP 时，启动参数不会生效；检查 stderr warning 和输出 JSON 的 `chrome.ignored_flags`，需要新配置就先关闭复用的 Chrome。Chrome 启动即退出通常是 profile 被别的进程占着：关掉冲突进程或换 `--profile-dir`；9222 被占用时传另一个 `--cdp-url`，比如 `http://localhost:9223`。
+- **Gemini UI 自动化很脆，失败就换调研方式。** `gemini-deep-research.py` 驱动的是消费级 web UI，selector 或流程一变就报 selector timeout / failed step / 运行时错误；这种情况不要反复重试提交，退回有针对性的 `web_search` 并把问题告诉用户。
 
 ---
 
