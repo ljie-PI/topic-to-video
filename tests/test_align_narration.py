@@ -343,6 +343,56 @@ def test_portrait_allows_two_lines(tmp_path: Path):
     assert len(units_data2['units']) > 1
 
 
+def test_long_chinese_without_soft_punctuation_is_split_mid_sentence(tmp_path: Path):
+    # No soft punctuation anywhere in the sentence: the width cap still forces a
+    # cut, so a long CJK run can break mid-sentence. Text is not lost.
+    script_text = '今天天气真的很不错非常适合出门散步晒太阳感受春天的气息。'
+    transcript = [
+        {
+            'begin': 0,
+            'end': 5000,
+            'text': script_text,
+            'words': [{'text': script_text.rstrip('。'), 'begin': 0, 'end': 5000}],
+        }
+    ]
+    proc, result, units_data, _ = make_workspace(
+        tmp_path, script_text, {}, transcript, width=420, font_size=42, max_lines=1
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    texts = unit_texts(units_data)
+    assert len(texts) > 1
+    assert ''.join(texts) == script_text.rstrip('。')
+
+
+def test_a_single_over_wide_token_is_cut_with_a_warning(tmp_path: Path):
+    # A token wider than the whole line cannot be broken legally; the script cuts
+    # inside it anyway and reports that it did.
+    script_text = 'Supercalifragilisticexpialidocious。'
+    transcript = [
+        {
+            'begin': 0,
+            'end': 3000,
+            'text': script_text,
+            'words': [
+                {'text': 'Supercalifragilisticexpialidocious', 'begin': 0, 'end': 3000},
+            ],
+        }
+    ]
+    proc, result, units_data, _ = make_workspace(
+        tmp_path, script_text, {}, transcript, width=126, font_size=42, max_lines=1
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert any('broke inside a token' in warning for warning in result['summary']['warnings'])
+    # The pieces are shorter than MIN_UNIT_MS, so they merge back into one unit
+    # that exceeds the width cap. Keeping an over-wide subtitle is the documented
+    # trade-off; the warning is what says the layout needs fixing.
+    texts = unit_texts(units_data)
+    assert len(texts) == 1
+    assert display_width(texts[0]) > int(126 / 42)
+
+
 def test_short_units_merged(tmp_path: Path):
     transcript = [
         {
@@ -474,6 +524,78 @@ def test_timeline_cue_seconds_with_scene_plan(tmp_path: Path):
     ]
     # unmatched cue reported as a warning, not a failure
     assert any('s2' in warning for warning in result['summary']['warnings'])
+
+
+def test_cues_are_located_in_the_display_script_not_the_narration(tmp_path: Path):
+    # The display draft says NVIDIA, the TTS reads 英伟达. Cue lookup runs on the
+    # restored display text, so a narration-form cue cannot match even though it
+    # is word-for-word what the audio says; case and punctuation are normalized.
+    script_text = 'NVIDIA 发布了新模型。'
+    transcript = [
+        {
+            'begin': 0,
+            'end': 2000,
+            'text': '英伟达 发布了新模型。',
+            'words': [
+                {'text': '英伟达', 'begin': 0, 'end': 700},
+                {'text': '发布了新模型', 'begin': 700, 'end': 2000},
+            ],
+        }
+    ]
+    scene_plan = [
+        {
+            'scene_id': 's1',
+            'paragraphs': [1],
+            'cues': ['NVIDIA 发布了新模型。', '英伟达发布了新模型。', 'nvidia，发布了新模型！'],
+        }
+    ]
+    proc, result, _, timeline_data = make_workspace(
+        tmp_path, script_text, {'NVIDIA': '英伟达'}, transcript, scene_plan=scene_plan
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert [cue['cue'] for cue in timeline_data['cues']] == [
+        'NVIDIA 发布了新模型。',
+        'nvidia，发布了新模型！',
+    ]
+    assert any(
+        'cue not found' in warning and '英伟达发布了新模型。' in warning
+        for warning in result['summary']['warnings']
+    )
+
+
+def test_cue_outside_its_scene_paragraphs_is_skipped(tmp_path: Path):
+    script_text = '第一段内容。\n\nNVIDIA 发布了新模型。'
+    transcript = [
+        {
+            'begin': 0,
+            'end': 1200,
+            'text': '第一段内容。',
+            'words': [{'text': '第一段内容', 'begin': 0, 'end': 1200}],
+        },
+        {
+            'begin': 1200,
+            'end': 3200,
+            'text': '英伟达 发布了新模型。',
+            'words': [
+                {'text': '英伟达', 'begin': 1200, 'end': 1900},
+                {'text': '发布了新模型', 'begin': 1900, 'end': 3200},
+            ],
+        },
+    ]
+    scene_plan = [
+        {'scene_id': 's1', 'paragraphs': [1], 'cues': ['NVIDIA 发布了新模型。']},
+        {'scene_id': 's2', 'paragraphs': [2], 'cues': []},
+    ]
+    proc, result, _, timeline_data = make_workspace(
+        tmp_path, script_text, {'NVIDIA': '英伟达'}, transcript, scene_plan=scene_plan
+    )
+    assert proc.returncode == 0, proc.stderr
+    # The text exists in the display draft, but not in the paragraph s1 covers.
+    assert timeline_data['cues'] == []
+    assert any(
+        'cue not found' in warning and 's1' in warning
+        for warning in result['summary']['warnings']
+    )
 
 
 def test_timeline_beat_seconds_with_scene_plan(tmp_path: Path):

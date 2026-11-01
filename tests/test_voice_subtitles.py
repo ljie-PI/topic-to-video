@@ -31,6 +31,15 @@ SCENE_PLAN = [
     }
 ]
 
+# Fake backend with a failing aligner and no reachable ASR backend: the run
+# produces audio but cannot produce a transcript.
+_NO_TRANSCRIPT_ENV = {
+    'TTS_FAKE_ALIGN_FAIL': '1',
+    'ASR_DETECT_PLATFORM': 'linux',
+    'ASR_DETECT_MACHINE': 'x86_64',
+    'ASR_DETECT_CUDA': '0',
+}
+
 
 def write_json(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -179,15 +188,7 @@ def test_empty_required_input_fails_before_tts(tmp_path: Path):
 def test_tts_failure_propagates_child_error_json(tmp_path: Path):
     ws = make_workspace(tmp_path)
 
-    proc = run_voice_subtitles(
-        ws,
-        env={
-            'TTS_FAKE_ALIGN_FAIL': '1',
-            'ASR_DETECT_PLATFORM': 'linux',
-            'ASR_DETECT_MACHINE': 'x86_64',
-            'ASR_DETECT_CUDA': '0',
-        },
-    )
+    proc = run_voice_subtitles(ws, env=_NO_TRANSCRIPT_ENV)
 
     assert proc.returncode == 1
     result = parse_stdout(proc)
@@ -195,6 +196,54 @@ def test_tts_failure_propagates_child_error_json(tmp_path: Path):
     assert result['failed_step'] == 'tts'
     assert result['child']['success'] is False
     assert result['child']['transcript_attempts'][0]['method'] == 'direct_align'
+    # The narration itself succeeded; only the transcript is missing.
+    audio = ws / 'voice_clone' / 'narration.mp3'
+    assert audio.is_file() and audio.stat().st_size > 0
+
+
+@pytest.mark.usefixtures('require_ffmpeg')
+def test_an_external_transcript_resumes_with_align_only_and_a_rerun_drops_it(tmp_path: Path):
+    ws = make_workspace(tmp_path)
+    first = run_voice_subtitles(ws)
+    assert first.returncode == 0, first.stderr
+    transcript = ws / 'transcribe' / 'transcript.json'
+    external = transcript.read_bytes()
+
+    assert run_voice_subtitles(ws, env=_NO_TRANSCRIPT_ENV).returncode == 1
+
+    # A full regeneration deletes whatever sits at the transcript path, so the
+    # imported transcript only survives the --align-only path.
+    transcript.write_bytes(external)
+    dropped = run_voice_subtitles(ws, env=_NO_TRANSCRIPT_ENV)
+    assert dropped.returncode == 1
+    assert not transcript.exists()
+
+    transcript.write_bytes(external)
+    audio = ws / 'voice_clone' / 'narration.mp3'
+    audio_before = audio.read_bytes()
+    recovered = run_voice_subtitles(ws, '--align-only', env=_NO_TRANSCRIPT_ENV)
+
+    assert recovered.returncode == 0, recovered.stderr
+    assert parse_stdout(recovered)['success'] is True
+    assert audio.read_bytes() == audio_before
+    assert (ws / 'transcribe' / 'subtitle-units.json').is_file()
+    assert (ws / 'transcribe' / 'timeline.json').is_file()
+
+
+@pytest.mark.usefixtures('require_ffmpeg')
+def test_align_only_rejects_a_transcript_without_word_timestamps(tmp_path: Path):
+    ws = make_workspace(tmp_path)
+    first = run_voice_subtitles(ws)
+    assert first.returncode == 0, first.stderr
+    write_json(
+        ws / 'transcribe' / 'transcript.json',
+        [{'begin': 0, 'end': 1000, 'text': '甲', 'words': []}],
+    )
+
+    proc = run_voice_subtitles(ws, '--align-only')
+
+    assert proc.returncode == 1
+    assert parse_stdout(proc)['failed_step'] == 'align'
 
 
 @pytest.mark.usefixtures('require_ffmpeg')

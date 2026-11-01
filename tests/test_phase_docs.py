@@ -147,12 +147,22 @@ def test_phase_1_assures_paper_figures_at_the_visual_material_question():
 def test_every_phase_doc_names_what_to_check_after_running_it():
     # A phase whose products pass can still be wrong; each doc says what the
     # agent judges itself, right after the criteria the script enforces.
+    merged_phase_doc = '07-voice-subtitles.md'
     for phase in PHASES:
         text = doc_text(phase['doc'])
-        assert '## 执行后自检' in text, f'{phase["doc"]} has no "## 执行后自检"'
         criteria = text.index('## 完成判据')
-        self_check = text.index('## 执行后自检')
         next_step = text.index('## 下一步')
+        assert criteria < next_step, f'{phase["doc"]} puts the self-check elsewhere'
+        if phase['doc'].endswith(merged_phase_doc):
+            # Phase 7 folds the executor check into 完成判据 so the reader sees the
+            # script's guarantees and the human judgement in one place.
+            assert '## 执行后自检' not in text, f'{phase["doc"]} splits the check again'
+            criteria_section = text[criteria:next_step]
+            assert '状态脚本校验' in criteria_section
+            assert '执行者核对' in criteria_section
+            continue
+        assert '## 执行后自检' in text, f'{phase["doc"]} has no "## 执行后自检"'
+        self_check = text.index('## 执行后自检')
         assert criteria < self_check < next_step, f'{phase["doc"]} puts the self-check elsewhere'
 
 
