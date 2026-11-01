@@ -2,15 +2,19 @@
 
 ## 输入
 
-`inputs.json`；论文模式下还有 Phase 2 解析出的论文 markdown（`harvest_page/main-paper/metadata.json` 指向的完整解析文本）。
+- `inputs.json`；
+- 论文模式下还有 Phase 2 解析出的论文 markdown（`harvest_page/main-paper/metadata.json` 指向的完整解析文本）。
 
 ## 输出
 
-`research-brief.md`（工作区根目录，落盘保存，不能只放在 scratchpad）。论文模式下可选：`harvest_page/related-<short-name>/`（解析出的相关论文，最多 2 篇，论文 entry 已写入 `harvest_page/manifest.json`）。
+- `research-brief.md`（工作区根目录，落盘保存，不能只放在 scratchpad）；
+- 论文模式下可选：`harvest_page/related-<short-name>/`（解析出的相关论文，最多 2 篇，论文 entry 已写入 `harvest_page/manifest.json`）。
 
 ## 完成判据
 
-`research-brief.md` 存在且非空，并且含下面四个小节（标题按模板写）：`## Key facts`、`## Quotes`、`## Numbers`、`## Source URLs`；`## Open questions / contradictions` 可选。小节里的内容是否可信由执行后自检判断，脚本只保证下游能按小节取。校验合格后默认自动继续；只有 `inputs.json` 的 `approval_gates` 包含 `research-brief` 时，才先把 brief 给用户过目并确认。
+- `research-brief.md` 存在且非空，并且含下面四个小节（标题按模板写）：`## Key facts`、`## Quotes`、`## Numbers`、`## Source URLs`；`## Open questions / contradictions` 可选；
+- 小节里的内容是否可信由执行后自检判断，脚本只保证下游能按小节取；
+- 校验合格后默认自动继续；只有 `inputs.json` 的 `approval_gates` 包含 `research-brief` 时，才先把 brief 给用户过目并确认。
 
 ## 执行后自检
 

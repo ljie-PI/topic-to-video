@@ -2,15 +2,24 @@
 
 ## 输入
 
-Phase 6 产出的 `narration.txt`（朗读稿）+ `script.txt`（显示稿）+ `narration-offsets.json`（偏移表）+ 可选的 `scene-plan.json`。
+- Phase 6 产出的 `narration.txt`（朗读稿）；
+- `script.txt`（显示稿）；
+- `narration-offsets.json`（偏移表）；
+- 可选的 `scene-plan.json`。
 
 ## 输出
 
-`voice_clone/narration.mp3`（配音音频）+ `transcribe/transcript.json`（词级时间戳的句子列表）+ `transcribe/subtitle-units.json`（字幕单元）+ `transcribe/timeline.json`（段落 / cue / beat 时间轴）。
+- `voice_clone/narration.mp3`（配音音频）；
+- `transcribe/transcript.json`（词级时间戳的句子列表）；
+- `transcribe/subtitle-units.json`（字幕单元）；
+- `transcribe/timeline.json`（段落 / cue / beat 时间轴）。
 
 ## 完成判据
 
-`voice_clone/narration.mp3` 存在且非空（ffprobe duration 非零且合法）；`transcript.json` 存在、非空、JSON 可解析，是句子列表且每句含 `begin` / `end` / `text` / `words`；`subtitle-units.json` 存在且 `units` 非空；`timeline.json` 存在且 `paragraphs` 非空，可选 `beats` 是列表且每项都有数字 `begin_s` / `end_s`。
+- `voice_clone/narration.mp3` 存在且非空（ffprobe duration 非零且合法）；
+- `transcribe/transcript.json` 存在、非空、JSON 可解析，是句子列表且每句含 `begin` / `end` / `text` / `words`；
+- `transcribe/subtitle-units.json` 存在且 `units` 非空；
+- `transcribe/timeline.json` 存在且 `paragraphs` 非空，可选 `beats` 是列表且每项都有数字 `begin_s` / `end_s`。
 
 ## 执行后自检
 

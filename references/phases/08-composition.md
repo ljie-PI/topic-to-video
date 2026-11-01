@@ -2,15 +2,31 @@
 
 ## 输入
 
-Phase 7 的 `voice_clone/narration.mp3` + `transcribe/subtitle-units.json` / `transcribe/timeline.json` + `material-catalog.json` 与 `clips/`（Phase 5 切好的无音轨片段；标准模式且 `fetch_materials = false` 时都无）+ `scene-plan.json`（叙事层场景规划，仅作参考）+ `script.txt` + `inputs.json`（design / layout / template）+ `prepare-handoff.py` 生成的 `composition-handoff.md`，以及它物化到工作区的委派包、modules 副本和预置字体。
+- Phase 7 的 `voice_clone/narration.mp3`；
+- `transcribe/subtitle-units.json` / `transcribe/timeline.json`；
+- `material-catalog.json` 与 `clips/`（Phase 5 切好的无音轨片段；标准模式且 `fetch_materials = false` 时都无）；
+- `scene-plan.json`（叙事层场景规划，仅作参考）；
+- `script.txt`；
+- `inputs.json`（design / layout / template）；
+- `prepare-handoff.py` 生成的 `composition-handoff.md`，以及它物化到工作区的委派包、modules 副本和预置字体。
 
 ## 输出
 
-`composition/storyboard.md` + `composition/index.html` + `composition/compositions/` + `composition/check-composition.json`（check-composition 用 `--output` 写出的报告）+ `composition/renders/final.mp4`。
+- `composition/storyboard.md`；
+- `composition/index.html`；
+- `composition/compositions/`；
+- `composition/check-composition.json`（check-composition 用 `--output` 写出的报告）；
+- `composition/renders/final.mp4`。
 
 ## 完成判据
 
-运行 `pipeline-status` 后，Phase 8 不再是 `next_phase`。状态脚本替你判定：`composition/storyboard.md` 非空；`composition/index.html` 存在；`composition/compositions/` 里至少有一个文件；`composition/check-composition.json` 的 `verdict` 为 `pass`，且覆盖当前 composition——报告里的 `sources_sha256` 必须等于当前 `index.html` / `compositions/` / `assets/`（字体除外）的内容指纹（改过画面就要重跑 check-composition 并用 `--output` 保存报告；旧报告没有指纹时退回 mtime 比较，不保留 mtime 的拷贝可能漏检）；`composition/renders/final.mp4` 存在、非空，且不早于任一源文件（`index.html`、`compositions/`、`assets/`、`storyboard.md`）——比源文件旧的渲染不包含那次修改，要重新渲染。状态脚本不判定的两项由主 agent 抽查（见 8.4）：`npx hyperframes check` 无错误；storyboard 的每个 scene 都标注了所用的 content 区域。
+- 运行 `pipeline-status` 后，Phase 8 不再是 `next_phase`；状态脚本替你判定下面各项：
+- `composition/storyboard.md` 非空；
+- `composition/index.html` 存在；
+- `composition/compositions/` 里至少有一个文件；
+- `composition/check-composition.json` 的 `verdict` 为 `pass`，且覆盖当前 composition——报告里的 `sources_sha256` 必须等于当前 `index.html` / `compositions/` / `assets/`（字体除外）的内容指纹（改过画面就要重跑 check-composition 并用 `--output` 保存报告；旧报告没有指纹时退回 mtime 比较，不保留 mtime 的拷贝可能漏检）；
+- `composition/renders/final.mp4` 存在、非空，且不早于任一源文件（`index.html`、`compositions/`、`assets/`、`storyboard.md`）——比源文件旧的渲染不包含那次修改，要重新渲染；
+- 状态脚本不判定的两项由主 agent 抽查（见 8.4）：`npx hyperframes check` 无错误；storyboard 的每个 scene 都标注了所用的 content 区域。
 
 ## 执行后自检
 
