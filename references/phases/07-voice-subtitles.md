@@ -28,14 +28,9 @@ Phase 8（composition，委派）：sub-agent 用字幕单元、时间轴和素�
 
 ## 护栏
 
-- **TTS 后端由环境变量选择。** 配音脚本、参考音色、参数和依赖见 `scripts/voice-clone.py` 的顶部说明。**绝不**使用 `npx hyperframes tts`。
-- **ASR 后端由环境变量选择。** transcript 必须带词级时间戳（schema 见 Phase 7 文档的接口契约）。后端、参数和依赖见 `scripts/transcribe.py` 的顶部说明。voice-clone.py 保证产出**本轮新鲜**的 transcript：直对齐优先，失败自动回退到 transcribe.py，成功 JSON 带 `transcript_method`（`direct_align` / `asr`）；`asr` 意味着转录来自 ASR，与朗读稿逐字一致不保证。即使主用直对齐（如 mlx），也要配置一种 ASR 后备（`DASHSCOPE_API_KEY` 或可用的 `ASR_BACKEND`），否则回退路径不可用。
+- **TTS 后端由环境变量选择。** 配音脚本、参考音色、参数和依赖见 `scripts/voice-clone.py` 的顶部说明。**绝不**使用 `npx hyperframes tts`。参考音频缺逐字稿时脚本按自己的顺序查找并自动转写；长 narration 的内存压力已缓解，仍 OOM 就把 narration 分段合成、再用 ffmpeg 拼接，或换后端。
+- **ASR 后端由环境变量选择。** transcript 必须带词级时间戳（schema 见 Phase 7 文档的接口契约）。后端、参数和依赖见 `scripts/transcribe.py` 的顶部说明。voice-clone.py 保证产出**本轮新鲜**的 transcript：直对齐优先，失败自动回退到 transcribe.py，成功 JSON 带 `transcript_method`（`direct_align` / `asr`）；`asr` 意味着转录来自 ASR，与朗读稿逐字一致不保证。即使主用直对齐（如 mlx），也要配置一种 ASR 后备（`DASHSCOPE_API_KEY` 或可用的 `ASR_BACKEND`），否则回退路径不可用。所有已配置的后端都不可用时找用户要一份外部 transcript，不要退回 HyperFrames 的 transcribe（中文模型下载和 UTF-8 输出都会出问题）。
   ↳ DO NOT：用 `npx hyperframes transcribe`；接受没有词级时间戳的 transcript；沿用上一轮留下的 transcript。
-- 历史坑见 `references/gotchas.md` #1（HyperFrames Transcribe 的中文故障与外部 transcript）。
-- 历史坑见 `references/gotchas.md` #2（ASR 数字归一化与 CER）。
-- 历史坑见 `references/gotchas.md` #3（参考音频与长 narration）。
-- 历史坑见 `references/gotchas.md` #9（cue not found）。
-- 历史坑见 `references/gotchas.md` #10（未校准 ASR 的字幕文本）。
 
 ---
 
@@ -70,9 +65,9 @@ source .venv/bin/activate && python3 scripts/voice-subtitles.py {work_dir}/{topi
 
 #### 7.2 — 对齐规则与产物
 
-字幕宽度直接取自 `inputs.json` 的 `layout` 所对应的 `modules/layouts/<layout>.json`：命令把该文件交给 align-narration.py，由其读取 `caption` 段的 `width_px` / `font_size_px` / `max_lines`，每行宽度上限按 `int(width_px / font_size_px)` 折算成 CJK 单位。工作区存在 `scene-plan.json` 时命令自动传入，cue 和语义节拍 beat 的秒数会写进 `timeline.json`；找不到的 cue / beat 告警并跳过。没有场景规划时 `timeline.json` 只含段落起止，不含 `cues` / `beats` 字段。
+字幕宽度直接取自 `inputs.json` 的 `layout` 所对应的 `modules/layouts/<layout>.json`：命令把该文件交给 align-narration.py，由其读取 `caption` 段的 `width_px` / `font_size_px` / `max_lines`，每行宽度上限按 `int(width_px / font_size_px)` 折算成 CJK 单位。工作区存在 `scene-plan.json` 时命令自动传入，cue 和语义节拍 beat 的秒数会写进 `timeline.json`；找不到的 cue / beat 告警并跳过。cue 只能从实际的 `transcribe/transcript.json` 或显示稿文本里挑——大小写、标点或 TTS 的念法一变，照 `narration.txt` 原文硬配的 cue 就匹配不到。没有场景规划时 `timeline.json` 只含段落起止，不含 `cues` / `beats` 字段。
 
-对齐规则：字幕文本以显示稿 `script.txt` 为准，transcript 只提供时间。脚本先把 transcript token 和朗读稿归一化（标点 / 空格 / 大小写不敏感，中文数字与阿拉伯数字等价）再做字符级对齐，然后通过偏移表映射回显示稿，品牌名和数字按显示形式出现。transcript 有而朗读稿没有的内容保留 transcript 文本，并在该字幕单元上标记 `fallback: true`；TTS 漏读的内容没有音频可依，会被丢弃并发出警告。分段先按句末标点切，超宽时在逗号、分号、顿号、冒号、破折号处断开，不在英文单词或数字内部断开，过短尾段均衡重切，不足 0.6 秒的单元并入相邻单元。详见 `scripts/align-narration.py` 的顶部说明。
+对齐规则：字幕文本以显示稿 `script.txt` 为准，transcript 只提供时间。ASR 会把英文词、产品名、模型名认错，也可能把词粘在一起或在词中间断开，所以字幕文本不能直接照搬 ASR。脚本先把 transcript token 和朗读稿归一化（标点 / 空格 / 大小写不敏感，中文数字与阿拉伯数字等价）再做字符级对齐，然后通过偏移表映射回显示稿，品牌名和数字按显示形式出现。transcript 有而朗读稿没有的内容保留 transcript 文本，并在该字幕单元上标记 `fallback: true`；TTS 漏读的内容没有音频可依，会被丢弃并发出警告。分段先按句末标点切，超宽时在逗号、分号、顿号、冒号、破折号处断开，不在英文单词或数字内部断开，过短尾段均衡重切，不足 0.6 秒的单元并入相邻单元。详见 `scripts/align-narration.py` 的顶部说明。做 CER / 文本对比评测时两侧要做同样的数字归一化，否则中文与阿拉伯写法的差异会让分数虚高。
 
 产物：
 
