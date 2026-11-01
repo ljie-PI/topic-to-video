@@ -26,8 +26,6 @@
 - 解析出的 markdown 有没有明显缺页、整段乱码、公式变空白。
 - `figure_captions` / `table_captions` 与图片文件是否对得上；某张图明显配错标题时，在 catalog 阶段前修正或标注。
 
-发现缺页或乱码就重跑解析（带上已下载的 PDF 或 `--pdf`），不要带着残缺的正文去写旁白。本阶段不做论文内容是否理解正确的判断，那是 Phase 3 和 Phase 6 的事。
-
 ## 下一步
 
 论文解析并入素材流后，进入 Phase 3（调研）：论文 markdown 是主要内容来源，Deep Research 只提供背景与上下文。
@@ -65,4 +63,4 @@ python3 scripts/parse-pdf.py \
 - `manifest_entry.paper_metadata.table_captions` —— table 描述
 - 论文 entry 会立即 upsert 到统一的 `manifest.json`，并同步 `<slug>/metadata.json`；原始 MinerU 输出保存在 `<slug>/mineru/`。
 
-**永远不要单凭自己的训练数据写脚本。** 用户给了 PDF 或论文 URL 时，必须先解析主论文，再把论文 figure / table 并入统一素材流。
+**论文内容以解析出的正文为准，不要凭记忆写。** 用户给了 PDF 或论文 URL 时，必须先解析主论文，再把论文 figure / table 并入统一素材流；旁白里的事实、数字和方法描述都从解析结果读，不靠模型已有的印象补。
