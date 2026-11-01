@@ -1,85 +1,69 @@
 #!/usr/bin/env python3
-"""Align the ASR transcript to the narration draft and build subtitle units.
+"""把 ASR 转写对齐到旁白稿，并构建字幕单元。
 
-Replaces the old calibrate-transcript / scene-anchor pair (kept here only
-as historical provenance). Subtitle text comes from the DISPLAY draft
-(script.txt); the ASR transcript only provides timing. The alignment is
-backend-independent: ASR tokens and the narration draft are normalized
-before a character-level alignment, so tokens with or without punctuation,
-with or without spaces, and Chinese or Arabic numerals all align (Chinese
-numeral runs are converted to Arabic digits).
+取代旧的 calibrate-transcript / scene-anchor 组合（只作为历史沿革留在这里）。
+字幕文本来自展示稿（script.txt）；ASR 转写只提供时间。对齐与后端无关：先归一化
+ASR token 与旁白稿，再做字符级对齐，因此带标点或不带标点、带空格或不带空格、
+中文数字或阿拉伯数字的 token 都能对上（连续的中文数字会被转成阿拉伯数字）。
 
-Inputs:
-  --transcript   transcribe/transcript.json — the stable ASR schema: a list
-                 of sentences, each {begin, end, text, words:[{text, begin,
-                 end}]} with millisecond timestamps. Word tokens may carry
-                 punctuation and may split words arbitrarily.
-  --narration    narration.txt — the TTS narration draft (what was actually
-                 read aloud).
-  --offsets      narration-offsets.json — per-character map from narration
-                 positions back to display-draft positions, produced by
-                 make-narration.py.
-  --script       script.txt — the display draft (subtitle text source).
+输入：
+  --transcript   transcribe/transcript.json —— 稳定的 ASR schema：一个句子列表，
+                 每个句子 {begin, end, text, words:[{text, begin, end}]}，时间
+                 为毫秒。词 token 可能带标点，也可能把词任意切开。
+  --narration    narration.txt —— TTS 旁白稿（实际朗读出来的内容）。
+  --offsets      narration-offsets.json —— 逐字符地把旁白位置映射回展示稿位置的
+                 表，由 make-narration.py 产出。
+  --script       script.txt —— 展示稿（字幕文本来源）。
   --width / --font-size / --max-lines
-                 subtitle area parameters: the per-line width cap in CJK
-                 units is int(width / font_size); a unit may span up to
-                 --max-lines lines (portrait allows 2). Ignored when
-                 --layout is given.
-  --layout       path to a layout region definition JSON (layouts/*.json);
-                 the caption spec is read from its `caption` object
-                 ({width_px, font_size_px, max_lines}). Either --layout or
-                 the three explicit flags are required.
-  --scene-plan   optional scene plan JSON; when scenes carry `cues` / `beats`,
-                 their seconds are written to timeline.json.
+                 字幕区域参数：以 CJK 单位计的单行宽度上限是
+                 int(width / font_size)；一个单元最多可占 --max-lines 行
+                 （竖屏允许 2）。给出 --layout 时忽略。
+  --layout       版面区域定义 JSON（layouts/*.json）的路径；caption 规格取自其
+                 `caption` 对象（{width_px, font_size_px, max_lines}）。
+                 --layout 与那三个显式参数二者必居其一。
+  --scene-plan   可选的场景规划 JSON；当 scene 带有 `cues` / `beats` 时，它们的
+                 秒数会写进 timeline.json。
 
-Alignment:
-  Both sides are normalized (NFKC, lowercase, alnum only, Chinese numerals
-  -> Arabic digits) and aligned with a character-level SequenceMatcher.
-  Equal blocks map narration characters back through the offset table to
-  the display draft, so brand names and numerals reappear in display form.
-  Transcript regions with no narration match (TTS read extra text, or the
-  region is too distorted to align) keep the ASR text. Narration regions
-  with no audio (TTS skipped text) are dropped with a warning.
+对齐：
+  两侧都做归一化（NFKC、转小写、只留字母数字、中文数字 -> 阿拉伯数字），再用
+  字符级 SequenceMatcher 对齐。相等的块通过偏移表把旁白字符映射回展示稿，因此
+  品牌名和数字会以展示形式重新出现。转写中没有旁白对应的区域（TTS 多读了文本，
+  或该区域失真到无法对齐）保留 ASR 文本。没有音频的旁白区域（TTS 跳过了文本）
+  会被丢弃并给出警告。
 
-Fallback flag:
-  The transcript schema carries no confidence field, so "low confidence" is
-  defined by the alignment itself: units that contain ASR text from an
-  unaligned region carry `"fallback": true`; aligned units have
-  `fallback: false`. Counts are aggregated in `summary.fallback_units`.
+兜底标记：
+  transcript schema 没有置信度字段，因此“低置信度”由对齐本身定义：包含来自未
+  对齐区域的 ASR 文本的单元带 `"fallback": true`；已对齐的单元为
+  `fallback: false`。计数汇总在 `summary.fallback_units` 中。
 
-Segmentation:
-  - split at sentence-final punctuation first (。！？!?…, and Latin .!?
-    when not inside a word/number);
-  - strip trailing ，and 。from each unit, keep ？！;
-  - units wider than the cap break at ，,；;、：:——; breaks never fall
-    inside an English word or number (breaks between two Latin-token
-    characters are forbidden);
-  - a too-short trailing segment (narrower than max(2, 0.2 * cap)) is
-    rebalanced once by re-splitting the last two segments at the break
-    position closest to their midpoint;
-  - units shorter than 0.6 s are merged into a neighbour (the previous
-    unit when one exists); a merged unit may exceed the width cap, which
-    is the lesser evil compared with a flashing subtitle.
+切分：
+  - 先按句末标点切（。！？!?…，以及不在词 / 数字内部的拉丁 .!?）；
+  - 去掉每个单元结尾的 ，和 。，保留 ？！；
+  - 宽于上限的单元在 ，,；;、：:—— 处断开；断点绝不落在英文词或数字内部
+    （禁止在两个拉丁 token 字符之间断开）；
+  - 过短的尾部片段（窄于 max(2, 0.2 * cap)）会被重新平衡一次：在离两者中点最近
+    的断点处把最后两段重新切开；
+  - 短于 0.6 s 的单元并入相邻单元（有前一个就并到前一个）；合并后的单元可能
+    超出宽度上限，但与字幕闪烁相比这是较小的恶。
 
-Outputs (paths from --units-output / --timeline-output):
+产出（路径来自 --units-output / --timeline-output）：
   subtitle-units.json : {"version": 1, "units": [...], "summary": {...}}
-    each unit: {index, text, begin_ms, end_ms, begin_s, end_s, fallback,
-    paragraph} — the text / begin_s / end_s fields keep the existing
-    downstream subtitle-unit contract.
+    每个单元：{index, text, begin_ms, end_ms, begin_s, end_s, fallback,
+    paragraph} —— 其中 text / begin_s / end_s 字段保持既有的下游字幕单元契约。
   timeline.json : {"version": 1, "total_s", "paragraphs": [{index, begin_s,
-    end_s}]}; with --scene-plan a "scenes" list [{scene_id, begin_s, end_s}]
-    (scene boundaries derived from each scene's paragraph coverage) and a
-    "cues" list [{scene_id, cue, begin_s, end_s}] and a "beats" list
-    [{scene_id, type, text, begin_s, end_s}] are added (scenes / cues / beats
-    that cannot be located are reported as warnings and omitted).
+    end_s}]}；带 --scene-plan 时还会加上 "scenes" 列表 [{scene_id, begin_s,
+    end_s}]（场景边界由各 scene 覆盖的段落推导），以及 "cues" 列表
+    [{scene_id, cue, begin_s, end_s}] 和 "beats" 列表
+    [{scene_id, type, text, begin_s, end_s}]（无法定位的 scenes / cues / beats
+    会作为警告报告并省略）。
 
-Output convention:
-  stdout : one JSON object
+输出约定：
+  stdout : 一个 JSON 对象
     success: {"success": true, "units_path": ..., "timeline_path": ...,
               "summary": {...}}
     error:   {"success": false, "error": "..."}
-  stderr : human-readable log prefixed with [align-narration]
-  exit   : 0 success, 1 runtime error, 2 invalid arguments
+  stderr : 带 [align-narration] 前缀的人类可读日志
+  exit   : 0 成功，1 运行时错误，2 参数非法
 """
 from __future__ import annotations
 
@@ -131,11 +115,10 @@ class Word:
 
 @dataclass
 class Atom:
-    """One display character with timing (atoms are the segmentation atoms).
+    """一个带时间的展示字符（atoms 就是切分的最小单位）。
 
-    borrowed=True marks punctuation/space atoms that inherited the timing of
-    a neighbouring aligned character; unit boundaries ignore them so a unit
-    that starts with a space never overlaps the previous unit.
+    borrowed=True 标记那些继承了相邻已对齐字符时间的标点 / 空格 atom；单元边界
+    会忽略它们，因此以空格开头的单元不会与前一个单元重叠。
     """
 
     text: str
@@ -192,7 +175,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def read_text(path: str) -> str:
-    """Raw read: narration/script positions must match the offset table exactly."""
+    """原始读取：旁白 / 脚本的位置必须与偏移表完全一致。"""
     with open(path, encoding='utf-8') as file:
         return file.read()
 
@@ -231,7 +214,7 @@ def load_transcript(path: str) -> list[Word]:
     return words
 
 
-# --- normalization (Chinese numeral runs -> Arabic digits) ----
+# --- 归一化（连续中文数字 -> 阿拉伯数字） ------------------------------------
 
 
 def parse_chinese_number(text: str) -> int | None:
@@ -287,10 +270,10 @@ def append_normalized_number(
 
 
 def normalize_with_map(text: str) -> tuple[str, list[int]]:
-    """Lowercased alnum-only stream; Chinese numeral runs become Arabic digits.
+    """转小写、只留字母数字的字符流；连续的中文数字转成阿拉伯数字。
 
-    Returns (normalized_text, mapping) where mapping[i] is the index of the
-    source character that produced normalized character i.
+    返回 (normalized_text, mapping)，其中 mapping[i] 是产出第 i 个归一化字符的
+    源字符下标。
     """
     chars: list[str] = []
     mapping: list[int] = []
@@ -328,15 +311,15 @@ def is_cjk(char: str) -> bool:
     )
 
 
-# --- inputs ----------------------------------------------------------------------
+# --- 输入 --------------------------------------------------------------------
 
 
 def load_caption_spec(args: argparse.Namespace) -> tuple[int, int, int]:
-    """Resolve the subtitle width / font size / max lines.
+    """解析出字幕宽度 / 字号 / 最大行数。
 
-    --layout wins over the explicit flags; without --layout all three explicit
-    flags are required (enforced in parse_args). The layout file is a region
-    definition with a `caption` object: {width_px, font_size_px, max_lines}.
+    --layout 优先于显式参数；没有 --layout 时三个显式参数都必须给出（在
+    parse_args 中强制）。layout 文件是带 `caption` 对象的区域定义：
+    {width_px, font_size_px, max_lines}。
     """
     if args.layout is not None:
         with open(args.layout, encoding='utf-8') as file:
@@ -379,11 +362,11 @@ def load_offsets(path: str) -> tuple[dict[str, Any], Callable[[int], int]]:
     return data, to_script
 
 
-# --- alignment -------------------------------------------------------------------
+# --- 对齐 --------------------------------------------------------------------
 
 
 def interpolate_timing(word: Word, offset: int, count: int) -> tuple[int, int]:
-    """Interpolate the time span of character ``offset`` within a ``count``-character token."""
+    """在 ``count`` 个字符的 token 内，插值出第 ``offset`` 个字符的时间区间。"""
     duration = word.end - word.begin
     begin = word.begin + round(duration * offset / count)
     end = word.begin + round(duration * (offset + 1) / count)
@@ -400,16 +383,15 @@ def build_display_atoms(
     asr_norm_times: list[tuple[int, int]],
     paragraph: int,
 ) -> list[Atom]:
-    """Turn one aligned (per-paragraph) equal block into display-draft atoms.
+    """把一个已对齐的（按段落的）相等块转成展示稿 atoms。
 
-    The display slice spans the draft characters covered by the block; the
-    punctuation and spaces inside it reappear in subtitle text (that is what
-    keeps English words spaced and numerals in display form). Unaligned
-    display characters borrow the timing of the nearest aligned character.
+    展示切片覆盖该块所及的那段稿子字符；其中的标点与空格会重新出现在字幕文本里
+    （这正是英文词之间保持空格、数字保持展示形式的原因）。未对齐的展示字符借用
+    最近的已对齐字符的时间。
     """
     display_start = to_script(narration_map[narr_start])
     display_end = to_script(narration_map[narr_end - 1]) + 1
-    # swallow sentence-final punctuation right after the last aligned char
+    # 把最后一个已对齐字符之后的句末标点一并吞掉
     while display_end < len(script_text) and script_text[display_end] in SENTENCE_FINAL_CHARS:
         display_end += 1
     display = script_text[display_start:display_end]
@@ -432,7 +414,7 @@ def build_display_atoms(
     atoms: list[Atom] = []
     for position, char in enumerate(display):
         offset = aligned_of[position]
-        if offset is None:  # display text the offsets table does not cover
+        if offset is None:  # 偏移表未覆盖的展示文本
             continue
         begin_ms, end_ms = asr_norm_times[asr_start + offset]
         atoms.append(Atom(text=char, begin_ms=begin_ms, end_ms=end_ms,
@@ -449,11 +431,10 @@ def build_atoms(
     spans: list[tuple[int, int]],
     warnings: list[str],
 ) -> list[Atom]:
-    """Character-level alignment -> timed display atoms.
+    """字符级对齐 -> 带时间的展示 atoms。
 
-    Equal blocks yield display-draft atoms (fallback=False); transcript-only
-    blocks keep the ASR text (fallback=True); narration-only blocks are
-    dropped with a warning (no audio exists for them).
+    相等的块产出展示稿 atoms（fallback=False）；仅转写有的块保留 ASR 文本
+    （fallback=True）；仅旁白有的块会被丢弃并给出警告（它们没有对应音频）。
     """
     narration_norm, narration_map = normalize_with_map(narration_text)
 
@@ -473,10 +454,10 @@ def build_atoms(
 
     def paragraph_of(narration_char_index: int) -> int:
         index = bisect.bisect_right(span_starts, narration_char_index) - 1
-        return index + 1  # 1-based
+        return index + 1  # 从 1 开始
 
     def words_touching(asr_start: int, asr_end: int) -> list[int]:
-        """Word indices whose normalized-char spans overlap [asr_start, asr_end)."""
+        """归一化字符区间与 [asr_start, asr_end) 有重叠的词下标。"""
         first = max(0, bisect.bisect_right(word_span_starts, asr_start) - 1)
         return [
             index
@@ -485,8 +466,8 @@ def build_atoms(
         ]
 
     def atoms_from_equal_run(narr_start: int, narr_end: int, asr_start: int, asr_end: int) -> list[Atom]:
-        # an equal run may span paragraph breaks (newlines normalize away);
-        # process it in per-paragraph sub-runs
+        # 一个相等块可能跨段落边界（换行已被归一化掉）；
+        # 因此按段落拆成子块分别处理
         run_atoms: list[Atom] = []
         offset = 0
         while offset < narr_end - narr_start:
@@ -505,7 +486,7 @@ def build_atoms(
         return run_atoms
 
     def atoms_from_transcript_only(asr_start: int, asr_end: int, atoms_so_far: list[Atom]) -> list[Atom]:
-        # ASR text with no narration counterpart: keep it, flag fallback.
+        # 没有旁白对应的 ASR 文本：保留，并标记为 fallback。
         paragraph = atoms_so_far[-1].paragraph if atoms_so_far else 1
         block_atoms: list[Atom] = []
         for word_index in words_touching(asr_start, asr_end):
@@ -533,13 +514,13 @@ def build_atoms(
             atoms.extend(atoms_from_equal_run(narr_start, narr_end, asr_start, asr_end))
         elif tag in ('replace', 'insert'):
             atoms.extend(atoms_from_transcript_only(asr_start, asr_end, atoms))
-        else:  # delete
+        else:  # 删除
             record_dropped_narration(narr_start, narr_end)
 
     return atoms
 
 
-# --- segmentation ----------------------------------------------------------------
+# --- 切分 --------------------------------------------------------------------
 
 
 def char_width(char: str) -> float:
@@ -559,7 +540,7 @@ def atoms_width(atoms: list[Atom]) -> float:
 
 
 def break_allowed(left: Atom, right: Atom) -> bool:
-    # never break inside an English word or number
+    # 绝不在英文词或数字内部断开
     return not (is_latin_token_char(left.text) and is_latin_token_char(right.text))
 
 
@@ -571,8 +552,8 @@ def unit_text(atoms: list[Atom]) -> str:
 
 
 def unit_bounds(atoms: list[Atom]) -> tuple[int, int] | None:
-    """Effective (begin_ms, end_ms): borrowed punctuation/space atoms at the
-    edges are ignored so adjacent units never overlap on borrowed timing."""
+    """有效 (begin_ms, end_ms)：边缘上借用的标点 / 空格 atom 被忽略，因此相邻
+    单元不会因为借来的时间而重叠。"""
     anchors = [atom for atom in atoms if not atom.borrowed]
     if not anchors:
         anchors = atoms
@@ -580,11 +561,10 @@ def unit_bounds(atoms: list[Atom]) -> tuple[int, int] | None:
 
 
 def find_cut(current: list[Atom], overflow: Atom) -> int | None:
-    """Index of the atom AFTER which to cut, or None if no valid cut exists.
+    """应在哪个 atom 之后切开的索引；没有合法切点时返回 None。
 
-    The cut may sit at the very end of ``current`` (the atom after the cut
-    is then ``overflow``); a cut between two Latin-token characters is
-    never allowed, so English words and numbers are never split.
+    切点可以落在 ``current`` 的最末尾（此时切点之后的 atom 就是 ``overflow``）；
+    两个拉丁 token 字符之间的切点永远不允许，因此英文词和数字绝不会被拆开。
     """
     def right_of(index: int) -> Atom:
         return current[index + 1] if index + 1 < len(current) else overflow
@@ -599,7 +579,7 @@ def find_cut(current: list[Atom], overflow: Atom) -> int | None:
 
 
 def rebalance(segments: list[list[Atom]], cap: float) -> list[list[Atom]]:
-    """Fix a too-short trailing segment by re-splitting the last two segments."""
+    """通过重新切开最后两段，修正过短的尾部片段。"""
     if len(segments) < 2:
         return segments
     last_width = atoms_width(segments[-1])
@@ -617,7 +597,7 @@ def rebalance(segments: list[list[Atom]], cap: float) -> list[list[Atom]]:
     best = min(cuts, key=lambda index: abs(atoms_width(combined[:index + 1]) - half))
     head, tail = combined[:best + 1], combined[best + 1:]
     if not tail or atoms_width(tail) <= last_width + 0.01:
-        return segments  # no improvement
+        return segments  # 没有改善
     return segments[:-2] + [head, tail]
 
 
@@ -632,7 +612,7 @@ def split_sentence(sentence: list[Atom], cap: float, warnings: list[str]) -> lis
         if current and current_width + width > cap:
             cut = find_cut(current, atom)
             if cut is None:
-                cut = len(current) - 1  # single token wider than the cap
+                cut = len(current) - 1  # 单个 token 比上限还宽
                 warnings.append(f'segment exceeds width cap; broke inside a token: {current[0].text[:20]}')
             segments.append(current[:cut + 1])
             current = current[cut + 1:]
@@ -664,10 +644,9 @@ def split_into_sentences(atoms: list[Atom]) -> list[list[Atom]]:
 def merge_short_units(
     units: list[list[Atom]], cap: float, warnings: list[str]
 ) -> tuple[list[list[Atom]], int]:
-    """Merge units shorter than MIN_UNIT_MS into a neighbour (previous first).
+    """把短于 MIN_UNIT_MS 的单元并入相邻单元（优先并入前一个）。
 
-    A merged unit may exceed the width cap; that is preferred over a
-    subtitle that flashes for less than MIN_UNIT_MS.
+    合并后的单元可能超出宽度上限；这比一条闪不到 MIN_UNIT_MS 的字幕更可取。
     """
     merged_count = 0
     changed = True
@@ -688,7 +667,7 @@ def merge_short_units(
     return units, merged_count
 
 
-# --- timeline scenes, cues and beats -----------------------------------------------
+# --- timeline 的 scenes、cues 与 beats ---------------------------------------
 
 
 def locate_scenes(
@@ -696,7 +675,7 @@ def locate_scenes(
     atoms_by_paragraph: dict[int, list[Atom]],
     warnings: list[str],
 ) -> list[dict[str, Any]]:
-    """Scene begin/end seconds, derived from each scene's paragraph coverage."""
+    """scene 的起止秒数，由各 scene 覆盖的段落推导。"""
     scenes: list[dict[str, Any]] = []
     for scene in scene_plan:
         if not isinstance(scene, dict):
@@ -730,7 +709,7 @@ def locate_text(
     paragraphs: list[int],
     atoms_by_paragraph: dict[int, list[Atom]],
 ) -> tuple[int, int] | None:
-    """Locate normalized display text inside a scene's aligned paragraphs."""
+    """在该 scene 已对齐的段落中定位归一化后的展示文本。"""
     text_norm, _ = normalize_with_map(text)
     if not text_norm:
         return None
@@ -821,7 +800,7 @@ def locate_beats(
     return beats
 
 
-# --- main --------------------------------------------------------------------------
+# --- 主流程 ------------------------------------------------------------------
 
 
 def group_atoms_by_paragraph(atoms: list[Atom]) -> dict[int, list[Atom]]:
@@ -842,7 +821,7 @@ def build_units(
     cap: float,
     warnings: list[str],
 ) -> tuple[list[dict[str, Any]], int, int]:
-    """Segment atoms into subtitle units; returns (units, fallback_units, merged_units)."""
+    """把 atoms 切成字幕单元；返回 (units, fallback_units, merged_units)。"""
     units: list[dict[str, Any]] = []
     fallback_units = 0
     merged_total = 0
@@ -887,7 +866,7 @@ def build_timeline(
     span_count: int,
     warnings: list[str],
 ) -> tuple[list[dict[str, Any]], float]:
-    """Per-paragraph begin/end seconds plus total duration."""
+    """逐段落的起止秒数，以及总时长。"""
     paragraphs: list[dict[str, Any]] = []
     total_ms = 0
     for paragraph, paragraph_atoms in paragraphs_in_order(atoms_by_paragraph):

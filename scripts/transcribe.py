@@ -1,60 +1,57 @@
 #!/usr/bin/env python3
 """
-Word/character level ASR with a local-first backend.
+词 / 字符级的 ASR，优先使用本地后端。
 
-Backends (select via --backend or ASR_BACKEND env, default: auto):
-  auto       Pick by environment: CUDA GPU -> qwen3; DASHSCOPE_API_KEY ->
-             dashscope; otherwise exit 1 with a JSON error listing what is
-             missing (Apple Silicon included: ASR is the fallback when
-             voice-clone.py's direct alignment fails, so it is never "not
-             needed").
-  qwen3      Local Qwen3-ASR + Qwen3-ForcedAligner (Apache-2.0). Runs on the
-             local GPU, returns char-level (CJK) / word-level (Latin)
-             timestamps with optional ITN. No cloud key needed.
-  dashscope  Aliyun DashScope non-realtime ASR (paraformer-v2, cloud
-             fallback). Needs DASHSCOPE_API_KEY.
-  fake       TEST ONLY (测试用): "recognizes" the text in ASR_FAKE_TEXT, spread
-             evenly over the audio's ffprobe duration; no model. Only
-             selectable explicitly (--backend fake / ASR_BACKEND=fake); auto
-             never picks it.
+后端（用 --backend 或 ASR_BACKEND 环境变量选择，默认 auto）：
+  auto       按环境挑选：有 CUDA GPU -> qwen3；有 DASHSCOPE_API_KEY ->
+             dashscope；否则以一条 JSON 错误退出 1，并列出缺少什么
+             （Apple Silicon 也在其中：当 voice-clone.py 的直接对齐失败时，
+             ASR 就是兜底，因此它永远不会“不需要”）。
+  qwen3      本地 Qwen3-ASR + Qwen3-ForcedAligner（Apache-2.0）。跑在本地
+             GPU 上，返回字符级（CJK）/ 词级（拉丁）时间戳，可选 ITN。不需要
+             云端 key。
+  dashscope  阿里云 DashScope 非实时 ASR（paraformer-v2，云端兜底）。需要
+             DASHSCOPE_API_KEY。
+  fake       TEST ONLY（测试用）：把 ASR_FAKE_TEXT 中的文本“识别”出来，按音频
+             ffprobe 时长均匀铺开；不加载模型。只能显式选择
+             （--backend fake / ASR_BACKEND=fake）；auto 永远不会选它。
 
-Usage:
+用法：
   python3 transcribe.py <input.mp3|http(s)://...|oss://...> <output.json>
                         [--backend auto|qwen3|dashscope]
-  python3 transcribe.py --resolve-backend   # print the auto decision (no model)
+  python3 transcribe.py --resolve-backend   # 只打印 auto 的决定（不加载模型）
 
-Optional env:
-  ASR_BACKEND           auto (default) | qwen3 | dashscope | fake (test only)
-  ASR_FAKE_TEXT         (fake backend only, required) UTF-8 text the fake
-                        ASR "recognizes"; without it the fake backend errors
-  # qwen3 backend:
-  QWEN3_ASR_MODEL       default Qwen/Qwen3-ASR-1.7B
-  QWEN3_ALIGNER_MODEL   default Qwen/Qwen3-ForcedAligner-0.6B
-  QWEN3_LANGUAGE        force a language name (e.g. "Chinese"); default auto
-  ASR_ITN               1 (default) applies inverse text normalization
-                        (spoken Chinese numerals -> Arabic digits, e.g.
-                        三点一 -> 3.1) via wetext; set 0 to keep verbatim
-  # dashscope backend:
-  DASHSCOPE_API_KEY     required for dashscope
-  ASR_MODEL             default paraformer-v2; e.g. qwen3-asr-flash-filetrans
-  ASR_LANGUAGE_HINTS    JSON array, default ["zh", "en"]
+可选环境变量：
+  ASR_BACKEND           auto（默认）| qwen3 | dashscope | fake（仅测试）
+  ASR_FAKE_TEXT         （仅 fake 后端，必需）fake ASR 要“识别”的 UTF-8 文本；
+                        没有它时 fake 后端会报错
+  # qwen3 后端：
+  QWEN3_ASR_MODEL       默认 Qwen/Qwen3-ASR-1.7B
+  QWEN3_ALIGNER_MODEL   默认 Qwen/Qwen3-ForcedAligner-0.6B
+  QWEN3_LANGUAGE        强制指定语言名（例如 "Chinese"）；默认 auto
+  ASR_ITN               1（默认）时做逆文本归一化（口语中文数字 -> 阿拉伯数字，
+                        例如 三点一 -> 3.1），由 wetext 完成；设 0 则保持原文
+  # dashscope 后端：
+  DASHSCOPE_API_KEY     dashscope 必需
+  ASR_MODEL             默认 paraformer-v2；例如 qwen3-asr-flash-filetrans
+  ASR_LANGUAGE_HINTS    JSON 数组，默认 ["zh", "en"]
 
-Output JSON shape (stable downstream contract):
+输出 JSON 形状（稳定的下游契约）：
   [
     {
-      "begin": 0,           # ms
-      "end": 60020,         # ms
+      "begin": 0,           # 毫秒
+      "end": 60020,         # 毫秒
       "text": "...",
       "words": [{"text": "为", "begin": 0, "end": 326}, ...]
     },
     ...
   ]
 
-Testing seam (documented; also used by the test-suite): the hardware/OS
-probes behind auto/--resolve-backend read these overrides when set:
-  ASR_DETECT_PLATFORM   e.g. darwin | linux   (default: sys.platform)
-  ASR_DETECT_MACHINE    e.g. arm64 | x86_64   (default: platform.machine())
-  ASR_DETECT_CUDA       1 | 0                 (default: torch.cuda.is_available())
+测试接缝（有文档记录；测试套件也用它）：auto / --resolve-backend 背后的硬件 /
+系统探测在被设置时读取这些覆盖值：
+  ASR_DETECT_PLATFORM   例如 darwin | linux   （默认：sys.platform）
+  ASR_DETECT_MACHINE    例如 arm64 | x86_64   （默认：platform.machine()）
+  ASR_DETECT_CUDA       1 | 0                 （默认：torch.cuda.is_available()）
 """
 from __future__ import annotations
 
@@ -67,7 +64,7 @@ import sys
 from http import HTTPStatus
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # 同级脚本
 
 import backend_select as bs
 import cli
@@ -77,19 +74,19 @@ from backend_select import BackendUnavailableError, UnknownBackendError
 from transcript_schema import transcript_from_torch_alignment
 
 
-# --- backend selection (auto) ---------------------------------------------------
+# --- 后端选择（auto） --------------------------------------------------------
 #
-# The probes, the CLI > env > auto resolution and the --resolve-backend output
-# live in backend_select.py (shared with voice-clone.py). This script only
-# supplies the ASR backend registry and the ASR auto order; the documented
-# probe overrides are ASR_DETECT_PLATFORM / ASR_DETECT_MACHINE / ASR_DETECT_CUDA.
+# 各项探测、CLI > 环境变量 > auto 的解析，以及 --resolve-backend 的输出，都在
+# backend_select.py 中（与 voice-clone.py 共用）。本脚本只提供 ASR 后端注册表与
+# ASR 的 auto 顺序；有文档记录的探测覆盖值是 ASR_DETECT_PLATFORM /
+# ASR_DETECT_MACHINE / ASR_DETECT_CUDA。
 
 PROBE_PREFIX = 'ASR_DETECT'
 
 
 def _auto_backend(probes: dict[str, object]) -> tuple[str, dict[str, object]]:
-    """ASR auto order: CUDA -> qwen3; DASHSCOPE_API_KEY -> dashscope;
-    otherwise BackendUnavailableError listing what is missing."""
+    """ASR 的 auto 顺序：CUDA -> qwen3；DASHSCOPE_API_KEY -> dashscope；
+    否则抛 BackendUnavailableError 并列出缺少什么。"""
     missing: list[str] = []
     if probes['cuda']:
         return 'qwen3', probes
@@ -103,11 +100,10 @@ def _auto_backend(probes: dict[str, object]) -> tuple[str, dict[str, object]]:
 
 
 def resolve_backend_name(cli_backend: str | None) -> tuple[str, str, dict[str, object]]:
-    """Resolve the effective ASR backend. Returns (name, source, probes).
+    """解析出实际生效的 ASR 后端。返回 (name, source, probes)。
 
-    source is 'cli' (--backend), 'env' (ASR_BACKEND) or 'auto'. See
-    backend_select.resolve_backend_name for the shared contract and
-    _auto_backend for the ASR auto order.
+    source 是 'cli'（--backend）、'env'（ASR_BACKEND）或 'auto'。共用的契约见
+    backend_select.resolve_backend_name，ASR 的 auto 顺序见 _auto_backend。
     """
     return bs.resolve_backend_name(
         cli_backend,
@@ -129,13 +125,13 @@ def is_remote_audio(audio_arg: str) -> bool:
     return audio_arg.startswith(('http://', 'https://', 'oss://'))
 
 
-# --------------------------------------------------------------------------- #
-# Shared ITN + sentence-segmentation helpers (used by the local backend)
-# --------------------------------------------------------------------------- #
+# ----------------------------------------------------------------------------- #
+# 共用的 ITN + 分句辅助函数（本地后端使用）
+# ----------------------------------------------------------------------------- #
 
-# Calendar units; ITN is applied per chunk split *after* these so wetext does
-# not collapse a full date (年 + 月) into a slash form like "2026/06" — keeping
-# the cloud-style "2026年6月" and avoiding merge artifacts at the boundary.
+# 日历单位；ITN 在这些单位处切块之后再逐块施加，这样 wetext 不会把完整日期
+# （年 + 月）压成 "2026/06" 这种斜杠形式 —— 保持云端风格的 "2026年6月"，
+# 并避免在边界处产生合并痕迹。
 _CAL_UNITS = '年月日号時时分秒'
 _CAL_SPLIT = re.compile(f'(?<=[{_CAL_UNITS}])')
 _ITN_NORMALIZER = None
@@ -147,7 +143,7 @@ def itn_enabled() -> bool:
 
 
 def _get_itn_normalizer():
-    """Lazily build a single wetext zh ITN normalizer; None if unavailable."""
+    """惰性构建一个 wetext 中文 ITN 归一化器；不可用时为 None。"""
     global _ITN_NORMALIZER, _ITN_DISABLED
     if _ITN_DISABLED:
         return None
@@ -155,7 +151,7 @@ def _get_itn_normalizer():
         try:
             from wetext import Normalizer
             _ITN_NORMALIZER = Normalizer(lang='zh', operator='itn')
-        except Exception as exc:  # noqa: BLE001 - degrade gracefully
+        except Exception as exc:  # noqa: BLE001 - 优雅降级
             log(f'ITN disabled (wetext unavailable: {exc})')
             _ITN_DISABLED = True
             return None
@@ -163,10 +159,10 @@ def _get_itn_normalizer():
 
 
 def itn_text(text: str) -> str:
-    """Inverse-text-normalize one string (spoken Chinese numbers -> digits).
+    """对单个字符串做逆文本归一化（口语中文数字 -> 数字）。
 
-    Splits at calendar-unit boundaries first so dates keep their unit form.
-    Returns the input unchanged if ITN is unavailable.
+    先按日历单位边界切分，使日期保持其带单位的形式。
+    ITN 不可用时原样返回输入。
     """
     norm = _get_itn_normalizer()
     if norm is None:
@@ -178,13 +174,11 @@ def itn_text(text: str) -> str:
 
 
 def apply_itn_to_sentences(sentences: list[dict]) -> list[dict]:
-    """Rewrite each sentence's text + word tokens to ITN (Arabic digit) form.
+    """把每个句子的 text 与词 token 重写成 ITN（阿拉伯数字）形式。
 
-    Word-level timestamps are preserved: characters that collapse into one
-    Arabic-digit token inherit the merged span (first.begin .. last.end). Each
-    original word token is emitted exactly once (no drop, no duplicate); a span
-    that ITN deletes is folded into the neighbouring token's time. Falls back
-    to the verbatim sentence on any error.
+    词级时间戳被保留：合并成一个阿拉伯数字 token 的那些字符继承合并后的区间
+    （first.begin .. last.end）。每个原始词 token 恰好输出一次（不丢、不重复）；
+    ITN 删掉的区间会并入相邻 token 的时间。任何错误时退回逐字的原句。
     """
     import difflib
 
@@ -203,8 +197,8 @@ def apply_itn_to_sentences(sentences: list[dict]) -> list[dict]:
             emitted: set[int] = set()
             sm = difflib.SequenceMatcher(None, orig, itn, autojunk=False)
             for tag, i1, i2, j1, j2 in sm.get_opcodes():
-                # words overlapping this original char range, de-duplicated and
-                # excluding any already emitted by an earlier opcode.
+                # 与该原始字符区间有重叠的词，去重后
+                # 排除已被更早的 opcode 输出过的。
                 wis = [wi for wi in dict.fromkeys(char_word[i1:i2]) if wi not in emitted]
                 if tag == 'equal':
                     for wi in wis:
@@ -223,8 +217,8 @@ def apply_itn_to_sentences(sentences: list[dict]) -> list[dict]:
                 if seg:
                     new_words.append({'text': seg, 'begin': begin, 'end': end})
                 elif wis and new_words:
-                    # ITN deleted these chars; keep their time by extending the
-                    # neighbouring token so no span is silently lost.
+                    # ITN 删掉了这些字符；把它们的时间并入相邻 token，
+                    # 使任何区间都不会被悄悄丢掉。
                     new_words[-1]['end'] = max(new_words[-1]['end'], end)
             out.append({
                 'begin': s['begin'],
@@ -232,30 +226,30 @@ def apply_itn_to_sentences(sentences: list[dict]) -> list[dict]:
                 'text': new_text,
                 'words': new_words or words,
             })
-        except Exception as exc:  # noqa: BLE001 - keep verbatim on failure
+        except Exception as exc:  # noqa: BLE001 - 失败时保留逐字原文
             log(f'ITN skipped for one sentence ({exc})')
             out.append(s)
     return out
 
 
-# --------------------------------------------------------------------------- #
-# Backend interface + implementations
-# --------------------------------------------------------------------------- #
+# ----------------------------------------------------------------------------- #
+# 后端接口与实现
+# ----------------------------------------------------------------------------- #
 
 
 class ASRBackend(abc.ABC):
-    """Common interface: turn an audio reference into our sentence schema."""
+    """共同接口：把一个音频引用变成我们的句子 schema。"""
 
     name: str
 
     @abc.abstractmethod
     def transcribe(self, audio_arg: str) -> list[dict]:
-        """Return [{begin, end, text, words:[{text, begin, end}]}] in ms."""
+        """返回毫秒级的 [{begin, end, text, words:[{text, begin, end}]}]。"""
         raise NotImplementedError
 
 
 class Qwen3ASRBackend(ASRBackend):
-    """Local Qwen3-ASR + Qwen3-ForcedAligner (with optional ITN)."""
+    """本地 Qwen3-ASR + Qwen3-ForcedAligner（可选 ITN）。"""
 
     name = 'qwen3'
 
@@ -269,7 +263,7 @@ class Qwen3ASRBackend(ASRBackend):
         asr_model = os.environ.get('QWEN3_ASR_MODEL', DEFAULT_QWEN3_ASR_MODEL)
         aligner_model = os.environ.get('QWEN3_ALIGNER_MODEL', DEFAULT_QWEN3_ALIGNER_MODEL)
         use_cuda = torch.cuda.is_available()
-        # Turing (sm_75) has no native bf16; fp16 is the fast, stable choice.
+        # Turing（sm_75）没有原生 bf16；fp16 是更快也更稳的选择。
         dtype = torch.float16 if use_cuda else torch.float32
         device = 'cuda:0' if use_cuda else 'cpu'
 
@@ -304,7 +298,7 @@ class Qwen3ASRBackend(ASRBackend):
 
 
 class FakeASRBackend(ASRBackend):
-    """Test-only: the transcript is ASR_FAKE_TEXT spread evenly over the audio."""
+    """仅测试用：转写内容是 ASR_FAKE_TEXT 按音频时长均匀铺开。"""
 
     name = 'fake'
 
@@ -322,7 +316,7 @@ class FakeASRBackend(ASRBackend):
 
 
 class ParaformerBackend(ASRBackend):
-    """Cloud DashScope non-realtime ASR (paraformer-v2)."""
+    """云端 DashScope 非实时 ASR（paraformer-v2）。"""
 
     name = 'dashscope'
 
@@ -341,7 +335,7 @@ class ParaformerBackend(ASRBackend):
 
     @staticmethod
     def _convert_words(raw_words: list[dict]) -> list[dict]:
-        """Flatten paraformer-v2 word objects to {text, begin, end}."""
+        """把 paraformer-v2 的词对象摊平成 {text, begin, end}。"""
         out = []
         for word in raw_words or []:
             text = (word.get('text') or '') + (word.get('punctuation') or '')
@@ -355,7 +349,7 @@ class ParaformerBackend(ASRBackend):
         return out
 
     def _parse_payload(self, payload: dict) -> list[dict]:
-        """Parse paraformer-v2 transcription JSON into our schema."""
+        """把 paraformer-v2 的转写 JSON 解析成我们的 schema。"""
         sentences = []
         for transcript in payload.get('transcripts') or []:
             for sentence in transcript.get('sentences') or []:
@@ -494,7 +488,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def resolve_backend_cli(args: argparse.Namespace) -> int:
-    """--resolve-backend: print the backend decision (probes only), no models."""
+    """--resolve-backend：打印后端决定（只做探测），不加载模型。"""
     return bs.resolve_backend_cli(
         lambda: resolve_backend_name(args.backend), log=log, print_json=print_json
     )

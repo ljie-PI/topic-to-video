@@ -1,83 +1,78 @@
 #!/usr/bin/env python3
 """
-Voice-cloned narration TTS with environment-selected backends.
+带音色克隆的旁白 TTS，后端由环境选择。
 
-Backends (select via --backend or TTS_BACKEND env, default: auto):
-  auto       Pick by environment: Apple Silicon (darwin/arm64) with mlx-audio
-             -> mlx; CUDA GPU -> qwen3tts; DASHSCOPE_API_KEY -> dashscope;
-             otherwise exit 1 with a JSON error listing what is missing.
-  mlx        mlx-audio Qwen3-TTS voice clone + Qwen3-ForcedAligner direct
-             alignment of the narration text. Emits narration.mp3 AND
-             transcript.json (pipeline schema, ms) on every run.
-  qwen3tts   Local Qwen3-TTS (Apache-2.0) voice clone — reference WAV + its
-             transcript via Qwen3-TTS-12Hz-1.7B-Base. Runs on the local GPU.
-             With --emit-transcript it first tries to align the narration
-             text to the audio with the torch Qwen3-ForcedAligner.
-  dashscope  Aliyun DashScope CosyVoice (cloud fallback). Needs
-             DASHSCOPE_API_KEY + COSYVOICE_VOICE_ID. Has no direct aligner.
-  fake       TEST ONLY (测试用): silent mp3 plus a uniform-timing aligner, no
-             model. Only selectable explicitly (--backend fake / TTS_BACKEND=
-             fake); auto never picks it. See TTS_FAKE_ALIGN_FAIL below.
+后端（用 --backend 或 TTS_BACKEND 环境变量选择，默认 auto）：
+  auto       按环境挑选：Apple Silicon（darwin/arm64）且有 mlx-audio -> mlx；
+             有 CUDA GPU -> qwen3tts；有 DASHSCOPE_API_KEY -> dashscope；
+             否则以一条 JSON 错误退出 1，并列出缺少什么。
+  mlx        mlx-audio Qwen3-TTS 音色克隆 + Qwen3-ForcedAligner 对旁白文本的
+             直接对齐。每次运行都产出 narration.mp3 和 transcript.json
+             （流水线 schema，毫秒）。
+  qwen3tts   本地 Qwen3-TTS（Apache-2.0）音色克隆 —— 参考 WAV 及其转写文本，
+             经 Qwen3-TTS-12Hz-1.7B-Base 完成。跑在本地 GPU 上。带
+             --emit-transcript 时，会先用 torch 的 Qwen3-ForcedAligner 尝试把
+             旁白文本对齐到音频。
+  dashscope  阿里云 DashScope CosyVoice（云端兜底）。需要 DASHSCOPE_API_KEY +
+             COSYVOICE_VOICE_ID。没有直接对齐器。
+  fake       TEST ONLY（测试用）：静音 mp3 加一个均匀时间的对齐器，不加载模型。
+             只能显式选择（--backend fake / TTS_BACKEND=fake）；auto 永远不会
+             选它。见下面的 TTS_FAKE_ALIGN_FAIL。
 
-Transcript contract: a run needs a transcript when --emit-transcript is passed
-or the backend always emits one (mlx, fake). Any file already at the transcript
-path is deleted before synthesis (it belongs to an earlier audio). The backend's
-own direct aligner runs first (transcript_method "direct_align"); when it
-writes nothing (aligner unavailable, alignment failed, or the backend has none)
-this script runs `transcribe.py <mp3> <transcript>` as a subprocess
-(transcript_method "asr"; ASR_BACKEND and the rest of the environment apply).
-When both fail the exit code is 1, the mp3 is kept and the JSON error lists
-every try under "transcript_attempts". So a run either leaves a fresh
-transcript or fails.
+转写契约：当传入 --emit-transcript，或后端总是产出转写（mlx、fake）时，一次运行
+就需要转写。转写路径上已有的任何文件都会在合成之前被删掉（它属于更早的那份音频）。
+后端自己的直接对齐器先跑（transcript_method "direct_align"）；当它什么都没写时
+（对齐器不可用、对齐失败，或该后端没有对齐器），本脚本以子进程方式运行
+`transcribe.py <mp3> <transcript>`（transcript_method "asr"；ASR_BACKEND 及环境
+中其他设置都会生效）。两者都失败时退出码为 1，mp3 被保留，JSON 错误会在
+"transcript_attempts" 下列出每一次尝试。因此一次运行要么留下一份新的转写，要么
+失败。
 
-Usage:
+用法：
   source .venv/bin/activate
-  # auto (default) — probe the decision without loading any model:
+  # auto（默认）—— 只探测决定，不加载任何模型：
   python3 voice-clone.py --resolve-backend
-  # local (auto-selected)
-  export TTS_REF_WAV="/path/to/my_voice.wav"           # reference timbre
+  # 本地（由 auto 选中）
+  export TTS_REF_WAV="/path/to/my_voice.wav"           # 参考音色
   python3 voice-clone.py --input-file narration.txt --output-dir voice_clone
-  # cloud fallback
+  # 云端兜底
   export TTS_BACKEND=dashscope
   export DASHSCOPE_API_KEY="sk-..."
   export COSYVOICE_VOICE_ID="cosyvoice-v3.5-plus-..."
   python3 voice-clone.py --input-file narration.txt --output-dir voice_clone
 
-Optional env:
-  TTS_BACKEND        auto (default) | mlx | qwen3tts | dashscope | fake (test only)
-  TTS_REF_WAV        reference audio for cloning (required for mlx/qwen3tts;
-                     legacy alias: VOXCPM_REF_WAV)
-  TTS_REF_TEXT       transcript of the reference audio. Optional for mlx;
-                     for qwen3tts a sibling "<ref>.txt" is used, else it is
-                     auto-generated once with Qwen3-ASR and cached next to
-                     the reference WAV. (legacy alias: VOXCPM_REF_TEXT)
-  QWEN3TTS_MODEL     Qwen3-TTS model id or local dir
-                     (default: Qwen/Qwen3-TTS-12Hz-1.7B-Base)
-  QWEN3TTS_LANGUAGE  Qwen3-TTS language hint (default: Chinese)
-  QWEN3_ASR_MODEL    Qwen3-ASR model used for the one-time reference transcript
-                     (default: Qwen/Qwen3-ASR-1.7B)
-  QWEN3_ALIGNER_MODEL  torch aligner for --emit-transcript
-                     (default: Qwen/Qwen3-ForcedAligner-0.6B)
-  TTS_MODEL_MLX      mlx-audio TTS model: HF id or local dir
-                     (default: mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16)
-  ALIGNER_MODEL_MLX  mlx-audio aligner model: HF id or local dir
-                     (default: mlx-community/Qwen3-ForcedAligner-0.6B-8bit)
-  TTS_LANGUAGE_MLX   mlx TTS language code (default: auto)
-  ALIGNER_LANGUAGE_MLX  mlx aligner language (default: Chinese)
-  TTS_FAKE_ALIGN_FAIL  1 makes the fake backend's aligner fail (exercises the
-                     ASR fallback in tests)
+可选环境变量：
+  TTS_BACKEND        auto（默认）| mlx | qwen3tts | dashscope | fake（仅测试）
+  TTS_REF_WAV        用于克隆的参考音频（mlx/qwen3tts 必需；旧别名：
+                     VOXCPM_REF_WAV）
+  TTS_REF_TEXT       参考音频的转写文本。对 mlx 可选；对 qwen3tts 会先用同目录的
+                     "<ref>.txt"，否则用 Qwen3-ASR 自动生成一次并缓存在参考 WAV
+                     旁边。（旧别名：VOXCPM_REF_TEXT）
+  QWEN3TTS_MODEL     Qwen3-TTS 模型 id 或本地目录
+                     （默认：Qwen/Qwen3-TTS-12Hz-1.7B-Base）
+  QWEN3TTS_LANGUAGE  Qwen3-TTS 语言提示（默认：Chinese）
+  QWEN3_ASR_MODEL    用于生成一次性参考转写的 Qwen3-ASR 模型
+                     （默认：Qwen/Qwen3-ASR-1.7B）
+  QWEN3_ALIGNER_MODEL  为 --emit-transcript 服务的 torch 对齐器
+                     （默认：Qwen/Qwen3-ForcedAligner-0.6B）
+  TTS_MODEL_MLX      mlx-audio TTS 模型：HF id 或本地目录
+                     （默认：mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16）
+  ALIGNER_MODEL_MLX  mlx-audio 对齐器模型：HF id 或本地目录
+                     （默认：mlx-community/Qwen3-ForcedAligner-0.6B-8bit）
+  TTS_LANGUAGE_MLX   mlx TTS 语言代码（默认：auto）
+  ALIGNER_LANGUAGE_MLX  mlx 对齐器语言（默认：Chinese）
+  TTS_FAKE_ALIGN_FAIL  置 1 让 fake 后端的对齐器失败（在测试中触发 ASR 兜底）
 
-Testing seam (documented; also used by the test-suite): the hardware/OS
-probes behind auto/--resolve-backend read these overrides when set:
-  TTS_DETECT_PLATFORM   e.g. darwin | linux   (default: sys.platform)
-  TTS_DETECT_MACHINE    e.g. arm64 | x86_64   (default: platform.machine())
-  TTS_DETECT_CUDA       1 | 0                 (default: torch.cuda.is_available())
-  TTS_DETECT_MLX_AUDIO  1 | 0                 (default: importlib find_spec)
+测试接缝（有文档记录；测试套件也用它）：auto / --resolve-backend 背后的硬件 /
+系统探测在被设置时读取这些覆盖值：
+  TTS_DETECT_PLATFORM   例如 darwin | linux   （默认：sys.platform）
+  TTS_DETECT_MACHINE    例如 arm64 | x86_64   （默认：platform.machine()）
+  TTS_DETECT_CUDA       1 | 0                 （默认：torch.cuda.is_available()）
+  TTS_DETECT_MLX_AUDIO  1 | 0                 （默认：importlib find_spec）
 
-Outputs: {output_dir}/narration.mp3, plus {output_dir}/transcript.json
-(--transcript-output to redirect) whenever the run needs a transcript (see the
-transcript contract above); the success JSON then carries transcript_path and
-transcript_method.
+产出：{output_dir}/narration.mp3，以及在该次运行需要转写时（见上面的转写契约）
+{output_dir}/transcript.json（可用 --transcript-output 改路径）；成功 JSON 随后
+带有 transcript_path 与 transcript_method。
 """
 from __future__ import annotations
 
@@ -90,7 +85,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # 同级脚本
 
 import backend_select as bs
 import cli
@@ -102,9 +97,9 @@ from transcript_schema import (
     transcript_from_torch_alignment,
 )
 
-# Reduce CUDA allocator fragmentation so long narrations don't OOM on smaller
-# cards (e.g. 11GB). Must be set before torch initializes the CUDA allocator;
-# setdefault leaves any user-provided value untouched.
+# 减小 CUDA 分配器的碎片，让长旁白不会在显存更小的卡（例如 11GB）上 OOM。
+# 必须在 torch 初始化 CUDA 分配器之前设置；
+# setdefault 不会覆盖用户已提供的值。
 os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')
 
 TOOL_NAME = 'voice-clone'
@@ -112,31 +107,29 @@ DASHSCOPE_MODEL = "cosyvoice-v3.5-plus"
 DEFAULT_QWEN3TTS_MODEL = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
 DEFAULT_REF_ASR_MODEL = "Qwen/Qwen3-ASR-1.7B"
 DEFAULT_QWEN3_ALIGNER_MODEL = "Qwen/Qwen3-ForcedAligner-0.6B"
-# mlx-audio models: plain HF ids (mlx-audio downloads them) or local dirs.
+# mlx-audio 模型：纯 HF id（由 mlx-audio 下载）或本地目录。
 DEFAULT_TTS_MODEL_MLX = "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
 DEFAULT_ALIGNER_MODEL_MLX = "mlx-community/Qwen3-ForcedAligner-0.6B-8bit"
 
-# Default playback speed per backend (applied via ffmpeg atempo, pitch-kept).
-# Qwen3-TTS with a fast reference voice reads naturally at 1.0; CosyVoice keeps
-# its own 1.4.
+# 各后端的默认播放速度（通过 ffmpeg atempo 施加，保持音高）。
+# 配快速参考音色时 Qwen3-TTS 以 1.0 朗读最自然；CosyVoice 保持它自己的 1.4。
 DEFAULT_QWEN3TTS_SPEECH_RATE = 1.0
 DEFAULT_DASHSCOPE_SPEECH_RATE = 1.4
 
 
-# --- backend selection (auto) ---------------------------------------------------
+# --- 后端选择（auto） --------------------------------------------------------
 #
-# The probes, the CLI > env > auto resolution and the --resolve-backend output
-# live in backend_select.py (shared with transcribe.py). This script only
-# supplies the TTS backend registry and the TTS auto order; the documented
-# probe overrides are TTS_DETECT_PLATFORM / TTS_DETECT_MACHINE /
-# TTS_DETECT_CUDA / TTS_DETECT_MLX_AUDIO.
+# 各项探测、CLI > 环境变量 > auto 的解析，以及 --resolve-backend 的输出，都在
+# backend_select.py 中（与 transcribe.py 共用）。本脚本只提供 TTS 后端注册表与
+# TTS 的 auto 顺序；有文档记录的探测覆盖值是 TTS_DETECT_PLATFORM /
+# TTS_DETECT_MACHINE / TTS_DETECT_CUDA / TTS_DETECT_MLX_AUDIO。
 
 PROBE_PREFIX = 'TTS_DETECT'
 
 
 def _auto_backend(probes: dict[str, object]) -> tuple[str, dict[str, object]]:
-    """TTS auto order: Apple Silicon + mlx-audio -> mlx; CUDA -> qwen3tts;
-    DASHSCOPE_API_KEY -> dashscope; otherwise BackendUnavailableError."""
+    """TTS 的 auto 顺序：Apple Silicon + mlx-audio -> mlx；CUDA -> qwen3tts；
+    DASHSCOPE_API_KEY -> dashscope；否则抛 BackendUnavailableError。"""
     missing: list[str] = []
     if probes['platform'] == 'darwin' and probes['machine'] == 'arm64':
         if probes['mlx_audio']:
@@ -154,12 +147,11 @@ def _auto_backend(probes: dict[str, object]) -> tuple[str, dict[str, object]]:
 
 
 def resolve_backend_name(cli_backend: str | None) -> tuple[str, str, dict[str, object]]:
-    """Resolve the effective TTS backend. Returns (name, source, probes).
+    """解析出实际生效的 TTS 后端。返回 (name, source, probes)。
 
-    source is 'cli' (--backend), 'env' (TTS_BACKEND) or 'auto'. See
-    backend_select.resolve_backend_name for the shared contract and
-    _auto_backend for the TTS auto order. Raises UnknownBackendError for
-    values outside BACKENDS/'auto'.
+    source 是 'cli'（--backend）、'env'（TTS_BACKEND）或 'auto'。共用的契约见
+    backend_select.resolve_backend_name，TTS 的 auto 顺序见 _auto_backend。
+    对 BACKENDS/'auto' 之外的取值抛 UnknownBackendError。
     """
     return bs.resolve_backend_name(
         cli_backend,
@@ -173,18 +165,18 @@ def resolve_backend_name(cli_backend: str | None) -> tuple[str, str, dict[str, o
 
 
 def reference_wav_env() -> str | None:
-    """Reference WAV path from TTS_REF_WAV (legacy alias VOXCPM_REF_WAV)."""
+    """TTS_REF_WAV 给出的参考 WAV 路径（旧别名 VOXCPM_REF_WAV）。"""
     return os.environ.get('TTS_REF_WAV') or os.environ.get('VOXCPM_REF_WAV')
 
 
 def default_reference_wav() -> Path | None:
-    """Bundled reference voice: <repo>/resources/my_voice.wav when present."""
+    """随 skill 分发的参考音色：<repo>/resources/my_voice.wav（存在时）。"""
     candidate = Path(__file__).resolve().parent.parent / 'resources' / 'my_voice.wav'
     return candidate if candidate.is_file() else None
 
 
 def resolve_reference_audio(cli_value: str | None) -> Path:
-    """CLI --reference-wav > TTS_REF_WAV > bundled resources/my_voice.wav."""
+    """优先级：CLI --reference-wav > TTS_REF_WAV > 分发的 resources/my_voice.wav。"""
     value = cli_value or reference_wav_env()
     if value:
         return Path(value).expanduser()
@@ -198,7 +190,7 @@ def resolve_reference_audio(cli_value: str | None) -> Path:
 
 
 def reference_text_env() -> str | None:
-    """Reference transcript from TTS_REF_TEXT (legacy alias VOXCPM_REF_TEXT)."""
+    """TTS_REF_TEXT 给出的参考转写文本（旧别名 VOXCPM_REF_TEXT）。"""
     return os.environ.get('TTS_REF_TEXT') or os.environ.get('VOXCPM_REF_TEXT')
 
 
@@ -310,7 +302,7 @@ def detect_duration_seconds(audio_path: Path) -> float:
 
 
 def _reference_text_from_raw(raw: str) -> str:
-    """Interpret a --reference-text / TTS_REF_TEXT value as path or inline text."""
+    """把 --reference-text / TTS_REF_TEXT 的值解释成路径或内联文本。"""
     stripped = raw.strip()
     candidate = Path(stripped).expanduser()
     if candidate.is_file():
@@ -318,29 +310,29 @@ def _reference_text_from_raw(raw: str) -> str:
         if text:
             return text
         raise ValueError(f'reference transcript file is empty: {candidate}')
-    # Treat as a path only when it really looks like one: a .txt suffix, or
-    # a path separator with no internal whitespace. A real inline transcript
-    # usually contains spaces (and may contain a "/" as in "AI/人工智能"),
-    # so it must not be misread as a missing file.
+    # 只在它真的像路径时才当路径处理：.txt 后缀，或
+    # 含路径分隔符且内部没有空白。真正的内联转写
+    # 通常含空格（也可能含 "/"，例如 "AI/人工智能"），
+    # 因此不能被误读成一个缺失的文件。
     looks_like_path = stripped.lower().endswith('.txt') or (
         not any(ch.isspace() for ch in stripped)
         and (os.sep in stripped or bool(os.altsep and os.altsep in stripped))
     )
     if looks_like_path:
-        # A path-looking value that does not resolve is almost certainly a
-        # typo; failing loudly beats silently cloning from the literal path.
+        # 看起来像路径却解析不出来的值，几乎一定是笔误；
+        # 大声失败胜过不声不响地拿这段字面路径去克隆。
         raise FileNotFoundError(f'reference transcript file not found: {candidate}')
     return stripped
 
 
 def resolve_reference_text(ref_wav: Path, cli_value: str | None) -> str:
-    """Return the transcript of the reference audio for voice cloning.
+    """返回用于音色克隆的参考音频转写文本。
 
-    Resolution order:
-      1. --reference-text / TTS_REF_TEXT, treated as a file path if it looks
-         path-like, otherwise as an inline string.
-      2. A sibling "<ref>.txt" cached next to the reference WAV.
-      3. Auto-transcribe the reference once with Qwen3-ASR and cache it.
+    解析顺序：
+      1. --reference-text / TTS_REF_TEXT，若看起来像路径则当作文件路径，
+         否则当作内联字符串。
+      2. 缓存在参考 WAV 旁边的同目录 "<ref>.txt"。
+      3. 用 Qwen3-ASR 自动转写该参考音频一次并缓存。
     """
     raw = cli_value or reference_text_env()
     if raw and raw.strip():
@@ -361,8 +353,8 @@ def resolve_reference_text(ref_wav: Path, cli_value: str | None) -> str:
 
 
 def resolve_reference_text_optional(ref_wav: Path, cli_value: str | None) -> str | None:
-    """mlx variant: same resolution minus the torch auto-ASR fallback (the mlx
-    Qwen3-TTS Base clones well without a reference transcript)."""
+    """mlx 变体：同样的解析顺序，减去 torch 自动 ASR 兜底（mlx 的
+    Qwen3-TTS Base 没有参考转写也能克隆得很好）。"""
     raw = cli_value or reference_text_env()
     if raw and raw.strip():
         return _reference_text_from_raw(raw)
@@ -376,7 +368,7 @@ def resolve_reference_text_optional(ref_wav: Path, cli_value: str | None) -> str
 
 
 def transcribe_reference_plain(ref_wav: Path) -> str:
-    """Plain-text (no timestamps) transcription of the reference clip."""
+    """参考片段的纯文本转写（不带时间戳）。"""
     import gc
 
     import torch
@@ -395,8 +387,8 @@ def transcribe_reference_plain(ref_wav: Path) -> str:
         results = model.transcribe(audio=str(ref_wav), language=None)
         text = (results[0].text or '').strip()
     finally:
-        # Free the ASR model before the TTS model loads — both are multi-GB and
-        # the local GPU (e.g. 11GB) cannot hold them simultaneously.
+        # 在 TTS 模型加载之前释放 ASR 模型 —— 两者都是多 GB 级，
+        # 本地 GPU（例如 11GB）无法同时容纳它们。
         del model
         gc.collect()
         if torch.cuda.is_available():
@@ -407,11 +399,11 @@ def transcribe_reference_plain(ref_wav: Path) -> str:
 
 
 def _atempo_chain(rate: float | None) -> str | None:
-    """Build an ffmpeg atempo filter (or chain) for any positive speed.
+    """为任意正速度构建 ffmpeg atempo 滤镜（或其串联）。
 
-    A single ``atempo`` only supports 0.5–2.0, so out-of-range rates are
-    decomposed into a chain of in-range factors (e.g. 2.5 -> atempo=2.0,atempo=1.25).
-    Returns None when no re-timing is needed.
+    单个 ``atempo`` 只支持 0.5–2.0，因此超出范围的倍率会被分解成一串在范围内的
+    因子（例如 2.5 -> atempo=2.0,atempo=1.25）。
+    不需要重新定速时返回 None。
     """
     if rate is None or abs(rate - 1.0) <= 1e-3:
         return None
@@ -430,7 +422,7 @@ def _atempo_chain(rate: float | None) -> str | None:
 
 
 def convert_to_mp3(src_path: Path, output_path: Path, atempo: float | None) -> None:
-    """Convert an existing audio file to mp3 via ffmpeg, optionally re-timing."""
+    """通过 ffmpeg 把已有的音频文件转成 mp3，可选重新定速。"""
     cmd = ['ffmpeg', '-y', '-loglevel', 'error', '-i', str(src_path)]
     atempo_filter = _atempo_chain(atempo)
     if atempo_filter:
@@ -444,7 +436,7 @@ def convert_to_mp3(src_path: Path, output_path: Path, atempo: float | None) -> N
 
 
 def write_mp3(wav, sample_rate: int, output_path: Path, atempo: float | None) -> None:
-    """Write a float waveform to mp3 via ffmpeg, optionally re-timing speed."""
+    """通过 ffmpeg 把浮点波形写成 mp3，可选重新定速。"""
     import soundfile as sf
 
     with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
@@ -460,19 +452,17 @@ def write_mp3(wav, sample_rate: int, output_path: Path, atempo: float | None) ->
 
 
 class TTSBackend(abc.ABC):
-    """Common interface: synthesize narration text into an mp3 file.
+    """共同接口：把旁白文本合成为 mp3 文件。
 
-    Two boolean flags declare the backend's relationship to transcripts;
-    ``main()`` owns the contract (stale-file removal, the direct-align -> ASR
-    fallback, the failure report) from them:
+    两个布尔开关声明后端与转写的关系；``main()`` 据此持有契约（删除过期文件、
+    直接对齐 -> ASR 的兜底、失败报告）：
 
-    * ``always_emits_transcript`` — mlx, fake: the narration text is aligned
-      straight onto the audio, so every run must leave a transcript, flag or
-      not;
-    * ``has_direct_aligner`` — mlx, qwen3tts, fake: can write transcript.json
-      from a local forced aligner via :meth:`emit_transcript`. Backends without
-      one (dashscope) go straight to ASR when a transcript is needed — no
-      fake direct-align attempt is recorded for them.
+    * ``always_emits_transcript`` —— mlx、fake：旁白文本直接对齐到音频上，
+      因此每次运行都必须留下转写，无论是否带 flag；
+    * ``has_direct_aligner`` —— mlx、qwen3tts、fake：能通过
+      :meth:`emit_transcript` 用本地强制对齐器写出 transcript.json。没有对齐器
+      的后端（dashscope）在需要转写时直接走 ASR —— 对它们不会记录一次假的直接
+      对齐尝试。
     """
 
     name: str
@@ -483,21 +473,20 @@ class TTSBackend(abc.ABC):
         self.args = args
 
     def transcript_path(self, output_path: Path) -> Path:
-        """Where this run writes transcript.json (when it writes one)."""
+        """本次运行写 transcript.json 的位置（当它确实写一份时）。"""
         raw = self.args.transcript_output
         return Path(raw).expanduser() if raw else output_path.parent / 'transcript.json'
 
     def wants_transcript(self, emit_transcript: bool) -> bool:
-        """Whether this run must produce a transcript (flag or capability)."""
+        """本次运行是否必须产出一份转写（flag 或后端能力）。"""
         return emit_transcript or self.always_emits_transcript
 
     @abc.abstractmethod
     def synthesize(self, text: str, output_path: Path) -> Path | None:
-        """Write ``output_path``; return audio kept for alignment (or None).
+        """写出 ``output_path``；返回为对齐保留的音频（或 None）。
 
-        The returned path is handed to :meth:`emit_transcript` and released in
-        :meth:`cleanup`, so a backend can align on the pre-mp3 waveform without
-        leaking it into the output directory.
+        返回的路径会交给 :meth:`emit_transcript`，并在 :meth:`cleanup` 中释放，
+        这样后端可以在 mp3 之前的波形上做对齐，而不会把它泄漏到输出目录中。
         """
         raise NotImplementedError
 
@@ -508,16 +497,16 @@ class TTSBackend(abc.ABC):
         transcript_path: Path,
         alignment_audio: Path | None = None,
     ) -> None:
-        """Write ``transcript_path`` with this backend's aligner; raise if it cannot."""
+        """用本后端的对齐器写出 ``transcript_path``；做不到时抛异常。"""
         raise RuntimeError(f'{self.name} backend has no direct aligner')
 
     def cleanup(self) -> None:
-        """Release any temporary audio kept for transcript emission."""
+        """释放为产出转写而保留的任何临时音频。"""
 
 
 def write_transcript(path: Path, sentences: list[dict]) -> None:
     if not sentences:
-        # An empty transcript is never a valid product; let the caller fall back.
+        # 空转写永远不是有效产物；让调用方去兜底。
         raise ValueError('aligner returned no timestamps')
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(sentences, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -525,8 +514,8 @@ def write_transcript(path: Path, sentences: list[dict]) -> None:
 
 
 def scale_alignment_times(alignment: dict, factor: float) -> dict:
-    """Scale every start/end (seconds) in an align_text result by ``factor`` —
-    used when ffmpeg atempo re-times the delivered mp3 after alignment."""
+    """把 align_text 结果中的每个 start/end（秒）乘以 ``factor`` —— 用在
+    ffmpeg atempo 在对齐之后重新定速了交付 mp3 的场景。"""
     for word in alignment.get('words') or []:
         word['start'] = round(word['start'] * factor, 3)
         word['end'] = round(word['end'] * factor, 3)
@@ -537,16 +526,16 @@ def scale_alignment_times(alignment: dict, factor: float) -> dict:
 
 
 def emit_transcript_via_torch_aligner(text: str, audio_path: Path, out_path: Path) -> None:
-    """Align narration text to the audio with the torch Qwen3-ForcedAligner
-    and write the transcript schema (sentence list, ms) to ``out_path``.
+    """用 torch 的 Qwen3-ForcedAligner 把旁白文本对齐到音频，
+    并把 transcript schema（句子列表，毫秒）写到 ``out_path``。
 
-    Raises when the aligner cannot be imported or returns no timestamps — the
-    caller then falls back to ASR (transcribe.py) for the transcript.
+    对齐器无法导入或返回不了时间戳时抛异常 —— 调用方随后退回用 ASR
+    （transcribe.py）产出转写。
     """
     try:
         import torch
         from qwen_asr import Qwen3ForcedAligner
-    except Exception as exc:  # noqa: BLE001 - any import failure => no aligner
+    except Exception as exc:  # noqa: BLE001 - 任何导入失败 => 没有对齐器
         raise RuntimeError(f'torch Qwen3-ForcedAligner unavailable ({exc})') from exc
     import gc
 
@@ -569,11 +558,11 @@ def emit_transcript_via_torch_aligner(text: str, audio_path: Path, out_path: Pat
 
 
 class MLXBackend(TTSBackend):
-    """mlx-audio Qwen3-TTS voice clone + Qwen3-ForcedAligner direct alignment.
+    """mlx-audio Qwen3-TTS 音色克隆 + Qwen3-ForcedAligner 直接对齐。
 
-    Apple Silicon path: no ASR — the narration text is aligned straight onto
-    the synthesized audio, so transcript.json matches narration.txt verbatim.
-    Synthesis and transcript emission are separate steps (``main`` calls both).
+    Apple Silicon 路径：不用 ASR —— 旁白文本被直接对齐到合成出的音频上，因此
+    transcript.json 与 narration.txt 逐字一致。合成与转写产出是两个独立步骤
+    （``main`` 会分别调用）。
     """
 
     name = 'mlx'
@@ -586,8 +575,8 @@ class MLXBackend(TTSBackend):
         self._atempo: float = DEFAULT_QWEN3TTS_SPEECH_RATE
 
     def _synthesize_wav(self, text: str, wav_path: Path) -> None:
-        """Run mlx-audio TTS into ``wav_path`` (the pre-mp3 alignment source)."""
-        from tts_qwen import synthesize as mlx_synthesize  # lazy: pulls mlx-audio
+        """用 mlx-audio TTS 输出到 ``wav_path``（mp3 之前的对齐源）。"""
+        from tts_qwen import synthesize as mlx_synthesize  # 惰性：会拉起 mlx-audio
 
         ref_wav = resolve_reference_audio(self.args.reference_wav)
         if not ref_wav.is_file():
@@ -607,7 +596,7 @@ class MLXBackend(TTSBackend):
         )
 
     def synthesize(self, text: str, output_path: Path) -> Path:
-        """Synthesize the mp3; keep the wav for direct alignment and return it."""
+        """合成 mp3；保留 wav 供直接对齐并返回它。"""
         self._atempo = (
             self.args.speech_rate
             if self.args.speech_rate is not None
@@ -625,11 +614,11 @@ class MLXBackend(TTSBackend):
         transcript_path: Path,
         alignment_audio: Path | None = None,
     ) -> None:
-        """Align the narration text with mlx-audio and write transcript.json.
+        """用 mlx-audio 对齐旁白文本并写出 transcript.json。
 
-        Raises on failure; the caller falls back to ASR, the mp3 is unaffected.
+        失败时抛异常；调用方退回 ASR，mp3 不受影响。
         """
-        from mlx_align import align_text  # lazy: pulls mlx-audio
+        from mlx_align import align_text  # 惰性：会拉起 mlx-audio
 
         aligner_model = os.environ.get('ALIGNER_MODEL_MLX', DEFAULT_ALIGNER_MODEL_MLX)
         align_language = os.environ.get('ALIGNER_LANGUAGE_MLX', 'Chinese')
@@ -639,11 +628,11 @@ class MLXBackend(TTSBackend):
             audio, text, model_path=aligner_model, language=align_language
         )
         if not alignment.get('words') or not alignment.get('sentences'):
-            # Without sentences the schema would silently wrap the whole text
-            # in one span; that is a failed alignment, so ASR gets its turn.
+            # 没有句子的话，schema 会把整段文本悄悄包成一个区间；
+            # 那是一次失败的对齐，于是轮到 ASR。
             raise ValueError('alignment has no sentences or no words')
         if self._atempo and abs(self._atempo - 1.0) > 1e-3:
-            # The mp3 was re-timed after synthesis; scale timestamps to match.
+            # mp3 在合成之后被重新定速过；把时间戳按比例缩放以对应。
             alignment = scale_alignment_times(alignment, 1.0 / self._atempo)
         write_transcript(transcript_path, transcript_from_mlx_alignment(alignment))
 
@@ -658,7 +647,7 @@ class MLXBackend(TTSBackend):
 
 
 class Qwen3TTSBackend(TTSBackend):
-    """Local Qwen3-TTS voice clone (reference WAV + its transcript)."""
+    """本地 Qwen3-TTS 音色克隆（参考 WAV + 它的转写文本）。"""
 
     name = 'qwen3tts'
     has_direct_aligner = True
@@ -678,18 +667,18 @@ class Qwen3TTSBackend(TTSBackend):
         model_id = os.environ.get('QWEN3TTS_MODEL', DEFAULT_QWEN3TTS_MODEL)
         language = os.environ.get('QWEN3TTS_LANGUAGE', 'Chinese')
         use_cuda = torch.cuda.is_available()
-        dtype = torch.float16 if use_cuda else torch.float32  # Turing: fp16, no flash-attn
+        dtype = torch.float16 if use_cuda else torch.float32  # Turing：fp16，无 flash-attn
         device = 'cuda:0' if use_cuda else 'cpu'
 
         log(f'loading Qwen3-TTS model={model_id} device={device} dtype={dtype}')
         model = Qwen3TTSModel.from_pretrained(model_id, device_map=device, dtype=dtype)
 
-        # Pass the reference clip as a (waveform, sr) tuple loaded via soundfile
-        # so audio I/O does not depend on an external SoX binary.
+        # 通过 soundfile 把参考片段以 (waveform, sr) 元组传入，
+        # 这样音频 I/O 不依赖外部的 SoX 二进制。
         import soundfile as sf
         ref_audio, ref_sr = sf.read(str(ref_wav))
         if getattr(ref_audio, 'ndim', 1) > 1:
-            ref_audio = ref_audio.mean(axis=1)  # downmix to mono
+            ref_audio = ref_audio.mean(axis=1)  # 下混为单声道
 
         log('synthesizing narration with Qwen3-TTS voice clone')
         wavs, sr = model.generate_voice_clone(
@@ -714,12 +703,12 @@ class Qwen3TTSBackend(TTSBackend):
         transcript_path: Path,
         alignment_audio: Path | None = None,
     ) -> None:
-        """Transcript via the torch Qwen3-ForcedAligner (no ASR)."""
+        """用 torch 的 Qwen3-ForcedAligner 产出转写（不走 ASR）。"""
         emit_transcript_via_torch_aligner(text, output_path, transcript_path)
 
 
 class CosyVoiceBackend(TTSBackend):
-    """Cloud DashScope CosyVoice synthesis (fallback)."""
+    """云端 DashScope CosyVoice 合成（兜底）。"""
 
     name = 'dashscope'
 
@@ -755,11 +744,10 @@ class CosyVoiceBackend(TTSBackend):
 
 
 class FakeBackend(TTSBackend):
-    """Test-only: silent mp3 + a uniform-timing aligner, no model.
+    """仅测试用：静音 mp3 + 一个均匀时间的对齐器，不加载模型。
 
-    Only reachable through an explicit ``--backend fake`` / ``TTS_BACKEND=fake``
-    (auto never picks it). ``TTS_FAKE_ALIGN_FAIL=1`` makes the aligner fail so
-    the ASR fallback can be exercised.
+    只能通过显式 ``--backend fake`` / ``TTS_BACKEND=fake`` 触达（auto 永不选
+    它）。``TTS_FAKE_ALIGN_FAIL=1`` 会让对齐器失败，从而可以演练 ASR 兜底。
     """
 
     name = 'fake'
@@ -791,7 +779,7 @@ BACKENDS: dict[str, type[TTSBackend]] = {
 
 
 class TranscriptError(RuntimeError):
-    """Neither direct alignment nor ASR left a transcript; carries every attempt."""
+    """直接对齐与 ASR 都没能留下转写；携带每一次尝试。"""
 
     def __init__(self, attempts: list[dict[str, str]]) -> None:
         self.attempts = attempts
@@ -800,12 +788,11 @@ class TranscriptError(RuntimeError):
 
 
 def transcribe_with_asr(audio_path: Path, transcript_path: Path) -> None:
-    """Run scripts/transcribe.py on the mp3; raise with its error when it fails.
+    """对 mp3 运行 scripts/transcribe.py；失败时带上它的错误抛出。
 
-    The subprocess inherits the environment, so ASR_BACKEND and the backend
-    credentials apply as they would for a manual run. stdout may carry stray
-    lines (a chatty SDK printing before its JSON), so the LAST parseable JSON
-    line is the result; stderr is captured and its tail reported on failure.
+    子进程继承环境，因此 ASR_BACKEND 和后端凭据会像手动运行时那样生效。stdout
+    可能夹带零散的行（某个爱聊天的 SDK 在输出 JSON 之前打的），因此以最后一行
+    可解析的 JSON 作为结果；stderr 会被捕获，失败时报告其尾部。
     """
     script = Path(__file__).resolve().parent / 'transcribe.py'
     log(f'running {script.name} (ASR) on {audio_path}')
@@ -848,11 +835,11 @@ def produce_transcript(
     transcript_path: Path,
     alignment_audio: Path | None,
 ) -> str:
-    """Leave a fresh transcript at ``transcript_path``; return how it was made.
+    """在 ``transcript_path`` 留下一份新的转写；返回它是怎么产生的。
 
-    Direct alignment (the backend's own aligner, when it has one) comes first;
-    when it writes nothing, ASR via transcribe.py. Raises :class:`TranscriptError`
-    carrying every attempt actually made when neither does.
+    直接对齐（后端自己的对齐器，若有）优先；当它什么都没写时，通过
+    transcribe.py 走 ASR。两者都不行时抛 :class:`TranscriptError`，其中携带
+    实际做过的每一次尝试。
     """
     attempts: list[dict[str, str]] = []
     if backend.has_direct_aligner:
@@ -861,13 +848,13 @@ def produce_transcript(
             if not transcript_path.is_file():
                 raise RuntimeError('direct alignment wrote no transcript')
             return 'direct_align'
-        except Exception as exc:  # noqa: BLE001 - any aligner failure => try ASR
+        except Exception as exc:  # noqa: BLE001 - 任何对齐器失败 => 试 ASR
             log(f'direct alignment failed ({exc}); falling back to ASR')
             attempts.append({'method': 'direct_align', 'error': str(exc)})
         transcript_path.unlink(missing_ok=True)
     try:
         transcribe_with_asr(output_path, transcript_path)
-    except Exception as exc:  # noqa: BLE001 - reported as the second attempt
+    except Exception as exc:  # noqa: BLE001 - 作为第二次尝试报告
         log(f'ASR failed ({exc})')
         attempts.append({'method': 'asr', 'error': str(exc)})
         transcript_path.unlink(missing_ok=True)
@@ -876,7 +863,7 @@ def produce_transcript(
 
 
 def resolve_backend_cli(args: argparse.Namespace) -> int:
-    """--resolve-backend: print the backend decision (probes only), no models."""
+    """--resolve-backend：打印后端决定（只做探测），不加载模型。"""
     return bs.resolve_backend_cli(
         lambda: resolve_backend_name(args.backend), log=log, print_json=print_json
     )
@@ -899,14 +886,13 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = (output_dir / 'narration.mp3').resolve()
 
-    # One transcript site for every backend: synthesize() returns the audio
-    # kept for alignment (mlx's pre-mp3 wav), wants_transcript() decides
-    # whether this run must leave a transcript, and cleanup() releases that
-    # audio in all cases.
+    # 所有后端共用一处转写落点：synthesize() 返回为对齐保留的音频
+    # （mlx 是 mp3 之前的 wav），wants_transcript() 决定本次运行是否
+    # 必须留下一份转写，cleanup() 在任何情况下都会释放那段音频。
     backend = backend_cls(args)
     transcript_path = backend.transcript_path(output_path)
-    # A transcript left by an earlier run describes that run's audio, never
-    # this one's: it must not survive a run that fails to produce its own.
+    # 更早一次运行留下的转写描述的是那次的音频，绝不是这一次的：
+    # 若本次运行没能产出自己的转写，那份文件不能存活下来。
     if transcript_path.is_file():
         log(f'removing stale transcript from an earlier run: {transcript_path}')
         transcript_path.unlink()
@@ -918,7 +904,7 @@ def main() -> int:
                 backend, input_text, output_path, transcript_path, alignment_audio
             )
     except TranscriptError as exc:
-        # The mp3 is fine and stays; only the transcript is missing.
+        # mp3 是好的、会保留；只是转写缺失。
         log(f'error: {exc}')
         print_json(
             {

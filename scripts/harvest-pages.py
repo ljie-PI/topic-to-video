@@ -1,30 +1,26 @@
 #!/usr/bin/env python3
-"""Batch URL material harvester for the topic-to-video skill.
+"""topic-to-video skill 的批量 URL 素材抓取器。
 
-For every URL the browser opens, unconditionally extracts:
-  - Raster images with naturalWidth >= --min-image-width (default 500) and
-    naturalHeight >= --min-image-height (default 300)
-  - SVG images (both <img src="*.svg"> and inline <svg> elements) — these
-    bypass the width/height thresholds because vector graphics often
-    advertise tiny intrinsic dimensions
-  - All embedded <video> elements and YouTube/Bilibili iframe/anchor links
+对浏览器打开的每个 URL，无条件抽取：
+  - naturalWidth >= --min-image-width（默认 500）且
+    naturalHeight >= --min-image-height（默认 300）的位图
+  - SVG 图片（<img src="*.svg"> 和行内 <svg> 元素都算）——它们绕过宽高阈值，
+    因为矢量图常常只声明极小的固有尺寸
+  - 所有内嵌 <video> 元素，以及 YouTube / Bilibili 的 iframe / 链接
 
-Records a scroll video of each rendered page by default (disable with
---no-scroll-record).
+默认会为每个渲染过的页面录制一段滚动视频（用 --no-scroll-record 关闭）。
 
-Direct YouTube/Bilibili watch-page URLs are short-circuited: they are listed
-in the manifest with `download_required: true` and the agent calls
-video-download.py for them; no browser is opened for those URLs, so image
-extraction and scroll recording do not apply.
+直接的 YouTube / Bilibili 观看页 URL 会被短路：它们以 `download_required: true`
+记入 manifest，由 agent 调用 video-download.py；这些 URL 不打开浏览器，因此图片
+抽取与滚动录制对它们不适用。
 
-Browser model: attaches over CDP (default http://localhost:9222) to a Chrome
-process. If no CDP responder is reachable, auto-launches system Chrome with
---user-data-dir=<profile-dir>. The required profile is SHARED with
-gemini-deep-research.py. Chrome is left running on exit so subsequent invocations
-reconnect instantly. When reusing CDP, explicit launch flags are reported in
-stderr and the manifest's chrome.ignored_flags field.
+浏览器模型：通过 CDP（默认 http://localhost:9222）连到一个 Chrome 进程。若没有
+可达的 CDP 响应者，则自动以 --user-data-dir=<profile-dir> 启动系统 Chrome。所需的
+profile 与 gemini-deep-research.py 共享。退出时 Chrome 保持运行，以便后续调用立即
+重连。复用 CDP 时，被忽略的显式启动参数会在 stderr 以及 manifest 的
+chrome.ignored_flags 字段中报告。
 
-Usage:
+用法：
   python3 harvest-pages.py \\
     --urls https://github.com/anthropic/claude-code \\
            https://docs.anthropic.com/claude-code \\
@@ -32,12 +28,12 @@ Usage:
     --output-dir {work_dir}/{topic}/harvest_page/ \\
     --profile-dir {work_dir}/chrome_profile
 
-Output convention:
-  stdout : top-level JSON manifest with one entry per URL (also written to
-           <output-dir>/manifest.json)
-  stderr : human-readable progress prefixed with `[harvest-pages]`
-  exit   : 0 success (>=1 entry succeeded), 1 runtime error
-           (CDP startup failure or all entries failed), 2 invalid arguments
+输出约定：
+  stdout : 顶层 JSON manifest，每个 URL 一条（同时写入
+           <output-dir>/manifest.json）
+  stderr : 带 `[harvest-pages]` 前缀的人类可读进度
+  exit   : 0 成功（>=1 条成功），1 运行时错误
+           （CDP 启动失败或全部条目失败），2 参数非法
 """
 
 import argparse
@@ -67,7 +63,7 @@ USER_AGENT = (
 
 
 # -----------------------------------------------------------------------------
-# I/O helpers
+# I/O 辅助函数
 # -----------------------------------------------------------------------------
 
 log = cli.make_logger(TOOL_NAME)
@@ -119,7 +115,7 @@ def parse_viewport(s: str) -> Tuple[int, int]:
 
 
 # -----------------------------------------------------------------------------
-# Page-level helpers (run inside Playwright contexts)
+# 页面级辅助函数（在 Playwright 上下文内运行）
 # -----------------------------------------------------------------------------
 
 AUTO_SCROLL_JS = """
@@ -186,7 +182,7 @@ EXTRACT_IMAGES_JS = r"""
 () => {
   const out = [];
   const seen = new Set();
-  // Standard <img> elements (including <img src="*.svg">)
+  // 标准的 <img> 元素（包括 <img src="*.svg">）
   for (const img of document.images || []) {
     const url = img.currentSrc || img.src;
     if (!url) continue;
@@ -195,7 +191,7 @@ EXTRACT_IMAGES_JS = r"""
     const isSvg = /\.svg(\?|#|$)/i.test(url);
     let w = img.naturalWidth || 0;
     let h = img.naturalHeight || 0;
-    // SVG <img> often has naturalWidth=0; fall back to rendered size
+    // SVG 的 <img> 常常 naturalWidth=0；退回用渲染尺寸
     if (isSvg && (w === 0 || h === 0)) {
       const rect = img.getBoundingClientRect();
       w = Math.round(rect.width) || 0;
@@ -209,12 +205,12 @@ EXTRACT_IMAGES_JS = r"""
       type: isSvg ? 'svg' : 'raster',
     });
   }
-  // Inline <svg> elements — serialize to markup
+  // 行内 <svg> 元素 —— 序列化成标记
   for (const svg of document.querySelectorAll('svg')) {
     const rect = svg.getBoundingClientRect();
-    if (rect.width < 40 || rect.height < 40) continue;  // skip tiny icons
+    if (rect.width < 40 || rect.height < 40) continue;  // 跳过极小的图标
     const markup = new XMLSerializer().serializeToString(svg);
-    if (markup.length < 100) continue;  // skip trivial/empty SVGs
+    if (markup.length < 100) continue;  // 跳过琐碎 / 空的 SVG
     const key = 'inline-svg-' + markup.length + '-' + Math.round(rect.width) + 'x' + Math.round(rect.height);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -240,7 +236,7 @@ EXTRACT_VIDEOS_JS = r"""
     seen.add(url);
     out.push({ url, platform });
   };
-  // <video> with src or <source>
+  // 带 src 或 <source> 的 <video>
   for (const v of document.querySelectorAll('video')) {
     const src = v.currentSrc || v.src || '';
     if (src) push(src, 'native');
@@ -248,14 +244,14 @@ EXTRACT_VIDEOS_JS = r"""
       if (s.src) push(s.src, 'native');
     }
   }
-  // iframes for known platforms
+  // 已知平台对应的 iframe
   for (const f of document.querySelectorAll('iframe')) {
     const u = f.src || '';
     if (!u) continue;
     if (/youtube\.com|youtu\.be|youtube-nocookie\.com/.test(u)) push(u, 'youtube');
     else if (/player\.bilibili\.com/.test(u)) push(u, 'bilibili');
   }
-  // anchors linking to YouTube/Bilibili watch pages
+  // 指向 YouTube / Bilibili 观看页的链接
   for (const a of document.querySelectorAll('a[href]')) {
     const u = a.href || '';
     if (/youtube\.com\/watch|youtu\.be\//.test(u)) push(u, 'youtube');
@@ -267,7 +263,7 @@ EXTRACT_VIDEOS_JS = r"""
 
 SCROLL_RECORD_JS = """
 async (durationMs) => {
-  // brief pause at top
+  // 顶部短暂停顿
   await new Promise(r => setTimeout(r, 600));
   const start = performance.now();
   const totalH = Math.max(0, document.body.scrollHeight - window.innerHeight);
@@ -280,7 +276,7 @@ async (durationMs) => {
       if (t < 1) {
         setTimeout(tick, step);
       } else {
-        // brief pause at bottom
+        // 底部短暂停顿
         setTimeout(resolve, 600);
       }
     };
@@ -291,13 +287,12 @@ async (durationMs) => {
 
 
 # -----------------------------------------------------------------------------
-# Per-URL processing
+# 单个 URL 的处理
 # -----------------------------------------------------------------------------
 
-# YouTube/Bilibili URL pattern catalogue. Shared between `normalize_youtube`
-# (turns embed/short/youtu.be forms into the canonical watch URL) and
-# `detect_watchable_platform` (decides whether a URL is yt-dlp-fetchable
-# without going through the browser). Compiled once; case-insensitive on host.
+# YouTube / Bilibili URL 模式目录。由 `normalize_youtube`（把 embed / 短链 /
+# youtu.be 形式转成规范的观看 URL）与 `detect_watchable_platform`（判断某 URL
+# 是否能不经浏览器直接由 yt-dlp 抓取）共用。只编译一次；host 部分不区分大小写。
 _VIDEO_ID = r'[A-Za-z0-9_-]{6,}'
 _YT_NORMALIZE_PATTERNS = [
     re.compile(rf'^https?://(?:www\.)?youtube(?:-nocookie)?\.com/embed/({_VIDEO_ID})', re.IGNORECASE),
@@ -317,10 +312,10 @@ _BILI_DETECT_PATTERNS = [
 
 
 def normalize_youtube(url: str) -> str:
-    """Normalize youtube iframe/short URLs to canonical watch URLs (best-effort).
+    """把 youtube 的 iframe / 短链 URL 规范化为观看 URL（尽力而为）。
 
-    Host matching is case-insensitive (RFC 3986 allows uppercase hostnames);
-    the video-ID capture group preserves case.
+    host 匹配不区分大小写（RFC 3986 允许大写主机名）；
+    视频 ID 捕获组保留大小写。
     """
     for pat in _YT_NORMALIZE_PATTERNS:
         m = pat.match(url)
@@ -330,10 +325,10 @@ def normalize_youtube(url: str) -> str:
 
 
 def detect_watchable_platform(url: str) -> Optional[str]:
-    """Return 'youtube' or 'bilibili' when the URL is a watchable video page that
-    video-download.py (yt-dlp) can fetch directly, else None.
+    """当该 URL 是 video-download.py（yt-dlp）能直接抓取的可观看视频页时，
+    返回 'youtube' 或 'bilibili'，否则返回 None。
 
-    Matches (host comparison is case-insensitive):
+    匹配（host 比较不区分大小写）：
       - YouTube:  youtube.com/watch?v=..., youtu.be/<id>, /shorts/<id>,
                   /embed/<id>, youtube-nocookie.com/embed/<id>, m.youtube.com/...
       - Bilibili: bilibili.com/video/BV..., bilibili.com/video/av..., b23.tv/...
@@ -403,11 +398,11 @@ def download_native_video(request_ctx, url: str, dest_dir: Path, index: int, max
 
 
 # -----------------------------------------------------------------------------
-# Scroll recording
+# 滚动录制
 # -----------------------------------------------------------------------------
 
 def new_harvest_context(browser, viewport: Tuple[int, int], record_dir: Optional[Path] = None):
-    """Create the single context configuration shared by harvest and fallback."""
+    """创建 harvest 与兜底路径共用的那一份 context 配置。"""
     vp_w, vp_h = viewport
     options: Dict[str, Any] = {
         'viewport': {'width': vp_w, 'height': vp_h},
@@ -426,14 +421,14 @@ def new_harvest_context(browser, viewport: Tuple[int, int], record_dir: Optional
 
 def primary_scroll_record(ctx, page, scroll_duration: int,
                           output_dir: Path) -> Tuple[Optional[Path], Optional[str]]:
-    """Record the already-loaded harvest page, then flush its video."""
+    """录制已加载的 harvest 页面，然后冲刷出它的视频。"""
     rec_dir = output_dir / 'recording'
     try:
         page.evaluate(SCROLL_RECORD_JS, scroll_duration * 1000)
     finally:
-        ctx.close()  # flushes the .webm
+        ctx.close()  # 冲刷出 .webm
 
-    # Find newest .webm in rec_dir
+    # 找出 rec_dir 中最新的 .webm
     webms = sorted(rec_dir.glob('*.webm'), key=lambda p: p.stat().st_mtime, reverse=True)
     if not webms:
         return None, 'playwright_no_video'
@@ -507,7 +502,7 @@ def cdp_screencast_record(browser, url: str, viewport: Tuple[int, int], scroll_d
         log(f'  ffmpeg failed: {exc.stderr_tail[:300]}')
         return None, 'ffmpeg_failed'
 
-    # cleanup frames
+    # 清理帧文件
     try:
         shutil.rmtree(frames_dir)
     except Exception:
@@ -517,7 +512,7 @@ def cdp_screencast_record(browser, url: str, viewport: Tuple[int, int], scroll_d
 
 
 # -----------------------------------------------------------------------------
-# Per-URL pipeline
+# 单个 URL 的流水线
 # -----------------------------------------------------------------------------
 
 def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Namespace,
@@ -543,8 +538,8 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
         except Exception as exc:
             if not args.scroll_record:
                 raise
-            # Playwright video needs its own ffmpeg. Preserve the historical
-            # CDP fallback when that optional binary is unavailable.
+            # Playwright 录像需要它自带的 ffmpeg。当这个可选二进制不可用时，
+            # 保留历史上一直存在的 CDP 兜底路径。
             primary_error = exc
             log(f'  primary scroll-record raised ({type(exc).__name__}: {exc})')
             ctx.close()
@@ -558,13 +553,13 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
         except Exception:
             pass
 
-        # save page source for debugging
+        # 保存页面源码以便调试
         try:
             (slug_dir / 'page-source.html').write_text(page.content(), encoding='utf-8', errors='replace')
         except Exception as exc:
             log(f'  page-source.html save failed: {exc}')
 
-        # autoscroll to materialize lazy images
+        # 自动滚动，把懒加载的图片实体化出来
         try:
             page.evaluate(AUTO_SCROLL_JS)
         except Exception as exc:
@@ -575,11 +570,11 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
         text_excerpt = metrics.pop('text_excerpt', '')
         log(f'  metrics={metrics}')
 
-        # extract image candidates
+        # 抽取图片候选
         raw_imgs = page.evaluate(EXTRACT_IMAGES_JS) or []
         kept = [
             im for im in raw_imgs
-            if im.get('type') in ('svg', 'inline-svg')  # SVGs bypass size filter
+            if im.get('type') in ('svg', 'inline-svg')  # SVG 绕过尺寸过滤
             or (im.get('width', 0) >= args.min_image_width
                 and im.get('height', 0) >= args.min_image_height)
         ][: args.max_images_per_url]
@@ -588,7 +583,7 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
         for i, im in enumerate(kept, start=1):
             img_type = im.get('type', 'raster')
             if img_type == 'inline-svg':
-                # Save inline SVG markup directly
+                # 直接把行内 SVG 的标记存成文件
                 path = images_dir / f'svg_{i:03d}.svg'
                 try:
                     path.write_text(im['markup'], encoding='utf-8')
@@ -630,9 +625,9 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
                     meta['error'] = 'download failed'
             images_meta.append(meta)
 
-        # extract video candidates
+        # 抽取视频候选
         raw_vids = page.evaluate(EXTRACT_VIDEOS_JS) or []
-        # dedupe by normalized url
+        # 按规范化后的 url 去重
         seen = set()
         normalized = []
         for v in raw_vids:
@@ -650,12 +645,12 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
         for v in normalized:
             meta: Dict[str, Any] = {'url': v['url'], 'platform': v['platform']}
             if v['platform'] in ('youtube', 'bilibili'):
-                # External platform: list the URL; agent calls video-download.py
-                # in a follow-up step (see SKILL.md Phase 4.b).
+                # 外部平台：只登记 URL；由 agent 在后续步骤调用
+                # video-download.py（见 SKILL.md Phase 4.b）。
                 meta['download_required'] = True
                 meta['suggested_output_dir'] = str(videos_dir.resolve())
                 log(f'  external video listed (download_required): {v["url"]}')
-            else:  # native HTML5 <video>
+            else:  # 原生 HTML5 <video>
                 native_idx += 1
                 local = download_native_video(ctx.request, v['url'], videos_dir, native_idx)
                 if local:
@@ -681,8 +676,8 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
 
         if args.scroll_record:
             capped = min(60, max(5, args.scroll_duration))
-            # Extraction and Playwright recording share this page and context.
-            # Only a recording failure may open a fallback context and reload.
+            # 抽取与 Playwright 录制共用这个页面和 context。
+            # 只有录制失败才允许打开兜底 context 并重新加载。
             record_path: Optional[Path] = None
             method = 'not-attempted'
             if primary_error is None:
@@ -738,25 +733,24 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
 
 
 # -----------------------------------------------------------------------------
-# Driver
+# 驱动
 # -----------------------------------------------------------------------------
 
 def partition_urls(
     raw_urls: List[str],
 ) -> Tuple[List[Tuple[str, str, Optional[str]]], List[Dict[str, str]]]:
-    """Dedupe `raw_urls`, drop non-http(s), assign a unique slug to each, and
-    classify whether each URL is a yt-dlp-fetchable watch page.
+    """对 `raw_urls` 去重、丢弃非 http(s) 的、给每个分配唯一 slug，并
+    判断每个 URL 是否是 yt-dlp 能抓取的观看页。
 
-    Returns (items, bad_urls) where:
-      - items[i] = (url, slug, platform_or_None). `platform_or_None` is the
-        return value of `detect_watchable_platform` and signals the short-circuit
-        path (no Playwright render).
-      - bad_urls is the list of `{url, error}` rejected entries the manifest
-        surfaces under `rejected`.
+    返回 (items, bad_urls)，其中：
+      - items[i] = (url, slug, platform_or_None)。`platform_or_None` 是
+        `detect_watchable_platform` 的返回值，非 None 表示走短路路径
+        （不做 Playwright 渲染）。
+      - bad_urls 是被拒绝的 `{url, error}` 条目列表，manifest 会在
+        `rejected` 下报告它们。
 
-    The scheme guard rejects `file://`, `chrome://`, `javascript:`, etc. so a
-    caller can't trick Playwright into reading local files or triggering
-    privileged Chrome UIs.
+    scheme 守卫会拒绝 `file://`、`chrome://`、`javascript:` 等，使调用方无法诱使
+    Playwright 读取本地文件或触发需要特权的 Chrome 界面。
     """
     seen: set = set()
     used_slugs: set = set()
@@ -804,11 +798,11 @@ def main() -> None:
     log(f'Batch size: {len(items)} URL(s); output={output_dir}'
         + (f' (rejected {len(bad_urls)} non-http(s) URL(s))' if bad_urls else ''))
 
-    # ensure Playwright is available (only required when at least one URL needs rendering)
+    # 确保 Playwright 可用（只在至少一个 URL 需要渲染时才必需）
     try:
         from playwright.sync_api import sync_playwright  # noqa: F401
     except Exception:
-        # Defer the hard failure until we know we actually need a browser.
+        # 把硬失败推迟到我们确知真的需要浏览器时。
         sync_playwright = None  # type: ignore
 
     needs_chrome = any(plat is None for _, _, plat in items)
@@ -856,8 +850,8 @@ def main() -> None:
             slug_dir.mkdir(parents=True, exist_ok=True)
             try:
                 if platform is not None:
-                    # Short-circuit: no Playwright navigation. The agent will call
-                    # video-download.py for the URL listed in `videos[]` (see SKILL.md Phase 4.b).
+                    # 短路：不做 Playwright 导航。agent 会针对 `videos[]` 中登记的
+                    # URL 调用 video-download.py（见 SKILL.md Phase 4.b）。
                     videos_dir = slug_dir / 'videos'
                     videos_dir.mkdir(parents=True, exist_ok=True)
                     canonical = normalize_youtube(url) if platform == 'youtube' else url

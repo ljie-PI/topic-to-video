@@ -1,57 +1,48 @@
 #!/usr/bin/env python3
-"""Pre-render composition checks (DOM determinism via Chrome + Playwright).
+"""composition 的渲染前检查（通过 Chrome + Playwright 保证 DOM 一致性）。
 
-Runs the render-time checks for the composition step: at each scene's
-start / midpoint / end it loads composition/index.html, seeks to that
-second, and measures the DOM. Checks:
+为 composition 步骤跑渲染期检查：在每个 scene 的起点 / 中点 / 终点加载
+composition/index.html，seek 到该秒，然后测量 DOM。检查项：
 
-  - outside_content_regions : a visible content element is not fully
-    contained in the layout's content regions;
-  - reserved_region_intrusion : an element intrudes into a reserved
-    region without belonging to that region's component;
-  - text_overflow : an element with clipped/scrolled overflow has
-    scroll size beyond its client size;
-  - media_load_failure : an img/video failed to load;
-  - fonts_not_loaded        : document.fonts has not finished loading;
-  - font_size_below_min     : visible text below the design minimum font
-    size: the reading-text minimum, or the UI-text minimum for elements
-    inside [data-text-role="ui"] (panel title bars, buttons, small labels).
-    Caption text is excluded; it follows the layout caption spec;
-  - caption_mismatch        : the on-screen caption does not match the
-    subtitle unit active at that second.
+  - outside_content_regions : 某个可见内容元素没有完全落在 layout 的内容区域内；
+  - reserved_region_intrusion : 某个元素侵入保留区域，却不属于该区域的组件；
+  - text_overflow : 被裁剪 / 滚动的溢出使某元素的 scroll 尺寸超出 client 尺寸；
+  - media_load_failure : 某个 img/video 加载失败；
+  - fonts_not_loaded        : document.fonts 尚未完成加载；
+  - font_size_below_min     : 可见文本小于 design 的最小字号：正文最小字号，或
+    [data-text-role="ui"] 内元素（面板标题栏、按钮、小标签）的 UI 最小字号。
+    字幕文本不计入；它遵循 layout 的 caption 规格；
+  - caption_mismatch        : 屏幕上的字幕与该秒生效的字幕单元不一致。
 
-Inputs:
-  <composition>   composition dir, project dir containing composition/,
-                  or index.html path.
-  --layout        layout region definition JSON (modules/layouts/*.json):
-                  regions (kind content/reserved, rect, component) and the
-                  caption spec.
-  --min-font-size design minimum reading-text size in px, with
-                  --min-ui-font-size (default: same) for UI text.
-                  Alternatively --design reads min_font_px.reading and
-                  min_font_px.ui from a theme's design JSON. One of the two
-                  is required.
-  --subtitle-units subtitle-units.json for the caption check (optional).
-  --timeline      timeline.json; its scenes list ({scene_id, begin_s,
-                  end_s}) drives scene timing. Without it, scene roots are
-                  discovered from [data-scene-id] with data-scene-start /
-                  data-scene-end; without either, one global scene is
-                  checked.
+输入：
+  <composition>   composition 目录、包含 composition/ 的项目目录，
+                  或 index.html 路径。
+  --layout        layout 区域定义 JSON（modules/layouts/*.json）：regions
+                  （kind 为 content/reserved、rect、component）以及 caption
+                  规格。
+  --min-font-size design 的最小正文字号，单位 px；UI 文本可用
+                  --min-ui-font-size（默认：与正文相同）。另一种方式是
+                  --design 从某个主题的 design JSON 读取 min_font_px.reading
+                  与 min_font_px.ui。二者必居其一。
+  --subtitle-units 用于字幕检查的 subtitle-units.json（可选）。
+  --timeline      timeline.json；其 scenes 列表（{scene_id, begin_s, end_s}）
+                  决定场景时间。没有它时，scene 根节点由带 data-scene-start /
+                  data-scene-end 的 [data-scene-id] 发现；两者都没有时，只检查
+                  一个全局场景。
 
-Output convention:
-  stdout: single JSON object
+输出约定：
+  stdout: 单个 JSON 对象
     success: {"success": true, "verdict": "pass"|"fail",
               "scenes_checked": [...], "findings": [...],
               "sources_sha256": "..."}
-      each finding: {scene_id, check, issue, time_s, frame}
-      sources_sha256: fingerprint of the checkable sources (index.html,
-              compositions/, assets/ minus fonts) at run time; pipeline-status
-              compares it on later scans so a saved pass report is invalidated
-              by any edit even when file mtimes were not preserved
+      每条发现：{scene_id, check, issue, time_s, frame}
+      sources_sha256: 运行时对可检查源文件（index.html、compositions/、
+              assets/ 去掉 fonts）的指纹；pipeline-status 会在后续扫描中比对它，
+              因此即使文件 mtime 未被保留，任何编辑也会让已保存的 pass 报告失效
     error:   {"success": false, "error": "..."}
-  stderr: human-readable progress prefixed with [check-composition]
-  exit:   0 = run completed (verdict field carries pass/fail),
-          1 = runtime error, 2 = invalid arguments
+  stderr: 带 [check-composition] 前缀的人类可读进度
+  exit:   0 = 运行完成（verdict 字段给出 pass/fail），
+          1 = 运行时错误，2 = 参数非法
 """
 
 from __future__ import annotations
@@ -70,10 +61,10 @@ from timeline_scenes import normalize_scenes
 TOOL_NAME = 'check-composition'
 
 RECT_TOLERANCE_PX = 2.0
-# Minimum overlap (px^2) before an element counts as intruding into a reserved region.
+# 元素算作侵入保留区域所需的最小重叠面积（px^2）。
 MIN_INTRUSION_AREA_PX2 = 4.0
-# Floor (px^2) for the leftover area in covered_by(): below this, a rect is
-# considered contained even if not exactly (antialiasing / sub-pixel edges).
+# covered_by() 中剩余面积的下限（px^2）：低于它，即使不完全精确重叠也算被包含
+# （抗锯齿 / 亚像素边缘）。
 COVERED_LEFTOVER_FLOOR_PX2 = 4.0
 OVERFLOW_TOLERANCE_PX = 2.0
 
@@ -145,11 +136,11 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-# --- input loading -----------------------------------------------------------------
+# --- 输入加载 ----------------------------------------------------------------
 
 
 def load_font_floors(args: argparse.Namespace) -> Tuple[int, int]:
-    """(reading-text minimum, UI-text minimum) in px."""
+    """(正文字号下限, UI 字号下限)，单位 px。"""
     if args.min_font_size is not None:
         return args.min_font_size, args.min_ui_font_size or args.min_font_size
     design = json.loads(Path(args.design).read_text(encoding='utf-8'))
@@ -198,10 +189,10 @@ def scenes_from_snapshots(snapshots: List[Dict[str, Any]]) -> List[Dict[str, Any
 
 
 def load_json_object_list(path: Optional[str], key: str, *, required: bool) -> List[Dict[str, Any]]:
-    """Shared load-validate shape for JSON files holding a list under ``key``.
+    """对「在 ``key`` 下持有列表的 JSON 文件」共用的加载-校验形状。
 
-    Returns [] when path is unset, and (unless required) when the key is
-    absent or not a list — a missing optional section is not an error.
+    当 path 未设置时返回 []；且（除非 required）当该键不存在或不是列表时也返回
+    [] —— 缺少可选段落不是错误。
     """
     if not path:
         return []
@@ -242,13 +233,13 @@ def resolve_composition_path(raw_path: str) -> Tuple[Path, Path]:
     raise ValueError(f'Could not find composition/index.html from {raw_path!r}')
 
 
-# --- region geometry ----------------------------------------------------------------
+# --- 区域几何 ----------------------------------------------------------------
 
-Rect = Dict[str, float]  # {x, y, width, height}
+Rect = Dict[str, float]  # 矩形：{x, y, width, height}
 
 
 def region_tokens(region: Dict[str, Any]) -> List[str]:
-    """Identifiers an element may match to belong to a reserved region."""
+    """元素可用来匹配、从而归属某个保留区域的标识符。"""
     tokens = [str(region.get('id') or '')]
     component = str(region.get('component') or '')
     match = re.match(r'^[\w-]+', component)
@@ -275,7 +266,7 @@ def intersection_area(a: Rect, b: Rect) -> float:
 
 
 def subtract_rect(target: Rect, cut: Rect) -> List[Rect]:
-    """target minus cut, as a list of rects (up to 4)."""
+    """target 减去 cut，表示为一组 rect（最多 4 个）。"""
     if not rects_intersect(target, cut):
         return [target]
     left = cut['x'] - target['x']
@@ -306,7 +297,7 @@ def subtract_rect(target: Rect, cut: Rect) -> List[Rect]:
 
 
 def covered_by(rect: Rect, allowed: List[Rect]) -> bool:
-    """True when rect minus the union of allowed has negligible area."""
+    """当 rect 减去各 allowed 的并集后面积可忽略时返回 True。"""
     remainders = [rect]
     for allowed_rect in allowed:
         next_remainders: List[Rect] = []
@@ -319,13 +310,13 @@ def covered_by(rect: Rect, allowed: List[Rect]) -> bool:
     return leftover <= max(COVERED_LEFTOVER_FLOOR_PX2, 0.005 * rect['width'] * rect['height'])
 
 
-# --- browser measurement ------------------------------------------------------------
+# --- 浏览器测量 --------------------------------------------------------------
 
 def load_snapshot_js() -> str:
-    """The snapshot-collection function expression evaluated in the page.
+    """在页面中求值的快照采集函数表达式。
 
-    Kept in scripts/check-composition-snapshot.js so the JavaScript is
-    reviewable and lintable; must remain a single async function expression.
+    放在 scripts/check-composition-snapshot.js 中，以便这份 JavaScript 可被
+    审阅和 lint；它必须保持为单个 async 函数表达式。
     """
     return SNAPSHOT_JS_PATH.read_text(encoding='utf-8')
 
@@ -355,11 +346,11 @@ DURATION_PROBE_JS = r"""
 """
 
 
-# --- analysis ------------------------------------------------------------------------
+# --- 分析 --------------------------------------------------------------------
 
 
 def element_owner_region(element: Dict[str, Any], reserved_tokens: Dict[str, List[str]]) -> Optional[str]:
-    """Reserved region id this element belongs to, via id / data-composition-id chain."""
+    """该元素归属的保留区域 id，经由 id / data-composition-id 链判定。"""
     candidates = {element['id'].lower()} | {a.lower() for a in element['ancestors']}
     for region_id, tokens in reserved_tokens.items():
         if candidates & set(tokens):
@@ -376,7 +367,7 @@ def is_content_element(element: Dict[str, Any]) -> bool:
 
 
 def element_in_ignored_subtree(element: Dict[str, Any], elements: List[Dict[str, Any]]) -> bool:
-    """True when the element sits inside a [data-layout-ignore] subtree."""
+    """当该元素位于 [data-layout-ignore] 子树内时返回 True。"""
     by_id: Dict[str, Dict[str, Any]] = {el['id']: el for el in elements if el['id']}
     return any(
         by_id[ancestor_id]['layoutIgnore']
@@ -412,10 +403,10 @@ class RegionIndex:
                 self.reserved.append(entry)
             else:
                 self.content.append(entry)
-        # 'ground' is the canvas backdrop: it covers everything and owns nothing checkable.
+        # 'ground' 是画布底色：它覆盖一切，且不拥有任何可检查的东西。
         self.reserved = [r for r in self.reserved if r['id'] != 'ground']
         self.reserved_tokens = {r['id']: region_tokens(r) for r in self.reserved}
-        # group reserved regions by component token (e.g. caption-bar + caption-text)
+        # 按 component token 给保留区域分组（例如 caption-bar + caption-text）
         self.component_groups: Dict[str, List[str]] = {}
         for region in self.reserved:
             for token in region_tokens(region):
@@ -436,7 +427,7 @@ class RegionIndex:
 def check_region_containment(
     element: Dict[str, Any], owner: Optional[str], regions: RegionIndex
 ) -> Optional[str]:
-    """Element bbox must be contained in the content regions (or its own region)."""
+    """元素 bbox 必须被内容区域（或它自己所属的区域）包含。"""
     if covered_by(element['rect'], regions.allowed_rects_for(owner)):
         return None
     rect = element['rect']
@@ -449,10 +440,10 @@ def check_region_containment(
 def check_reserved_intrusion(
     element: Dict[str, Any], owner: Optional[str], regions: RegionIndex
 ) -> List[str]:
-    """Only the region's own component may sit in a reserved region.
+    """只有该区域自己的组件才能落在保留区域内。
 
-    Layout regions may overlap each other (e.g. presenter person x caption-bar),
-    so a component fully inside its own reserved region is the layout's business.
+    layout 区域之间可能互相重叠（例如 presenter 人像 x 字幕条），因此某个组件
+    完全落在它自己的保留区域内，是 layout 自己的事。
     """
     owner_tokens = set(regions.reserved_tokens.get(owner, [])) if owner else set()
     owner_region = regions.reserved_region_by_id(owner) if owner else None
@@ -462,7 +453,7 @@ def check_reserved_intrusion(
     for region in regions.reserved:
         tokens = set(regions.reserved_tokens[region['id']])
         if tokens & owner_tokens:
-            continue  # same component group
+            continue  # 同一个组件组
         overlap = intersection_area(element['rect'], region['rect'])
         if overlap > MIN_INTRUSION_AREA_PX2:
             details.append(
@@ -505,8 +496,8 @@ def check_font_size(
     regions: RegionIndex,
     font_floors: Tuple[float, float],
 ) -> Optional[str]:
-    """Text below the design minimum (UI-text minimum inside [data-text-role="ui"]);
-    caption text follows the caption spec."""
+    """文本小于 design 下限（[data-text-role="ui"] 内用 UI 下限）；
+    字幕文本遵循 caption 规格。"""
     is_ui = bool(element.get('isUiText'))
     minimum = font_floors[1] if is_ui else font_floors[0]
     if not element['ownText'] or not (0 < element['fontSize'] < minimum):
@@ -571,7 +562,7 @@ def analyze_snapshot(
 
     for element in elements:
         if element['tag'] in ('html', 'body'):
-            continue  # document roots are containers, not content
+            continue  # document 根节点是容器，不是内容
         if not is_content_element(element):
             continue
         if element_in_ignored_subtree(element, elements):
@@ -591,7 +582,7 @@ def analyze_snapshot(
     return findings
 
 
-# --- report --------------------------------------------------------------------------
+# --- 报告 --------------------------------------------------------------------
 
 
 def dedup_findings(findings: List[Dict[str, Any]], scene_order: List[str]) -> List[Dict[str, Any]]:
@@ -620,11 +611,11 @@ def scene_check_times(scene: Dict[str, Any]) -> List[float]:
 
 
 def resolve_scenes(page: Any, timeline_scenes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Scene timing precedence:
+    """场景时间优先级：
 
-    1. timeline.json scenes passed via --timeline;
-    2. [data-scene-id] DOM roots with data-scene-start / data-scene-end;
-    3. one global scene spanning the probed [data-duration] total (10s fallback).
+    1. 通过 --timeline 传入的 timeline.json scenes；
+    2. 带 data-scene-start / data-scene-end 的 [data-scene-id] DOM 根节点；
+    3. 一个全局场景，跨度取自探测到的 [data-duration] 总时长（兜底 10s）。
     """
     if timeline_scenes:
         return timeline_scenes
@@ -694,7 +685,7 @@ def main() -> None:
     try:
         explicit_viewport = parse_viewport(args.viewport) if args.viewport is not None else None
     except ValueError as exc:
-        cli.fail(TOOL_NAME, str(exc), exit_code=2)  # invalid argument value
+        cli.fail(TOOL_NAME, str(exc), exit_code=2)  # 参数值非法
     try:
         if args.snapshots_from:
             composition_dir = Path(args.composition).expanduser().resolve()
@@ -731,7 +722,7 @@ def main() -> None:
             snapshots = load_snapshot_list(args.snapshots_from)
             scenes = timeline_scenes or scenes_from_snapshots(snapshots)
         else:
-            # DOM discovery and check snapshots share one isolated browser session.
+            # DOM 发现与检查快照共用同一个隔离的浏览器会话。
             index_url = index_path.as_uri()
             log(f'Loading {index_url}')
             with chrome_cdp.launch_isolated(args.chrome_path) as chrome_session:
