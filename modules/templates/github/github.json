@@ -1,0 +1,9 @@
+{
+  "template": "github",
+  "supported_layouts": ["presenter"],
+  "scenes": ["trending-overview", "project-cover"],
+  "anchor_fields": {
+    "project-cover": {"required": ["nameAt"], "optional": ["taglineAt", "starsAt"]},
+    "trending-overview": {"required": ["repos[].cue"], "optional": []}
+  }
+}

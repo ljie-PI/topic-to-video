@@ -56,7 +56,7 @@ def ffmpeg(*args: str) -> None:
 def make_clean_video(path: Path, duration: float = 7.5) -> None:
     """testsrc + sine tone, no black, no freeze."""
     ffmpeg(
-        '-f', 'lavfi', '-i', f'testsrc=duration={duration}:size=320x240:rate=25',
+        '-f', 'lavfi', '-i', f'testsrc=duration={duration}:size=1920x1080:rate=10',
         '-f', 'lavfi', '-i', f'sine=frequency=440:duration={duration}',
         '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
         str(path),
@@ -249,10 +249,10 @@ def test_orientation_mismatch_found(workspace: Path):
     assert 'portrait' in orientation[0]['issue']
 
 
-def test_portrait_orientation_accepted_for_portrait_3x4(tmp_path: Path):
+def test_exact_three_by_four_canvas_is_accepted(tmp_path: Path):
     video = tmp_path / 'portrait.mp4'
     ffmpeg(
-        '-f', 'lavfi', '-i', 'testsrc=duration=3:size=240x320:rate=25',
+        '-f', 'lavfi', '-i', 'testsrc=duration=3:size=1080x1440:rate=10',
         '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3',
         '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
         str(video),
@@ -261,6 +261,26 @@ def test_portrait_orientation_accepted_for_portrait_3x4(tmp_path: Path):
     proc = run_cli('--video', str(video), '--inputs', str(tmp_path / 'inputs.json'))
     result = parse_result(proc)
     assert result['verdict'] == 'pass'
+    # 同一个 3:4 视频不能被当成 9:16 成片。
+    write_json(tmp_path / 'inputs.json', {'orientation': 'portrait'})
+    mismatch = parse_result(run_cli('--video', str(video), '--inputs', str(tmp_path / 'inputs.json')))
+    assert mismatch['verdict'] == 'fail'
+    assert any('1080x1920' in f['issue'] and '1080x1440' in f['issue'] for f in mismatch['findings'])
+
+
+def test_nine_by_sixteen_video_cannot_pass_three_by_four_inputs(tmp_path: Path):
+    video = tmp_path / 'portrait.mp4'
+    ffmpeg(
+        '-f', 'lavfi', '-i', 'testsrc2=duration=1:size=1080x1920:rate=10',
+        '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', str(video),
+    )
+    write_json(tmp_path / 'inputs.json', {'orientation': 'portrait'})
+    assert parse_result(run_cli('--video', str(video), '--inputs', str(tmp_path / 'inputs.json')))['verdict'] == 'pass'
+    write_json(tmp_path / 'inputs.json', {'orientation': 'portrait-3:4'})
+    result = parse_result(run_cli('--video', str(video), '--inputs', str(tmp_path / 'inputs.json')))
+    assert result['verdict'] == 'fail'
+    assert any('1080x1440' in f['issue'] and '1080x1920' in f['issue'] for f in result['findings'])
 
 
 def test_no_timeline_falls_back_to_null_scene_id(workspace: Path):

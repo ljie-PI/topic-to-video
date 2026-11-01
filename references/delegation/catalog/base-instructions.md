@@ -2,7 +2,7 @@
 
 遍历 Phase 4 产出的 `harvest_page/manifest.json["entries"]`。对每一条 entry，在 `{work_dir}/{topic_name}/material-catalog.json` 里建一个 "material entry"。
 
-**路径 base（必须保持一致）：** v2 manifest 里的 `local_path` / `subtitle_path`（包括 `scroll_recording.local_path`）都相对于 `{work_dir}/{topic_name}/harvest_page/`，不是相对于当前目录或 workspace root。调用抽帧、字幕解析和视觉分析工具时，相对路径必须加上这个 `harvest_page/` 前缀；旧 manifest 的绝对路径原样使用。写入 `material-catalog.json` 时仍原样保留 manifest 的相对路径，不改写成绝对路径或其他 base。
+**路径 base（必须保持一致）：** manifest 里的 `local_path` / `subtitle_path`（包括 `scroll_recording.local_path`）都相对于 `{work_dir}/{topic_name}/harvest_page/`，不是相对于当前目录或 workspace root；它们只能是这个目录内的相对路径，绝对路径或其他 base 的路径不符合当前格式，直接报错。调用抽帧、字幕解析和视觉分析工具时，相对路径必须加上这个 `harvest_page/` 前缀。写入 `material-catalog.json` 时仍原样保留 manifest 的相对路径。
 
 **每一条 harvest entry（每个 URL 一条）：**
 
@@ -42,13 +42,16 @@
 scripts/cut-clips.py {work_dir}/{topic_name}
 ```
 
-对 catalog 里每个视频的每个 `selected_clip`，切出 `{work_dir}/{topic_name}/clips/<video_id>_<start:.2f>-<end:.2f>.mp4`（`-an` 去掉音轨，libx264 重编码），在该 clip 上写入 `clip_path`（相对工作区），并原地更新 `material-catalog.json`（原子写、保留原文件权限）。视频的相对 `local_path` 以 `harvest_page/` 为 base，绝对路径原样使用。目标文件已存在且非空时跳过，所以改过 catalog 后可以直接重跑。输出 JSON：`{"success": true, "clips": [{"ref": "<slug>/<video_id>:<start>-<end>", "clip_path": ..., "skipped": false}], "errors": []}`；只要有一个 clip 失败就退出 1（已切好的保留且 catalog 增量写回），按 `errors` 里的 `ref` 与原因修 catalog（窗口、`local_path`）后重跑。
+对 catalog 里每个视频的每个 `selected_clip`，切出 `{work_dir}/{topic_name}/clips/<video_id>_<start:.2f>-<end:.2f>.mp4`（`-an` 去掉音轨，libx264 重编码），在该 clip 上写入 `clip_path`（相对工作区），并原地更新 `material-catalog.json`（原子写、保留原文件权限）。视频的 `local_path` 以 `harvest_page/` 为 base。目标文件已存在且非空时跳过，所以改过 catalog 后可以直接重跑。输出 JSON：`{"success": true, "clips": [{"ref": "<slug>/<video_id>:<start>-<end>", "clip_path": ..., "skipped": false}], "errors": []}`；只要有一个 clip 失败就退出 1（已切好的保留且 catalog 增量写回），按 `errors` 里的 `ref` 与原因修 catalog（窗口、`local_path`）后重跑。
+
+**`required_material_refs`（论文模式必填）：** 一个 ref 列表，声明“必须进入成片”的素材——方法图、模型结构图、关键实验结果的图表。用与 `material_candidates` 相同的 `<slug>/<id>` 格式，指向本 catalog 的 entry。它不重复、不写裸 id；状态脚本会校验每条都能解析。不要因为评分低就把关键图从清单里去掉：真要有图缺失或看不清，在报告里说明，而不是偷偷省掉。
 
 **`material-catalog.json` 的结构：**
 
 ```json
 {
   "topic_name": "...",
+  "required_material_refs": ["main-paper/fig_001", "main-paper/tab_001"],
   "entries": [
     {
       "url": "...", "slug": "...", "title": "...", "page_type": "...",
@@ -91,8 +94,8 @@ scripts/cut-clips.py {work_dir}/{topic_name}
 - 每张图 / 每个视频都带一个 `id`（harvester 写出的文件 stem，例如 `img_001` 或 YouTube video id），只在所属 entry 内唯一，不改 harvester / manifest 的 id。Phase 6 起通过 **`material_ref`** 引用素材：图片 / 视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>`（秒，与该 slug entry 的 `selected_clips` 对应），裸 id 无效。Phase 8 的 composition agent 负责按 slug + id 解析 `material_ref`：图片解析到该 catalog entry 的 `local_path`，视频 clip 一律解析到该 entry 的 `selected_clips[].clip_path`（见下），不再使用视频的 `local_path`；主 agent 永远不直接碰 `local_path`。
 - `selected_clips[].clip_path` 指向无音轨的片段文件，相对**工作区根**（不同于图片 / 视频 `local_path` 的 `harvest_page/` base）；Phase 6 的 `<slug>/<video_id>:<start>-<end>` 引用对应的就是它。composition 嵌入视频时只用 `clip_path`。
 - `semantic_description` 是结合话题 context 生成的叙事锚点描述（"适合用于说明 X 概念 / Y 论点"），而非纯粹的图像内容描述；Phase 6 的场景规划（`material_candidates`）和 Phase 8 的 composition agent 都依赖它做匹配决策。
-- **`width` / `height` 必须透传**：图片由 harvester 抓取时记录；视频由 `video-download.py --harvest-dir` 通过 ffprobe 写入 manifest，构建 catalog 时直接搬过来。Phase 8 的 HyperFrames sub-agent 用这两个字段为每个素材容器设置正确的宽高比，**禁止猜或假设 16:9**。若个别素材缺失（旧 manifest、抓取失败），catalog 里写 `null` 而不是省略字段。
-- `aspect_ratio`、`ratio_bucket`、`layout_affordance`、`focal_region` 是布局提示字段，优先由 Phase 5 根据 `width` / `height`、视觉分析和 topic context 写入；旧 catalog 缺失时，可按 `width / height` 推断。`ratio_bucket` 建议按 `r = width / height` 判定：`ultra-wide` / `strip` `r >= 2.4`；`wide` `1.20 <= r < 2.4`；`square-ish` `0.90 <= r < 1.20`；`tall` `0.50 <= r < 0.90`；`ultra-tall` `r < 0.50`。`tall` / `ultra-tall` 素材写入 `layout_affordance: ["viewport_reveal"]`，并提供 `focal_region`、start / mid / end 关键区域说明或 avoid-region。
+- **`width` / `height` 必须透传**：图片由 harvester 抓取时记录；视频由 `video-download.py --harvest-dir` 通过 ffprobe 写入 manifest，构建 catalog 时直接搬过来。Phase 8 的 HyperFrames sub-agent 用这两个字段为每个素材容器设置正确的宽高比，**禁止猜或假设 16:9**。个别素材确实取不到时（例如抓取失败），catalog 里写 `null` 而不是省略字段。
+- `aspect_ratio`、`ratio_bucket`、`layout_affordance`、`focal_region` 是布局提示字段，由 Phase 5 根据 `width` / `height`、视觉分析和 topic context 写入。`ratio_bucket` 建议按 `r = width / height` 判定：`ultra-wide` / `strip` `r >= 2.4`；`wide` `1.20 <= r < 2.4`；`square-ish` `0.90 <= r < 1.20`；`tall` `0.50 <= r < 0.90`；`ultra-tall` `r < 0.50`。`tall` / `ultra-tall` 素材写入 `layout_affordance: ["viewport_reveal"]`，并提供 `focal_region`、start / mid / end 关键区域说明或 avoid-region。
 - `layout_affordance` 只表示素材适合的展示方式，不等于最终 layout；composition 阶段根据旁白和 scene 需求自由决定呈现方式。可选值包括 `video_first`、`media_first`、`viewport_reveal`、`band`、`detail_callout`、`comparison_pair`、`comparison_sequence`。
 - `focal_region` 使用归一化坐标 `{x, y, w, h, reason}` 描述关键区域或应避免遮挡的区域；它不是自动裁切命令，只用于 Phase 8 设计 reveal viewport、半透明文本浮层避让和 QA 检查。
 

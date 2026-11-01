@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""把 ASR 转写对齐到旁白稿，并构建字幕单元。
+"""把 ASR 转写对齐到旁白稿，并在需要时构建字幕单元。
 
-取代旧的 calibrate-transcript / scene-anchor 组合（只作为历史沿革留在这里）。
-字幕文本来自展示稿（script.txt）；ASR 转写只提供时间。对齐与后端无关：先归一化
-ASR token 与旁白稿，再做字符级对齐，因此带标点或不带标点、带空格或不带空格、
-中文数字或阿拉伯数字的 token 都能对上（连续的中文数字会被转成阿拉伯数字）。
+两个明确的输出模式，共享同一套对齐核心（字符映射、ASR 归一化、段落 / cue /
+beat 定位、字幕分段）：
+
+  --mode timing     只生成时间轴（paragraphs / scenes / cues / beats）。不读 layout，
+                    不要求字幕宽度 / 字号 / 行数，不产生字幕单元。
+  --mode subtitles  只按最终 layout 的字幕规格切分字幕单元，写到指定路径。
+                    不覆写 Phase 7 的时间轴。
+
+两个模式读同一份显示稿、朗读稿、偏移表和 fresh transcript，所以能在不改音频、
+不重做识别的前提下重算其中任何一个。生产调用必须明确给出 mode；无 mode 或模式与
+参数组合不合法时返回参数错误，不做隐式推断。
 
 输入：
   --transcript   transcribe/transcript.json —— 稳定的 ASR schema：一个句子列表，
@@ -12,14 +19,16 @@ ASR token 与旁白稿，再做字符级对齐，因此带标点或不带标点�
                  为毫秒。词 token 可能带标点，也可能把词任意切开。
   --narration    narration.txt —— TTS 旁白稿（实际朗读出来的内容）。
   --offsets      narration-offsets.json —— 逐字符地把旁白位置映射回展示稿位置的
-                 表，由 make-narration.py 产出。
+                 表，由 make-narration.py 产出。版本、两个字数与两个内容哈希都是
+                 必需字段。
   --script       script.txt —— 展示稿（字幕文本来源）。
   --width / --font-size / --max-lines
-                 字幕区域参数：以 CJK 单位计的单行宽度上限是
-                 int(width / font_size)；一个单元最多可占 --max-lines 行
+                 字幕区域参数（仅 --mode subtitles）：以 CJK 单位计的单行宽度上限
+                 是 int(width / font_size)；一个单元最多可占 --max-lines 行
                  （竖屏允许 2）。给出 --layout 时忽略。
-  --layout       版面区域定义 JSON（layouts/*.json）的路径；caption 规格取自其
-                 `caption` 对象（{width_px, font_size_px, max_lines}）。
+  --layout       版面区域定义 JSON（layouts/*.json）的路径（仅 --mode subtitles）；
+                 caption 规格取自其 `caption` 对象
+                 （{width_px, font_size_px, max_lines}）。
                  --layout 与那三个显式参数二者必居其一。
   --scene-plan   可选的场景规划 JSON；当 scene 带有 `cues` / `beats` 时，它们的
                  秒数会写进 timeline.json。
@@ -36,7 +45,7 @@ ASR token 与旁白稿，再做字符级对齐，因此带标点或不带标点�
   对齐区域的 ASR 文本的单元带 `"fallback": true`；已对齐的单元为
   `fallback: false`。计数汇总在 `summary.fallback_units` 中。
 
-切分：
+切分（仅 --mode subtitles）：
   - 先按句末标点切（。！？!?…，以及不在词 / 数字内部的拉丁 .!?）；
   - 去掉每个单元结尾的 ，和 。，保留 ？！；
   - 宽于上限的单元在 ，,；;、：:—— 处断开；断点绝不落在英文词或数字内部
@@ -46,7 +55,7 @@ ASR token 与旁白稿，再做字符级对齐，因此带标点或不带标点�
   - 短于 0.6 s 的单元并入相邻单元（有前一个就并到前一个）；合并后的单元可能
     超出宽度上限，但与字幕闪烁相比这是较小的恶。
 
-产出（路径来自 --units-output / --timeline-output）：
+产出（路径来自 --units-output / --timeline-output；只写当前 mode 属于它的那份）：
   subtitle-units.json : {"version": 1, "units": [...], "summary": {...}}
     每个单元：{index, text, begin_ms, end_ms, begin_s, end_s, fallback,
     paragraph} —— 其中 text / begin_s / end_s 字段保持既有的下游字幕单元契约。
@@ -59,7 +68,7 @@ ASR token 与旁白稿，再做字符级对齐，因此带标点或不带标点�
 
 输出约定：
   stdout : 一个 JSON 对象
-    success: {"success": true, "units_path": ..., "timeline_path": ...,
+    success: {"success": true, "mode": ..., "<timeline|units>_path": ...,
               "summary": {...}}
     error:   {"success": false, "error": "..."}
   stderr : 带 [align-narration] 前缀的人类可读日志
@@ -75,9 +84,11 @@ import os
 import re
 import unicodedata
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable
 
 import cli
+import video_contract
 from script_text import paragraph_spans
 
 TOOL_NAME = 'align-narration'
@@ -136,7 +147,16 @@ print_json = cli.print_json
 def parse_args() -> argparse.Namespace:
     parser = cli.JsonArgumentParser(
         TOOL_NAME,
-        description='Align transcript timing onto the display draft and build subtitle units + timeline.'
+        description='Align transcript timing onto the display draft, in exactly one output mode.',
+    )
+    parser.add_argument(
+        '--mode',
+        required=True,
+        choices=('timing', 'subtitles'),
+        help=(
+            'timing: write timeline.json only (no layout, no caption spec); '
+            'subtitles: write subtitle units for the given layout, never the timeline.'
+        ),
     )
     parser.add_argument('--transcript', required=True, help='Path to transcribe/transcript.json')
     parser.add_argument('--narration', required=True, help='Path to narration.txt (the TTS narration draft)')
@@ -145,12 +165,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--units-output',
         default=None,
-        help='Output path for subtitle units (default: <transcript dir>/subtitle-units.json).',
+        help='Output path for subtitle units (default: <transcript dir>/subtitle-units.json); subtitles mode only.',
     )
     parser.add_argument(
         '--timeline-output',
         default=None,
-        help='Output path for timeline.json (default: <transcript dir>/timeline.json).',
+        help='Output path for timeline.json (default: <transcript dir>/timeline.json); timing mode only.',
     )
     parser.add_argument('--width', type=int, default=None, help='Subtitle area width in px (default: none; see --layout).')
     parser.add_argument('--font-size', type=int, default=None, help='Subtitle font size in px (default: none; see --layout).')
@@ -166,11 +186,29 @@ def parse_args() -> argparse.Namespace:
         help='Optional scene plan JSON with per-scene cues/beats; enables their seconds in timeline.json.',
     )
     args = parser.parse_args()
+    caption_given = [args.width, args.font_size, args.max_lines, args.layout]
     explicit = [args.width, args.font_size, args.max_lines]
-    if args.layout is None and any(value is None for value in explicit):
-        parser.error('caption spec required: pass --layout <path.json> or all of --width/--font-size/--max-lines')
-    if any(value is not None and value <= 0 for value in explicit[:2]) or (args.max_lines is not None and args.max_lines < 1):
+    if any(value is not None and value <= 0 for value in explicit[:2]) or (
+        args.max_lines is not None and args.max_lines < 1
+    ):
         parser.error('--width and --font-size must be positive, --max-lines must be >= 1')
+    if args.mode == 'timing':
+        # 字幕容量属于 subtitles 模式：timing 不按字幕预算做任何事，所以它也不
+        # 接受这类参数，以免看起来像是按宽度算过时间轴。
+        if any(value is not None for value in caption_given):
+            parser.error(
+                '--mode timing takes no caption spec (--layout / --width / --font-size / --max-lines); '
+                'subtitle layout belongs to --mode subtitles'
+            )
+        if args.units_output is not None:
+            parser.error('--mode timing writes the timeline only; drop --units-output')
+    else:
+        if args.layout is None and any(value is None for value in explicit):
+            parser.error('--mode subtitles needs a caption spec: pass --layout <path.json> or all of --width/--font-size/--max-lines')
+        if args.timeline_output is not None:
+            parser.error(
+                '--mode subtitles writes subtitle units only; the timeline belongs to --mode timing'
+            )
     return args
 
 
@@ -343,11 +381,21 @@ def load_caption_spec(args: argparse.Namespace) -> tuple[int, int, int]:
     return args.width, args.font_size, args.max_lines
 
 
-def load_offsets(path: str) -> tuple[dict[str, Any], Callable[[int], int]]:
+def load_offsets(
+    path: str, script_path: str, narration_path: str
+) -> tuple[dict[str, Any], Callable[[int], int]]:
+    """偏移表；不合格（含缺内容哈希）时直接报错，不降级到字数比对。
+
+    直接调用本脚本的人工 / 工具路径也要过这份契约，因此不能只靠 pipeline-status
+    在阶段层面把关。
+    """
     with open(path, encoding='utf-8') as file:
         data = json.load(file)
-    if not isinstance(data, dict) or not isinstance(data.get('segments'), list):
-        raise ValueError('offsets file must be an object with a segments list')
+    problem = video_contract.offsets_problem(
+        data, script_path=Path(script_path), narration_path=Path(narration_path),
+    )
+    if problem:
+        raise ValueError(f'offsets table {path} is unusable: {problem}')
     segments = sorted(data['segments'], key=lambda seg: seg['narration_start'])
     starts = [seg['narration_start'] for seg in segments]
 
@@ -888,7 +936,27 @@ def build_timeline(
     return paragraphs, round(total_ms / 1000, 3)
 
 
-def align(args: argparse.Namespace) -> dict[str, Any]:
+def scene_clock(
+    scene_plan_path: str | None,
+    atoms_by_paragraph: dict[int, list[Atom]],
+    warnings: list[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """可选的 scene-plan 推导出的 (scenes, cues, beats) 时间。"""
+    if not scene_plan_path:
+        return [], [], []
+    with open(scene_plan_path, encoding='utf-8') as file:
+        scene_plan = json.load(file)
+    if not isinstance(scene_plan, list):
+        raise ValueError(f'scene plan {scene_plan_path} root must be a list')
+    return (
+        locate_scenes(scene_plan, atoms_by_paragraph, warnings),
+        locate_cues(scene_plan, atoms_by_paragraph, warnings),
+        locate_beats(scene_plan, atoms_by_paragraph, warnings),
+    )
+
+
+def aligned_atoms(args: argparse.Namespace, warnings: list[str]) -> tuple[dict[int, list[Atom]], int]:
+    """两个 mode 共用的前半部分：读输入、校验偏移表、把时间映射到显示稿。"""
     narration_text = read_text(args.narration)
     if not narration_text.strip():
         raise ValueError('narration text is empty')
@@ -896,85 +964,88 @@ def align(args: argparse.Namespace) -> dict[str, Any]:
     if not script_text.strip():
         raise ValueError('display draft (script) is empty')
     words = load_transcript(args.transcript)
-    offsets, to_script = load_offsets(args.offsets)
-    if offsets.get('narration_length') not in (None, len(narration_text)):
-        raise ValueError('offsets narration_length does not match narration.txt')
-    if offsets.get('script_length') not in (None, len(script_text)):
-        raise ValueError('offsets script_length does not match script.txt')
+    _, to_script = load_offsets(args.offsets, args.script, args.narration)
 
     spans = paragraph_spans(narration_text)
     if not spans:
         raise ValueError('narration has no paragraphs')
 
-    warnings: list[str] = []
     atoms = build_atoms(script_text, narration_text, to_script, words, spans, warnings)
+    log(f'paragraphs={len(spans)} asr_words={len(words)} atoms={len(atoms)}')
+    return group_atoms_by_paragraph(atoms), len(spans)
+
+
+def align(args: argparse.Namespace) -> dict[str, Any]:
+    """按 mode 生成属于它的那一份产物。"""
+    warnings: list[str] = []
+    atoms_by_paragraph, span_count = aligned_atoms(args, warnings)
+
+    if args.mode == 'timing':
+        # 时间轴与字幕容量无关：不读 layout，也不要求任何 caption 参数。
+        paragraphs, total_s = build_timeline(atoms_by_paragraph, span_count, warnings)
+        scenes, cues, beats = scene_clock(args.scene_plan, atoms_by_paragraph, warnings)
+        return {
+            'timeline': {
+                'version': 1,
+                'total_s': total_s,
+                'paragraphs': paragraphs,
+                **({'scenes': scenes} if args.scene_plan else {}),
+                **({'cues': cues} if args.scene_plan else {}),
+                **({'beats': beats} if args.scene_plan else {}),
+            },
+            'summary': {
+                'paragraph_count': len(paragraphs),
+                'total_s': total_s,
+                'cue_count': len(cues),
+                'beat_count': len(beats),
+                'warnings': warnings,
+            },
+        }
 
     caption_width, caption_font_size, caption_max_lines = load_caption_spec(args)
     cap = int(caption_width / caption_font_size) * caption_max_lines
-    log(f'paragraphs={len(spans)} asr_words={len(words)} atoms={len(atoms)} cap={cap}')
-
-    atoms_by_paragraph = group_atoms_by_paragraph(atoms)
+    log(f'cap={cap}')
     units, fallback_units, merged_total = build_units(atoms_by_paragraph, cap, warnings)
     if not units:
         raise ValueError('alignment produced no subtitle units')
-    paragraphs, total_s = build_timeline(atoms_by_paragraph, len(spans), warnings)
-
-    cues: list[dict[str, Any]] = []
-    beats: list[dict[str, Any]] = []
-    scenes: list[dict[str, Any]] = []
-    if args.scene_plan:
-        with open(args.scene_plan, encoding='utf-8') as file:
-            scene_plan = json.load(file)
-        if not isinstance(scene_plan, list):
-            raise ValueError('scene plan root must be a list')
-        scenes = locate_scenes(scene_plan, atoms_by_paragraph, warnings)
-        cues = locate_cues(scene_plan, atoms_by_paragraph, warnings)
-        beats = locate_beats(scene_plan, atoms_by_paragraph, warnings)
-
     return {
         'units': {'version': 1, 'units': units, 'summary': {}},
-        'timeline': {
-            'version': 1,
-            'total_s': total_s,
-            'paragraphs': paragraphs,
-            **({'scenes': scenes} if args.scene_plan else {}),
-            **({'cues': cues} if args.scene_plan else {}),
-            **({'beats': beats} if args.scene_plan else {}),
-        },
         'summary': {
             'unit_count': len(units),
             'fallback_units': fallback_units,
             'merged_units': merged_total,
-            'cue_count': len(cues),
-            'beat_count': len(beats),
             'warnings': warnings,
         },
     }
 
 
+def output_path(args: argparse.Namespace) -> tuple[str, str]:
+    """(payload 键, 输出路径)：每个 mode 只写属于自己的那一份。"""
+    transcript_dir = os.path.dirname(os.path.abspath(args.transcript))
+    if args.mode == 'timing':
+        return 'timeline', args.timeline_output or os.path.join(transcript_dir, 'timeline.json')
+    return 'units', args.units_output or os.path.join(transcript_dir, 'subtitle-units.json')
+
+
 def main() -> int:
     args = parse_args()
-    transcript_dir = os.path.dirname(os.path.abspath(args.transcript))
-    units_output = args.units_output or os.path.join(transcript_dir, 'subtitle-units.json')
-    timeline_output = args.timeline_output or os.path.join(transcript_dir, 'timeline.json')
+    key, output = output_path(args)
     result = align(args)
-    result['units']['summary'] = result['summary']
-    for output_path, payload in (
-        (units_output, result['units']),
-        (timeline_output, result['timeline']),
-    ):
-        output_dir = os.path.dirname(os.path.abspath(output_path))
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-        with open(output_path, 'w', encoding='utf-8') as file:
-            json.dump(payload, file, ensure_ascii=False, indent=2)
-            file.write('\n')
-        log(f'wrote {output_path}')
+    payload = result[key]
+    if key == 'units':
+        payload['summary'] = result['summary']
+    output_dir = os.path.dirname(os.path.abspath(output))
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    with open(output, 'w', encoding='utf-8') as file:
+        json.dump(payload, file, ensure_ascii=False, indent=2)
+        file.write('\n')
+    log(f'wrote {output}')
     print_json(
         {
             'success': True,
-            'units_path': os.path.abspath(units_output),
-            'timeline_path': os.path.abspath(timeline_output),
+            'mode': args.mode,
+            f'{key}_path': os.path.abspath(output),
             'summary': result['summary'],
         }
     )

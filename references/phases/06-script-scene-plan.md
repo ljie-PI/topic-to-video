@@ -1,14 +1,14 @@
 # Phase 6 — 脚本与场景规划（委派给 coding agent）
 
-本 phase 整体委派给 coding agent 完成：旁白（显示稿 + 词表）与叙事层场景规划由 script agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认 claude-code；派发 prompt 只有一句话，让对方读 handoff）。
+本 phase 整体委派给 coding agent 完成：旁白（显示稿 + 词表）与叙事层场景规划由 script agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认 pi-coding-agent；派发 prompt 只有一句话，让对方读 handoff）。
 
 ## 输入
 
 - Phase 3 的 `research-brief.md`；
-- Phase 5 的 `material-catalog.json`（标准模式且 `fetch_materials = false` 时没有 catalog，按“无素材”路径写纯旁白；论文模式总有 catalog）；
-- `inputs.json`（目标时长、语言、input_mode、所选模板）；
-- 模板旁白要求（`modules/templates/<template>/narration.md`，如有）；
-- 项目指令 `narration-instructions.md`（如有）。
+- Phase 5 的 `material-catalog.json`（标准模式且 `fetch_materials = false` 时没有 catalog，按“无素材”路径写纯旁白；论文模式总有 catalog，其中 `required_material_refs` 标出必须用上的关键图）；
+- `inputs.json`（目标时长、语言、input_mode、`narration_requests`）。
+
+模板不在本阶段输入里：它是 Phase 8 的画面选择，旁白按内容写。
 
 ## 输出
 
@@ -24,7 +24,7 @@
 - `script.txt`、`narration.txt` 存在且非空；`script.txt` 的字数（去掉所有空白）与 `inputs.json` 的 `duration`（分钟）× 60 × 7.5 的偏差在 ±15% 以内；
 - `tts-lexicon.json` 是可解析的非空 JSON map，键值都是非空字符串；
 - `narration-offsets.json` 是 `version` 为 1 的 JSON 对象，带非空的 `segments` 列表；它记录的 `script_length` / `narration_length` 等于当前 `script.txt` / `narration.txt` 的字符数；表里的 `script_sha256` / `narration_sha256`（make-narration 写入）必须等于当前两个文件的内容哈希——等长修改字符数看不出来，哈希躲不掉（改了 `script.txt` 就要重跑 make-narration）；
-- `scene-plan.json` 是非空列表，每个 scene 有 `scene_id` 和整数 `paragraphs`；所有 scene 的段落并集恰好是 `script.txt` 的第 1 段到最后一段；可选 `beats` 是列表，每项的 `type` 为 `question` / `idea` / `caveat` / `highlight` / `negation` / `confirm` 之一，`text` 是非空字符串且逐字出现在 `script.txt`；`material_candidates[].ref` 都能在 catalog 里按 entry 解析（图片 / 视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>` 且与该 entry 某个 `selected_clips` 的起止相差都不超过 0.01 秒；裸 id 无效）；没有 catalog（`fetch_materials = false` 且不是论文模式）时，`material_candidates` 必须是空列表；
+- `scene-plan.json` 是非空列表，每个 scene 有 `scene_id` 和整数 `paragraphs`；所有 scene 的段落并集恰好是 `script.txt` 的第 1 段到最后一段；可选 `beats` 是列表，每项的 `type` 为 `question` / `idea` / `caveat` / `highlight` / `negation` / `confirm` 之一，`text` 是非空字符串且逐字出现在 `script.txt`；`material_candidates[].ref` 都能在 catalog 里按 entry 解析（图片 / 视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>` 且与该 entry 某个 `selected_clips` 的起止相差都不超过 0.01 秒；裸 id 无效）；没有 catalog（`fetch_materials = false` 且不是论文模式）时，`material_candidates` 必须是空列表；catalog 的 `required_material_refs` 必须每条都被某个 scene 选上（选上只是候选，不代表已经进成片）；
 - 校验通过后默认自动进入 TTS；只有 `inputs.json` 的 `approval_gates` 包含 `script` 时，才把旁白和场景摘要交给用户确认，再运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve script`。未明确确认前不要自己批准。
 
 ## 执行后自检
@@ -34,13 +34,14 @@
 - 每个事实、数字、人名、日期都能在 `research-brief.md` 里找到；没有的就删除或标“据报道”。
 - 叙事是否连贯：开头有没有钩子、各部分是不是一个意思、段落之间有没有断裂或重复。
 - 场景计划的 `intent` 与对应段落是否对得上；引用的素材是不是真的能讲这段内容。
-- 用户要求（语气、结尾不要 CTA、模板风格）是否都体现出来了。
+- 用户要求（语气、结尾不要 CTA 等，见 `narration_requests`）是否都体现出来了。
+- 论文模式的 `required_material_refs` 是否都在讲解里真正讲到了，而不只是被选为候选。
 
 不合格就重写：委派时交回 script agent，并指明是事实、结构还是引用的问题。发现是上游不足（证据不够、素材不对）时，回报主 agent，按 `references/pipeline-control.md` 登记更早的阶段重做，不要在旁白里编造补充。
 
 ## 下一步
 
-Phase 7（配音与字幕）：只对 `narration.txt` 配音，并生成词级时间戳与字幕单元。
+Phase 7（配音与时间对齐）：只对 `narration.txt` 配音，并生成词级时间戳与时间轴；字幕排版归 Phase 8。
 
 ## 护栏
 
@@ -53,7 +54,9 @@ Phase 7（配音与字幕）：只对 `narration.txt` 配音，并生成词级�
 
 **主 agent 不读委派包里的基础指令**（`references/delegation/script/base-instructions.md` 只给被委派的 agent 读）。主 agent 做三件事：
 
-1. 运行 `source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topic_name} script`。它把委派约定和 script 委派包拷进 `{work_dir}/{topic_name}/references/delegation/`（已存在的副本不覆盖，要覆盖加 `--refresh`），再按 `inputs.json` 和工作区里实际存在的文件生成 `{work_dir}/{topic_name}/script-handoff.md`：Coding Agent、Inputs、Outputs、Required References（基础指令 → 模板旁白要求）、Additional Instructions（实际存在的 `narration-instructions.md`，没有写 None），路径全是绝对路径。主 agent 不手写 handoff。
+1. 运行 `source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topic_name} script`。它把委派约定和 script 委派包拷进 `{work_dir}/{topic_name}/references/delegation/`（已存在的副本不覆盖，要覆盖加 `--refresh`），再按 `inputs.json` 生成 `{work_dir}/{topic_name}/script-handoff.md`：Coding Agent、Inputs、Outputs、Required References（基础指令）、Additional Instructions（`narration_requests` 逐条列出，没有写 None），路径全是绝对路径。主 agent 不手写 handoff。
+
+   用户在本阶段又提出旁白要求时，先按 `references/pipeline-control.md` 写进 `inputs.json` 的 `narration_requests`，再生成 handoff——handoff 只算一次，生成后追加的要求进不去。
 2. 把输出 JSON 里的 `dispatch_prompt` 原样派发，派发方式见 `references/delegation/conventions.md`。
 3. script agent 返回后做 **Phase 6.2 的确定性校验**。
 

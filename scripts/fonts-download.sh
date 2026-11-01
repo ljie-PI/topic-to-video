@@ -2,9 +2,13 @@
 # Install the vendored WOFF2 fonts of a topic-to-video theme into a project.
 #
 # Usage:
-#   bash fonts-download.sh [target_dir] [--theme <theme_dir|theme_name> | style] [--dry-run]
-#   bash fonts-download.sh --refresh (--theme <theme_dir|theme_name> | style) [--dry-run]
-#     target_dir defaults to ./fonts; style (legacy) is a theme name or all
+#   bash fonts-download.sh [target_dir] --theme <theme_dir|theme_name|all> [--dry-run]
+#   bash fonts-download.sh --refresh --theme <theme_name|all> [--dry-run]
+#     target_dir defaults to ./fonts
+#
+# The theme is always named explicitly with --theme: a bare positional style is
+# not accepted, so a project copy of a theme cannot be picked up by accident and
+# the installed fonts always come from the current library.
 #
 # Fonts are committed under resources/fonts/: each theme keeps only its CSS in
 # resources/fonts/<theme>/<fonts.css_filename>, and the WOFF2 files it
@@ -79,19 +83,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument('--refresh', action='store_true')
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_intermixed_args(argv)
-    limit = 1 if args.refresh else 2
+    limit = 0 if args.refresh else 1
     if len(args.positionals) > limit:
         raise BadArguments(
-            'usage: fonts-download.sh [target_dir] [--theme <theme> | style] [--dry-run] | '
-            '--refresh (--theme <theme> | style) [--dry-run]'
+            'usage: fonts-download.sh [target_dir] --theme <theme_dir|theme_name|all> [--dry-run] | '
+            '--refresh --theme <theme_name|all> [--dry-run]'
         )
-    style = args.positionals[-1] if len(args.positionals) == limit else None
-    if args.theme and style:
-        raise BadArguments('pass either --theme or a named style, not both')
-    args.spec = args.theme or style
-    if args.refresh and not args.spec:
-        raise BadArguments('--refresh needs --theme <theme> or a theme name / all')
-    args.spec = args.spec or 'default'
+    if not args.theme:
+        raise BadArguments('--theme is required: pass a design directory, a theme name, or all')
+    args.spec = args.theme
     args.target = None if args.refresh else Path(args.positionals[0] if args.positionals else 'fonts')
     return args
 

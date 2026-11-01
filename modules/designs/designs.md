@@ -90,9 +90,9 @@
 
 ```bash
 bash scripts/fonts-download.sh <目标目录> --theme modules/designs/<主题>
-# 旧的具名风格仍然有效：
-bash scripts/fonts-download.sh <目标目录> <主题>
 ```
+
+主题总是用 `--theme` 明确指定：不提供位置参数式的旧风格写法。
 
 `<名>.json` 的 `fonts` 段是这些字体的来源清单，只在维护时用：新建主题、或者想换字体版本时，改好清单后运行 `bash scripts/fonts-download.sh --refresh --theme <主题>`，脚本从 Google Fonts 重新下载，覆盖 `resources/fonts/<主题>/` 里的 CSS，只往字体池里补缺的 WOFF2（池里已有的不再下载），并清掉不再被任何主题 CSS 引用的 WOFF2，再把结果提交进仓库。
 
@@ -123,7 +123,7 @@ bash scripts/fonts-download.sh <目标目录> <主题>
 | "深色"、"暗黑"、"科技"、"未来"、"premium" | design 写 default，配色按下面的 Dark Premium 草案覆盖（见下） |
 | "手绘"、"手写" | 目前没有手绘主题：告诉用户，并用 default |
 
-以下两套配色已有完整 token 草案，还没有迁入主题目录，所以**不能**写进 `inputs.json` 的 `design`（状态脚本只接受 `modules/designs/` 下现有的主题）。用户点名时：`design` 写 `default`，先和用户确认，再把草案的配色换算成 `--c-*` 变量写进项目的 `composition-instructions.md`，作为对 default 变量的覆盖；字体仍用 default 的字体（草案列出的字体没有放进仓库）。正式迁入主题目录时，写好 `<名>.md` 和 `<名>.json`，按上面的方法 `--refresh` 并提交字体。
+以下两套配色已有完整 token 草案，还没有迁入主题目录，所以**不能**写进 `inputs.json` 的 `design`（状态脚本只接受 `modules/designs/` 下现有的主题）。用户点名时：`design` 写 `default`，先和用户确认，再把草案的配色换算成 `--c-*` 变量，作为对 default 变量的覆盖；字体仍用 default 的字体（草案列出的字体没有放进仓库）。用户认可这个风格后，把这条要求记进 `inputs.json` 的 `composition_requests`，Phase 8 的 composition 按它做覆盖。正式迁入主题目录时，写好 `<名>.md` 和 `<名>.json`，按上面的方法 `--refresh` 并提交字体。
 
 ### Warm Editorial（杂志跨页、精致、新闻感）
 

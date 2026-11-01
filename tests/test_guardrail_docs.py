@@ -107,7 +107,9 @@ def test_every_phase_has_guardrails_immediately_after_next_step(doc_path: Path):
 
     next_step = headings.index('下一步')
     assert headings[next_step + 1] == '护栏'
-    if doc_path.name in {'01-gather-inputs.md', '09-check-mix.md'}:
+    if doc_path.name == '09-check-mix.md':
+        # Phase 1 收集输入有自己的规则（不要逐项追问、要求要落地、不提前定模板），
+        # 不再是一个空的“无”。
         assert section(text, '护栏').strip() == '无'
     else:
         assert section(text, '护栏').strip() != '无'
@@ -194,3 +196,25 @@ def test_every_executable_script_is_documented_at_its_point_of_use():
     # And the entry itself does not grow the duplicate table back.
     assert '| `prepare-handoff.py` |' not in doc_text('SKILL.md')
     assert '| `voice-subtitles.py` |' not in doc_text('SKILL.md')
+
+
+def test_delegation_resolves_the_target_before_choosing_how_to_dispatch():
+    """原生 sub-agent 工具不等于能派发 Pi：先看目标，再选手段。"""
+    text = doc_text('references/delegation/conventions.md')
+
+    # 默认目标仍写在文档里。
+    assert '默认 coding agent 是 **pi-coding-agent**' in text
+    assert '`pi`' in text
+    # 先解析 coding_agent，再判断工具能不能派发它。
+    resolve_at = text.index('先确定目标')
+    mechanism_at = text.index('再判断可用工具能不能派发这个目标')
+    assert resolve_at < mechanism_at
+    # 有原生工具 ≠ 能派发 Pi。
+    assert '不等于' in text and 'Pi' in text
+    # 用户点名的其他 agent 用自己的入口，不落回 Pi。
+    assert '不要仍落到 `pi`' in text
+    # 未知或不可用目标要明确报告，不静默替换。
+    assert '不要静默换成别的 agent' in text
+    # Pi 的已核实形态保留。
+    assert 'pi -p -- "<dispatch_prompt>"' in text
+    assert '--add-dir' not in text
