@@ -12,6 +12,14 @@ Phase 7 的 `voice_clone/narration.mp3` + `transcribe/subtitle-units.json` / `tr
 
 运行 `pipeline-status` 后，Phase 8 不再是 `next_phase`。状态脚本替你判定：`composition/storyboard.md` 非空；`composition/index.html` 存在；`composition/compositions/` 里至少有一个文件；`composition/check-composition.json` 的 `verdict` 为 `pass`，且覆盖当前 composition——报告里的 `sources_sha256` 必须等于当前 `index.html` / `compositions/` / `assets/`（字体除外）的内容指纹（改过画面就要重跑 check-composition 并用 `--output` 保存报告；旧报告没有指纹时退回 mtime 比较，不保留 mtime 的拷贝可能漏检）；`composition/renders/final.mp4` 存在、非空，且不早于任一源文件（`index.html`、`compositions/`、`assets/`、`storyboard.md`）——比源文件旧的渲染不包含那次修改，要重新渲染。状态脚本不判定的两项由主 agent 抽查（见 8.4）：`npx hyperframes check` 无错误；storyboard 的每个 scene 都标注了所用的 content 区域。
 
+## 执行后自检
+
+`pipeline-status` 会检查报告结论、报告是否覆盖当前源文件、渲染是否比源文件新（见上）。此外：
+
+- 渲染前：`check-composition` 的 finding 是否都已改完，而不是仅在报告里标 pass。
+- 渲染后：抽看一两个关键 scene，确认素材按宽高比放对了、字幕没有溢出、画面能对应旁白。全面成片检查归 Phase 9，不要在这里重复全套。
+- 发现内容错位（场景和旁白对不上、素材用错）属于叙事或素材问题，按 `references/pipeline-control.md` 回退到对应阶段，而不是只改 HTML。
+
 ## 下一步
 
 Phase 9（检查与混音）：渲染后 QA（`check-render.py` 确定性检查 + `make-contact-sheet.py` 拼图 + 按 `qa_level` 三档的 vision 检查，修复轮最多 2 轮）通过后混入 BGM，得到最终交付文件。

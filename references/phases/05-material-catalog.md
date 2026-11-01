@@ -12,6 +12,17 @@
 
 `material-catalog.json` 存在、非空、JSON 可解析，`entries` 为非空列表；每张图片 / 每个视频都有非空字符串的 `id` 和 `semantic_description`（VLM 评分 <5 或偏题的素材已过滤）；每个 `selected_clip` 都有 `clip_path`，且它指向的文件（相对工作区）存在且非空；状态脚本会逐项检查。
 
+## 执行后自检
+
+`pipeline-status` 会逐项检查引用、描述、`clip_path`。此外由委派的 catalog agent 自己（或主 agent 兜底时）判断：
+
+- 每条 `semantic_description` 是否真的描述了这张图 / 这段画面，而不是照标语。
+- 打分是否过低（<5 / 10）却仍留在 catalog 里，或者高质量的却漏掉了。
+- `selected_clips` 的起止是否真的落在有内容的位置（关键动作 / 界面的那几秒）。
+- 论文条目是否按 caption 规则处理，缺失 caption 的是否跑了视觉分析。
+
+不合格就重做本阶段（委派时交回原 agent，并写明哪几条不对）；不要靠手改 catalog 绕过去。素材本身不对属于上一阶段的问题，按 `references/pipeline-control.md` 登记 `4-material-harvest` 重做，不要在本阶段凑合选片段。
+
 ## 下一步
 
 Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产出的 catalog，不直接接触素材 `local_path`。

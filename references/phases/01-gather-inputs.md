@@ -12,7 +12,7 @@
 | --- | --- |
 | `source` | 来源：要抓取的 URL、粘贴的文本，或仅一个主题 |
 | `input_mode` | `standard`（默认）/ `topic` / `article` / `text` / `paper`（论文模式） |
-| `duration` | 目标时长，单位分钟，写成数字（默认 `5`）；也接受数字加分钟单位的字符串（`"5min"`、`"5 分钟"`）。`"90秒"`、`"1h"`、`"3-5分钟"` 这类写法不接受，会被判为损坏 |
+| `duration` | 目标时长，单位分钟，写成数字（如 `5`）；也接受数字加分钟单位的字符串（`"5min"`、`"5 分钟"`）。没有默认值：用户没说就先问一句。`"90秒"`、`"1h"`、`"3-5分钟"` 这类写法不接受，会被判为损坏 |
 | `language` | 解说语言，默认中文 |
 | `orientation` | `landscape`（横屏 1920×1080）/ `portrait`（竖屏 1080×1920）/ `portrait-3:4`（1080×1440） |
 | `template` | 所选模板，未选为 `null` |
@@ -20,12 +20,23 @@
 | `layout` | 所选 layout：`presenter` / `stage` / `portrait` / `portrait-3x4`，由模板或朝向决定，区域定义在 `modules/layouts/` |
 | `coding_agent` | 委派目标，默认 `claude-code` |
 | `fetch_materials` | 是否联网抓取视觉素材（布尔） |
-| `approval_gates` | 可选，默认 `[]`（全自动、不停下来审稿）；只有用户要求时才填 `research-brief`（调研简报）和 / 或 `script`（旁白与场景计划），例如 `["script"]`；泛指中途审稿时填 `["research-brief", "script"]`。不主动询问是否审稿；续跑保留已有要求，用户明确授权后续全自动时改为 `[]` |
+| `approval_gates` | 可选，默认 `[]`（全自动、不停下来审稿）；不主动询问是否审稿。用户要求审稿时按入口的表填：只看调研用 `["research-brief"]`，只看旁白用 `["script"]`，只说“中途让我审稿”就两处都填。续跑保留已有要求，用户明确改才动 |
+| `material_search_requests` | 可选，字符串列表，默认不填。用户点名要用某个平台找素材（“去 Google 图片搜某产品的界面”“在 B 站找演示视频”）时，把原话逐条记下；Phase 4 读它。它只是记录，不会自动让素材阶段重做：用户新提或修改这类要求时，另按 `references/pipeline-control.md` 登记 Phase 4 重做。不主动要求平台搜索 |
 | `qa_level` | 渲染后 QA 档位（缺省视为 `standard`）：`quick` = 渲染前检查 + 渲染后确定性检查，contact sheet 照常生成给用户看但不作 vision；`standard` = 全部检查（quick + 主 agent 逐张过 contact sheet，每张只看渲染完整 / 画面与旁白相符 / 符合 design / 明显空洞或错位 4 项）；`strict` = standard + 每个 scene 加一张入场帧、每个切点加前 / 中 / 后三帧。三档的完整流程见 Phase 9 |
 
 ## 完成判据
 
-`inputs.json` 存在、非空、JSON 可解析，且上表字段齐全（`design` 必须是 `modules/designs/` 下现有的主题，旧项目里已删除的主题会被判为不合格、回到本 phase 重选；`fetch_materials` 必须是布尔；`duration` 必须是分钟数；`qa_level` 可缺省，缺省视为 `standard`，填写时必须是三档之一；`approval_gates` 可缺省，填写时必须是由 `research-brief` / `script` 组成的列表，不能重复，空列表表示全自动）。
+`inputs.json` 存在、非空、JSON 可解析，且上表字段齐全（`design` 必须是 `modules/designs/` 下现有的主题，旧项目里已删除的主题会被判为不合格、回到本 phase 重选；`fetch_materials` 必须是布尔；`duration` 必须是分钟数；`qa_level` 可缺省，缺省视为 `standard`，填写时必须是三档之一；`approval_gates` 可缺省，填写时必须是由 `research-brief` / `script` 组成的列表，不能重复，空列表表示全自动；`material_search_requests` 可缺省，填写时必须是非空字符串的列表）。
+
+## 执行后自检
+
+程序能判断的由 `pipeline-status` 检查（见上）。写入前自己再过一遍：
+
+- 用户说过的每一项（来源、时长、语言、朝向、模板与风格、要不要素材、要不要审稿）是否都有对应字段；用户没提的项是否用了默认值，而不是编的。
+- 用户的原话有没有丢：不要 CTA、语气要求这类写进项目指令文件；点名要在某平台找素材的写进 `material_search_requests`。
+- 拿不准的项是问过了，还是猜的。猜的要先问。
+
+发现问题就改 `inputs.json` 再查状态；本阶段没有下游，改完不需要重做别的阶段。
 
 ## 下一步
 
@@ -53,9 +64,9 @@
    - 主题是 Product Hunt 周榜 / SaaS launch / 新产品发布 → **producthunt**（`modules/designs/producthunt/producthunt.md`）
    - 用户要求手绘、深色等现有主题都没有的风格 → 告诉用户目前没有对应主题，`design` 写 **default**；深色或杂志风可以按 `modules/designs/designs.md` 的草案把配色写进 `composition-instructions.md` 覆盖 default 的变量，先和用户确认
    - 未指定时保持默认主题。
-5. 时长：通常 3-10 分钟——从用户需求中提取，默认 5 分钟。
+5. 时长：从用户需求中提取；用户没说就问一句（“想做几分钟？”），不假设默认值。用户要多长就多长，不自行设上下限。
 6. 语言：默认中文。若用户想要其他语言要询问确认。
-7. 询问是否需要搜索视觉素材（图片/视频片段）来丰富场景。默认：是。论文模式下，论文自己的 figure 无论如何都会用上。
+7. 询问是否需要搜索视觉素材（图片/视频片段）来丰富场景。默认：是。论文模式下，论文自己的 figure 无论如何都会用上。用户点名要在某个平台找素材（图片搜索、视频网站等）时，把原话记进 `material_search_requests`；没提就不加。
 8. **输入类型识别：**
    - 来源是 `.pdf` 文件路径 → 置 `input_mode = "paper"`
    - 来源是以 `.pdf` 结尾的 URL（例如 arXiv） → 置 `input_mode = "paper"`，并将该 URL 保留用于 `parse-pdf.py --url`

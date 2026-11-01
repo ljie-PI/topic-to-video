@@ -12,6 +12,17 @@
 
 `harvest_page/manifest.json` 存在、非空、JSON 可解析且 `entries` 与 `harvest_batches` 为非空列表（只有论文 entry 不算完成 web harvest）；`pending_downloads[]` 已逐项顺序处理（失败项保留 `download_required: true`）。
 
+## 执行后自检
+
+`pipeline-status` 只检查 manifest 的结构和 `pending_downloads` 是否已逐项处理。下面几项自己看：
+
+- 抓到的页面真的和主题相关吗？明显无关的来源删掉并记下原因。
+- 图片是否清晰可用（缩略图、水印、占位图不算），视频是否有内容而不是错误页。
+- `material_search_requests` 里每一条都执行过吗？找到、没找到、平台不可用，都要说清楚。
+- 失败项保留 `download_required: true` 即可，不要为了过关伪造下载。
+
+素材明显不够或偏题，就补搜一次（仍在上限内）；还是不行就接受 B-roll 少一些，或者请用户自带素材，不以数量凑数。
+
 ## 下一步
 
 Phase 5（素材 catalog）；若 `fetch_materials = false`，本 phase 跳过：标准模式下 Phase 5 也跳过，直接进入 Phase 6（脚本与场景规划，按"无素材"路径处理）；论文模式直接进入 Phase 5（仅论文素材）。
@@ -30,7 +41,7 @@ agent（LLM）先生成一批大概率能提供丰富视觉素材的 URL，再�
 
 #### URL 选择规则（用来构建数组）
 
-目标 **10-15 个 URL**。**INCLUDE** 以下类型的页面：
+页面质量比数量重要：按相关性和素材质量挑，不为凑数添加聚合页，也不要求每个讲解点都配到画面——某个点只靠旁白讲也正常。**INCLUDE** 以下类型的页面：
 
 | 页面类型 | 为什么是好来源 | 期望产出 |
 |---------|---------------|---------|
@@ -56,7 +67,16 @@ URL 来源（按优先级）：
 1. 用户提供的 URL（如果有则必含）。
 2. 研究 brief **Source URLs** 一节列出的 URL —— Phase 3 阶段已按可抓取的页面类型预筛过。
 3. `gemini_deep_research_sources.json` 中所有未被上面覆盖、且匹配 INCLUDE 类型的 URL。读整个文件，把每条符合条件的都加上。
-4. 如果仍然 <10 个 URL，用 `web_search` 搜 `"{topic} official site"`、`"{topic} github"`、`"{topic} documentation"`、`"{topic} demo"` 直到列表达到 10-15 条。
+4. 如果某个要讲的重点仍缺可用画面，用 `web_search` 针对该缺口找具体页面（官方图、文档插图、演讲视频）；仍不够就接受 B-roll 少一些，不要用搜索结果页顶替。
+
+#### 用户指定了搜索平台时
+
+`inputs.json` 的 `material_search_requests` 非空时，按它写的原话去做，并且在 agent 这一侧完成——`harvest-pages.py` 不会自己去搜。这个字段只是记录“用户要在哪找素材”，不会自动触发重做；用户新提出或修改这类要求时，主 agent 先按 `references/pipeline-control.md` 用 `--redo 4-material-harvest` 登记，再在本阶段执行。
+
+- **图片搜索（Google / Bing 等）：** 用浏览器或 Playwright 打开指定平台的图片搜索，按画面需求生成关键词；选中相关结果后进入原始页面，核对出处、清晰度和使用许可，再把**原始来源页面的 URL** 加入待抓列表。
+- **视频网站（YouTube / Bilibili）：** 按“项目名 + 演示 / 讲座 / 实验”之类的关键词找候选，优先官方或作者发布；确认观看页与内容后，把观看 URL 交给 `harvest-pages.py`（会被列入 `pending_downloads`）或直接交给 `video-download.py`。
+- **平台打不开、需要登录或地区受限：** 说明限制，请用户给直链或同意换来源；不要把普通网页搜索说成已经做了指定平台的图片搜索。
+- **搜不到合格素材：** 如实说明结果，不为了交差保留偏题、模糊或来源不明的资源。
 
 #### 运行 harvest-pages.py
 
