@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""topic-to-video skill 的批量 URL 素材抓取器。
+r"""topic-to-video skill 的批量 URL 素材抓取器。
 
 对浏览器打开的每个 URL，无条件抽取：
   - naturalWidth >= --min-image-width（默认 500）且
@@ -21,19 +21,27 @@ profile 与 gemini-deep-research.py 共享。退出时 Chrome 保持运行，以
 chrome.ignored_flags 字段中报告。
 
 用法：
-  python3 harvest-pages.py \\
-    --urls https://github.com/anthropic/claude-code \\
-           https://docs.anthropic.com/claude-code \\
-           https://en.wikipedia.org/wiki/Claude_(language_model) \\
-    --output-dir {work_dir}/{topic}/harvest_page/ \\
+  python3 harvest-pages.py \
+    --urls-file "{work_dir}/{topic}/harvest-urls.txt" \
+    --output-dir {work_dir}/{topic}/harvest_page/ \
     --profile-dir {work_dir}/chrome_profile
 
+  短列表也可以直接放在命令行上（与 --urls-file 互斥）：
+  python3 harvest-pages.py --urls https://example.com/ ...
+
 输出约定：
-  stdout : 顶层 JSON manifest，每个 URL 一条（同时写入
-           <output-dir>/manifest.json）
+  stdout : 本次批次的结果 JSON（`success` / `entries` / `chrome` 等），
+           不是磁盘 manifest 的原样输出；
+  manifest: <output-dir>/manifest.json（v2，保留历史批次与论文 entry）
   stderr : 带 `[harvest-pages]` 前缀的人类可读进度
   exit   : 0 成功（>=1 条成功），1 运行时错误
            （CDP 启动失败或全部条目失败），2 参数非法
+           （含 --urls-file 读不到、为空）
+
+登录态：每个 URL 的采集 context 都会继承共享 profile 默认 context 的 cookies；
+profile 里已打开在该站点（同 origin）的标签页还会提供它的 localStorage。
+新建的 context 不共享 cookies，不显式继承就抓不到登录后的页面。不会关闭或
+改动用户的默认 context 与标签页，也不写任何 auth-state 文件。
 """
 
 import argparse
@@ -45,7 +53,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
 import chrome_cdp
@@ -71,7 +79,11 @@ log = cli.make_logger(TOOL_NAME)
 
 def parse_args() -> argparse.Namespace:
     p = cli.JsonArgumentParser(TOOL_NAME, description='Batch URL material harvester (Playwright over CDP).')
-    p.add_argument('--urls', required=True, nargs='+', help='One or more URLs to harvest.')
+    source = p.add_mutually_exclusive_group(required=True)
+    source.add_argument('--urls', nargs='+', help='One or more URLs to harvest.')
+    source.add_argument('--urls-file', dest='urls_file',
+                        help='UTF-8 file with one URL per line (blank lines ignored). '
+                             'Mutually exclusive with --urls.')
     p.add_argument('--output-dir', required=True, help='Batch output root (per-URL subdirs are created underneath).')
     p.add_argument('--no-scroll-record', dest='scroll_record', action='store_false', default=True,
                    help='Disable scroll-record (on by default). '
@@ -105,6 +117,35 @@ def parse_args() -> argparse.Namespace:
     args.explicit_headless = args.headless
     args.headless = args.headless or 'off'
     return args
+
+
+def read_urls_file(path_value: str) -> Tuple[List[str], Optional[str]]:
+    """读取待抓 URL 清单：UTF-8（允许 BOM），一行一个，忽略空行。
+
+    返回 (urls, error)。错误在启动 Chrome 之前就交给调用方，使参数问题
+    不会先拉起一个浏览器再失败。
+    """
+    path = Path(path_value).expanduser()
+    try:
+        text = path.read_text(encoding='utf-8-sig')
+    except FileNotFoundError:
+        return [], f'--urls-file not found: {path}'
+    except UnicodeDecodeError as exc:
+        return [], f'--urls-file is not valid UTF-8: {path} ({exc.reason})'
+    except OSError as exc:
+        return [], f'--urls-file could not be read: {path} ({exc})'
+    urls = [line.strip() for line in text.splitlines()]
+    urls = [url for url in urls if url]
+    if not urls:
+        return [], f'--urls-file contains no URLs: {path}'
+    return urls, None
+
+
+def collect_urls(args: argparse.Namespace) -> Tuple[List[str], Optional[str]]:
+    """把两种输入形式归一成同一个 URL 列表，后续处理完全一致。"""
+    if args.urls_file:
+        return read_urls_file(args.urls_file)
+    return list(args.urls), None
 
 
 def parse_viewport(s: str) -> Tuple[int, int]:
@@ -401,8 +442,126 @@ def download_native_video(request_ctx, url: str, dest_dir: Path, index: int, max
 # 滚动录制
 # -----------------------------------------------------------------------------
 
-def new_harvest_context(browser, viewport: Tuple[int, int], record_dir: Optional[Path] = None):
-    """创建 harvest 与兜底路径共用的那一份 context 配置。"""
+DEFAULT_PORTS = {'http': 80, 'https': 443}
+
+# 在同一次同步执行里先核对 location.origin 再读 localStorage：标签页可能在选中之后
+# 跳去别的站点，分开两步读就会把那个站点的数据当成这个 origin 的。
+LOCAL_STORAGE_JS = """(expectedOrigin) => {
+  if (location.origin !== expectedOrigin) {
+    return {origin: location.origin, entries: null};
+  }
+  const entries = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    entries[key] = localStorage.getItem(key);
+  }
+  return {origin: location.origin, entries};
+}"""
+
+
+def page_origin(url: str) -> Optional[str]:
+    """把 URL 归成 storage 用的 origin（scheme://host[:port]）。
+
+    按 origin 语义规范化，不比较原始 netloc：host 小写、去掉 userinfo、
+    省略该 scheme 的默认端口、IPv6 加方括号。否则 `https://EXAMPLE.com` 或
+    `https://example.com:443` 会被当成与 `https://example.com` 不同的站点，
+    它们的 localStorage 登录态会被静默丢掉。
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return None
+    scheme = (parsed.scheme or '').lower()
+    if not scheme:
+        return None
+    try:
+        host = parsed.hostname
+        port = parsed.port
+    except ValueError:  # 非法端口（如 http://example.com:abc/）
+        return None
+    if not host:
+        return None
+    host = host.lower()
+    if ':' in host:  # IPv6 字面量，urlparse 已去掉方括号
+        host = f'[{host}]'
+    if port is not None and port != DEFAULT_PORTS.get(scheme):
+        return f'{scheme}://{host}:{port}'
+    return f'{scheme}://{host}'
+
+
+def read_local_storage(profile_context, origin: str) -> Tuple[Dict[str, str], Optional[str]]:
+    """读这个 origin 在共享 profile 里已加载的 localStorage。
+
+    不能直接用 `context.storage_state()`：跨连接（另一个进程读同一个 CDP
+    Chrome）时它只收集本连接跟踪过的导航，登录页早已打开，origins 会是空的。
+
+    只复用 profile 里已经打开在该 origin 的标签页，不新建、不导航：
+    没有打开的标签页时返回空快照（cookie 仍然生效），以免为读会话而
+    额外请求站点首页。
+
+    标签页选中后可能在读取前跳去另一个站点，所以核对 origin 与读取数据放在
+    同一次 evaluate 里；对不上就丢弃结果并告警，不把那个站点的会话数据贴上
+    这个 origin 的标签。
+    """
+    page = next((p for p in profile_context.pages if page_origin(p.url) == origin), None)
+    if page is None:
+        return {}, None
+    try:
+        result = page.evaluate(LOCAL_STORAGE_JS, origin) or {}
+    except Exception as exc:
+        return {}, f'{type(exc).__name__}: {exc}'
+    actual_origin = result.get('origin')
+    if actual_origin != origin:
+        return {}, f'page navigated to {actual_origin!r} before the read'
+    entries = result.get('entries')
+    if not isinstance(entries, dict):
+        return {}, f'unexpected localStorage payload from {actual_origin!r}'
+    return {str(name): str(value) for name, value in entries.items()}, None
+
+
+def profile_storage_state(profile_context, origins: Sequence[str] = ()
+                         ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """把共享 profile 的登录态打包成新建 context 可用的 storage state。
+
+    新建的 Playwright context 不共享其它 context 的 cookies / localStorage，
+    所以复用同一个 Chrome 进程不等于复用登录态：cookies 与待采集 origin 的
+    localStorage 必须显式传进新的采集 context。全程只读，不改动用户已有的
+    context 与标签页。
+
+    返回 (state, warning)。没有任何可用登录态时 state 为 None；某一部分读取
+    失败时 warning 说明原因，其余部分仍可使用。
+    """
+    if profile_context is None:
+        return None, None
+    try:
+        cookies = profile_context.cookies()
+    except Exception as exc:
+        return None, f'could not read profile cookies ({type(exc).__name__}: {exc})'
+    state_origins: List[Dict[str, Any]] = []
+    problems: List[str] = []
+    for origin in origins:
+        entries, error = read_local_storage(profile_context, origin)
+        if error:
+            problems.append(f'{origin}: {error}')
+        elif entries:
+            state_origins.append({
+                'origin': origin,
+                'localStorage': [{'name': name, 'value': value} for name, value in entries.items()],
+            })
+    warning = '; '.join(problems) or None
+    if not cookies and not state_origins:
+        return None, warning
+    return {'cookies': cookies, 'origins': state_origins}, warning
+
+
+def new_harvest_context(browser, viewport: Tuple[int, int], record_dir: Optional[Path] = None,
+                        storage_state: Optional[Dict[str, Any]] = None):
+    """创建 harvest 与兜底路径共用的那一份 context 配置。
+
+    `storage_state` 是调用方从同一个 profile context 读到的快照；主路径、录屏
+    重试路径和 CDP 兜底路径传同一份，以免兜底重新变成匿名页。导入被拒绝时
+    退回匿名抓取并告警，不因单条 cookie 使整批失败，也不假装已登录。
+    """
     vp_w, vp_h = viewport
     options: Dict[str, Any] = {
         'viewport': {'width': vp_w, 'height': vp_h},
@@ -416,6 +575,12 @@ def new_harvest_context(browser, viewport: Tuple[int, int], record_dir: Optional
             'record_video_dir': str(record_dir),
             'record_video_size': {'width': vp_w, 'height': vp_h},
         })
+    if storage_state:
+        try:
+            return browser.new_context(**options, storage_state=storage_state)
+        except Exception as exc:
+            log(f'  profile login state rejected ({type(exc).__name__}: {exc}); '
+                f'continuing anonymously')
     return browser.new_context(**options)
 
 
@@ -438,7 +603,8 @@ def primary_scroll_record(ctx, page, scroll_duration: int,
 
 
 def cdp_screencast_record(browser, url: str, viewport: Tuple[int, int], scroll_duration: int,
-                          page_load_timeout: int, output_dir: Path) -> Tuple[Optional[Path], Optional[str]]:
+                          page_load_timeout: int, output_dir: Path,
+                          storage_state: Optional[Dict[str, Any]] = None) -> Tuple[Optional[Path], Optional[str]]:
     try:
         media.ensure_binary(os.environ.get('FFMPEG_BIN', 'ffmpeg'))
     except media.MediaToolMissing:
@@ -448,7 +614,7 @@ def cdp_screencast_record(browser, url: str, viewport: Tuple[int, int], scroll_d
     frames_dir.mkdir(parents=True, exist_ok=True)
     vp_w, vp_h = viewport
 
-    ctx = new_harvest_context(browser, viewport)
+    ctx = new_harvest_context(browser, viewport, storage_state=storage_state)
     frame_idx = [0]
     try:
         page = ctx.new_page()
@@ -516,7 +682,8 @@ def cdp_screencast_record(browser, url: str, viewport: Tuple[int, int], scroll_d
 # -----------------------------------------------------------------------------
 
 def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Namespace,
-                viewport: Tuple[int, int]) -> Dict[str, Any]:
+                viewport: Tuple[int, int],
+                storage_state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     log(f'-- {slug} -- {url}')
     images_dir = slug_dir / 'images'
     videos_dir = slug_dir / 'videos'
@@ -524,7 +691,7 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
     videos_dir.mkdir(parents=True, exist_ok=True)
 
     record_dir = slug_dir / 'recording' if args.scroll_record else None
-    ctx = new_harvest_context(browser, viewport, record_dir=record_dir)
+    ctx = new_harvest_context(browser, viewport, record_dir=record_dir, storage_state=storage_state)
     metrics = {}
     title = ''
     text_excerpt = ''
@@ -543,7 +710,7 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
             primary_error = exc
             log(f'  primary scroll-record raised ({type(exc).__name__}: {exc})')
             ctx.close()
-            ctx = new_harvest_context(browser, viewport)
+            ctx = new_harvest_context(browser, viewport, storage_state=storage_state)
             page = ctx.new_page()
         page.set_default_timeout(args.page_load_timeout * 1000)
         page.goto(url, wait_until='domcontentloaded', timeout=args.page_load_timeout * 1000)
@@ -646,7 +813,7 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
             meta: Dict[str, Any] = {'url': v['url'], 'platform': v['platform']}
             if v['platform'] in ('youtube', 'bilibili'):
                 # 外部平台：只登记 URL；由 agent 在后续步骤调用
-                # video-download.py（见 SKILL.md Phase 4.b）。
+                # video-download.py（见 references/phases/04-material-harvest.md 的 Phase 4.b）。
                 meta['download_required'] = True
                 meta['suggested_output_dir'] = str(videos_dir.resolve())
                 log(f'  external video listed (download_required): {v["url"]}')
@@ -692,7 +859,7 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
                 log(f'  primary scroll-record failed ({method}); trying CDP screencast fallback')
                 try:
                     record_path, method = cdp_screencast_record(
-                        browser, url, viewport, capped, args.page_load_timeout, slug_dir
+                        browser, url, viewport, capped, args.page_load_timeout, slug_dir, storage_state
                     )
                 except Exception as exc:
                     log(f'  CDP fallback raised ({type(exc).__name__}: {exc})')
@@ -786,15 +953,21 @@ def main() -> None:
         cli.fail(TOOL_NAME, str(exc), exit_code=2)
 
     output_dir = Path(args.output_dir).expanduser().resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
 
-    items, bad_urls = partition_urls(args.urls)
+    raw_urls, urls_error = collect_urls(args)
+    if urls_error:
+        cli.fail(TOOL_NAME, urls_error, exit_code=2)
+    if args.urls_file:
+        log(f'Loaded {len(raw_urls)} URL(s) from {Path(args.urls_file).expanduser()}')
+
+    items, bad_urls = partition_urls(raw_urls)
     if not items:
         cli.fail(TOOL_NAME,
             'no http(s) URLs to harvest after scheme filtering. '
             f'Rejected: {[b["url"] for b in bad_urls]}',
             exit_code=2,
         )
+    output_dir.mkdir(parents=True, exist_ok=True)
     log(f'Batch size: {len(items)} URL(s); output={output_dir}'
         + (f' (rejected {len(bad_urls)} non-http(s) URL(s))' if bad_urls else ''))
 
@@ -844,6 +1017,24 @@ def main() -> None:
     else:
         log('No URL requires browser rendering — skipping Chrome/CDP setup.')
 
+    # 登录态必须在创建任何采集 context 之前从 profile 的默认 context 读快照，
+    # 且整批只读一次：主路径、录屏重试路径与 CDP 兜底共用同一份快照。
+    profile_context = browser.contexts[0] if browser is not None and browser.contexts else None
+    rendered_origins = sorted({
+        origin
+        for url, _, platform in items
+        if platform is None and (origin := page_origin(url))
+    })
+    storage_state, state_warning = profile_storage_state(profile_context, rendered_origins)
+    if state_warning:
+        log(f'warning: incomplete profile login state ({state_warning})')
+    if storage_state is None and profile_context is not None:
+        log('No login state in the shared Chrome profile — harvesting anonymously.')
+    elif storage_state is not None:
+        log(f'Reusing the shared Chrome profile login state '
+            f'({len(storage_state.get("cookies") or [])} cookie(s), '
+            f'{len(storage_state.get("origins") or [])} origin(s)).')
+
     try:
         for url, slug, platform in items:
             slug_dir = output_dir / slug
@@ -851,7 +1042,7 @@ def main() -> None:
             try:
                 if platform is not None:
                     # 短路：不做 Playwright 导航。agent 会针对 `videos[]` 中登记的
-                    # URL 调用 video-download.py（见 SKILL.md Phase 4.b）。
+                    # URL 调用 video-download.py（见 references/phases/04-material-harvest.md 的 Phase 4.b）。
                     videos_dir = slug_dir / 'videos'
                     videos_dir.mkdir(parents=True, exist_ok=True)
                     canonical = normalize_youtube(url) if platform == 'youtube' else url
@@ -873,7 +1064,7 @@ def main() -> None:
                         'scroll_recording': None,
                     }
                 else:
-                    entry = harvest_one(browser, url, slug, slug_dir, args, viewport)
+                    entry = harvest_one(browser, url, slug, slug_dir, args, viewport, storage_state)
             except Exception as exc:
                 log(f'  fatal per-URL error: {exc}')
                 entry = {'url': url, 'slug': slug, 'success': False, 'error': str(exc)}

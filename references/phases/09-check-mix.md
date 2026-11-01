@@ -4,7 +4,8 @@
 
 - Phase 8 产出的 `composition/renders/final.mp4`；
 - `transcribe/timeline.json`；
-- `inputs.json`（`qa_level`、BGM 选择）。
+- `inputs.json`（`qa_level`、BGM 选择）；
+- `search-notes.md`（可选，Phase 4 记录的来源限制，用于交付说明）。
 
 ## 输出
 
@@ -115,3 +116,13 @@ python3 scripts/mix-bgm.py \
 ```
 
 混音脚本逻辑保持不变：一次 ffmpeg pass 循环 `--bgm`（默认 `resources/bgm.mp3`，24 秒可循环片段）填满整个视频时长、以 `--bgm-volume`（默认线性增益 `0.03`）垫在解说底下、`-c:v copy` 不重编码视频流。如需换曲或调音量用 `--bgm` / `--bgm-volume`。**BGM 混的是修复轮之后的 `final.mp4`**——QA 通过后才生成最终交付文件。
+
+#### 9.6 — 交付时说明素材限制
+
+把成片与 contact sheet 交给用户时，一并说明素材阶段留下的限制。信息来自工作区的 `search-notes.md`（Phase 4 写的可选记录，不是阶段产物，缺失就不提）：
+
+- 哪些来源未被获取（需登录 / 地区限制 / 反机器人验证 / 已下线），以及用什幺替代或是否接受 B-roll 少一些。
+- 只能匿名抓到的站点：说明共享 profile 里已有登录态时会尽量用上，但登录不保证绕过平台其他限制。
+- 用户希望补抓时的入口：在 `{work_dir}/chrome_profile` 里登录后要求重跑 Phase 4（按 `references/pipeline-control.md` 登记 `--redo 4-material-harvest`），再按依赖让下游重做。
+
+这不影响 QA 结果，不写成 `qa-report.json` 的 finding，也不是新的审稿环节。
