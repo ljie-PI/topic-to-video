@@ -8,7 +8,7 @@
 ## 输出
 
 - `research-brief.md`（工作区根目录，落盘保存，不能只放在 scratchpad）；
-- 论文模式下可选：`harvest_page/related-<short-name>/`（解析出的相关论文，最多 2 篇，论文 entry 已写入 `harvest_page/manifest.json`）。
+- 论文模式下可选：`harvest_page/related-<short-name>/`（解析出的相关论文，最多 5 篇，论文 entry 已写入 `harvest_page/manifest.json`）。
 
 ## 完成判据
 
@@ -71,7 +71,7 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
        --profile-dir {work_dir}/chrome_profile
      ```
    - **如果它失败了（selector timeout、运行时错误或其他步骤失败）：** 检查错误 JSON 里的 `failed_step` —— 提交前（step ≤ 6）的失败可以用 `--start-from-step N` 重试；提交后的失败用上一条的续跑命令。如果重试仍不通，回退到人工 `web_search` 流程（下面的 step 5-6 变成主路径），但不要让整个项目卡在消费级 Gemini UI 上。
-4. **解析相关论文（可选，仅论文模式）。** 如果 Deep Research 的第 7 条回答指出了 1-2 篇有可用 PDF URL 的高相关论文（例如 arXiv），在这一步解析：
+4. **解析相关论文（可选，仅论文模式）。** 如果 Deep Research 的第 7 条回答指出了 1-5 篇有可用 PDF URL 的高相关论文（例如 arXiv），在这一步解析：
 
    ```bash
    python3 scripts/parse-pdf.py \
@@ -79,7 +79,7 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
      --slug "related-{short-name}" \
      --output-dir {work_dir}/{topic_name}/harvest_page/
    ```
-   - 最多解析 2 篇。用户说"只看主论文"或没识别出明显相关工作，则跳过。
+   - 最多解析 5 篇。用户说"只看主论文"或没识别出明显相关工作，则跳过。
    - 这一步不受 `fetch_materials` 影响：相关论文的 figure / table 同样写进 manifest，供 Phase 5 使用。
    - 读相关论文解析出的 markdown（`harvest_page/related-<short-name>/metadata.json` 的 `paper_metadata.full_markdown_path`，相对 `harvest_page/`），把结论（它的方法 / 结果与主论文的关系）写进 `research-brief.md`。
 5. **找空缺。** 不论 Gemini 跑没跑成功，先列出这段视频要讲的几个核心问题，再标出每处缺什么：定义、关键数字、原始出处，还是某个结论有冲突。写不成一句话的“核心问题”说明还没想清楚，先问用户或继续看材料。

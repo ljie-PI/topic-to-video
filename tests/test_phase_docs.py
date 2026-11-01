@@ -108,7 +108,7 @@ def test_paper_mode_instructions_live_in_the_phase_or_package_that_uses_them():
     related_section = research[related_at:gaps_at]
     assert '--slug "related-' in related_section
     assert 'parse-pdf.py' in related_section
-    assert '最多解析 2 篇' in related_section
+    assert '最多解析 5 篇' in related_section
     assert 'full_markdown_path' in related_section
     assert 'web_search' not in related_section
     # The original narration structure and figure rule move verbatim, without
