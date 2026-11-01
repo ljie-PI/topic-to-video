@@ -19,6 +19,7 @@
 - `material-catalog.json` 存在、非空、JSON 可解析，`entries` 为非空列表；
 - 每张图片 / 每个视频都有非空字符串的 `id` 和 `semantic_description`（VLM 评分 <5 或偏题的素材已过滤）；
 - 每个 `selected_clip` 都有 `clip_path`，且它指向的文件（相对工作区）存在且非空；
+- `required_material_refs` 必须是不重复、且能在本 catalog 里按 entry 解析的 ref；标准模式下它是可选的，论文模式下必须显式声明（没有适用的关键图时写 `[]`）；
 - 状态脚本会逐项检查上面几项。
 
 ## 执行后自检
@@ -29,6 +30,7 @@
 - 打分是否过低（<5 / 10）却仍留在 catalog 里，或者高质量的却漏掉了。
 - `selected_clips` 的起止是否真的落在有内容的位置（关键动作 / 界面的那几秒）。
 - 论文条目是否按 caption 规则处理，缺失 caption 的是否跑了视觉分析。
+- 论文模式：方法、模型结构、关键实验结果等关键图是否都在 `required_material_refs` 里，一张不漏（确实没图的写 `[]`）；关掉网络素材抓取也不影响这批图。该字段只声明“必须用”，不代替 Phase 6 / Phase 8 真的把它们用上。
 
 不合格就重做本阶段（委派时交回原 agent，并写明哪几条不对）；不要靠手改 catalog 绕过去。素材本身不对属于上一阶段的问题，按 `references/pipeline-control.md` 登记 `4-material-harvest` 重做，不要在本阶段凑合选片段。
 
@@ -46,7 +48,7 @@ Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产
 
 ---
 
-**优先委派给 coding agent。** 本阶段 context 消耗大（要对很多图片 / 帧做视觉分析，30-50+ 次工具调用）。按 `references/delegation/conventions.md` 的统一委派约定派发（默认 claude-code，派发 prompt 一句话，让被委派的 agent 自己读输入）。主 agent 只做四件事：
+**优先委派给 coding agent。** 本阶段 context 消耗大（要对很多图片 / 帧做视觉分析，30-50+ 次工具调用）。按 `references/delegation/conventions.md` 的统一委派约定派发（默认 pi-coding-agent，派发 prompt 一句话，让被委派的 agent 自己读输入）。主 agent 只做四件事：
 
 1. **写话题 context 摘要。** 在开始视觉分析之前，主 agent 先从当前 context（研究 brief、用户输入、叙事角度）提炼一份**话题 context 摘要**，供所有视觉分析调用使用。摘要为自然语言，200 字以内，包含：
    - 视频的核心主题与叙事角度（"这是一段关于 X 的中文解说视频，重点讲解 Y 和 Z"）

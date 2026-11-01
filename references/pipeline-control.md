@@ -12,7 +12,7 @@
 
 | 用户或自检说了什么 | 怎么处理 |
 | --- | --- |
-| “改成 3 分钟”“语气更口语”“画面用深色”这类长期要求 | 写进对应的输入或项目指令文件（`inputs.json`、`narration-instructions.md`、`composition-instructions.md`），再跑状态脚本，让依赖它的阶段按上游变化重做 |
+| “改成 3 分钟”“语气更口语”“画面用深色”这类长期要求 | 写进 `inputs.json` 对应的字段（时长等基础字段、`narration_requests`、`composition_requests`），再跑状态脚本，让依赖它的阶段按上游变化重做 |
 | “这一段不满意，重写”这类一次性修复意见 | 定位到要改的阶段，用 `--redo` 登记并写明原因；改完后用 `--finish` 结束。不要把一次修复意见当成风格规则追加进项目指令 |
 | “后面不用再审了”这类审稿策略变化 | 改 `inputs.json` 的 `approval_gates`，不要用 `--approve` 代替用户确认 |
 
@@ -53,17 +53,19 @@ source .venv/bin/activate && python3 scripts/pipeline-status.py <workspace> --fi
 
 | 问题 | 阶段 |
 | --- | --- |
-| 时长、语言、朝向、模板、设计、是否抓素材、审稿要求写错 | `1-gather-inputs` |
+| 时长、语言、朝向、设计、是否抓素材、审稿要求写错，或旁白 / 画面要求漏记 | `1-gather-inputs` |
 | 论文解析缺页、乱码、图注错配 | `2-paper-parse` |
 | 事实不准、数字没依据、讲不清核心问题 | `3-research` |
 | 素材与主题无关、明显偏题、来源可疑；用户点名要去的平台没去搜 | `4-material-harvest` |
 | 素材描述不符、片段选错、该用的图没用上 | `5-material-catalog` |
 | 叙事重复或跳跃、旁白不忠于简报、场景计划误导 | `6-script-scene-plan` |
-| 漏读、读音不对、字幕错位 | `7-voice-subtitles` |
-| 版式、素材容器、字幕溢出、渲染不完整 | `8-composition` |
+| 漏读、读音不对 | `7-voice-subtitles` |
+| 模板选错、layout 选错、版式、素材容器、字幕错位或溢出、必用图表没上、渲染不完整 | `8-composition` |
 | 黑屏、冻结、音画时长不符、成片观感 | `9-check-mix` |
 
 一次反馈涉及多个阶段时，先登记最早的那一个，后面的阶段等它完成、上游变化自然变 `stale` 后再处理；用户明确要求后面的步骤也全部重做时，逐项登记。
+
+layout / template 是 Phase 8 的画面选择：用户改主意时只写回 `inputs.json` 的这两个字段，只有 Phase 8 会因为它变化而重做，音频、transcript 和时间轴都不重建。
 
 重做仍由原负责人做：委派步骤交回原执行 agent，并附上具体修改点；改旁白后要重新生成朗读稿与偏移表；改画面后要重跑渲染前检查并重新渲染。
 

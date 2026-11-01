@@ -130,9 +130,9 @@
         {"id":"langColor","type":"color","label":"Language colour","default":"#8b949e"},
         {"id":"logo","type":"string","label":"Logo image","default":""},
         {"id":"starred","type":"enum","label":"Star turns to Starred","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]},
-        {"id":"nameAt","type":"number","label":"Name appears (s)","default":0.55},
-        {"id":"taglineAt","type":"number","label":"Tagline appears (s)","default":2.4},
-        {"id":"starsAt","type":"number","label":"Stars count up (s)","default":4.3},
+        {"id":"nameAt","type":"number","label":"Spoken name cue (s, required)"},
+        {"id":"taglineAt","type":"number","label":"Spoken tagline cue (s, omitted = hidden)"},
+        {"id":"starsAt","type":"number","label":"Spoken stars cue (s, omitted = hidden)"},
         {"id":"exitAt","type":"number","label":"Exit (s, 0 = hold)","default":0}
       ]'
   >
@@ -164,7 +164,17 @@
       const num = (v, d) => (v !== "" && v != null && Number.isFinite(Number(v)) ? Number(v) : d);
       const $ = (id) => document.getElementById(id);
       const rank = num(V.rank, 1), owner = V.owner || "owner", repo = V.repo || "repo";
-      const NAME_AT = num(V.nameAt, 0.55), TAG_AT = num(V.taglineAt, 2.4), STARS_AT = num(V.starsAt, 4.3), EXIT_AT = num(V.exitAt, 0);
+      const cue = (value, label, required = false) => {
+        if (value == null || value === "") {
+          if (required) throw new Error(`${label} requires a spoken cue; do not guess its time`);
+          return null;
+        }
+        if (!["number", "string"].includes(typeof value) || !String(value).trim() || !Number.isFinite(Number(value)) || Number(value) < 0) {
+          throw new Error(`${label} must be a non-negative finite scene time`);
+        }
+        return Number(value);
+      };
+      const NAME_AT = cue(V.nameAt, "nameAt", true), TAG_AT = cue(V.taglineAt, "taglineAt"), STARS_AT = cue(V.starsAt, "starsAt"), EXIT_AT = num(V.exitAt, 0);
       const stars = num(V.stars, 0), prefix = V.starsPrefix != null ? String(V.starsPrefix) : "+";
       const fmt = (v) => prefix + Math.round(v).toLocaleString("en-US");
 
@@ -215,19 +225,29 @@
       tl.fromTo("#pc-eyebrow", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, NAME_AT);
       tl.fromTo("#pc-path", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" }, NAME_AT + 0.1);
       tl.fromTo("#pc-side", { opacity: 0, scale: 0.96 }, { opacity: 1, scale: 1, duration: 0.5, ease: "power2.out" }, NAME_AT + 0.2);
-      tl.fromTo("#pc-tag", { clipPath: "inset(0% 100% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.55, ease: "power2.out" }, TAG_AT);
-      if (topics.length) tl.fromTo("#pc-topics span", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", stagger: 0.08 }, TAG_AT + 0.4);
-      tl.fromTo("#pc-stats", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, STARS_AT);
-      const n = { v: 0 }, count = $("pc-count");
-      tl.fromTo(n, { v: 0 }, { v: stars, duration: 1.4, ease: "power1.out", onUpdate: () => { count.textContent = fmt(n.v); } }, STARS_AT + 0.05);
-      tl.fromTo("#pc-stats", { scale: 1 }, { scale: 1.04, duration: 0.14, ease: "power2.out", yoyo: true, repeat: 1 }, STARS_AT + 1.45);
-      tl.fromTo("#pc-meta", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, STARS_AT + 0.4);
-      if (V.starred !== "off") {
-        const s = STARS_AT + 1.55;
-        tl.to("#pc-meta .s0", { opacity: 0, duration: 0.1 }, s);
-        tl.fromTo("#pc-meta .s1", { opacity: 0, scale: 0.3, transformOrigin: "50% 50%" }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(3)" }, s);
-        tl.to("#pc-meta .t0", { opacity: 0, duration: 0.12 }, s);
-        tl.to("#pc-meta .t1", { opacity: 1, duration: 0.12 }, s + 0.05);
+      if (TAG_AT !== null) {
+        tl.fromTo("#pc-tag", { clipPath: "inset(0% 100% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.55, ease: "power2.out" }, TAG_AT);
+        if (topics.length) tl.fromTo("#pc-topics span", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", stagger: 0.08 }, TAG_AT + 0.4);
+      } else {
+        $("pc-tag").style.display = "none";
+        if (topics.length) $("pc-topics").style.display = "none";
+      }
+      if (STARS_AT !== null) {
+        tl.fromTo("#pc-stats", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, STARS_AT);
+        const n = { v: 0 }, count = $("pc-count");
+        tl.fromTo(n, { v: 0 }, { v: stars, duration: 1.4, ease: "power1.out", onUpdate: () => { count.textContent = fmt(n.v); } }, STARS_AT + 0.05);
+        tl.fromTo("#pc-stats", { scale: 1 }, { scale: 1.04, duration: 0.14, ease: "power2.out", yoyo: true, repeat: 1 }, STARS_AT + 1.45);
+        tl.fromTo("#pc-meta", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, STARS_AT + 0.4);
+        if (V.starred !== "off") {
+          const s = STARS_AT + 1.55;
+          tl.to("#pc-meta .s0", { opacity: 0, duration: 0.1 }, s);
+          tl.fromTo("#pc-meta .s1", { opacity: 0, scale: 0.3, transformOrigin: "50% 50%" }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(3)" }, s);
+          tl.to("#pc-meta .t0", { opacity: 0, duration: 0.12 }, s);
+          tl.to("#pc-meta .t1", { opacity: 1, duration: 0.12 }, s + 0.05);
+        }
+      } else {
+        $("pc-stats").style.display = "none";
+        $("pc-meta").style.display = "none";
       }
       // ---- hand over to whatever follows (exitAt 0 = hold to the end of the slot)
       if (EXIT_AT > 0) {

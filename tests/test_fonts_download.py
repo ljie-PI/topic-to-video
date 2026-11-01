@@ -117,11 +117,19 @@ def test_install_copies_only_the_files_the_design_references(tmp_path: Path):
     assert {p.name for p in tmp_path.glob('*.woff2')} == default
 
 
-def test_install_legacy_named_style(tmp_path: Path):
+def test_a_bare_positional_style_is_rejected(tmp_path: Path):
+    """旧的位置风格参数不是当前调用方式：要用 --theme 明确指定主题。"""
     proc, result = run(str(tmp_path), 'default', env=NO_NETWORK)
-    assert proc.returncode == 0, proc.stderr
-    assert (tmp_path / 'default-fonts.css').is_file()
-    assert "'NotoSansSC'" in (tmp_path / 'default-fonts.css').read_text()
+    assert proc.returncode == 2
+    assert result['success'] is False
+    assert 'usage: fonts-download.sh' in result['error']
+    assert not list(tmp_path.glob('*.css'))
+
+
+def test_theme_is_required(tmp_path: Path):
+    proc, result = run(str(tmp_path), env=NO_NETWORK)
+    assert proc.returncode == 2
+    assert '--theme is required' in result['error']
 
 
 def test_install_dry_run_writes_nothing(tmp_path: Path):
@@ -251,9 +259,10 @@ class FakeGoogleFonts(BaseHTTPRequestHandler):
         pass
 
 
-def test_named_style_ignores_same_named_file_in_cwd(tmp_path: Path):
+def test_a_theme_name_resolves_to_the_library_not_a_file_in_cwd(tmp_path: Path):
+    """主题名总是指库里的主题，cwd 里同名文件不会被当成 manifest。"""
     (tmp_path / 'github').write_text('not a manifest')
-    proc, result = run('out', 'github', env=NO_NETWORK, cwd=tmp_path)
+    proc, result = run('out', '--theme', 'github', env=NO_NETWORK, cwd=tmp_path)
     assert proc.returncode == 0, result
     assert (tmp_path / 'out' / 'github-fonts.css').is_file()
 

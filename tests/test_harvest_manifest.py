@@ -146,9 +146,9 @@ def test_apply_download_fans_out_to_all_references_and_mirrors(tmp_path: Path):
         assert read_json(tmp_path / slug / 'metadata.json') == entry
 
 
-def test_load_legacy_absolute_paths_and_paper_manifest_then_saves_relative(tmp_path: Path):
+def test_manifest_without_current_version_is_rejected(tmp_path: Path):
+    """manifest 已存在时必须自报当前版本：不合并旧文件、不就地升级。"""
     legacy_video = str(tmp_path / 'legacy' / 'videos' / 'old.mp4')
-    legacy_markdown = str(tmp_path / 'main-paper' / 'mineru' / 'full.md')
     (tmp_path / 'manifest.json').write_text(json.dumps({
         'entries': [{
             'slug': 'legacy', 'success': True, 'images': [],
@@ -157,65 +157,64 @@ def test_load_legacy_absolute_paths_and_paper_manifest_then_saves_relative(tmp_p
         'pending_downloads': [],
     }), encoding='utf-8')
     (tmp_path / 'manifest_papers.json').write_text(json.dumps({
-        'entries': [{
-            'slug': 'main-paper', 'success': True, 'source_type': 'paper_pdf',
-            'paper_metadata': {'full_markdown_path': legacy_markdown}, 'images': [], 'videos': [],
-        }],
+        'entries': [{'slug': 'main-paper', 'success': True, 'source_type': 'paper_pdf', 'images': [], 'videos': []}],
     }), encoding='utf-8')
 
+    with pytest.raises(ValueError, match='not a version 2 manifest'):
+        harvest_manifest.load(tmp_path)
+    with pytest.raises(ValueError, match='not a version 2 manifest'):
+        harvest_manifest.upsert_entries(tmp_path, [web_entry(tmp_path, 'incoming')])
+
+    # 旧文件与旧 manifest_papers.json 都没被动过，也没有被合并进去。
+    assert 'main-paper' not in (tmp_path / 'manifest.json').read_text(encoding='utf-8')
+
+
+def test_missing_manifest_starts_a_new_v2_manifest(tmp_path: Path):
+    """没有 manifest 是正常起点：建立 v2，而不是去读旧文件。"""
     manifest = harvest_manifest.load(tmp_path)
-    assert {entry['slug'] for entry in manifest['entries']} == {'legacy', 'main-paper'}
-    assert harvest_manifest.resolve(tmp_path, legacy_video) == Path(legacy_video)
+    assert manifest['version'] == 2
+    assert manifest['entries'] == []
+    assert not (tmp_path / 'manifest.json').exists()
+
+
+def test_persisted_paths_must_be_relative_inside_the_harvest_dir(tmp_path: Path):
+    """持久化路径只能是基准目录内的相对路径：读到的绝对 / ~ / .. 路径一律拒绝。"""
     assert harvest_manifest.resolve(tmp_path, 'legacy/videos/old.mp4') == tmp_path / 'legacy/videos/old.mp4'
-    harvest_manifest.save(tmp_path, manifest)
+    for bad in (str(tmp_path / 'legacy' / 'videos' / 'old.mp4'), '~/videos/old.mp4', '../escape/old.mp4'):
+        with pytest.raises(ValueError, match='stored path is unusable'):
+            harvest_manifest.resolve(tmp_path, bad)
+    assert harvest_manifest.stored_path_problem('ok/x.png') is None
+    assert 'not relative' in harvest_manifest.stored_path_problem('/abs/x.png')
+    assert 'leaves' in harvest_manifest.stored_path_problem('a/../../x.png')
+
+
+def test_producer_absolute_paths_are_normalized_on_write(tmp_path: Path):
+    """写入时把生产者内部的绝对路径规范成相对路径（同时避免.. 跨出目录）。"""
+    entry = web_entry(tmp_path, 'one')
+    entry['paper_metadata'] = {'full_markdown_path': str(tmp_path / 'main-paper' / 'mineru' / 'full.md')}
+    harvest_manifest.upsert_entries(tmp_path, [entry])
 
     saved = read_json(tmp_path / 'manifest.json')
-    assert saved['version'] == 2
-    assert saved['entries'][0]['videos'][0]['local_path'] == 'legacy/videos/old.mp4'
-    paper = next(e for e in saved['entries'] if e['slug'] == 'main-paper')
+    paper = saved['entries'][0]
+    assert paper['videos'][0]['suggested_output_dir'] == 'one/videos'
     assert paper['paper_metadata']['full_markdown_path'] == 'main-paper/mineru/full.md'
+    with pytest.raises(ValueError, match='leaves the harvest directory'):
+        harvest_manifest.save(tmp_path, {'version': 2, 'entries': [{
+            'slug': 'away', 'images': [{'id': 'img_001', 'local_path': '../outside/img.png'}],
+        }]})
 
 
-def test_upsert_and_batch_flow_migrates_legacy_entry_mirrors(tmp_path: Path):
-    legacy_paper = {
-        'slug': 'main-paper', 'title': 'legacy', 'success': True,
-        'source_type': 'paper_pdf', 'images': [], 'videos': [],
-        'paper_metadata': {'full_markdown_path': str(tmp_path / 'main-paper' / 'mineru' / 'full.md')},
-    }
-    (tmp_path / 'manifest.json').write_text(json.dumps({'entries': [legacy_paper]}), encoding='utf-8')
-    (tmp_path / 'main-paper').mkdir()
-    (tmp_path / 'main-paper' / 'metadata.json').write_text(
-        json.dumps(legacy_paper, ensure_ascii=False, indent=2), encoding='utf-8',
+def test_paper_manifest_file_is_never_merged(tmp_path: Path):
+    """manifest_papers.json 不是当前格式的一部分：即使存在也不参与读取。"""
+    (tmp_path / 'manifest_papers.json').write_text(
+        json.dumps({'entries': [{'slug': 'main-paper', 'title': 'stale legacy title'}]}),
+        encoding='utf-8',
     )
-
-    harvest_manifest.upsert_entries(tmp_path, [web_entry(tmp_path, 'incoming')])
-    harvest_manifest.record_harvest_batch(tmp_path, {
-        'urls': ['https://example.com/incoming'], 'succeeded': 1, 'failed': 0, 'rejected': [],
-    })
+    harvest_manifest.upsert_entries(tmp_path, [web_entry(tmp_path, 'one')])
 
     manifest = read_json(tmp_path / 'manifest.json')
-    paper = next(entry for entry in manifest['entries'] if entry['slug'] == 'main-paper')
-    assert paper['paper_metadata']['full_markdown_path'] == 'main-paper/mineru/full.md'
-    assert read_json(tmp_path / 'main-paper' / 'metadata.json') == paper
-
-
-def test_v2_entries_take_precedence_over_stale_legacy_papers_after_upsert(tmp_path: Path):
-    stale_paper = {
-        'slug': 'main-paper', 'title': 'stale legacy title', 'success': True,
-        'source_type': 'paper_pdf', 'images': [], 'videos': [],
-    }
-    (tmp_path / 'manifest.json').write_text(json.dumps({'entries': []}), encoding='utf-8')
-    (tmp_path / 'manifest_papers.json').write_text(
-        json.dumps({'entries': [stale_paper]}), encoding='utf-8',
-    )
-    harvest_manifest.save(tmp_path, harvest_manifest.load(tmp_path))
-
-    newer_paper = {**stale_paper, 'title': 'new unified title'}
-    harvest_manifest.upsert_entries(tmp_path, [newer_paper])
-    assert read_json(tmp_path / 'manifest.json')['entries'][0]['title'] == 'new unified title'
-
-    reloaded = harvest_manifest.load(tmp_path)
-    assert reloaded['entries'][0]['title'] == 'new unified title'
+    assert [entry['slug'] for entry in manifest['entries']] == ['one']
+    assert harvest_manifest.load(tmp_path)['entries'][0]['slug'] == 'one'
 
 
 def test_invalid_slug_leaves_original_manifest_and_mirrors_unchanged(tmp_path: Path):

@@ -134,14 +134,13 @@ def test_paper_mode_instructions_live_in_the_phase_or_package_that_uses_them():
 
 def test_phase_1_assures_paper_figures_at_the_visual_material_question():
     phase_1 = doc_text('references/phases/01-gather-inputs.md')
-    assurance = '论文模式下，论文自己的 figure 无论如何都会用上'
-    visual_question_at = phase_1.index('7. 询问是否需要搜索视觉素材')
-    input_detection_at = phase_1.index('8. **输入类型识别：**')
+    assurance = '论文模式即使不联网搜索，论文自己的关键图也照样进视频'
+    visual_question_at = phase_1.index('6. 视觉素材')
+    input_detection_at = phase_1.index('9. **输入类型识别：**')
     assurance_at = phase_1.index(assurance)
 
     assert visual_question_at < assurance_at < input_detection_at
     assert phase_1.count(assurance) == 1
-    assert '评分过滤仍然适用' not in phase_1
 
 
 def test_every_phase_doc_names_what_to_check_after_running_it():
@@ -174,8 +173,9 @@ def test_the_entry_leaves_duration_and_orientation_to_the_phase_docs():
     # asked for in Phase 1, not promised as entry conditions.
     for worded in ('3-10 分钟', '3–10 分钟', '横屏或竖屏'):
         assert worded not in skill, f'SKILL.md still promises {worded}'
-    assert '没有默认值' in phase_1
-    assert '用户没说就问一句' in phase_1
+    # 没说的项走默认值（时长 3 分钟），不再要求拿默认值当问题去问用户。
+    assert '没说用 3 分钟' in phase_1
+    assert '用户没说就先问一句' not in phase_1
 
 
 def test_search_and_redo_rules_are_stated_once_and_linked():
@@ -249,14 +249,98 @@ def test_material_ref_contract_is_slug_qualified_across_phase_and_delegation_doc
     assert '同一个 video id 出现在多个 entry' in composition_base
 
 
-def test_phase_1_selects_presenter_for_an_untemplated_host_request():
+def test_phase_1_collects_inputs_without_interviewing_the_user():
     phase_1 = doc_text('references/phases/01-gather-inputs.md')
 
-    assert '用户明确要求“主持人”“有人讲解”“讲解员”或“Jay”时，用 `presenter`' in phase_1
-    assert '其他横屏情况仍用 `stage`' in phase_1
-    assert '不为此额外向用户提问' in phase_1
-    assert '竖屏布局没有人物区' in phase_1
-    assert '照常用竖屏布局，不加主持人' in phase_1
+    # 标题只写阶段名，提问规则在正文。
+    assert phase_1.startswith('# Phase 1 — 收集输入\n')
+    assert '先把这些需求读全' in phase_1
+    assert '一次问一个' in phase_1
+    # 默认值：3 分钟；普通竖屏用 3:4，只有显式 9:16 才用 1080×1920。
+    assert '没说用 3 分钟' in phase_1
+    assert '默认横屏 `1920×1080`' in phase_1
+    assert '用户说“竖屏”但没给比例时用 `1080×1440`' in phase_1
+    assert '明确要 9:16 时才用 `1080×1920`' in phase_1
+    # 委派默认 Pi。
+    assert '默认 `pi-coding-agent`' in phase_1
+    assert 'claude-code' not in phase_1
+
+
+def test_phase_1_owns_the_qa_field_without_asking_or_explaining_it_all():
+    phase_1 = doc_text('references/phases/01-gather-inputs.md')
+
+    assert '`quick` / `standard`（缺省）/ `strict`' in phase_1
+    assert '只按用户明确要求写，不主动问' in phase_1
+    assert '完整流程见 Phase 9' in phase_1
+    # 档位的实现细节留在 Phase 9，不在这里展开。
+    assert '在 Phase 1' not in phase_1.split('qa_level')[1].split('\n')[0]
+    assert 'contact sheet' not in phase_1
+
+
+def test_template_is_a_phase_8_decision():
+    phase_1 = doc_text('references/phases/01-gather-inputs.md')
+    phase_6 = doc_text('references/phases/06-script-scene-plan.md')
+    phase_8 = doc_text('references/phases/08-composition.md')
+
+    # Phase 1 不选模板，也不提后续字幕流程。
+    assert '| `template`' not in phase_1
+    assert '模板是 Phase 8 的画面选择' in phase_1
+    assert 'Phase 7' not in phase_1
+    # Phase 6 不读模板、不依赖它。
+    assert '模板不在本阶段输入里' in phase_6
+    assert 'narration.md' not in phase_6
+    # Phase 8 先定 layout 与模板，再准备 handoff。
+    assert text_index(phase_8, '#### 8.0 — 选 layout 与 template') < text_index(
+        phase_8, '#### 8.1 — 物化与字体'
+    )
+    assert '不命中就不选' in phase_8
+    assert '约束优先于模板' in phase_8
+    assert '`template` 为 null 时 handoff 里写“无”' in phase_8
+
+
+def test_paper_key_figures_are_declared_and_checked_end_to_end():
+    phase_1 = doc_text('references/phases/01-gather-inputs.md')
+    phase_2 = doc_text('references/phases/02-paper-parse.md')
+    phase_5 = doc_text('references/phases/05-material-catalog.md')
+    phase_6 = doc_text('references/phases/06-script-scene-plan.md')
+    phase_8 = doc_text('references/phases/08-composition.md')
+    catalog_base = doc_text('references/delegation/catalog/base-instructions.md')
+    composition_base = doc_text('references/delegation/composition/base-instructions.md')
+
+    rule = '方法、模型结构、关键实验结果等关键图'
+    assert f'论文模式即使不联网搜索，论文自己的关键图也照样进视频' in phase_1
+    assert rule in phase_2 and rule in phase_5
+    assert 'required_material_refs' in phase_5 and 'required_material_refs' in phase_6
+    assert 'required_material_refs' in phase_8
+    assert 'required_material_refs' in catalog_base
+    assert 'required_material_refs' in composition_base
+    assert '覆盖表' in composition_base
+    # 不改写既定取舍：关键图必须用，其余仍按素材质量筛选。
+    assert 'VLM 评分 <5 或偏题' not in phase_5.split('required_material_refs')[1]
+
+
+def text_index(text: str, needle: str) -> int:
+    return text.index(needle)
+
+
+def test_phase_1_says_nothing_about_layout():
+    """layout 是 Phase 8 的画面决定：Phase 1 不选、不指引、也不解释归属。"""
+    phase_1 = doc_text('references/phases/01-gather-inputs.md')
+
+    assert '| `layout`' not in phase_1
+    assert 'layout' not in phase_1
+    # presenter / stage 只在 layout 语境里出现。
+    assert 'presenter' not in phase_1
+    assert 'stage' not in phase_1
+
+    # 朝向仍然由本阶段确定，三档写清楚。
+    assert '`orientation`' in phase_1
+    assert '1080×1440' in phase_1 and '1080×1920' in phase_1 and '1920×1080' in phase_1
+
+    # 画面决定归 Phase 8。
+    phase_8 = doc_text('references/phases/08-composition.md')
+    assert '先定 layout' in phase_8
+    assert 'presenter' in phase_8 and 'stage' in phase_8
 
     presenter = doc_text('modules/layouts/presenter.md')
     assert '带主持人的通用横屏布局' in presenter
@@ -352,5 +436,6 @@ def test_scene_plan_beats_authoring_and_composition_contract():
     assert '动作从 `begin_s` 开始' in beat_mapping
     assert '后一个顺延' in beat_mapping
 
-    github_narration = doc_text('modules/templates/github/narration.md')
-    assert '模板要求的锚点句仍然写进 `cues`，语义节拍写进 `beats`，两者互不影响' in github_narration
+    # 模板不再给旁白下指令：它是 Phase 8 的画面选择。
+    assert not (REPO_ROOT / 'modules' / 'templates' / 'github' / 'narration.md').exists()
+    assert '是 Phase 8 的画面选择' in script_base

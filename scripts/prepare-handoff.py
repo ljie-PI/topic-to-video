@@ -5,16 +5,20 @@
 步骤委派给 coding agent，由后者读取一份 handoff 文件。handoff 是确定性的，因此由
 本脚本生成，而不是让主 agent 手填散文模板。每次调用做三件事：
 
+  0. 校验（在写任何东西之前）：composition 步骤要求 design / layout / template
+     都是当前库注册的，layout 文件的结构与画布尺寸对得上 orientation，且模板
+     声明支持这个 layout。校验的就是 handoff 之后会引用的那份文件（不 --refresh
+     时是工作区副本）。非法时就地失败，workspace 完全未被改动。
   1. 落地：把 references/delegation/conventions.md 和
      references/delegation/<step>/ 复制到 <ws>/references/delegation/；
      composition 步骤还复制 modules/（不含 examples/）到 <ws>/modules/。workspace
      中已存在的文件会被保留（该副本可能被编辑过）；--refresh 会覆盖它。
-  2. 字体（仅 composition）：用 scripts/fonts-download.sh（不联网）把所选 design
+  2. 字体（仅 composition）：用 scripts/fonts-download.sh --theme 把所选 design
      自带的 WOFF2 字体安装到 <ws>/composition/assets/fonts/。每次调用都执行。
   3. Handoff：读取 references/delegation/<step>/handoff-template.md 中的 markdown
-     代码块，替换其中的 {{name}} 占位符，写出 <ws>/<step>-handoff.md。其中所有
-     路径都是绝对路径；命令从 skill 根目录运行本 skill 的脚本。留下未替换的占位
-     符，或不存在的输入 / 引用文件，都算错误。
+     代码块，给模板自己声明的 {{name}} 占位符填值（一次替换，不扫描写入的值），
+     写出 <ws>/<step>-handoff.md。其中所有路径都是绝对路径；命令从 skill 根目录
+     运行本 skill 的脚本。缺值或不存在的输入 / 引用文件，都算错误。
 
 用法：
   python3 scripts/prepare-handoff.py <workspace_dir> <catalog|script|composition> [--refresh]
@@ -43,6 +47,8 @@ from pathlib import Path
 from typing import Any
 
 import cli
+import harvest_manifest
+import video_contract
 
 TOOL_NAME = 'prepare-handoff'
 
@@ -54,16 +60,8 @@ DELEGATION = Path('references') / 'delegation'
 
 PLACEHOLDER = re.compile(r'\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}')
 TEMPLATE_BLOCK = re.compile(r'^```markdown\n(.*?)^```$', re.MULTILINE | re.DOTALL)
-NAME = re.compile(r'[\w-]+')
-
-# 与 pipeline-status.py 接受的时间表述一致；其他写法
-# （"90秒"、"1h"、"3-5 min"）在这里也一并拒绝，而不是写进一份
-# 会被流水线打回 Phase 1 的 handoff。
-DURATION_MINUTES = re.compile(
-    r'^\s*(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|分钟|分)?\s*$', re.IGNORECASE
-)
-
-INPUTS_FIELDS = ['coding_agent', 'duration', 'language', 'input_mode', 'template', 'design', 'layout', 'orientation', 'fetch_materials']
+# 每个步骤只校验和读取自己声明的字段，不附加整份 Phase 1 输入表。
+STEP_INPUTS_FIELDS = video_contract.STEP_INPUTS_FIELDS
 
 log = cli.make_logger(TOOL_NAME)
 
@@ -94,7 +92,7 @@ def parse_args() -> argparse.Namespace:
 # --- 输入 --------------------------------------------------------------------
 
 
-def load_inputs(ws: Path) -> dict[str, Any]:
+def load_inputs(ws: Path, step: str) -> dict[str, Any]:
     path = ws / 'inputs.json'
     if not path.is_file():
         raise FileNotFoundError(f'inputs.json not found in {ws}')
@@ -104,31 +102,19 @@ def load_inputs(ws: Path) -> dict[str, Any]:
         raise ValueError(f'inputs.json is not valid JSON: {exc}') from exc
     if not isinstance(data, dict):
         raise ValueError('inputs.json root is not an object')
-    missing = [name for name in INPUTS_FIELDS if name not in data]
+    required = STEP_INPUTS_FIELDS[step]
+    missing = [name for name in required if name not in data]
     if missing:
         raise ValueError(f'inputs.json is missing fields: {", ".join(missing)}')
-    for name in ('design', 'layout', 'template'):
-        value = data[name]
-        if value is not None and not (isinstance(value, str) and NAME.fullmatch(value)):
-            raise ValueError(f'inputs.json field {name} must be a plain name, got {value!r}')
-    for name in ('coding_agent', 'language', 'input_mode', 'orientation'):
-        value = data[name]
-        if not isinstance(value, str) or not value:
-            raise ValueError(f'inputs.json field {name} must be a non-empty string, got {value!r}')
-    if not isinstance(data['fetch_materials'], bool):
-        raise ValueError(f"inputs.json field fetch_materials must be a boolean, got {data['fetch_materials']!r}")
-    duration = data['duration']
-    if isinstance(duration, bool) or not isinstance(duration, (int, float, str)):
-        raise ValueError(
-            f'inputs.json field duration must be the target length in minutes '
-            f'(a number, or a string like "5min"), got {duration!r}'
-        )
-    if isinstance(duration, str) and not DURATION_MINUTES.match(duration):
-        raise ValueError(
-            f'inputs.json field duration must be the target length in minutes '
-            f'(a number, or a number with a minutes unit such as "5min"), got {duration!r}'
-        )
-    return data
+    optional = [video_contract.STEP_REQUESTS_FIELD[step]]
+    if step == 'composition':
+        optional.append('template')
+    selected = {name: data[name] for name in (*required, *optional) if name in data}
+    for name, value in selected.items():
+        problem = video_contract.input_field_problem(name, value)
+        if problem:
+            raise ValueError(f'inputs.json {problem}')
+    return selected
 
 
 def duration_text(duration: Any) -> str:
@@ -183,14 +169,11 @@ def materialize(ws: Path, step: str, refresh: bool) -> list[str]:
 def install_fonts(ws: Path, design: str) -> dict[str, Any]:
     """为所选 design 运行 fonts-download.sh；返回一份摘要。
 
-    已从 skill 移除的 design，在 workspace 里存有其副本时仍然可用
-    （pipeline-status 接受同样的兜底），因此 theme 路径会退回到
-    <ws>/modules/designs/<design>。
+    theme 只能是当前库里的 design 目录：从库里删掉的 design 不再靠工作区里的旧
+    副本继续装字体。
     """
     target = ws / 'composition' / 'assets' / 'fonts'
     theme = SKILL_ROOT / 'modules' / 'designs' / design
-    if not theme.is_dir() and (ws / 'modules' / 'designs' / design).is_dir():
-        theme = ws / 'modules' / 'designs' / design
     proc = subprocess.run(
         [
             'bash',
@@ -245,12 +228,24 @@ def numbered(items: list[str]) -> str:
     return '\n'.join(f'{number}. {item}' for number, item in enumerate(items, 1))
 
 
-def instruction_list(ws: Path, *names: str) -> str:
-    files = [ws / name for name in names if (ws / name).is_file()]
-    return '\n'.join(f'- {file}' for file in files) if files else 'None'
+def request_list(data: dict[str, Any], step: str) -> str:
+    """该步骤要看的用户要求，逐条写成列表；没有要求写 None。
+
+    多行要求整体缩进成同一个列表项，因此用户文字里的换行不会变成新的 handoff
+    顶级小节。
+    """
+    requests = video_contract.request_items(data, video_contract.STEP_REQUESTS_FIELD[step])
+    if not requests:
+        return 'None'
+    lines: list[str] = []
+    for request in requests:
+        first, *rest = request.splitlines() or ['']
+        lines.append(f'- {first.strip()}')
+        lines.extend(f'  {line.strip()}' for line in rest if line.strip())
+    return '\n'.join(lines)
 
 
-def catalog_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
+def catalog_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool = False) -> Plan:
     delegation = ws / DELEGATION
     base = delegation / 'catalog' / 'base-instructions.md'
     return Plan(
@@ -269,31 +264,21 @@ def catalog_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
     )
 
 
-def script_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
-    template = inputs['template']
+def script_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool = False) -> Plan:
+    """旁白与场景规划：只依赖基础输入，不读模板（模板是 Phase 8 的画面选择）。"""
     delegation = ws / DELEGATION
     base = delegation / 'script' / 'base-instructions.md'
-    sources: list[Path] = [SKILL_ROOT / DELEGATION / 'conventions.md', SKILL_ROOT / DELEGATION / 'script']
     references: list[Reference] = [(f'{base}（基础指令：叙事结构、写法要求、产物 schema）', [base])]
-    if template:
-        template_dir = SKILL_ROOT / 'modules' / 'templates' / template
-        if not template_dir.is_dir():
-            raise FileNotFoundError(f'template {template!r} not found: {template_dir}')
-        # 没有旁白要求的模板不贡献任何条目。
-        narration = template_dir / 'narration.md'
-        if narration.is_file():
-            references.append((f'{narration}（所选模板 {template} 的旁白要求）', [narration]))
-            sources.append(narration)
     plan = Plan(
         values={
             'required_references': numbered([text for text, _ in references]),
-            'additional_instructions': instruction_list(ws, 'narration-instructions.md'),
+            'additional_instructions': request_list(inputs, 'script'),
         },
         inputs=[ws / 'inputs.json', ws / 'research-brief.md'],
         references=[delegation / 'conventions.md', *(path for _, paths in references for path in paths)],
-        sources=sources,
+        sources=[SKILL_ROOT / DELEGATION / 'conventions.md', SKILL_ROOT / DELEGATION / 'script'],
     )
-    if inputs['fetch_materials'] or inputs['input_mode'] == 'paper':
+    if video_contract.catalog_applies(inputs):
         plan.values['material_catalog'] = str(ws / 'material-catalog.json')
         plan.inputs.append(ws / 'material-catalog.json')
     else:
@@ -316,8 +301,63 @@ def layout_reference(modules: Path, layout: str) -> Reference:
     return (f'{layout_json} + {layout_doc}（所选 layout 的区域定义）', [layout_json, layout_doc])
 
 
-def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
-    design, layout, template = inputs['design'], inputs['layout'], inputs['template']
+# inputs.json 的 orientation -> 画布应当满足的宽高关系在 video_contract：
+# “哪个朝向对应哪个画布”只定义一份，字幕规格、handoff 与渲染检查都读它。
+
+
+def require_registered_visuals(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Path:
+    """视觉配置必须是当前库注册的，且 layout 画布等于已确定的朝向尺寸。
+
+    返回实际要被 handoff 引用的 layout 文件：不 refresh 且有工作区副本时就是
+    那个副本（agent 读的是它），否则是库文件。校验和引用必须是同一份文件。
+    """
+    designs = video_contract.available_designs(SKILL_ROOT)
+    if inputs['design'] not in designs:
+        raise ValueError(
+            f'inputs.json field design {inputs["design"]!r} is not an available design '
+            f'(choose one of: {", ".join(designs)})'
+        )
+    layout = inputs['layout']
+    problem = video_contract.layout_contract_problem(SKILL_ROOT, layout)
+    if problem:
+        raise ValueError(f'inputs.json {problem}')
+    effective = video_contract.effective_resource(
+        SKILL_ROOT, ws, f'modules/layouts/{layout}.json', refresh=refresh
+    )
+    problem = video_contract.layout_file_problem(effective, inputs['orientation'], layout)
+    if problem:
+        raise ValueError(problem)
+    return effective
+
+
+def require_compatible_template(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> None:
+    """模板必须存在，且声明支持所选的 layout。
+
+    模板与 layout 的兼容关系只写在模板自己的 `<模板>.json` 里；选中了一个不支持
+    当前 layout 的模板时，这里是错（要么换 layout，要么写 template: null），而
+    不是留一份矛盾的 handoff。
+    """
+    template = inputs.get('template')
+    problem = video_contract.template_contract_problem(SKILL_ROOT, template)
+    if problem:
+        raise ValueError(f'inputs.json {problem}')
+    if template is None:
+        return
+    supported = video_contract.template_layouts(SKILL_ROOT, template, ws=ws, refresh=refresh)
+    if supported is None:
+        raise ValueError(
+            f'template {template!r} has no supported_layouts declaration in '
+            f'modules/templates/{template}/{template}.json'
+        )
+    if inputs['layout'] not in supported:
+        raise ValueError(
+            f'template {template!r} supports layouts {", ".join(supported)}, not {inputs["layout"]!r}: '
+            'choose a compatible layout or write template: null'
+        )
+
+
+def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan:
+    design, layout, template = inputs['design'], inputs['layout'], inputs.get('template')
     delegation = ws / DELEGATION
     modules = ws / 'modules'
     base = delegation / 'composition' / 'base-instructions.md'
@@ -325,14 +365,11 @@ def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
     design_doc = modules / 'designs' / design / f'{design}.md'
     design_json = modules / 'designs' / design / f'{design}.json'
     design_contract = modules / 'designs' / 'designs.md'
+    require_registered_visuals(ws, inputs, refresh=refresh)
+    require_compatible_template(ws, inputs, refresh=refresh)
     layout_text, skill_layout_paths = layout_reference(SKILL_ROOT / 'modules', layout)
     layout_paths = [modules / path.relative_to(SKILL_ROOT / 'modules') for path in skill_layout_paths]
     layout_item = ' + '.join(str(path) for path in layout_paths)
-
-    def source(skill_path: Path) -> Path:
-        """modules/ 引用按哪个副本校验：优先 skill 里的那份，除非该 design 已从
-        skill 移除而只剩 workspace 中的副本（pipeline-status 接受同样的兜底）。"""
-        return skill_path if skill_path.exists() else ws / skill_path.relative_to(SKILL_ROOT)
 
     sources: list[Path] = [
         SKILL_ROOT / DELEGATION / 'conventions.md',
@@ -348,24 +385,21 @@ def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
         ),
         (f'{layout_item}（所选 layout 的区域定义）', layout_paths),
     ]
-    sources.extend(
-        source(path)
-        for path in [
-            SKILL_ROOT / 'modules' / 'designs' / design / f'{design}.md',
-            SKILL_ROOT / 'modules' / 'designs' / design / f'{design}.json',
-            *layout_reference(SKILL_ROOT / 'modules', layout)[1],
-        ]
-    )
     if template:
         template_doc = modules / 'templates' / template / f'{template}.md'
-        references.append((f'{template_doc}（所选模板的组装说明，及其场景 / 组件文档）', [template_doc]))
-        sources.append(source(SKILL_ROOT / 'modules' / 'templates' / template / f'{template}.md'))
+        template_json = modules / 'templates' / template / f'{template}.json'
+        references.append(
+            (f'{template_doc} + {template_json}（所选模板的组装说明与 supported_layouts 声明）',
+             [template_doc, template_json])
+        )
+        sources.append(SKILL_ROOT / 'modules' / 'templates' / template / f'{template}.md')
+        sources.append(SKILL_ROOT / 'modules' / 'templates' / template / f'{template}.json')
     patterns, components = modules / 'patterns', modules / 'components'
     references.append((f'按 storyboard 需要，自行阅读 {patterns}/、{components}/ 下的文档', [patterns, components]))
     plan = Plan(
         values={
             'required_references': numbered([text for text, _ in references]),
-            'additional_instructions': instruction_list(ws, 'composition-instructions.md', 'style-prompt.md'),
+            'additional_instructions': request_list(inputs, 'composition'),
             'design': design,
             'layout': layout,
             'orientation': str(inputs['orientation']),
@@ -373,8 +407,11 @@ def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
         inputs=[
             ws / 'inputs.json',
             ws / 'voice_clone' / 'narration.mp3',
-            ws / 'transcribe' / 'subtitle-units.json',
+            # 确定性字幕生成用的上游：本阶段按最终 layout 现算字幕单元。
+            ws / 'transcribe' / 'transcript.json',
             ws / 'transcribe' / 'timeline.json',
+            ws / 'narration.txt',
+            ws / 'narration-offsets.json',
             ws / 'scene-plan.json',
             ws / 'script.txt',
         ],
@@ -385,7 +422,7 @@ def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
         ],
         sources=sources,
     )
-    if inputs['fetch_materials'] or inputs['input_mode'] == 'paper':
+    if video_contract.catalog_applies(inputs):
         plan.values['material_catalog'] = str(ws / 'material-catalog.json')
         plan.inputs.append(ws / 'material-catalog.json')
     else:
@@ -394,7 +431,6 @@ def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
 
 
 STEP_PLANS = {'catalog': catalog_plan, 'script': script_plan, 'composition': composition_plan}
-
 
 def read_template(step: str) -> str:
     path = SKILL_ROOT / DELEGATION / step / 'handoff-template.md'
@@ -405,18 +441,22 @@ def read_template(step: str) -> str:
 
 
 def fill(template: str, values: dict[str, str]) -> str:
-    text = PLACEHOLDER.sub(lambda match: values.get(match.group(1), match.group(0)), template)
-    unreplaced = sorted(set(PLACEHOLDER.findall(text)))
-    if unreplaced:
-        raise ValueError(f'handoff template has unreplaced placeholders: {", ".join(unreplaced)}')
-    return text
+    """先校验模板自己要的占位符，再一次性替换。
+
+    只扫描模板本身：替换进去的值（例如用户原话里的 `{{name}}`）不再被当成占位
+    符，因此字面量花括号能原样进入 handoff。缺值直接报错，不留下未替换的占位符。
+    """
+    missing = sorted(set(PLACEHOLDER.findall(template)) - set(values))
+    if missing:
+        raise ValueError(f'handoff template needs values the step does not provide: {", ".join(missing)}')
+    return PLACEHOLDER.sub(lambda match: values[match.group(1)], template)
 
 
 def render_handoff(ws: Path, step: str, inputs: dict[str, Any], plan: Plan) -> str:
     # _q 开头的值是供命令中使用的、经 shell 引用的完整路径：带空格的 topic 名或
     # skill 根目录（例如 "AI Agents 2026"）不能把该行拆开。散文里仍用普通的
     # {{ws}} / {{skill_root}}。
-    design, layout = inputs['design'], inputs['layout']
+    design, layout = inputs.get('design') or '', inputs.get('layout') or ''
     values = {
         'topic_name': ws.name,
         'ws': str(ws),
@@ -429,17 +469,24 @@ def render_handoff(ws: Path, step: str, inputs: dict[str, Any], plan: Plan) -> s
         'design_json_q': shlex.quote(
             str(ws / 'modules' / 'designs' / design / f'{design}.json')
         ),
-        'subtitle_units_q': shlex.quote(str(ws / 'transcribe' / 'subtitle-units.json')),
+        'transcript_q': shlex.quote(str(ws / 'transcribe' / 'transcript.json')),
+        'subtitle_units_q': shlex.quote(str(ws / 'composition' / 'assets' / 'subtitle-units.json')),
+        'template_cues_q': shlex.quote(str(ws / 'composition' / 'assets' / 'template-cues.json')),
+        'template_timeline_q': shlex.quote(
+            str(ws / 'composition' / 'assets' / 'template-timeline.json')
+        ),
         'timeline_q': shlex.quote(str(ws / 'transcribe' / 'timeline.json')),
         'check_report_q': shlex.quote(str(ws / 'composition' / 'check-composition.json')),
         'script_txt_q': shlex.quote(str(ws / 'script.txt')),
+        'narration_q': shlex.quote(str(ws / 'narration.txt')),
+        'offsets_q': shlex.quote(str(ws / 'narration-offsets.json')),
         'lexicon_q': shlex.quote(str(ws / 'tts-lexicon.json')),
         'output_dir_q': shlex.quote(str(ws)),
         'coding_agent': str(inputs['coding_agent']),
-        'duration': duration_text(inputs['duration']),
-        'language': str(inputs['language']),
+        **({'duration': duration_text(inputs['duration'])} if 'duration' in inputs else {}),
+        **({'language': str(inputs['language'])} if 'language' in inputs else {}),
         'input_mode': str(inputs['input_mode']),
-        'template': str(inputs['template'] or '无'),
+        'template': str(inputs.get('template') or '无'),
         **plan.values,
     }
     return fill(read_template(step), values)
@@ -456,10 +503,18 @@ def main() -> int:
     ws = Path(args.workspace).resolve()
     if not ws.is_dir():
         raise NotADirectoryError(f'workspace is not a directory: {ws}')
-    inputs = load_inputs(ws)
-    plan = STEP_PLANS[args.step](ws, inputs)
+    inputs = load_inputs(ws, args.step)
+    plan = STEP_PLANS[args.step](ws, inputs, refresh=args.refresh)
     text = render_handoff(ws, args.step, inputs, plan)
     require_files(plan.inputs, f'inputs of the {args.step} step')
+    if args.step == 'catalog':
+        harvest_manifest.load(ws / 'harvest_page')
+    catalog_path = ws / 'material-catalog.json'
+    if catalog_path in plan.inputs:
+        catalog = json.loads(catalog_path.read_text(encoding='utf-8'))
+        problem = harvest_manifest.paths_problem(catalog, base=ws / 'harvest_page')
+        if problem:
+            raise ValueError(f'material-catalog.json: {problem}; regenerate Phase 5')
     # 在任何东西被写出之前校验 skill 侧的源文件：非法的 layout 或 design 名必须
     # 在 workspace 完全未被改动时就失败，就像缺少输入那样 —— 而不是等 modules/
     # 已被复制进去之后才失败。

@@ -8,25 +8,32 @@
 
 Phase 6 的确定性规则也在这里检查，因此不需要 agent 手算：script.txt 长度对照
 inputs.json 的 duration、scene-plan 段落对照 script.txt 的段落、scene-plan 的
-素材引用对照 catalog、narration-offsets.json 记录的字数对照 script.txt 与
-narration.txt。Phase 8 还额外要求保存下来的 check-composition 报告结论为 pass，
-且不比 index.html 或 compositions/ 下任何文件更旧。
+素材引用对照 catalog、narration-offsets.json 记录的版本 / 字数 / 内容哈希对照
+script.txt 与 narration.txt。
+
+阶段的分工也在这里体现：Phase 7 只产出音频、fresh transcript 与时间轴（不读
+layout）；最终字幕是 Phase 8 的产物（`composition/assets/subtitle-units.json`，
+按选定 layout 生成），Phase 8 还额外要求输入的视觉配置可用（layout 在当前库
+里、画布等于朝向尺寸、模板声明支持该 layout），并且保存下来的 check-composition
+报告结论为 pass。
 
 过期检测：{workspace}/.pipeline/stamps.json（只由本脚本写入）为每个已完成阶段
 记录它所依据的上游文件与 inputs.json 字段的 sha256 指纹，以及它自己产物的指纹。
 上游变了而产物没变的阶段即为过期：它是基于更早的上游构建的。部分重做不会清除
 这个标记：阶段会一直保持过期，直到每个产物都被重新生成（或该阶段被重新打戳），
-因此半途而废的重做永远无法掩盖过期。各阶段按顺序判定；第一个缺失、损坏、过期或
-等待用户确认的阶段成为 next_phase，其后每个适用的阶段都为 pending：它不被检查、
-不打戳、也不被报告为已完成。--restamp <phase_id> 把某阶段的当前产物当作基于当前
-上游构建的产物接受（其产物必须通过检查）。
+因此半途而废的重做永远无法掩盖过期。上游键按集合比对：旧戳里缺少当前声明的键、
+或留着已移除的键，都算变化（没有 backfill，不做自动迁移）——缺证据的旧构建
+要被重新生成，而不是因为旧戳缺键就继续信任。各阶段按顺序判定；第一个缺失、损坏、
+过期或等待用户确认的阶段成为 next_phase，其后每个适用的阶段都为 pending：它
+不被检查、不打戳、也不被报告为已完成。--restamp <phase_id> 把某阶段的当前产物
+当作基于当前上游构建的产物接受（其产物必须通过检查）。
 
 用户关卡按需启用：inputs.json 可选的 approval_gates 列出要求审稿的关卡：
-research-brief（Phase 3）和/或 script（Phase 6）。缺省或 [] 表示全自动，旧
-workspace 也一样。只有列出的关卡需要 {workspace}/.pipeline/approvals.json 中
-匹配的确认。--approve <gate> 只在该阶段全部产物通过检查之后才记录当前产物的
-哈希；编辑已确认的产物会重新打开被请求的关卡。用户明确授权自动运行时，清空
-approval_gates 以记录这一政策，不要伪造确认。改变审稿政策不会让产物过期。
+research-brief（Phase 3）和/或 script（Phase 6）。缺省或 [] 表示全自动。只有
+列出的关卡需要 {workspace}/.pipeline/approvals.json 中匹配的确认。--approve
+<gate> 只在该阶段全部产物通过检查之后才记录当前产物的哈希；编辑已确认的产物会
+重新打开被请求的关卡。用户明确授权自动运行时，清空 approval_gates 以记录这一
+政策，不要伪造确认。改变审稿政策不会让产物过期。
 
 重做请求：产物合格不等于内容合格，而用户或 agent 要求重做时，文件往往还没变。
 因此 {workspace}/.pipeline/redos.json 记录这类请求：--redo <phase_id> --reason <text>
@@ -45,10 +52,11 @@ stamps.json 会被隔离（改名为 stamps.json.quarantined），并通过 stam
 会丢掉用户的要求，因此那一次运行直接失败（exit 1）。stamps.json 不可用时只有
 重新确认过的阶段算完成：其余报告为 unverified，逐个确认并用 --restamp 或
 --finish 接受，全部补齐后隔离才解除。inputs.json 的字段在计算哈希
-之前会归一化（duration 的写法、默认的 qa_level），而 check-composition 的新鲜度
-比对的是报告里嵌入的 sources_sha256，不是 mtime，因此不保留 mtime 的复制无法伪造
-一份新鲜的 pass。一份 size + mtime 指纹缓存（.pipeline/fpcache.json）会跳过对
-不可能变化的大媒体文件的重复哈希。
+之前会归一化（duration 的写法、缺省 qa_level、缺省要求列表与 [] 等价），而
+check-composition 的新鲜度比对的是报告里嵌入的 sources_sha256，不是 mtime：
+报告没有指纹就直接判不合格，因此不保留 mtime 的复制无法伪造一份新鲜的 pass。
+一份 size + mtime 指纹缓存（.pipeline/fpcache.json）会跳过对不可能变化的大媒体
+文件的重复哈希。
 
 用法：
   python3 scripts/pipeline-status.py <workspace_dir> [--restamp <phase_id> | --approve <gate> | --redo <phase_id> --reason <text> | --finish <phase_id>]
@@ -72,6 +80,9 @@ skipped_phases / missing_products / corrupt_products 之外，还带有：
                   redo_reason；确认关卡会附加 gate 与 instruction。
                   unverified 只在 stamps.json 不可用时出现：该阶段还没人重新
                   确认过，用 --restamp 或 --finish 接受它。
+                  输入前置条件失败的键写作 inputs.json#<field>（例如
+                  inputs.json#layout），它算 corrupt，但不进 corrupt_products：
+                  那不是产物缺失，而是该阶段要修的配置。
 退出码：0 = 成功（存在下一个阶段，或流水线已完成），
 1 = 运行时错误（workspace 不可读或不可写、对产物不通过的阶段使用 --restamp、
 对当前不适用的阶段使用 --redo），
@@ -83,19 +94,20 @@ import argparse
 import copy
 import hashlib
 import json
-import math
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 import cli
 import clip_paths
+import harvest_manifest
 import script_text
+import video_contract
 from composition_hash import composition_source_relpaths, composition_sources_fingerprint, visible_files
-from harvest_manifest import _stage_json as stage_json
+from harvest_manifest import _stage_json as stage_json, stored_path_problem
 
 TOOL_NAME = 'pipeline-status'
 
@@ -121,21 +133,16 @@ PHASE_UNVERIFIED = 'unverified'
 # 以区别于上游变化造成的 stale。
 REASON_REDO = 'redo'
 
-INPUTS_REQUIRED_FIELDS = [
-    'source',
-    'input_mode',
-    'duration',
-    'language',
-    'orientation',
-    'template',
-    'design',
-    'layout',
-    'coding_agent',
-    'fetch_materials',
-]
+# Phase 1 的基础字段：定义在 video_contract，实际读取也只认那一份。
+INPUTS_REQUIRED_FIELDS = video_contract.INPUTS_BASE_FIELDS
+
+# 用户在对话里提出的长期要求，按阶段分开保存；缺省与 [] 等价。
+NARRATION_REQUESTS_FIELD = video_contract.NARRATION_REQUESTS_FIELD
+COMPOSITION_REQUESTS_FIELD = video_contract.COMPOSITION_REQUESTS_FIELD
+REQUESTS_FIELDS = video_contract.REQUESTS_FIELDS
 
 # qa_level 可选：缺省表示 standard 档。给出时必须是三个枚举值之一。
-QA_LEVELS = {'quick', 'standard', 'strict'}
+QA_LEVELS = video_contract.QA_LEVELS
 
 PAPER_MODES = {'paper'}
 
@@ -201,7 +208,7 @@ CLIP_REF_TOLERANCE_S = 0.01
 # inputs.json 的 duration 是分钟数：一个数字，或“数字 + 可选分钟单位”的字符串
 # （"5min"、"5 分钟"）。其他写法（"90s"、"1h"、"3-5 min"）会被拒绝，而不是被
 # 当成那么多分钟。
-DURATION_TEXT = re.compile(r'^\s*(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|分钟|分)?\s*$', re.IGNORECASE)
+# 解析与合法性规则共用 video_contract.duration_minutes。
 
 # 片段引用 "<slug>/<video_id>:<start>-<end>" 的时间窗，以秒计，必须精确写成这样。
 CLIP_WINDOW = re.compile(r'^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$')
@@ -439,6 +446,10 @@ def clip_problem(ws: Path, video: Any, clip: Any, *, require_file: bool) -> str 
     return None
 
 
+# catalog 的可选字段：必须进入成片的素材（论文模式下是关键图表）。
+REQUIRED_MATERIAL_REFS_FIELD = 'required_material_refs'
+
+
 def _check_catalog(ws: Path, relpath: str, *, require_clip_files: bool) -> CheckResult:
     """material-catalog.json，Phase 5 的契约。
 
@@ -451,6 +462,9 @@ def _check_catalog(ws: Path, relpath: str, *, require_clip_files: bool) -> Check
     if not entries_result.ok:
         return entries_result
     _, data = read_json_product(ws, relpath)
+    problem = harvest_manifest.paths_problem(data, base=ws / 'harvest_page')
+    if problem:
+        return CheckResult(STATUS_CORRUPT, f'{problem}; regenerate Phase 5')
     for index, entry in enumerate(data['entries']):
         label = entry_label(index, entry)
         if not isinstance(entry, dict):
@@ -480,7 +494,7 @@ def _check_catalog(ws: Path, relpath: str, *, require_clip_files: bool) -> Check
                             STATUS_CORRUPT,
                             f'{where} (id {item["id"]!r}) selected_clips[{clip_index}] {problem}',
                         )
-    return OK
+    return check_required_refs(data, ws)
 
 
 def check_material_catalog(ws: Path, relpath: str) -> CheckResult:
@@ -503,6 +517,73 @@ class CatalogIndex:
 
     ids: set[str]
     clips: dict[str, list[tuple[float, float]]]
+    ambiguous_ids: set[str] = field(default_factory=set)
+
+
+def check_required_refs(data: dict[str, Any], ws: Path | None = None) -> CheckResult:
+    """catalog 的 required_material_refs：不重复、能解析到本 catalog 的 ref 列表。
+    它记录“必须进入成片”的素材（论文模式下的关键图），Phase 6 的候选引用必须
+    覆盖它。
+
+    可选项在标准模式；论文模式下这个字段必须显式声明（没有适用图时明确写
+    []）：缺省分不清“没有关键图”和“还没看过”。
+    """
+    if REQUIRED_MATERIAL_REFS_FIELD not in data:
+        if ws is not None:
+            _, inputs = load_inputs(ws)
+            if inputs is not None and inputs.get('input_mode') in PAPER_MODES:
+                return CheckResult(
+                    STATUS_CORRUPT,
+                    f'{REQUIRED_MATERIAL_REFS_FIELD} must be declared in paper mode: list the key '
+                    'figures / tables, or write [] when the paper has no usable figure',
+                )
+        return OK
+    refs = data[REQUIRED_MATERIAL_REFS_FIELD]
+    if not isinstance(refs, list) or any(not isinstance(ref, str) or not ref for ref in refs):
+        return CheckResult(
+            STATUS_CORRUPT,
+            f'{REQUIRED_MATERIAL_REFS_FIELD} must be a list of non-empty refs, got {refs!r}',
+        )
+    index = catalog_index_from_data(data)
+    seen: set[tuple[Any, ...]] = set()
+    invalid: list[str] = []
+    duplicates: list[str] = []
+    for ref in refs:
+        try:
+            identity = parse_ref(ref, index)
+        except ValueError as exc:
+            return CheckResult(STATUS_CORRUPT, f'{REQUIRED_MATERIAL_REFS_FIELD}: {exc}')
+        if identity is None:
+            invalid.append(ref)
+        elif identity in seen:
+            duplicates.append(ref)
+        else:
+            seen.add(identity)
+    if invalid:
+        return CheckResult(
+            STATUS_CORRUPT, f'{REQUIRED_MATERIAL_REFS_FIELD} refs not found in this catalog: {invalid}'
+        )
+    if duplicates:
+        return CheckResult(
+            STATUS_CORRUPT, f'{REQUIRED_MATERIAL_REFS_FIELD} repeats resolved refs: {duplicates}'
+        )
+    return OK
+
+
+def required_material_refs(ws: Path) -> list[str]:
+    """catalog 声明的必用 ref；catalog 阶段不适用时为空。
+
+    判断看的是当前素材策略，不是目录里剩下什么：项目改成了无素材模式后，残留的
+    catalog 不再参与任何要求，否则同一个项目自己就推进不下去了。
+    """
+    _, inputs = load_inputs(ws)
+    if not phase_applies(PHASES_BY_ID['5-material-catalog'], inputs):
+        return []
+    if not check_catalog_structure(ws, 'material-catalog.json').ok:
+        return []
+    _, data = read_json_product(ws, 'material-catalog.json')
+    refs = data.get(REQUIRED_MATERIAL_REFS_FIELD) if isinstance(data, dict) else None
+    return list(refs) if isinstance(refs, list) else []
 
 
 def load_catalog_index(ws: Path) -> CatalogIndex | None:
@@ -512,45 +593,102 @@ def load_catalog_index(ws: Path) -> CatalogIndex | None:
     if not check_catalog_structure(ws, 'material-catalog.json').ok:
         return None
     _, data = read_json_product(ws, 'material-catalog.json')
+    return catalog_index_from_data(data)
+
+
+def catalog_index_from_data(data: dict[str, Any]) -> CatalogIndex:
+    """已解析的 catalog 数据 → scene-plan 引用可指向的 id 与片段窗口。"""
     ids: set[str] = set()
+    counts: dict[str, int] = {}
     clips: dict[str, list[tuple[float, float]]] = {}
     for entry in data['entries']:
         slug = entry.get('slug')
         if not isinstance(slug, str) or not slug:
             continue
         for image in entry.get('images', []):
-            ids.add(f'{slug}/{image["id"]}')
+            image_ref = f'{slug}/{image["id"]}'
+            ids.add(image_ref)
+            counts[image_ref] = counts.get(image_ref, 0) + 1
         for video in entry.get('videos', []):
             video_ref = f'{slug}/{video["id"]}'
             ids.add(video_ref)
+            counts[video_ref] = counts.get(video_ref, 0) + 1
             windows = clips.setdefault(video_ref, [])
             for clip in video.get('selected_clips') or []:
                 bounds = [clip.get(key) if isinstance(clip, dict) else None for key in ('start', 'end')]
                 if all(isinstance(b, (int, float)) and not isinstance(b, bool) for b in bounds):
                     windows.append((float(bounds[0]), float(bounds[1])))
-    return CatalogIndex(ids, clips)
+    return CatalogIndex(ids, clips, {ref for ref, count in counts.items() if count > 1})
+
+
+def parse_ref(ref: str, index: CatalogIndex) -> tuple[Any, ...] | None:
+    """把引用解析成它真正指向的身份；解析不了时为 None。
+
+    身份只有两种：``('material', '<slug>/<id>')`` 表示一项素材，
+    ``('clip', '<slug>/<video_id>', start, end)`` 表示该项的一条选中片段。
+
+    引用比对走解析后的身份，不做原始字符串比较：``12-18.5`` 与 ``12.00-18.50``
+    指向同一个片段，不应该因为写法不同就报“必用素材未被覆盖”。裸 id 仍视为有
+    歧义，无法解析。
+    """
+    slug, slash, material_ref = ref.partition('/')
+    if not slash or not slug or not material_ref or '/' in material_ref:
+        return None
+    if ref in index.ambiguous_ids:
+        raise ValueError(f'ambiguous material ref {ref!r}: multiple catalog items share this slug / id')
+    if ref in index.ids:
+        return ('material', ref)
+    video_id, colon, window = material_ref.rpartition(':')
+    if not colon:
+        return None
+    video_ref = f'{slug}/{video_id}'
+    if video_ref in index.ambiguous_ids:
+        raise ValueError(f'ambiguous clip ref {ref!r}: multiple videos share this slug / id')
+    if video_ref not in index.clips:
+        return None
+    bounds = CLIP_WINDOW.fullmatch(window)
+    if not bounds:
+        return None
+    start, end = float(bounds.group(1)), float(bounds.group(2))
+    matches = [
+        (clip_start, clip_end) for clip_start, clip_end in index.clips[video_ref]
+        if abs(start - clip_start) <= CLIP_REF_TOLERANCE_S and abs(end - clip_end) <= CLIP_REF_TOLERANCE_S
+    ]
+    if len(matches) > 1:
+        raise ValueError(f'ambiguous clip ref {ref!r}: matches multiple selected_clips within 0.01 seconds')
+    return ('clip', video_ref, *matches[0]) if matches else None
 
 
 def ref_resolves(ref: str, index: CatalogIndex) -> bool:
-    """解析 `<slug>/<id>`，或指向该项某条选中片段的
-    `<slug>/<video_id>:<start>-<end>`。裸 id 刻意视为有歧义。"""
-    slug, slash, material_ref = ref.partition('/')
-    if not slash or not slug or not material_ref or '/' in material_ref:
+    """``<slug>/<id>`` 或 ``<slug>/<video_id>:<start>-<end>`` 能否解析。"""
+    try:
+        return parse_ref(ref, index) is not None
+    except ValueError:
         return False
-    if ref in index.ids:
+
+
+def ref_covers(candidate: tuple[Any, ...], needed: tuple[Any, ...]) -> bool:
+    """``candidate`` 是否算用上了 ``needed``。
+
+    同身份即覆盖；一条选中片段的引用也算用上了它所属的那项素材（视频确实上镜
+    了），但不反过来：要求用某个片段时，只说“用了这个视频”不算。
+    """
+    if candidate == needed:
         return True
-    video_id, colon, window = material_ref.rpartition(':')
-    video_ref = f'{slug}/{video_id}'
-    if not colon or video_ref not in index.clips:
-        return False
-    bounds = CLIP_WINDOW.match(window)
-    if not bounds:
-        return False
-    start, end = float(bounds.group(1)), float(bounds.group(2))
-    return any(
-        abs(start - clip_start) <= CLIP_REF_TOLERANCE_S and abs(end - clip_end) <= CLIP_REF_TOLERANCE_S
-        for clip_start, clip_end in index.clips[video_ref]
-    )
+    return candidate[0] == 'clip' and needed[0] == 'material' and candidate[1] == needed[1]
+
+
+def uncovered_required_refs(
+    required: list[str], candidates: list[str], index: CatalogIndex
+) -> list[str]:
+    """必用清单里没被任何候选覆盖的条目（原样返回声明的写法）。"""
+    covered = [identity for identity in (parse_ref(ref, index) for ref in candidates) if identity]
+    missing = []
+    for ref in required:
+        needed = parse_ref(ref, index)
+        if needed is None or not any(ref_covers(candidate, needed) for candidate in covered):
+            missing.append(ref)
+    return missing
 
 
 def material_ref_problem(ws: Path, refs: list[str]) -> str | None:
@@ -564,9 +702,17 @@ def material_ref_problem(ws: Path, refs: list[str]) -> str | None:
     index = load_catalog_index(ws)
     if index is None:
         return None
-    invalid = [ref for ref in dict.fromkeys(refs) if not ref_resolves(ref, index)]
+    invalid: list[str] = []
+    for ref in dict.fromkeys(refs):
+        try:
+            identity = parse_ref(ref, index)
+        except ValueError as exc:
+            invalid.append(str(exc))
+        else:
+            if identity is None:
+                invalid.append(ref)
     if invalid:
-        return f'material_candidates refs not found in material-catalog.json: {invalid}'
+        return f'material_candidates refs not found in material-catalog.json or ambiguous: {invalid}'
     return None
 
 
@@ -576,47 +722,32 @@ def check_harvest_manifest(ws: Path, relpath: str) -> CheckResult:
     if not entries_result.ok:
         return entries_result
     _, data = read_json_product(ws, relpath)
+    problem = harvest_manifest.manifest_problem(data, base=ws / 'harvest_page')
+    if problem:
+        return CheckResult(STATUS_CORRUPT, f'{problem}; regenerate the applicable paper / harvest phase')
     batches = data.get('harvest_batches')
     if not isinstance(batches, list) or not batches:
         return CheckResult(STATUS_CORRUPT, 'harvest_batches is not a non-empty list')
     return OK
 
 
-def duration_minutes(value: Any) -> float | None:
-    """目标时长（分钟）；当 `value` 不是正的分钟数时为 None。"""
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        minutes = float(value)
-    elif isinstance(value, str):
-        match = DURATION_TEXT.match(value)
-        minutes = float(match.group(1)) if match else 0.0
-    else:
-        return None
-    return minutes if math.isfinite(minutes) and minutes > 0 else None
-
-
-def is_design_dir(path: Path) -> bool:
-    """design 是一个目录，内含它的 <name>.md 文档与 <name>.json 契约。"""
-    return (path / f'{path.name}.md').is_file() and (path / f'{path.name}.json').is_file()
+duration_minutes = video_contract.duration_minutes
 
 
 def available_designs() -> list[str]:
-    """skill 的 modules/designs/ 下的 design 名。"""
-    root = SKILL_ROOT / 'modules' / 'designs'
-    return sorted(d.name for d in root.iterdir() if is_design_dir(d))
+    """skill 的 modules/designs/ 下注册的 design 名。"""
+    return video_contract.available_designs(SKILL_ROOT)
 
 
-def design_problem(ws: Path, design: Any) -> str | None:
+def design_problem(design: Any) -> str | None:
     """inputs.json 的 design 不可用的原因，或 None。
 
-    已从 skill 移除的 design，在 workspace 已存有其副本时仍然被接受（modules/
-    会在 Phase 8 落地到那里），因此用它做成的项目不会被退回 Phase 1。
+    只接受当前库 modules/designs/ 下注册的 design：从库里移除的主题不再以工作区
+    里的历史副本变相存续，那会让已删除的资源继续驱动新的生成。
     """
     designs = available_designs()
-    if isinstance(design, str) and design and '/' not in design:
-        if design in designs or is_design_dir(ws / 'modules' / 'designs' / design):
-            return None
+    if isinstance(design, str) and design and '/' not in design and design in designs:
+        return None
     return f'field design {design!r} is not an available design (choose one of: {", ".join(designs)})'
 
 
@@ -634,6 +765,9 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
         ), None
     if not isinstance(data['fetch_materials'], bool):
         return CheckResult(STATUS_CORRUPT, 'field fetch_materials is not a boolean'), None
+    orientation = video_contract.orientation_problem(data['orientation'])
+    if orientation:
+        return CheckResult(STATUS_CORRUPT, orientation), None
     if duration_minutes(data['duration']) is None:
         # 与“design 被移除”同理：inputs.json 的其余部分仍可用于
         # 判断阶段适用性，只有 Phase 1 需要重写这个字段。
@@ -642,7 +776,7 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
             'field duration must be the target length in minutes (分钟数): a positive number '
             f'such as 5, or a number with a minutes unit such as "5min", got {data["duration"]!r}',
         ), data
-    problem = design_problem(ws, data['design'])
+    problem = design_problem(data['design'])
     if problem:
         # 例如一个在某主题被移除之前创建的项目：退回 Phase 1
         # 选一个仍然存在的。inputs.json 的其余部分是有效的，因此
@@ -651,7 +785,7 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
     if 'qa_level' in data and data['qa_level'] not in QA_LEVELS:
         return CheckResult(
             STATUS_CORRUPT,
-            f'field qa_level must be one of quick / standard / strict, got {data["qa_level"]!r}',
+            f'field qa_level must be one of {" / ".join(QA_LEVELS)}, got {data["qa_level"]!r}',
         ), None
     approval_gates = data.get('approval_gates', [])
     if (
@@ -664,6 +798,12 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
             f'field approval_gates must be a list of distinct gate names ({", ".join(GATES)}); '
             f'use [] for fully automatic, got {approval_gates!r}',
         ), None
+    for field in REQUESTS_FIELDS:
+        # 各阶段整理、消费自己的那一条；catalog 没有要求列表。
+        if field in data:
+            problem = video_contract.requests_problem(field, data[field])
+            if problem:
+                return CheckResult(STATUS_CORRUPT, problem), None
     if 'material_search_requests' in data:
         # 这是“用户要在哪个平台找素材”的记录，不是重做的触发依据：状态脚本
         # 不看它判断要不要重做，改变它时由主 agent 登记 Phase 4 重做。
@@ -685,6 +825,51 @@ def check_inputs_product(ws: Path, relpath: str) -> CheckResult:
     return result
 
 
+def check_visual_inputs(ws: Path) -> dict[str, CheckResult]:
+    """Phase 8 的输入前置条件：视觉配置由本阶段决定，所以校验也留在本阶段。
+
+    它和输出产物检查分开报告：layout 缺失 / 不在库里 / 与朝向对不上，或选中的
+    模板不支持这个 layout，都是本阶段要改的东西，而不是回到 Phase 1。
+    """
+    _, inputs = load_inputs(ws)
+    if inputs is None:
+        # inputs.json 本身不合格时由 Phase 1 承担，这里不多报一次。
+        return {}
+    problems: dict[str, CheckResult] = {}
+
+    def record(field: str, detail: str) -> None:
+        problems[f'{INPUTS_FIELD_PREFIX}{field}'] = CheckResult(STATUS_CORRUPT, detail)
+
+    layout = inputs.get('layout')
+    problem = video_contract.layout_contract_problem(SKILL_ROOT, layout)
+    if problem:
+        record('layout', problem)
+    else:
+        path = video_contract.effective_resource(SKILL_ROOT, ws, f'modules/layouts/{layout}.json', refresh=False)
+        problem = video_contract.layout_file_problem(path, inputs.get('orientation'), str(layout))
+        if problem:
+            record('layout', problem)
+    template = inputs.get('template')
+    problem = video_contract.template_contract_problem(SKILL_ROOT, template)
+    if problem:
+        record('template', problem)
+    elif template is not None:
+        supported = video_contract.template_layouts(SKILL_ROOT, str(template), ws=ws)
+        if supported is None:
+            record(
+                'template',
+                f'template {template!r} has no supported_layouts declaration in '
+                f'modules/templates/{template}/{template}.json',
+            )
+        elif layout not in supported:
+            record(
+                'template',
+                f'template {template!r} supports layouts {", ".join(supported)}, not {layout!r}: '
+                'choose a compatible layout or write template: null',
+            )
+    return problems
+
+
 def check_paper_metadata(ws: Path, relpath: str) -> CheckResult:
     result, data = read_json_product(ws, relpath)
     if not result.ok:
@@ -696,13 +881,19 @@ def check_paper_metadata(ws: Path, relpath: str) -> CheckResult:
     paper_metadata = data.get('paper_metadata')
     if not isinstance(paper_metadata, dict):
         return CheckResult(STATUS_CORRUPT, 'missing paper_metadata')
-    # v2 路径相对于 harvest 根目录；旧 workspace 可能存的是绝对
-    # 路径。两者都有效，当 MinerU 没有产出完整 markdown 时为 null 同样有效。
-    if 'full_markdown_path' not in paper_metadata or not (
-        isinstance(paper_metadata['full_markdown_path'], str)
-        or paper_metadata['full_markdown_path'] is None
-    ):
+    # full_markdown_path 相对 harvest 根目录；MinerU 没有产出完整 markdown 时
+    # 确实是 null。绝对路径或跨出目录的路径不是当前格式，不接受的版本会被要求
+    # 重新解析。
+    if 'full_markdown_path' not in paper_metadata:
         return CheckResult(STATUS_CORRUPT, 'missing paper_metadata.full_markdown_path')
+    markdown_path = paper_metadata['full_markdown_path']
+    if markdown_path is not None:
+        problem = stored_path_problem(markdown_path, base=ws / 'harvest_page')
+        if problem:
+            return CheckResult(
+                STATUS_CORRUPT,
+                f'paper_metadata.full_markdown_path is not a relative path inside harvest_page: {problem}',
+            )
     return OK
 
 
@@ -716,6 +907,9 @@ def check_paper_manifest(ws: Path, relpath: str) -> CheckResult:
         return result
     if not isinstance(data, dict):
         return CheckResult(STATUS_CORRUPT, 'JSON root is not an object')
+    problem = harvest_manifest.manifest_problem(data, base=ws / 'harvest_page')
+    if problem:
+        return CheckResult(STATUS_CORRUPT, f'{problem}; regenerate Phase 2 / material harvest')
     entries = data.get('entries')
     if not isinstance(entries, list) or not entries:
         return CheckResult(STATUS_CORRUPT, 'entries is not a non-empty list')
@@ -747,64 +941,29 @@ def check_lexicon_product(ws: Path, relpath: str) -> CheckResult:
     return OK
 
 
-# make-narration.py 的 OFFSETS_VERSION；align-narration 拒绝其他任何版本。
-NARRATION_OFFSETS_VERSION = 1
-
-
-# make-narration 记录在偏移表中的字数，以及各自统计的文件。
-OFFSETS_LENGTH_SOURCES = (('script_length', 'script.txt'), ('narration_length', 'narration.txt'))
-
-# make-narration 为它实际读过和写过的文件记录的内容哈希。
-# 在这些字段出现之前的偏移表不带哈希；对它们只能做上面那次长度检查。
-OFFSETS_HASH_SOURCES = (('script_sha256', 'script.txt'), ('narration_sha256', 'narration.txt'))
+# 偏移表契约由 video_contract 与直接对齐入口共用。
 
 
 def check_narration_offsets(ws: Path, relpath: str) -> CheckResult:
     """narration-offsets.json：make-narration 的偏移表，Phase 7 的
-    align-narration 的必需输入。外层结构是 {version: 1, script_length,
-    narration_length, segments: [...]}，且至少有一个 segment。记录的
-    script_sha256 / narration_sha256（当表里有它们时）必须等于当前文件的哈希，
-    这能抓到字符数看不出的等长编辑；两个长度必须等于 script.txt 与 narration.txt
-    当下的字符数，这能抓到 script.txt 被编辑却没有重跑 make-narration、直到
-    Phase 7 的 align-narration 拒绝它的情况。"""
+    align-narration 的必需输入。外层结构是 {version, script_length,
+    narration_length, script_sha256, narration_sha256, segments: [...]}。
+
+    版本、两个字数与两个内容哈希都是必需的。字数抓得到 script.txt 被编辑却没重
+    跑 make-narration 的情形；哈希抓得到字数看不出的等长编辑。缺任何一项的证据
+    都不能说明这份表属于当前稿子，因此按损坏处理，而不是降级到字数比对。"""
     result, data = read_json_product(ws, relpath)
     if not result.ok:
         return result
-    if not isinstance(data, dict):
-        return CheckResult(STATUS_CORRUPT, 'JSON root is not an object')
-    if data.get('version') != NARRATION_OFFSETS_VERSION:
-        return CheckResult(
-            STATUS_CORRUPT, f'version must be {NARRATION_OFFSETS_VERSION}, got {data.get("version")!r}'
+    try:
+        problem = video_contract.offsets_problem(
+            data,
+            script_path=ws / 'script.txt' if (ws / 'script.txt').is_file() else None,
+            narration_path=ws / 'narration.txt' if (ws / 'narration.txt').is_file() else None,
         )
-    if not isinstance(data.get('segments'), list):
-        return CheckResult(STATUS_CORRUPT, 'segments is not a list')
-    if not data['segments']:
-        return CheckResult(STATUS_CORRUPT, 'segments is an empty list')
-    for field, source in OFFSETS_LENGTH_SOURCES:
-        recorded = data.get(field)
-        if isinstance(recorded, bool) or not isinstance(recorded, int):
-            return CheckResult(STATUS_CORRUPT, f'{field} must be an integer, got {recorded!r}')
-        source_result, text = read_nonempty_text(ws, source)
-        if source_result.ok and len(text) != recorded:  # 否则该源文件会单独报告
-            return CheckResult(
-                STATUS_CORRUPT,
-                f'{field} is {recorded} but {source} has {len(text)} characters: {source} and this offset '
-                'table no longer belong together, re-run scripts/make-narration.py',
-            )
-    for field, source in OFFSETS_HASH_SOURCES:
-        recorded = data.get(field)
-        if recorded is None:
-            continue  # 该表早于内容哈希出现：只有字数适用
-        if not isinstance(recorded, str):
-            return CheckResult(STATUS_CORRUPT, f'{field} must be a string, got {recorded!r}')
-        source_path = ws / source
-        if source_path.is_file() and file_sha256(source_path) != recorded:
-            return CheckResult(
-                STATUS_CORRUPT,
-                f'{field} does not match {source}: {source} was edited without re-running '
-                'scripts/make-narration.py',
-            )
-    return OK
+    except (OSError, UnicodeError) as exc:
+        return CheckResult(STATUS_CORRUPT, f'cannot read offset-table source: {exc}')
+    return CheckResult(STATUS_CORRUPT, problem) if problem else OK
 
 
 def paragraph_type_problem(scenes: list[dict[str, Any]]) -> str | None:
@@ -899,6 +1058,18 @@ def check_scene_plan_product(ws: Path, relpath: str) -> CheckResult:
     problem = material_ref_problem(ws, refs) if refs else None
     if problem:
         return CheckResult(STATUS_CORRUPT, problem)
+    # catalog 声明的必用素材（论文模式的关键图）必须至少被某个 scene 选中：
+    # 候选覆盖不等于已经出现在成片，但连候选都没有，composition 也拿不到它。
+    required = required_material_refs(ws)
+    if required:
+        index = load_catalog_index(ws)
+        missing = uncovered_required_refs(required, refs, index) if index else list(required)
+        if missing:
+            return CheckResult(
+                STATUS_CORRUPT,
+                f'material_candidates leaves required_material_refs unselected: {missing} '
+                '(put the key figure / table in the scene that explains it)',
+            )
     return OK
 
 
@@ -1023,8 +1194,10 @@ def check_composition_report(ws: Path, relpath: str) -> CheckResult:
     check-composition 运行保存下来的 stdout；其结论必须是 pass，且必须覆盖当前
     的 composition：检查器嵌入的 sources_sha256 必须与当前可检查源文件一致，
     且 final.mp4 不得比任何源文件更旧 —— 早于最近一次编辑的 pass、或早于它的
-    渲染，都不能说明当前画面。在 check-composition 开始记录 sources_sha256
-    之前写下的报告会退回比较 mtime，而那可能被重写过 mtime 的复制骗过。"""
+    渲染，都不能说明当前画面。
+
+    sources_sha256 是必需字段：没有指纹的报告不能用 mtime 代替，因为 mtime 可以
+    被复制改写，那样的报告证明不了它检查的是当前画面。"""
     result, data = read_json_product(ws, relpath)
     if not result.ok:
         return result
@@ -1033,22 +1206,19 @@ def check_composition_report(ws: Path, relpath: str) -> CheckResult:
     if data.get('verdict') != 'pass':
         return CheckResult(STATUS_CORRUPT, f'verdict must be "pass", got {data.get("verdict")!r}')
     recorded = data.get('sources_sha256')
-    if isinstance(recorded, str):
-        # 基于内容：没有保留 mtime 的复制无法伪造新鲜度。
-        if recorded != composition_sources_fingerprint(ws / 'composition'):
-            return CheckResult(
-                STATUS_CORRUPT,
-                'sources_sha256 does not match the current composition (index.html / compositions/ / assets/): '
-                'the composition changed after check-composition last ran, re-run it and save the report',
-            )
-    else:
-        newest = newest_composition_source(ws, include_storyboard=False)
-        if newest is not None and newest.stat().st_mtime_ns > (ws / relpath).stat().st_mtime_ns:
-            return CheckResult(
-                STATUS_CORRUPT,
-                f'older than {newest.relative_to(ws).as_posix()}: the composition changed after check-composition '
-                'last ran, re-run it and save the report',
-            )
+    if not isinstance(recorded, str) or not recorded:
+        return CheckResult(
+            STATUS_CORRUPT,
+            'sources_sha256 is required and must be a non-empty string: re-run check-composition '
+            'with --output to save a report about the current composition',
+        )
+    # 基于内容：没有保留 mtime 的复制无法伪造新鲜度。
+    if recorded != composition_sources_fingerprint(ws / 'composition'):
+        return CheckResult(
+            STATUS_CORRUPT,
+            'sources_sha256 does not match the current composition (index.html / compositions/ / assets/): '
+            'the composition changed after check-composition last ran, re-run it and save the report',
+        )
     render = ws / COMPOSITION_RENDER
     newest = newest_composition_source(ws)
     if render.is_file() and newest is not None and newest.stat().st_mtime_ns > render.stat().st_mtime_ns:
@@ -1110,7 +1280,7 @@ def _applies_when_fetch(inputs: dict[str, Any]) -> bool:
 def _applies_fetch_or_paper(inputs: dict[str, Any]) -> bool:
     # catalog 也收有论文自己的图和表，它们无论是否抓取网络素材
     # 都存在。
-    return bool(inputs.get('fetch_materials')) or inputs.get('input_mode') in PAPER_MODES
+    return video_contract.catalog_applies(inputs)
 
 
 APPLICABILITY: dict[str, tuple[Callable[[dict[str, Any]], bool], bool]] = {
@@ -1182,8 +1352,7 @@ PHASES: list[dict[str, Any]] = [
             'inputs.json#duration',
             'inputs.json#language',
             'inputs.json#input_mode',
-            'inputs.json#template',
-            'narration-instructions.md',  # 可选
+            f'inputs.json#{NARRATION_REQUESTS_FIELD}',  # 可选
         ],
         'products': {
             'script.txt': check_script_text,
@@ -1195,7 +1364,7 @@ PHASES: list[dict[str, Any]] = [
     },
     {
         'id': '7-voice-subtitles',
-        'title': '配音与字幕',
+        'title': '配音与时间对齐',
         'doc': 'references/phases/07-voice-subtitles.md',
         'applies': 'always',
         'upstream': [
@@ -1203,12 +1372,10 @@ PHASES: list[dict[str, Any]] = [
             'narration-offsets.json',
             'script.txt',
             'scene-plan.json',
-            'inputs.json#layout',
         ],
         'products': {
             'voice_clone/narration.mp3': check_file_product,
             'transcribe/transcript.json': check_transcript,
-            'transcribe/subtitle-units.json': check_subtitle_units,
             'transcribe/timeline.json': check_timeline,
         },
     },
@@ -1217,9 +1384,14 @@ PHASES: list[dict[str, Any]] = [
         'title': 'composition（委派）',
         'doc': 'references/phases/08-composition.md',
         'applies': 'always',
+        'precondition': check_visual_inputs,
         'upstream': [
             'voice_clone/narration.mp3',
-            'transcribe/subtitle-units.json',
+            # 最终字幕在这一阶段按选定 layout 生成，因此它依赖本轮新鲜的
+            # transcript 与逐字映射表。
+            'transcribe/transcript.json',
+            'narration.txt',
+            'narration-offsets.json',
             'transcribe/timeline.json',
             'material-catalog.json',  # 可选：fetch_materials 为 false 时不存在
             'scene-plan.json',
@@ -1228,10 +1400,10 @@ PHASES: list[dict[str, Any]] = [
             'inputs.json#layout',
             'inputs.json#template',
             'inputs.json#orientation',
-            'composition-instructions.md',  # 可选
-            'style-prompt.md',  # 可选：旧项目
+            f'inputs.json#{COMPOSITION_REQUESTS_FIELD}',  # 可选
         ],
         'products': {
+            'composition/assets/subtitle-units.json': check_subtitle_units,
             'composition/storyboard.md': check_text_product,
             'composition/index.html': check_file_product,
             'composition/compositions': check_directory_product,
@@ -1364,20 +1536,37 @@ class Fingerprinter:
         return self._files[relpath]
 
     def inputs_field(self, name: str) -> str:
-        if name not in self._inputs:
-            if name == 'qa_level':
-                return text_sha256(json.dumps('standard', sort_keys=True, ensure_ascii=False))
+        if name in self._inputs:
+            value = canonical_inputs_field(name, self._inputs[name])
+        elif name in video_contract.INPUTS_FIELD_DEFAULTS:
+            # 有缺省值的可选字段：缺省就是那个值，不是“未知”。
+            value = video_contract.INPUTS_FIELD_DEFAULTS[name]
+        else:
             return ABSENT
-        value = canonical_inputs_field(name, self._inputs[name])
         return text_sha256(json.dumps(value, sort_keys=True, ensure_ascii=False))
 
     def upstream(self, phase: dict[str, Any]) -> dict[str, str]:
-        return {
+        result = {
             key: self.inputs_field(key[len(INPUTS_FIELD_PREFIX):])
             if key.startswith(INPUTS_FIELD_PREFIX)
             else self.file(key)
             for key in phase['upstream']
+            if key != 'material-catalog.json' or video_contract.catalog_applies(self._inputs)
         }
+        if phase['id'] == '8-composition':
+            # 与 handoff 的副本策略相同。复制相同字节不算变更；真正改变有效的
+            # 机器契约才会使 Phase 8 stale，Phase 7 从不依赖这些资源。
+            design, layout, template = (self._inputs.get(name) for name in ('design', 'layout', 'template'))
+            paths = [f'modules/designs/{design}/{design}.json', f'modules/layouts/{layout}.json']
+            if template is not None:
+                paths.append(f'modules/templates/{template}/{template}.json')
+            for relpath in paths:
+                path = video_contract.effective_resource(SKILL_ROOT, self.ws, relpath, refresh=False)
+                try:
+                    result[relpath] = file_sha256(path) if path.is_file() else ABSENT
+                except OSError:
+                    result[relpath] = ABSENT
+        return result
 
     def products(self, phase: dict[str, Any]) -> dict[str, str]:
         """该阶段声明的各产物路径的指纹；目录产物
@@ -1398,6 +1587,10 @@ def canonical_inputs_field(name: str, value: Any) -> Any:
     if name == 'duration':
         minutes = duration_minutes(value)
         return minutes if minutes is not None else value
+    if name in REQUESTS_FIELDS:
+        # 缺省与 [] 是同一件事：两者必须得到同一个指纹，否则在新 requirement
+        # 字段上切换写法会白白使阶段失效。
+        return list(value) if isinstance(value, list) else value
     return value
 
 
@@ -1588,8 +1781,15 @@ class Stamps:
 
 
 def validate_phase(ws: Path, phase: dict[str, Any]) -> dict[str, CheckResult]:
-    """运行某阶段的每个产物检查器；返回失败产物的 {relpath: CheckResult}。"""
+    """运行某阶段的每个产物检查器；返回失败产物的 {relpath: CheckResult}。
+
+    阶段声明的输入前置条件也一并返回，键用 inputs.json#<field>，与上游指纹的写法
+    一致；scan_workspace 会把它们和产物问题分开计数。
+    """
     problems: dict[str, CheckResult] = {}
+    precondition = phase.get('precondition')
+    if precondition is not None:
+        problems.update(precondition(ws))
     for relpath, checker in phase['products'].items():
         result = checker(ws, relpath)
         if not result.ok:
@@ -1598,12 +1798,16 @@ def validate_phase(ws: Path, phase: dict[str, Any]) -> dict[str, CheckResult]:
 
 
 def changed_upstream_keys(stamped: dict[str, str], current: dict[str, str]) -> list[str]:
-    """在戳与当下之间指纹不同的上游键，按表中顺序。
+    """在戳与当下之间指纹不同的上游键，按当前顺序，再附上已移除的键。
 
-    只比较双方都有的键：旧戳里缺少的键（因为 PHASES 学会了新的上游）不得让既有
-    workspace 失效，而被移除的键只是自然地从下一个戳中淡出。
+    比的是键集合而不是交集：某个阶段学会新的上游键，旧戳里没有它，那正是“这个
+    产物不是按当前要求构建的”的证据，必须让它失效并被重新生成，而不是因为旧戳
+    缺键就继续信任。反过来，声明里移除的键也从旧戳里消失也算变化。没有 backfill
+    或自动迁移：缺证据的旧构建要求重做该阶段，而不是猜一个已经合格的结论。
     """
-    return [key for key in current if key in stamped and stamped[key] != current[key]]
+    changed = [key for key in current if stamped.get(key) != current[key]]
+    changed.extend(sorted(key for key in stamped if key not in current))
+    return changed
 
 
 def stale_upstream(
@@ -1730,12 +1934,17 @@ def scan_workspace(
                 'problems': {},
             }
             continue
-        for relpath, result in problems.items():
+        product_problems = {
+            relpath: result for relpath, result in problems.items()
+            if not relpath.startswith(INPUTS_FIELD_PREFIX)
+        }
+        for relpath, result in product_problems.items():
             if result.status == STATUS_MISSING:
                 missing.append(relpath)
             else:
                 corrupt.append(relpath)
-        # 只有完全没有东西可修时才算 missing；任何坏文件都让该阶段成为 corrupt。
+        # 只有完全没有东西可修时才算 missing；任何坏文件或输入前置条件失败都让该
+        # 阶段成为 corrupt（输入问题也是本阶段要修的东西）。
         all_missing = all(result.status == STATUS_MISSING for result in problems.values())
         reason = STATUS_MISSING if all_missing else STATUS_CORRUPT
         statuses.append({'id': phase['id'], 'status': reason})

@@ -30,7 +30,7 @@ INPUTS = {
     'template': None,
     'design': 'default',
     'layout': 'stage',
-    'coding_agent': 'claude-code',
+    'coding_agent': 'pi-coding-agent',
     'fetch_materials': True,
     'qa_level': 'standard',
 }
@@ -263,7 +263,7 @@ def complete_through_harvest(ws: Path, **inputs_overrides) -> None:
         entries.append(PAPER_ENTRY)
     if inputs['fetch_materials']:
         entries.append({'slug': 'example', 'images': [], 'videos': []})
-    manifest: dict = {'entries': entries}
+    manifest: dict = {'version': 2, 'entries': entries}
     if inputs['fetch_materials']:
         manifest['harvest_batches'] = [{'at': '2026-01-01T00:00:00Z', 'urls': ['https://example.com'], 'succeeded': 1, 'failed': 0, 'rejected': []}]
     write_json(ws / 'harvest_page' / 'manifest.json', manifest)
@@ -273,11 +273,15 @@ def complete_through_catalog(ws: Path, **inputs_overrides) -> None:
     complete_through_harvest(ws, **inputs_overrides)
     inputs = {**INPUTS, **inputs_overrides}
     entries = []
+    catalog: dict = {'topic_name': 'demo'}
     if inputs['input_mode'] == 'paper':
         entries.append(PAPER_CATALOG_ENTRY)
+        # 论文模式必须显式声明必用清单（没有适用图时写 []）。
+        catalog['required_material_refs'] = []
     if inputs['fetch_materials']:
         entries.extend(CATALOG['entries'])
-    write_json(ws / 'material-catalog.json', {'topic_name': 'demo', 'entries': entries})
+    catalog['entries'] = entries
+    write_json(ws / 'material-catalog.json', catalog)
     if inputs['fetch_materials']:
         write_clip(ws / CLIP_PATH)
 
@@ -295,20 +299,33 @@ def complete_through_script(ws: Path, *, approved: bool = True, **inputs_overrid
 
 
 def complete_through_voice_subtitles(ws: Path, **inputs_overrides) -> None:
-    """Phase 7 (配音与字幕) products: narration.mp3 + transcript + units + timeline."""
+    """Phase 7 products: narration.mp3 + fresh transcript + timeline.
+
+    Final subtitle units belong to Phase 8 now (they depend on the layout), so this
+    phase never writes them.
+    """
     complete_through_script(ws, **inputs_overrides)
     write_blob(ws / 'voice_clone' / 'narration.mp3')
     write_json(ws / 'transcribe' / 'transcript.json', TRANSCRIPT)
-    write_json(ws / 'transcribe' / 'subtitle-units.json', SUBTITLE_UNITS)
     write_json(ws / 'transcribe' / 'timeline.json', TIMELINE)
 
 
 def complete_through_composition(ws: Path, **inputs_overrides) -> None:
     complete_through_voice_subtitles(ws, **inputs_overrides)
+    write_json(ws / 'composition' / 'assets' / 'subtitle-units.json', SUBTITLE_UNITS)
     write_text(ws / 'composition' / 'storyboard.md', '# storyboard\n\n## scene_1\n内容区域：main\n')
     write_text(ws / 'composition' / 'index.html', '<html></html>')
     write_text(ws / 'composition' / 'compositions' / 'scene_1.html', '<template></template>')
-    write_json(ws / 'composition' / 'check-composition.json', {'success': True, 'verdict': 'pass', 'findings': []})
+    # 报告必须写上当前 composition 的源指纹：没有指纹的报告不再靠 mtime 降级验收。
+    write_json(
+        ws / 'composition' / 'check-composition.json',
+        {
+            'success': True,
+            'verdict': 'pass',
+            'findings': [],
+            'sources_sha256': composition_sources_fingerprint(ws / 'composition'),
+        },
+    )
     write_blob(ws / 'composition' / 'renders' / 'final.mp4')
 
 
@@ -1102,13 +1119,15 @@ def test_corrupt_transcript_falls_back_to_phase_7(tmp_path: Path):
     assert 'transcribe/transcript.json' in result['corrupt_products']
 
 
-def test_missing_subtitle_units_falls_back_to_phase_7(tmp_path: Path):
-    complete_through_voice_subtitles(tmp_path)
-    (tmp_path / 'transcribe' / 'subtitle-units.json').unlink()
+def test_missing_subtitle_units_falls_back_to_phase_8(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    (tmp_path / 'composition' / 'assets' / 'subtitle-units.json').unlink()
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
-    assert result['next_phase']['id'] == '7-voice-subtitles'
-    assert 'transcribe/subtitle-units.json' in result['missing_products']
+    # 最终字幕依赖 layout，所以它属于 Phase 8，而不是 Phase 7。
+    assert result['next_phase']['id'] == '8-composition'
+    assert 'composition/assets/subtitle-units.json' in result['missing_products']
+    assert '7-voice-subtitles' in result['completed_phases']
 
 
 def test_missing_timeline_falls_back_to_phase_7(tmp_path: Path):
@@ -1139,13 +1158,13 @@ def test_truncated_timeline_json_falls_back_to_phase_7(tmp_path: Path):
     assert 'transcribe/timeline.json' in result['corrupt_products']
 
 
-def test_corrupt_subtitle_units_falls_back_to_phase_7(tmp_path: Path):
-    complete_through_voice_subtitles(tmp_path)
-    write_json(tmp_path / 'transcribe' / 'subtitle-units.json', {'units': []})
+def test_corrupt_subtitle_units_falls_back_to_phase_8(tmp_path: Path):
+    complete_through_composition(tmp_path)
+    write_json(tmp_path / 'composition' / 'assets' / 'subtitle-units.json', {'units': []})
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
-    assert result['next_phase']['id'] == '7-voice-subtitles'
-    assert 'transcribe/subtitle-units.json' in result['corrupt_products']
+    assert result['next_phase']['id'] == '8-composition'
+    assert 'composition/assets/subtitle-units.json' in result['corrupt_products']
 
 
 def write_timeline_beats(ws: Path, beats) -> None:
@@ -1271,8 +1290,12 @@ def test_compositions_dir_with_a_nested_file_is_accepted(tmp_path: Path):
     complete_through_composition(tmp_path)
     (tmp_path / 'composition' / 'compositions' / 'scene_1.html').unlink()
     write_text(tmp_path / 'composition' / 'compositions' / 'scene_1' / 'index.html', '<template></template>')
-    os.utime(tmp_path / 'composition' / 'check-composition.json')  # check-composition ran after the edit
-    # And the render ran after the check.
+    # 内容变了就要重新检查：报告里嵌入的源指纹必须覆盖现在这份 composition。
+    write_json(
+        tmp_path / 'composition' / 'check-composition.json',
+        {'success': True, 'verdict': 'pass', 'findings': [],
+         'sources_sha256': composition_sources_fingerprint(tmp_path / 'composition')},
+    )
     mtime = (tmp_path / 'composition' / 'check-composition.json').stat().st_mtime_ns + 10**9
     os.utime(tmp_path / 'composition' / 'renders' / 'final.mp4', ns=(mtime, mtime))
     result = parse_result(run_cli(str(tmp_path)))
@@ -1527,7 +1550,8 @@ def test_removed_design_keeps_mode_flags(tmp_path: Path):
     assert '4-material-harvest' in result['skipped_phases']
 
 
-def test_removed_design_accepted_from_workspace_copy(tmp_path: Path):
+def test_a_design_removed_from_the_library_is_rejected_even_with_a_workspace_copy(tmp_path: Path):
+    """库里已删除的 design 不再靠工作区里的历史副本变相存续。"""
     complete_through_research(tmp_path)
     write_json(tmp_path / 'inputs.json', {**INPUTS, 'design': 'moon'})
     copy = tmp_path / 'modules' / 'designs' / 'moon'
@@ -1538,8 +1562,11 @@ def test_removed_design_accepted_from_workspace_copy(tmp_path: Path):
         'fonts': {'css_filename': 'moon-fonts.css', 'css2_families': ['X']},
     })
     result = parse_result(run_cli(str(tmp_path)))
-    assert 'inputs.json' not in result['corrupt_products']
-    assert result['next_phase']['id'] != '1-gather-inputs'
+    assert result['next_phase']['id'] == '1-gather-inputs'
+    assert 'inputs.json' in result['corrupt_products']
+    assert "design 'moon' is not an available design" in result['next_phase']['problems']['inputs.json']
+    # 工作区的历史副本没被删掉，只是不再被当作可用资源。
+    assert (copy / 'moon.md').is_file()
 
 
 @pytest.mark.parametrize('duration', [5, 7.5, '5min', ' 10 分钟', '3.5', '5 minutes', '2 mins', '4分'])
@@ -1794,9 +1821,8 @@ def test_stamp_records_upstream_and_product_fingerprints(tmp_path: Path):
     assert script['products']['script.txt'] == sha256_of(SCRIPT_TXT)
     assert script['upstream']['research-brief.md'] == sha256_of(RESEARCH_BRIEF)
     assert script['upstream']['inputs.json#duration'] == field_sha256(5.0)  # "5min" normalizes to 5
-    assert script['upstream']['inputs.json#template'] == field_sha256(None)
     assert script['upstream']['material-catalog.json'] == sha256_of((tmp_path / 'material-catalog.json').read_bytes())
-    assert script['upstream']['narration-instructions.md'] == 'absent'  # optional upstream that does not exist
+    assert script['upstream']['inputs.json#narration_requests'] == field_sha256([])  # 缺省与 [] 等价
 
 
 def test_absent_qa_level_fingerprints_like_the_default(tmp_path: Path):
@@ -1839,15 +1865,17 @@ UPSTREAM_KEYS = {
     '5-material-catalog': ['harvest_page/manifest.json', 'research-brief.md'],
     '6-script-scene-plan': [
         'research-brief.md', 'material-catalog.json', 'inputs.json#duration', 'inputs.json#language',
-        'inputs.json#input_mode', 'inputs.json#template', 'narration-instructions.md',
+        'inputs.json#input_mode', 'inputs.json#narration_requests',
     ],
     '7-voice-subtitles': [
-        'narration.txt', 'narration-offsets.json', 'script.txt', 'scene-plan.json', 'inputs.json#layout',
+        'narration.txt', 'narration-offsets.json', 'script.txt', 'scene-plan.json',
     ],
     '8-composition': [
-        'voice_clone/narration.mp3', 'transcribe/subtitle-units.json', 'transcribe/timeline.json',
-        'material-catalog.json', 'scene-plan.json', 'script.txt', 'inputs.json#design', 'inputs.json#layout',
-        'inputs.json#template', 'inputs.json#orientation', 'composition-instructions.md', 'style-prompt.md',
+        'voice_clone/narration.mp3', 'transcribe/transcript.json', 'narration.txt',
+        'narration-offsets.json', 'transcribe/timeline.json', 'material-catalog.json',
+        'scene-plan.json', 'script.txt', 'inputs.json#design', 'inputs.json#layout',
+        'inputs.json#template', 'inputs.json#orientation', 'inputs.json#composition_requests',
+        'modules/designs/default/default.json', 'modules/layouts/stage.json',
     ],
     '9-check-mix': ['composition/renders/final.mp4', 'inputs.json#qa_level'],
 }
@@ -1895,6 +1923,7 @@ def test_directory_products_are_not_fingerprinted(tmp_path: Path):
     products = read_stamps(tmp_path)['phases']['8-composition']['products']
     assert 'composition/compositions' not in products
     assert set(products) == {
+        'composition/assets/subtitle-units.json',
         'composition/storyboard.md',
         'composition/index.html',
         'composition/check-composition.json',
@@ -1942,19 +1971,31 @@ def rewrite_voice_subtitles(ws: Path) -> None:
     """Phase 7 regenerated: same shape, other bytes."""
     write_blob(ws / 'voice_clone' / 'narration.mp3', size=256)
     write_json(ws / 'transcribe' / 'transcript.json', [{**TRANSCRIPT[0], 'text': '大家好呀。'}])
-    write_json(ws / 'transcribe' / 'subtitle-units.json', {'units': [{'text': '大家好呀', 'begin_s': 0.0, 'end_s': 2.6}]})
     write_json(ws / 'transcribe' / 'timeline.json', {**TIMELINE, 'total_s': 2.6})
 
 
+def rewrite_subtitle_units(ws: Path) -> None:
+    """Phase 8's deterministic subtitles regenerated (same audio, new layout)."""
+    write_json(
+        ws / 'composition' / 'assets' / 'subtitle-units.json',
+        {'units': [{'text': '大家好呀', 'begin_s': 0.0, 'end_s': 2.6}]},
+    )
+    write_json(
+        ws / 'composition' / 'check-composition.json',
+        {'success': True, 'verdict': 'pass', 'findings': [],
+         'sources_sha256': composition_sources_fingerprint(ws / 'composition')},
+    )
+    write_blob(ws / 'composition' / 'renders' / 'final.mp4', size=256)
+
+
 def test_a_partial_redo_keeps_the_phase_stale(tmp_path: Path):
-    # Only re-running align-narration after a script edit must not clear Phase 7's
+    # Only re-running the aligner after a script edit must not clear Phase 7's
     # stale mark: narration.mp3 and transcript.json are still the old build.
     settle(tmp_path)
     write_script(tmp_path, EDITED_SCRIPT_TXT)
     approve(tmp_path, 'script')
     assert parse_result(run_cli(str(tmp_path)))['next_phase']['id'] == '7-voice-subtitles'
 
-    write_json(tmp_path / 'transcribe' / 'subtitle-units.json', {'units': [{'text': '大家好呀', 'begin_s': 0.0, 'end_s': 2.6}]})
     write_json(tmp_path / 'transcribe' / 'timeline.json', {**TIMELINE, 'total_s': 2.6})
     result = parse_result(run_cli(str(tmp_path)))
 
@@ -1962,11 +2003,11 @@ def test_a_partial_redo_keeps_the_phase_stale(tmp_path: Path):
     assert result['next_phase']['reason'] == 'stale'
     assert result['next_phase']['changed_upstream'] == ['narration.txt', 'narration-offsets.json', 'script.txt']
     # While the phase is stale the stamp keeps the pre-change fingerprints: the
-    # two rebuilt products are NOT recorded until the redo is complete.
+    # rebuilt product is NOT recorded until the redo is complete.
     stamp = read_stamps(tmp_path)['phases']['7-voice-subtitles']
     assert stamp['upstream']['script.txt'] == sha256_of(SCRIPT_TXT)
-    assert stamp['products']['transcribe/subtitle-units.json'] == sha256_of(
-        json.dumps(SUBTITLE_UNITS, ensure_ascii=False)
+    assert stamp['products']['transcribe/timeline.json'] == sha256_of(
+        json.dumps(TIMELINE, ensure_ascii=False)
     )
 
     rewrite_voice_subtitles(tmp_path)
@@ -1974,41 +2015,34 @@ def test_a_partial_redo_keeps_the_phase_stale(tmp_path: Path):
     assert statuses(result)['7-voice-subtitles'] == 'completed'
 
 
-def test_an_unreadable_optional_upstream_does_not_abort_the_scan(tmp_path: Path):
-    complete_all(tmp_path)
-    style_prompt = tmp_path / 'style-prompt.md'
-    write_text(style_prompt, '## style\n冷色调\n')
-    # First scan stamps Phase 8 with the file's hash.
-    assert parse_result(run_cli(str(tmp_path)))['next_phase'] is None
-
-    style_prompt.chmod(0)
-    # Drop the fingerprint memo so this run must open the file and hit the
-    # permission error (with a warm cache the size + mtime check answers first).
-    (tmp_path / '.pipeline' / 'fpcache.json').unlink()
-    try:
-        proc = run_cli(str(tmp_path))
-    finally:
-        style_prompt.chmod(0o644)
-
-    assert proc.returncode == 0
-    result = parse_result(proc)
-    assert result['next_phase']['id'] == '8-composition'
-    assert result['next_phase']['reason'] == 'stale'
-    assert result['next_phase']['changed_upstream'] == ['style-prompt.md']
-
-
-def test_an_upstream_key_missing_from_an_old_stamp_is_not_a_change(tmp_path: Path):
-    # PHASES learned a new upstream key: existing workspaces must not go stale for it.
+def test_an_upstream_key_missing_from_an_old_stamp_makes_the_phase_stale(tmp_path: Path):
+    # 新要求不能因为旧戳缺键就永久忽略：缺键就是“不是按当前要求构建”，该阶段要重做。
     settle(tmp_path)
     stamps = read_stamps(tmp_path)
-    stamp = stamps['phases']['9-check-mix']
-    del stamp['upstream']['inputs.json#qa_level']
+    del stamps['phases']['9-check-mix']['upstream']['inputs.json#qa_level']
     write_json(tmp_path / '.pipeline' / 'stamps.json', stamps)
 
     result = parse_result(run_cli(str(tmp_path)))
 
-    assert result['next_phase'] is None
-    assert result['stale_phases'] == []
+    assert result['next_phase']['id'] == '9-check-mix'
+    assert result['next_phase']['reason'] == 'stale'
+    assert result['next_phase']['changed_upstream'] == ['inputs.json#qa_level']
+    # 旧戳与旧产物都原样保留，不自动迁移。
+    assert (tmp_path / '.pipeline' / 'stamps.json').is_file()
+    assert (tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4').is_file()
+
+
+def test_an_upstream_key_removed_from_the_contract_makes_the_phase_stale(tmp_path: Path):
+    # 旧戳里还留着阶段已不再声明的键：那也是契约变化，不能静默当作没变。
+    settle(tmp_path)
+    stamps = read_stamps(tmp_path)
+    stamps['phases']['7-voice-subtitles']['upstream']['inputs.json#layout'] = 'stale'
+    write_json(tmp_path / '.pipeline' / 'stamps.json', stamps)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '7-voice-subtitles'
+    assert result['next_phase']['changed_upstream'] == ['inputs.json#layout']
 
 
 def test_fingerprint_cache_is_written_and_trusted(tmp_path: Path):
@@ -2060,21 +2094,82 @@ def test_changing_only_qa_level_makes_only_phase_9_stale(tmp_path: Path):
     assert result['completed_phases'] == [phase_id for phase_id in PHASE_IDS[:-1] if phase_id != '2-paper-parse']
 
 
-def test_changing_the_layout_makes_phase_7_stale(tmp_path: Path):
+def test_the_old_instruction_files_are_not_upstreams_any_more(tmp_path: Path):
+    # 旧项目里还留着这三个文件时，新建或修改它们都不影响任何阶段。
     settle(tmp_path)
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'layout': 'portrait'})
+    for name in ('narration-instructions.md', 'composition-instructions.md', 'style-prompt.md'):
+        write_text(tmp_path / name, '旧要求\n')
     result = parse_result(run_cli(str(tmp_path)))
-    assert result['next_phase']['id'] == '7-voice-subtitles'
-    assert result['next_phase']['changed_upstream'] == ['inputs.json#layout']
-    assert result['pending_phases'] == ['8-composition', '9-check-mix']
+    assert result['next_phase'] is None
+    assert result['stale_phases'] == []
 
 
-def test_a_newly_created_optional_upstream_file_makes_its_phase_stale(tmp_path: Path):
+def test_changing_the_layout_makes_only_phase_8_stale(tmp_path: Path):
+    """换布局只重做画面：音频、transcript 与时间轴都不重建。"""
     settle(tmp_path)
-    write_text(tmp_path / 'composition-instructions.md', '结尾不要 CTA\n')
+    write_json(
+        tmp_path / 'inputs.json',
+        {**INPUTS, 'layout': 'portrait', 'orientation': 'portrait'},
+    )
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase']['id'] == '8-composition'
-    assert result['next_phase']['changed_upstream'] == ['composition-instructions.md']
+    assert result['next_phase']['reason'] == 'stale'
+    assert result['next_phase']['changed_upstream'] == [
+        'inputs.json#layout', 'inputs.json#orientation',
+        'modules/layouts/portrait.json', 'modules/layouts/stage.json',
+    ]
+    assert result['stale_phases'] == ['8-composition']
+    assert result['pending_phases'] == ['9-check-mix']
+    # Phase 7 不依赖 layout，保持完成。
+    assert statuses(result)['7-voice-subtitles'] == 'completed'
+
+
+def test_a_layout_that_does_not_match_the_orientation_blocks_phase_8(tmp_path: Path):
+    """3:4 与 9:16 混用、或横竖错配时，问题留在 Phase 8，不回退 Phase 1。"""
+    settle(tmp_path)
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'layout': 'portrait'})  # landscape 项目
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '8-composition'
+    assert result['next_phase']['reason'] == 'corrupt'
+    detail = result['next_phase']['problems']['inputs.json#layout']
+    assert 'portrait' in detail and '1080x1920' in detail and 'landscape' in detail
+    assert 'inputs.json' not in result['corrupt_products']
+    # 视觉配置问题不算产物缺失，也不会让 Phase 1 重做。
+    assert statuses(result)['1-gather-inputs'] == 'completed'
+
+
+def test_a_three_by_four_layout_cannot_stand_in_for_nine_by_sixteen(tmp_path: Path):
+    settle(tmp_path, orientation='portrait', layout='portrait')
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'orientation': 'portrait-3:4', 'layout': 'portrait'})
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '8-composition'
+    detail = result['next_phase']['problems']['inputs.json#layout']
+    assert '1080x1920' in detail and '1080x1440' in detail
+
+
+def test_a_newly_added_narration_request_makes_phase_6_stale(tmp_path: Path):
+    # narration_requests 缺省时是 absent，补上后就变成上游变化。
+    settle(tmp_path)
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'narration_requests': ['结尾不要 CTA']})
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert result['next_phase']['changed_upstream'] == ['inputs.json#narration_requests']
+
+
+def test_a_newly_added_composition_request_makes_phase_8_stale(tmp_path: Path):
+    settle(tmp_path)
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'composition_requests': ['不要人物区']})
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '8-composition'
+    assert result['next_phase']['changed_upstream'] == ['inputs.json#composition_requests']
+
+
+def test_requests_are_separate_per_phase(tmp_path: Path):
+    # 旁白要求只动 Phase 6，画面要求只动 Phase 8：两者不得互相牵连。
+    settle(tmp_path)
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'narration_requests': ['语气更口语']})
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['stale_phases'] == ['6-script-scene-plan']
 
 
 def test_reapproving_an_edited_product_stales_the_next_phase(tmp_path: Path):
@@ -2110,7 +2205,9 @@ def test_regenerating_a_phase_after_its_upstream_changed_makes_it_completed_agai
     assert result['next_phase']['reason'] == 'stale'
     assert result['next_phase']['changed_upstream'] == [
         'voice_clone/narration.mp3',
-        'transcribe/subtitle-units.json',
+        'transcribe/transcript.json',
+        'narration.txt',
+        'narration-offsets.json',
         'transcribe/timeline.json',
         'script.txt',
     ]
@@ -2416,22 +2513,28 @@ def test_script_edited_to_the_same_length_is_caught_by_the_hash(tmp_path: Path):
     assert 'script_sha256' in detail and 'script.txt' in detail and 'make-narration' in detail, detail
 
 
-def test_same_length_edit_of_a_legacy_offsets_table_without_hashes_still_passes(tmp_path: Path):
-    # Offsets written before the hashes existed only carry the counts; nothing
-    # stronger can be checked for them (Phase 7 stales via the script.txt upstream).
+def test_offsets_without_content_hashes_are_rejected_even_at_the_same_length(tmp_path: Path):
+    # 没有内容哈希就只能比字数，而等长编辑看不出文字变了。这种偏移表属于旧格式，
+    # 明确判损坏并要求重新生成，不降级验收。
     settle(tmp_path)
     offsets = json.loads((tmp_path / 'narration-offsets.json').read_text(encoding='utf-8'))
     for field in ('script_sha256', 'narration_sha256'):
         offsets.pop(field, None)
     write_json(tmp_path / 'narration-offsets.json', offsets)
-    write_text(tmp_path / 'script.txt', EDITED_SCRIPT_TXT)
-    approve(tmp_path, 'script')
 
     result = parse_result(run_cli(str(tmp_path)))
 
-    assert statuses(result)['6-script-scene-plan'] == 'completed'
-    assert result['next_phase']['id'] == '7-voice-subtitles'
-    assert result['next_phase']['reason'] == 'stale'
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert result['next_phase']['reason'] == 'corrupt'
+    assert 'narration-offsets.json' in result['corrupt_products']
+    detail = result['next_phase']['problems']['narration-offsets.json']
+    assert 'script_sha256' in detail and 'make-narration' in detail
+    # 不改完就没法审稿过关：缺证据的产物不是“可接受的旧格式”。
+    approve_proc = run_cli(str(tmp_path), '--approve', 'script')
+    assert approve_proc.returncode == 2
+    # 旧文件与下游产物都还在，只是不再被当成合格的验收证据。
+    assert (tmp_path / 'narration-offsets.json').is_file()
+    assert (tmp_path / 'voice_clone' / 'narration.mp3').is_file()
 
 
 def test_narration_edited_after_make_narration_sends_phase_6_back(tmp_path: Path):
@@ -2530,7 +2633,7 @@ def test_composition_edited_after_the_report_sends_phase_8_back(tmp_path: Path, 
     assert result['next_phase']['reason'] == 'corrupt'
     assert result['corrupt_products'] == [REPORT]
     detail = result['next_phase']['problems'][REPORT]
-    assert edited in detail and 'check-composition' in detail, detail
+    assert 'sources_sha256 does not match' in detail and 'check-composition' in detail, detail
     assert result['pending_phases'] == ['9-check-mix']
 
 
@@ -2540,7 +2643,8 @@ def test_nested_composition_file_edited_after_the_report_sends_phase_8_back(tmp_
     touch_after_report(tmp_path, 'composition/compositions/extra/scene_2.html')
     result = parse_result(run_cli(str(tmp_path)))
     assert result['corrupt_products'] == [REPORT]
-    assert 'extra/scene_2.html' in result['next_phase']['problems'][REPORT]
+    # 报告里只有一份聚合指纹，所以只能报“composition 变了”，具体改哪个文件要看 diff。
+    assert 'sources_sha256 does not match' in result['next_phase']['problems'][REPORT]
 
 
 def test_rerunning_check_composition_brings_phase_8_back(tmp_path: Path):
@@ -2548,11 +2652,14 @@ def test_rerunning_check_composition_brings_phase_8_back(tmp_path: Path):
     touch_after_report(tmp_path, 'composition/compositions/scene_1.html')
     assert parse_result(run_cli(str(tmp_path)))['next_phase']['id'] == '8-composition'
 
-    write_json(tmp_path / REPORT, {'success': True, 'verdict': 'pass', 'findings': [], 'scenes_checked': ['scene_1']})
-    later = (tmp_path / 'composition' / 'compositions' / 'scene_1.html').stat().st_mtime_ns + 10**9
-    os.utime(tmp_path / REPORT, ns=(later, later))
-    # The render ran after the re-check.
-    os.utime(tmp_path / 'composition' / 'renders' / 'final.mp4', ns=(later + 10**9, later + 10**9))
+    write_report_with_sources_hash(tmp_path)
+    # 重新渲染，使成片不早于任何源文件（含被推到期时间之后的那份 scene）。
+    newest = max(
+        path.stat().st_mtime_ns
+        for path in (tmp_path / 'composition').rglob('*')
+        if path.is_file() and path.name != 'final.mp4'
+    )
+    os.utime(tmp_path / 'composition' / 'renders' / 'final.mp4', ns=(newest + 10**9, newest + 10**9))
     result = parse_result(run_cli(str(tmp_path)))
 
     assert result['next_phase'] is None
@@ -3210,6 +3317,129 @@ def test_research_brief_must_carry_the_sections_downstream_reads(tmp_path: Path,
     assert f'## {section.lstrip("# ")}' in result['next_phase']['problems']['research-brief.md']
 
 
+# --- 模板在 Phase 8 定、要求按阶段分开记 ------------------------------------------
+
+
+def test_template_is_not_a_phase_1_field(tmp_path: Path):
+    # Phase 8 才选模板：旧输入不带 template 也要能过 Phase 1。
+    inputs = {key: value for key, value in INPUTS.items() if key != 'template'}
+    write_json(tmp_path / 'inputs.json', inputs)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['completed_phases'] == ['1-gather-inputs']
+    assert result['next_phase']['id'] == '3-research'
+
+
+@pytest.mark.parametrize('value', ['github/../escape', '', 3])
+def test_template_must_be_null_or_a_plain_name_in_phase_8(tmp_path: Path, value):
+    complete_through_voice_subtitles(tmp_path, template=value)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '8-composition'
+    assert result['next_phase']['reason'] == 'corrupt'
+    assert 'inputs.json#template' in result['next_phase']['problems']
+    assert '1-gather-inputs' in result['completed_phases']
+
+
+@pytest.mark.parametrize('field', ['narration_requests', 'composition_requests'])
+@pytest.mark.parametrize('value', ['语气更口语', None, [''], ['ok', 3]])
+def test_requests_must_be_lists_of_non_empty_strings(tmp_path: Path, field: str, value):
+    complete_through_inputs(tmp_path, **{field: value})
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '1-gather-inputs'
+    assert result['next_phase']['reason'] == 'corrupt'
+    assert field in result['next_phase']['problems']['inputs.json']
+
+
+@pytest.mark.parametrize('value', [['语气更口语'], []])
+def test_requests_lists_are_accepted_including_empty(tmp_path: Path, value):
+    complete_through_inputs(tmp_path, narration_requests=value, composition_requests=value)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['completed_phases'] == ['1-gather-inputs']
+    assert result['next_phase']['id'] == '3-research'
+
+
+# --- catalog 的必用素材（论文关键图） --------------------------------------------
+
+
+def paper_catalog(**catalog_overrides) -> dict:
+    return {
+        'topic_name': 'demo',
+        'entries': [PAPER_CATALOG_ENTRY],
+        **catalog_overrides,
+    }
+
+
+def test_required_material_refs_must_resolve_in_the_catalog(tmp_path: Path):
+    complete_through_harvest(tmp_path, input_mode='paper', fetch_materials=False)
+    write_json(
+        tmp_path / 'material-catalog.json',
+        paper_catalog(required_material_refs=['main-paper/img_404']),
+    )
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '5-material-catalog'
+    assert 'required_material_refs' in result['next_phase']['problems']['material-catalog.json']
+    assert 'main-paper/img_404' in result['next_phase']['problems']['material-catalog.json']
+
+
+def test_required_material_refs_must_not_repeat(tmp_path: Path):
+    complete_through_harvest(tmp_path, input_mode='paper', fetch_materials=False)
+    write_json(
+        tmp_path / 'material-catalog.json',
+        paper_catalog(required_material_refs=['main-paper/img_001', 'main-paper/img_001']),
+    )
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '5-material-catalog'
+    assert 'repeats' in result['next_phase']['problems']['material-catalog.json']
+
+
+def test_a_resolvable_required_ref_passes_phase_5(tmp_path: Path):
+    complete_through_harvest(tmp_path, input_mode='paper', fetch_materials=False)
+    write_json(
+        tmp_path / 'material-catalog.json',
+        paper_catalog(required_material_refs=['main-paper/img_001']),
+    )
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'material-catalog.json' not in result['corrupt_products']
+
+
+def test_scene_plan_must_select_every_required_material(tmp_path: Path):
+    # 关键图被 catalog 标成必用，但 scene 一个都没选：Phase 6 打回。
+    complete_through_catalog(tmp_path, input_mode='paper', fetch_materials=False)
+    catalog = json.loads((tmp_path / 'material-catalog.json').read_text(encoding='utf-8'))
+    catalog['required_material_refs'] = ['main-paper/img_001']
+    write_json(tmp_path / 'material-catalog.json', catalog)
+    write_script(tmp_path, SCRIPT_TXT)
+    write_json(tmp_path / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
+    unselected = [{**SCENE_PLAN_PAPER[0], 'material_candidates': []}]
+    write_json(tmp_path / 'scene-plan.json', unselected)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    detail = result['next_phase']['problems']['scene-plan.json']
+    assert 'required_material_refs' in detail and 'main-paper/img_001' in detail
+
+
+def test_a_standard_workspace_needs_no_required_refs(tmp_path: Path):
+    # 标准模式不受新增可选字段影响。
+    result = settle(tmp_path)
+    assert result['next_phase'] is None
+
+
 @pytest.mark.parametrize('value', ['https://example.com', [], None, [''], ['  '], ['ok', 3]])
 def test_material_search_requests_must_be_a_list_of_non_empty_strings(tmp_path: Path, value):
     complete_through_inputs(tmp_path, material_search_requests=value)
@@ -3221,3 +3451,210 @@ def test_material_search_requests_must_be_a_list_of_non_empty_strings(tmp_path: 
     assert result['next_phase']['id'] == '1-gather-inputs'
     assert result['next_phase']['reason'] == 'corrupt'
     assert 'material_search_requests' in result['next_phase']['problems']['inputs.json']
+
+
+# --- 素材策略与必用清单的适用范围 ----------------------------------------------
+#
+# catalog 阶段不适用时（标准模式 + fetch_materials = false），目录里残留的
+# material-catalog.json 不参与任何要求：否则同一版本的项目切换素材策略后自己就
+# 推进不下去了。
+
+
+def test_a_residual_catalog_does_not_block_no_material_mode(tmp_path: Path):
+    settle(tmp_path)  # 带素材跑完过一次
+    assert (tmp_path / 'material-catalog.json').is_file()
+
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'fetch_materials': False})
+    write_json(tmp_path / 'scene-plan.json', SCENE_PLAN_NO_MATERIALS)
+    approve(tmp_path, 'script')
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert '5-material-catalog' in result['skipped_phases']
+    # 残留 catalog 不再要求 scene-plan 覆盖它。
+    problems = result['next_phase'].get('problems', {})
+    assert 'required_material_refs' not in str(problems)
+    assert 'scene-plan.json' not in result['corrupt_products']
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert result['next_phase']['reason'] == 'stale'
+    # 切换策略会改变依赖集合；核对已按无素材规则重建的结果后可接受同字节产物。
+    accepted = parse_result(run_cli(str(tmp_path), '--restamp', '6-script-scene-plan'))
+    assert accepted['next_phase']['id'] == '7-voice-subtitles'
+    assert (tmp_path / 'material-catalog.json').is_file()  # 旧产物没被删掉
+
+
+def test_required_refs_of_a_residual_catalog_are_ignored_in_no_material_mode(tmp_path: Path):
+    complete_through_catalog(tmp_path)
+    catalog = json.loads((tmp_path / 'material-catalog.json').read_text(encoding='utf-8'))
+    catalog['required_material_refs'] = ['example/img_001']
+    write_json(tmp_path / 'material-catalog.json', catalog)
+    write_script(tmp_path, SCRIPT_TXT)
+    write_json(tmp_path / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
+    write_json(tmp_path / 'scene-plan.json', SCENE_PLAN_NO_MATERIALS)
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'fetch_materials': False})
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert 'required_material_refs' not in str(result['next_phase'].get('problems', {}))
+    assert result['next_phase']['id'] != '6-script-scene-plan'
+
+
+def test_paper_mode_still_requires_the_key_figures(tmp_path: Path):
+    # 论文模式即使不联网也要检查关键图：catalog 阶段适用，要求不放松。
+    complete_through_catalog(tmp_path, input_mode='paper', fetch_materials=False)
+    catalog = json.loads((tmp_path / 'material-catalog.json').read_text(encoding='utf-8'))
+    catalog['required_material_refs'] = ['main-paper/img_001']
+    write_json(tmp_path / 'material-catalog.json', catalog)
+    write_script(tmp_path, SCRIPT_TXT)
+    write_json(tmp_path / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
+    write_json(tmp_path / 'scene-plan.json', [{**SCENE_PLAN_PAPER[0], 'material_candidates': []}])
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'main-paper/img_001' in result['next_phase']['problems']['scene-plan.json']
+
+
+def test_clip_refs_are_compared_by_identity_not_by_spelling(tmp_path: Path):
+    # 必用清单写 12-18.5，候选写 12.00-18.50：指向同一个片段，不算漏选。
+    complete_through_catalog(tmp_path)
+    catalog = json.loads((tmp_path / 'material-catalog.json').read_text(encoding='utf-8'))
+    catalog['required_material_refs'] = ['example/vid_001:12-18.5']
+    write_json(tmp_path / 'material-catalog.json', catalog)
+    write_script(tmp_path, SCRIPT_TXT)
+    write_json(tmp_path / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
+    write_json(tmp_path / 'scene-plan.json', [
+        {**SCENE_PLAN[0], 'material_candidates': [{'ref': 'example/vid_001:12.00-18.50', 'score': 8, 'reason': 'x'}]},
+    ])
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] != '6-script-scene-plan'
+    assert 'scene-plan.json' not in result['corrupt_products']
+
+
+def test_a_candidate_that_does_not_cover_a_required_clip_is_caught(tmp_path: Path):
+    # 要求某条片段，候选却是同一 entry 的图片：不能算覆盖。
+    complete_through_catalog(tmp_path)
+    catalog = json.loads((tmp_path / 'material-catalog.json').read_text(encoding='utf-8'))
+    catalog['required_material_refs'] = ['example/vid_001:12.00-18.50']
+    write_json(tmp_path / 'material-catalog.json', catalog)
+    write_script(tmp_path, SCRIPT_TXT)
+    write_json(tmp_path / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
+    write_json(tmp_path / 'scene-plan.json', [
+        {**SCENE_PLAN[0], 'material_candidates': [{'ref': 'example/img_001', 'score': 8, 'reason': 'x'}]},
+    ])
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+    assert 'example/vid_001:12.00-18.50' in result['next_phase']['problems']['scene-plan.json']
+
+
+def test_a_required_ref_that_does_not_resolve_is_a_catalog_error(tmp_path: Path):
+    # 必用清单写了一个 catalog 里不存在的窗口：错在 catalog 本身。
+    complete_through_harvest(tmp_path)
+    catalog = json.loads(json.dumps(CATALOG))
+    catalog['required_material_refs'] = ['example/vid_001:12-19']
+    write_json(tmp_path / 'material-catalog.json', catalog)
+    write_clip(tmp_path / CLIP_PATH)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '5-material-catalog'
+    assert 'not found in this catalog' in result['next_phase']['problems']['material-catalog.json']
+
+
+def test_a_clip_candidate_covers_the_material_ref_it_belongs_to(tmp_path: Path):
+    # 要求“用这个视频”，候选是一条它的片段：视频确实上镜了，算覆盖。
+    complete_through_catalog(tmp_path)
+    catalog = json.loads((tmp_path / 'material-catalog.json').read_text(encoding='utf-8'))
+    catalog['required_material_refs'] = ['example/vid_001']
+    write_json(tmp_path / 'material-catalog.json', catalog)
+    write_script(tmp_path, SCRIPT_TXT)
+    write_json(tmp_path / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
+    write_json(tmp_path / 'scene-plan.json', [
+        {**SCENE_PLAN[0], 'material_candidates': [{'ref': 'example/vid_001:12.00-18.50', 'score': 8, 'reason': 'x'}]},
+    ])
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] != '6-script-scene-plan'
+
+
+# --- 要求列表：缺省与 [] 等价 --------------------------------------------------
+
+
+@pytest.mark.parametrize('field', ['narration_requests', 'composition_requests'])
+def test_switching_a_request_list_between_absent_and_empty_is_not_a_change(tmp_path: Path, field: str):
+    settle(tmp_path, **{field: []})
+    inputs = json.loads((tmp_path / 'inputs.json').read_text(encoding='utf-8'))
+    del inputs[field]
+    write_json(tmp_path / 'inputs.json', inputs)
+    assert parse_result(run_cli(str(tmp_path)))['next_phase'] is None
+
+    write_json(tmp_path / 'inputs.json', {**INPUTS, field: []})
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase'] is None
+    assert result['stale_phases'] == []
+
+
+# --- 指纹缓存与不可读的持久状态 ------------------------------------------------
+
+
+def test_an_unreadable_fingerprint_cache_is_ignored_not_fatal(tmp_path: Path):
+    settle(tmp_path)
+    (tmp_path / '.pipeline' / 'fpcache.json').write_text('{not json', encoding='utf-8')
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['success'] is True
+    assert result['next_phase'] is None  # 缓存只是加速手段，坏了就重新哈希
+    read_json = json.loads((tmp_path / '.pipeline' / 'fpcache.json').read_text(encoding='utf-8'))
+    assert read_json['version'] == 1
+
+
+def test_an_unwritable_fingerprint_cache_does_not_lose_the_scan(tmp_path: Path):
+    settle(tmp_path)
+    cache = tmp_path / '.pipeline' / 'fpcache.json'
+    cache.write_text('{"version": 1, "files": {}}', encoding='utf-8')
+    cache.chmod(0o444)
+    try:
+        proc = run_cli(str(tmp_path))
+    finally:
+        cache.chmod(0o644)
+
+    result = parse_result(proc)
+    assert result['success'] is True
+    assert result['next_phase'] is None
+
+
+def test_paper_catalog_must_declare_the_required_refs_field(tmp_path: Path):
+    # 缺省分不清“没有关键图”和“还没看过”：论文模式必须显式声明（可为 []）。
+    complete_through_harvest(tmp_path, input_mode='paper', fetch_materials=False)
+    write_json(
+        tmp_path / 'material-catalog.json',
+        {'topic_name': 'demo', 'entries': [PAPER_CATALOG_ENTRY]},
+    )
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '5-material-catalog'
+    detail = result['next_phase']['problems']['material-catalog.json']
+    assert 'required_material_refs' in detail and 'paper' in detail
+
+
+def test_a_paper_catalog_may_declare_an_empty_required_list(tmp_path: Path):
+    complete_through_harvest(tmp_path, input_mode='paper', fetch_materials=False)
+    write_json(
+        tmp_path / 'material-catalog.json',
+        {'topic_name': 'demo', 'entries': [PAPER_CATALOG_ENTRY], 'required_material_refs': []},
+    )
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '6-script-scene-plan'
+
+
+def test_a_standard_catalog_need_not_declare_the_required_refs_field(tmp_path: Path):
+    result = settle(tmp_path)  # 标准模式，catalog 没有这个字段
+    assert result['next_phase'] is None

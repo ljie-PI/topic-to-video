@@ -11,16 +11,19 @@
 
 ## 现有模板
 
-| 模板 | 视频类型 | 场景 |
-|---|---|---|
-| `github` | GitHub 热榜 / 开源项目盘点（讲解模式，人物主持） | `trending-overview`（榜单总览）、`project-cover`（项目封面） |
+| 模板 | 视频类型 | 支持的 layout | 场景 |
+|---|---|---|---|
+| `github` | GitHub 热榜 / 开源项目盘点（讲解模式，人物主持） | `presenter` | `trending-overview`（榜单总览）、`project-cover`（项目封面） |
 
 每个模板一个目录，文档和代码放在一起：
 
 ```
 templates/<类型>/
   <类型>.md          这类视频怎么组装：布局、组件及其参数、专属配色和元素、数据怎么填、人物怎么演
+  <类型>.json        机器声明：supported_layouts、场景名与每个场景需要的锚点字段
   <场景>.md          每个场景的说明：参数、数据、时间、限制
   <场景>.html        场景本体，复制到视频工程的 compositions/
   brand/ …           这类视频专属的资源（如品牌标志）
 ```
+
+`<类型>.json` 是模板与 layout 是否兼容的唯一依据：`supported_layouts` 列出它能配的 layout，`prepare-handoff.py` 与状态检查都读它。模板要求的 layout 与项目事实（朝向、用户拒绝人物）冲突时，选兼容的 layout 或写 `template: null`，不要为了套模板改朝向或 design。
