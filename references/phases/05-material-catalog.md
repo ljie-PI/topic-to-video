@@ -2,15 +2,24 @@
 
 ## 输入
 
-`harvest_page/manifest.json`（Phase 4 产出；论文 entry 由 Phase 2 / Phase 3 写入）+ `research-brief.md`（提炼话题 context 摘要）。`fetch_materials = false` 时 Phase 4 跳过：标准模式下本 phase 也一起跳过；论文模式（`input_mode = "paper"`）下本 phase 照常进行，走委派包基础指令里的「仅论文素材」路径。
+- `harvest_page/manifest.json`（Phase 4 产出；论文 entry 由 Phase 2 / Phase 3 写入）；
+- `research-brief.md`（提炼话题 context 摘要）；
+- `fetch_materials = false` 时 Phase 4 跳过：标准模式下本 phase 也一起跳过；论文模式（`input_mode = "paper"`）下本 phase 照常进行，走委派包基础指令里的「仅论文素材」路径。
 
 ## 输出
 
-`material-catalog.json`（每条 harvest entry 对应一条 catalog entry，含图片 / 视频的 `id`、`semantic_description`、`selected_clips`，每个 clip 带 `clip_path`）+ `clips/`（无音轨片段文件）+ `extract_frames/<slug>/<video-name>/` + `vision_analyze/<slug>/` + `vision_analyze/topic-context.txt`。
+- `material-catalog.json`（每条 harvest entry 对应一条 catalog entry，含图片 / 视频的 `id`、`semantic_description`、`selected_clips`，每个 clip 带 `clip_path`）；
+- `clips/`（无音轨片段文件）；
+- `extract_frames/<slug>/<video-name>/`；
+- `vision_analyze/<slug>/`；
+- `vision_analyze/topic-context.txt`。
 
 ## 完成判据
 
-`material-catalog.json` 存在、非空、JSON 可解析，`entries` 为非空列表；每张图片 / 每个视频都有非空字符串的 `id` 和 `semantic_description`（VLM 评分 <5 或偏题的素材已过滤）；每个 `selected_clip` 都有 `clip_path`，且它指向的文件（相对工作区）存在且非空；状态脚本会逐项检查。
+- `material-catalog.json` 存在、非空、JSON 可解析，`entries` 为非空列表；
+- 每张图片 / 每个视频都有非空字符串的 `id` 和 `semantic_description`（VLM 评分 <5 或偏题的素材已过滤）；
+- 每个 `selected_clip` 都有 `clip_path`，且它指向的文件（相对工作区）存在且非空；
+- 状态脚本会逐项检查上面几项。
 
 ## 执行后自检
 
