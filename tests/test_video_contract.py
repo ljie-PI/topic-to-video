@@ -98,6 +98,28 @@ def test_absent_and_empty_requests_read_the_same():
     assert video_contract.request_items({'composition_requests': ['不要人物区']}, 'composition_requests') == ['不要人物区']
 
 
+# --- scene-plan.json ---------------------------------------------------------------
+
+
+def test_removed_scene_fields_are_rejected_even_when_empty():
+    # 模板 / pattern / 动作属于 composition：旧字段不是被忽略，而是明确报错。
+    assert video_contract.removed_scene_fields_problem([]) is None
+    assert video_contract.removed_scene_fields_problem([
+        {'scene_id': 's1', 'paragraphs': [1], 'cues': ['句子']}
+    ]) is None
+    for name in video_contract.REMOVED_SCENE_FIELDS:
+        for value in ([], None, 'x'):
+            problem = video_contract.removed_scene_fields_problem(
+                [{'scene_id': 's1', 'paragraphs': [1], name: value}]
+            )
+            assert problem and name in problem and 'scene 0' in problem
+
+
+def test_removed_scene_field_message_points_at_composition():
+    problem = video_contract.removed_scene_fields_problem([{'beats': []}])
+    assert 'composition' in problem
+
+
 # --- library discovery -------------------------------------------------------------
 
 

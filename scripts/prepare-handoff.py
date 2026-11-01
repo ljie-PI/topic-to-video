@@ -124,6 +124,18 @@ def duration_text(duration: Any) -> str:
     return f'{duration} 分钟' if isinstance(duration, (int, float)) else str(duration)
 
 
+def template_text(inputs: dict[str, Any]) -> str:
+    """template 的三种状态：未选择 / 明确不用（null） / 具体模板名。
+
+    缺省不等于“不用”：模板选择是 composition agent 在自己的执行中作出的决定，
+    缺省时 handoff 必须告诉它还没选，而不是替它写 null。
+    """
+    if 'template' not in inputs:
+        return '未选择（由本阶段决定）'
+    template = inputs['template']
+    return str(template) if template is not None else '无（不使用模板）'
+
+
 # --- 落地包 -------------------------------------------------------------------
 
 
@@ -378,6 +390,7 @@ def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan
     layout_text, skill_layout_paths = layout_reference(SKILL_ROOT / 'modules', layout)
     layout_paths = [modules / path.relative_to(SKILL_ROOT / 'modules') for path in skill_layout_paths]
     layout_item = ' + '.join(str(path) for path in layout_paths)
+    templates_doc = modules / 'templates' / 'templates.md'
 
     sources: list[Path] = [
         SKILL_ROOT / DELEGATION / 'conventions.md',
@@ -392,16 +405,19 @@ def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan
             [design_doc, design_json, design_contract],
         ),
         (f'{layout_item}（所选 layout 的区域定义）', layout_paths),
+        # 模板由本阶段的 agent 自己选：目录始终要给出，已选模板的文档另外列。
+        (f'{templates_doc}（模板目录：读它决定用哪个模板或不用，并确认 supported_layouts）', [templates_doc]),
     ]
     if template:
         template_doc = modules / 'templates' / template / f'{template}.md'
         template_json = modules / 'templates' / template / f'{template}.json'
         references.append(
-            (f'{template_doc} + {template_json}（所选模板的组装说明与 supported_layouts 声明）',
+            (f'{template_doc} + {template_json}（inputs.json 已选的模板；按内容与用户要求核对）',
              [template_doc, template_json])
         )
         sources.append(SKILL_ROOT / 'modules' / 'templates' / template / f'{template}.md')
         sources.append(SKILL_ROOT / 'modules' / 'templates' / template / f'{template}.json')
+    sources.append(SKILL_ROOT / 'modules' / 'templates' / 'templates.md')
     patterns, components = modules / 'patterns', modules / 'components'
     references.append((f'按 storyboard 需要，自行阅读 {patterns}/、{components}/ 下的文档', [patterns, components]))
     plan = Plan(
@@ -498,7 +514,7 @@ def render_handoff(ws: Path, step: str, inputs: dict[str, Any], plan: Plan) -> s
         **({'duration': duration_text(inputs['duration'])} if 'duration' in inputs else {}),
         **({'language': str(inputs['language'])} if 'language' in inputs else {}),
         'input_mode': str(inputs['input_mode']),
-        'template': str(inputs.get('template') or '无'),
+        'template': template_text(inputs),
         **plan.values,
     }
     return fill(read_template(step), values)

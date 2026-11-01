@@ -5,7 +5,7 @@
 - `script.txt`：Phase 6 的 script agent 撰写的显示稿；后面字幕文本的唯一来源。
 - `narration.txt`：script agent 在 Phase 6 最后运行 `scripts/make-narration.py`，按显示稿 + 词表生成；TTS 只读这份。
 - `narration-offsets.json`：同一次 `make-narration.py` 生成；把朗读字符位置映射回显示字符位置，品牌名和数字因此能按显示形式出现。
-- `scene-plan.json`：script agent 在 Phase 6 撰写。正常流程里一定存在；缺失时统一入口仍能运行，只是 timeline 不含 scene / cue / beat。
+- `scene-plan.json`：script agent 在 Phase 6 撰写。正常流程里一定存在；缺失时统一入口仍能运行，只是 timeline 不含 scene / cue。
 
 本阶段不读 `inputs.json` 的 `layout`：排版属于 Phase 8。
 
@@ -13,7 +13,7 @@
 
 - `voice_clone/narration.mp3`：本轮配音。
 - `transcribe/transcript.json`：本轮音频的句级 + 词级时间戳。
-- `transcribe/timeline.json`：段落时间，以及场景规划存在时的 scene / cue / beat 时间。
+- `transcribe/timeline.json`：段落时间，以及场景规划存在时的 scene / cue 时间。
 
 最终字幕不在这里生成：它要按定下来的 layout 切成合适宽度，因此属于 Phase 8。
 
@@ -23,7 +23,7 @@
 
 - `voice_clone/narration.mp3` 是存在且非空的普通文件。状态脚本只做这一项，不校验音频时长。
 - `transcribe/transcript.json` 是非空句子列表，每句是对象且含 `begin` / `end` / `text` / `words`，其中 `words` 是列表。
-- `transcribe/timeline.json` 的 `paragraphs` 是非空列表，每项含数字 `index` / `begin_s` / `end_s`；可选 `beats` 是列表，每项含数字 `begin_s` / `end_s`。
+- `transcribe/timeline.json` 的 `paragraphs` 是非空列表，每项含数字 `index` / `begin_s` / `end_s`；可选 `scenes` / `cues` 存在时按各自形状带数字秒数；带 `beats` 的时间轴是旧构建，会被打回。
 
 **执行者核对（脚本判断不了）**
 
@@ -68,7 +68,7 @@ source .venv/bin/activate && python3 scripts/voice-subtitles.py {work_dir}/{topi
 | 要改的东西 | 找谁 |
 | --- | --- |
 | 读音、断句、措辞 | Phase 6 的 script agent：改词表或显示稿，由它重新生成 `narration.txt` 与 `narration-offsets.json` |
-| scene / cue / beat | 同上，改 `scene-plan.json` |
+| scene / cue | 同上，改 `scene-plan.json` |
 | 音色或后端，但输入文件没变 | 主 agent 登记 `--redo 7-voice-subtitles --reason "..."`，再完整重跑（环境变量不在依赖表里，改文件触发不了） |
 
 `narration.txt` 或 `narration-offsets.json` 一变，旧音频就作废：必须完整重跑，不能加 `--align-only`。
@@ -96,7 +96,7 @@ source .venv/bin/activate && python3 scripts/voice-subtitles.py {work_dir}/{topi
 
 **`narration-offsets.json` 的契约**：`version`、`script_length`、`narration_length`、`script_sha256`、`narration_sha256`、`segments` 全部必需。缺了内容哈希的偏移表不能验收（等长编辑看不出来），脚本会直接报错并让你重跑 `make-narration.py`。
 
-**cue 与 beat 只能取自显示稿。** `scene-plan.json` 的 `cues` 和 `beats[].text` 必须原样摘自显示稿，且落在该 scene 的 `paragraphs` 范围内。对齐时会归一化大小写、标点、空格和数字写法，所以 `NVIDIA` 和 `nvidia，` 都能匹配；但换成朗读稿里的读法（如 `英伟达`）就对不上显示稿，会被跳过。出现 `cue not found for scene ...` / `beat not found for scene ...` 时先核对显示稿文本和段落归属，确实要改就走上面「什么时候要回上游」。
+**cue 只能取自显示稿。** `scene-plan.json` 的 `cues` 必须原样摘自显示稿，且落在该 scene 的 `paragraphs` 范围内。对齐时会归一化大小写、标点、空格和数字写法，所以 `NVIDIA` 和 `nvidia，` 都能匹配；但换成朗读稿里的读法（如 `英伟达`）就对不上显示稿，会被跳过。出现 `cue not found for scene ...` 时先核对显示稿文本和段落归属，确实要改就走上面「什么时候要回上游」。
 
 ## 异常恢复
 

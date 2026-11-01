@@ -26,4 +26,6 @@ templates/<类型>/
   brand/ …           这类视频专属的资源（如品牌标志）
 ```
 
-`<类型>.json` 是模板与 layout 是否兼容的唯一依据：`supported_layouts` 列出它能配的 layout，`prepare-handoff.py` 与状态检查都读它。模板要求的 layout 与项目事实（朝向、用户拒绝人物）冲突时，选兼容的 layout 或写 `template: null`，不要为了套模板改朝向或 design。
+`<类型>.json` 是模板与 layout 是否兼容的唯一依据：`supported_layouts` 列出它能配的 layout，`prepare-handoff.py` 与状态检查都读它。
+
+**模板由 composition 阶段选。** Phase 6 / 7 不为旁白或场景规划选模板；Phase 8 委派的 composition agent 读本目录，按内容、当前 layout 与用户要求决定用哪个模板或不用（只读上面的 `supported_layouts`，不从模板文档猜），再把结果写进 `inputs.json` 的 `template`（模板名或 `null`）并写进 storyboard。模板与 layout 冲突时（例如用户拒绝人物、或项目是竖屏而模板只支持 `presenter`），选兼容的 layout 或写 `template: null`，不要为了套模板改朝向或 design。

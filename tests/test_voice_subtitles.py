@@ -25,6 +25,7 @@ SCENE_PLAN = [
         'scene_id': 'scene_1',
         'paragraphs': [1, 2],
         'intent': '测试完整配音字幕流程',
+        'content_plan': '按段落顺序讲完两个例子。',
         'facts': [],
         'material_candidates': [],
         'cues': ['这个 cue 不在旁白里'],
@@ -129,6 +130,8 @@ def test_full_command_writes_all_products_and_pipeline_completes_phase_7(tmp_pat
     assert not (ws / 'transcribe' / 'subtitle-units.json').exists()
     timeline = json.loads(products['timeline'].read_text(encoding='utf-8'))
     assert timeline['scenes'][0]['scene_id'] == 'scene_1'
+    # 语义节拍已删除：时间轴只有段落、场景与 cue。
+    assert 'beats' not in timeline
     assert any('cue not found' in warning for warning in result['warnings'])
 
     status = run_pipeline_status(ws)
@@ -163,6 +166,12 @@ def test_phase_7_never_reads_layout(tmp_path: Path):
     assert proc.returncode == 0, proc.stderr
     assert parse_stdout(proc)['success'] is True
     assert (ws / 'transcribe' / 'timeline.json').is_file()
+
+
+def test_the_unified_entry_never_pins_a_tts_speech_rate():
+    """写稿的 7 字符/秒是估算，不是传给 TTS 的语速参数。"""
+    source = (REPO_ROOT / 'scripts' / 'voice-subtitles.py').read_text(encoding='utf-8')
+    assert '--speech-rate' not in source
 
 
 def test_empty_required_input_fails_before_tts(tmp_path: Path):

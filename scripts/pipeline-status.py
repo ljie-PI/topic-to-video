@@ -182,7 +182,7 @@ GATES: dict[str, dict[str, Any]] = {
         'phase': '6-script-scene-plan',
         'products': ['script.txt', 'tts-lexicon.json', 'scene-plan.json'],
         'instruction': (
-            '把旁白和每个 scene 的 scene_id + intent 交给用户确认；确认后运行 '
+            '把旁白和每个 scene 的 scene_id + intent + content_plan 摘要交给用户确认；确认后运行 '
             '`python3 scripts/pipeline-status.py <ws> --approve script`'
         ),
     },
@@ -198,8 +198,9 @@ INPUTS_FIELD_PREFIX = 'inputs.json#'
 RESEARCH_BRIEF_SECTIONS = ('Key facts', 'Quotes', 'Numbers', 'Source URLs')
 
 # Phase 6 的长度规则：展示稿的非空白字符数必须在
-# duration x 60 s x 7.5 字/秒（speech_rate=1.4）的 +-15% 之内。
-CHARS_PER_SECOND = 7.5
+# duration x 60 s x 7 字/秒 的 +-15% 之内。这是写稿预算，不是 TTS 语速参数：
+# 实际节奏由 TTS 与 transcript 决定，流水线不指定 speech rate。
+CHARS_PER_SECOND = 7
 SCRIPT_LENGTH_TOLERANCE = 0.15
 
 # 一个 scene-plan 片段引用 "<slug>/<video_id>:<start>-<end>" 必须在两端都
@@ -855,23 +856,32 @@ def check_visual_inputs(ws: Path) -> dict[str, CheckResult]:
         if problem:
             record('layout', problem)
     template = inputs.get('template')
-    problem = video_contract.template_contract_problem(SKILL_ROOT, template)
-    if problem:
-        record('template', problem)
-    elif template is not None:
-        supported = video_contract.template_layouts(SKILL_ROOT, str(template), ws=ws)
-        if supported is None:
-            record(
-                'template',
-                f'template {template!r} has no supported_layouts declaration in '
-                f'modules/templates/{template}/{template}.json',
-            )
-        elif layout not in supported:
-            record(
-                'template',
-                f'template {template!r} supports layouts {", ".join(supported)}, not {layout!r}: '
-                'choose a compatible layout or write template: null',
-            )
+    if 'template' not in inputs:
+        # template 缺省表示“还没选”：模板选择归 composition agent，它必须在
+        # 完成前写回字段（模板名或 null），否则无法知道它到底用没用模板。
+        record(
+            'template',
+            'field template is not set: composition must write the chosen template name, '
+            'or null when it uses no template',
+        )
+    else:
+        problem = video_contract.template_contract_problem(SKILL_ROOT, template)
+        if problem:
+            record('template', problem)
+        elif template is not None:
+            supported = video_contract.template_layouts(SKILL_ROOT, str(template), ws=ws)
+            if supported is None:
+                record(
+                    'template',
+                    f'template {template!r} has no supported_layouts declaration in '
+                    f'modules/templates/{template}/{template}.json',
+                )
+            elif layout not in supported:
+                record(
+                    'template',
+                    f'template {template!r} supports layouts {", ".join(supported)}, not {layout!r}: '
+                    'choose a compatible layout or write template: null',
+                )
     return problems
 
 
@@ -996,16 +1006,15 @@ def paragraph_coverage_problem(scenes: list[dict[str, Any]], paragraph_count: in
         parts.append(f'missing paragraphs {missing}')
     if out_of_range:
         parts.append(f'out-of-range paragraphs {out_of_range}')
-    return f'{"; ".join(parts)} (script.txt has {paragraph_count} paragraphs)'
-
-
-BEAT_TYPES = {'question', 'idea', 'caveat', 'highlight', 'negation', 'confirm'}
+    return f'{";".join(parts)} (script.txt has {paragraph_count} paragraphs)'
 
 
 def check_scene_plan_product(ws: Path, relpath: str) -> CheckResult:
-    """scene-plan.json：一个非空的 scene JSON 列表；每个 scene 都有 scene_id
-    和非空的 paragraphs 列表（来自被委派的写脚本 agent 的叙事级规划）。对照
-    script.txt，所有 scene 的段落必须恰好覆盖它的段落。"""
+    """scene-plan.json：一个非空的 scene JSON 列表；每个 scene 都有 scene_id、
+    非空的 paragraphs 列表，以及描述内容与演绎的 intent / content_plan（来自
+    被委派的写脚本 agent 的叙事级规划）。对照 script.txt，所有 scene 的段落
+    必须恰好覆盖它的段落。模板 / pattern / 动作选择属于 composition，因此
+    已移除的字段出现即视为不符合当前契约。"""
     result, data = read_json_product(ws, relpath)
     if not result.ok:
         return result
@@ -1019,6 +1028,17 @@ def check_scene_plan_product(ws: Path, relpath: str) -> CheckResult:
         paragraphs = scene.get('paragraphs')
         if not isinstance(paragraphs, list) or not paragraphs:
             return CheckResult(STATUS_CORRUPT, f'scene {index} missing paragraphs')
+        for name in ('intent', 'content_plan'):
+            value = scene.get(name)
+            if not isinstance(value, str) or not value.strip():
+                return CheckResult(
+                    STATUS_CORRUPT,
+                    f'scene {index} {name} must be a non-empty string '
+                    f'("what to explain" / "what to cover and how to walk through it")',
+                )
+    removed = video_contract.removed_scene_fields_problem(data)
+    if removed:
+        return CheckResult(STATUS_CORRUPT, removed)
     problem = paragraph_type_problem(data)
     if problem:
         return CheckResult(STATUS_CORRUPT, problem)
@@ -1027,26 +1047,6 @@ def check_scene_plan_product(ws: Path, relpath: str) -> CheckResult:
         problem = paragraph_coverage_problem(data, len(script_text.paragraphs(script)))
         if problem:
             return CheckResult(STATUS_CORRUPT, problem)
-    for index, scene in enumerate(data):
-        if 'beats' not in scene:
-            continue
-        beats = scene['beats']
-        if not isinstance(beats, list):
-            return CheckResult(STATUS_CORRUPT, f'scene {index} beats is not a list')
-        for position, beat in enumerate(beats):
-            label = f'scene {index} beats[{position}]'
-            if not isinstance(beat, dict):
-                return CheckResult(STATUS_CORRUPT, f'{label} must be an object with type and text')
-            if beat.get('type') not in BEAT_TYPES:
-                return CheckResult(
-                    STATUS_CORRUPT,
-                    f'{label} type must be one of {sorted(BEAT_TYPES)}, got {beat.get("type")!r}',
-                )
-            text = beat.get('text')
-            if not isinstance(text, str) or not text:
-                return CheckResult(STATUS_CORRUPT, f'{label} text must be a non-empty string')
-            if script_result.ok and text not in script:
-                return CheckResult(STATUS_CORRUPT, f'{label} text does not appear literally in script.txt')
     refs: list[str] = []
     for index, scene in enumerate(data):
         candidates = scene.get('material_candidates', [])
@@ -1114,7 +1114,10 @@ def check_subtitle_units(ws: Path, relpath: str) -> CheckResult:
 
 
 def check_timeline(ws: Path, relpath: str) -> CheckResult:
-    """timeline.json：{total_s, paragraphs: [{index, begin_s, end_s}]}；cues/beats 可选。"""
+    """timeline.json：{total_s, paragraphs: [{index, begin_s, end_s}]}；scenes / cues 可选。
+
+    语义节拍已从契约中删除：带 beats 的时间轴是旧构建，要按当前场景规划重跑
+    Phase 7，而不是把残留字段当作有效输入。"""
     result, data = read_json_product(ws, relpath)
     if not result.ok:
         return result
@@ -1136,23 +1139,11 @@ def check_timeline(ws: Path, relpath: str) -> CheckResult:
                 STATUS_CORRUPT, f'paragraph {index} missing numeric fields: {", ".join(missing)}'
             )
     if 'beats' in data:
-        beats = data['beats']
-        if not isinstance(beats, list):
-            return CheckResult(STATUS_CORRUPT, 'beats is not a list')
-        for index, beat in enumerate(beats):
-            if not isinstance(beat, dict):
-                return CheckResult(STATUS_CORRUPT, f'beats[{index}] is not an object')
-            missing = [
-                field
-                for field in ('begin_s', 'end_s')
-                if isinstance(beat.get(field), bool)
-                or not isinstance(beat.get(field), (int, float))
-            ]
-            if missing:
-                return CheckResult(
-                    STATUS_CORRUPT,
-                    f'beats[{index}] missing numeric fields: {", ".join(missing)}',
-                )
+        return CheckResult(
+            STATUS_CORRUPT,
+            'beats is not part of the current timeline: semantic beats were removed '
+            '(scene-plan beats no longer exist); re-run Phase 7 to rebuild it',
+        )
     return OK
 
 
