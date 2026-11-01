@@ -4,16 +4,18 @@ Phase 5（素材 catalog）、Phase 6（脚本与场景规划）与 Phase 8（co
 
 ## 委派给谁
 
-- 默认 coding agent 是 **pi-coding-agent**，可执行命令为 `pi`；用户在对话中点名其他 agent 时覆盖（记入 `inputs.json` 的 `coding_agent` 字段）。
+- 默认 coding agent 是 **pi-coding-agent**（命令 `pi`）；用户指定全局 agent 时，记入 `inputs.json` 的 `coding_agent` 字段。
+- **用户指定某阶段的 agent / model 时必须严格遵循。** 阶段级要求记入可选的 `inputs.json.delegation`，键为 `catalog` / `script` / `composition`，值为包含 `agent` 和 / 或 `model` 的对象，例如 `"delegation": {"catalog": {"agent": "pi-coding-agent", "model": "<provider>/<model-id>"}}`。只覆盖指定字段：未指定 agent 时继承 `coding_agent`，未指定 model 时使用目标 agent 自身的模型配置。素材理解 / 素材匹配指 Phase 5 时记为 `catalog`，场景与素材匹配指 Phase 6 时记为 `script`；范围不清楚先问用户。
+- `prepare-handoff.py` 会把有效 agent / model 写入 handoff，并返回 `coding_agent` / `coding_model`，供主 agent 派发时使用；模型未指定时 `coding_model` 为 `null`。不能仅把 model 写进 prompt，实际调用也必须选中它。指定 agent 不可用、模型标识不明确或不支持看图时，向用户说明并确认，不得自动换 agent / model 或悄悄用另一个 VLM。
 - 主 agent 自己承担委派职责，按下面的方式派发；**不要**写脚本去 shell 调用 coding agent——委派是主 agent（一个 LLM）的行为，不是仓库脚本的行为。
 
 ## 怎么派发
 
 先解析目标，再选手段：两件事不能弄反。
 
-1. **先确定目标**：读 `inputs.json` 的 `coding_agent`（缺省 `pi-coding-agent`）。用户在对话里点名其他 agent 时以 `inputs.json` 为准。
+1. **先确定目标**：按 `inputs.json.delegation` 的当前阶段要求与全局 `coding_agent` 解析目标（默认 `pi-coding-agent`），用 `prepare-handoff.py` 返回的 `coding_agent` / `coding_model` 派发。用户指定的阶段级 agent / model 优先，不能仅写进 prompt。
 2. **再判断可用工具能不能派发这个目标**：
-   - **能明确派发到该目标时**用当前客户端的原生 sub-agent / 委派工具，被委派的 agent 同样只拿到那一句 prompt 与 handoff 路径。
+   - **能明确派发到该目标并选中指定模型时**用当前客户端的原生 sub-agent / 委派工具，被委派的 agent 同样只拿到那一句 prompt 与 handoff 路径。
    - **否则用该目标自己的非交互入口**。Pi 的形态是 `cd <ws> && pi -p -- "<dispatch_prompt>"`。
 
 **“有原生 sub-agent 工具”不等于“能派发 Pi”。** 原生工具只能跑它自己那个后端时，它无法代替 `pi`；这时要走 Pi 的入口，而不是用原生工具派发到另一个 agent。
@@ -24,7 +26,7 @@ Pi 已核实的 flag（`pi --help`）：
 
 - `-p` / `--print`：非交互模式，处理完 prompt 后退出；
 - `--`：后面全部当作 message，prompt 以 `-` 开头也不会被当成参数；
-- `--model <pattern>`：指定模型（可选）。
+- `--model <provider/model-id>`：指定模型（可选；使用完整模型标识，不猜模糊简称）。指定了 model 时命令形态为 `cd <ws> && pi --model "<coding_model>" -p -- "<dispatch_prompt>"`。
 - 命令形态：`cd <ws> && pi -p -- "<dispatch_prompt>"`。在当前目录启动，被委派的 agent 就能直接读写工作区；handoff 与 Required References 里都是绝对路径，skill 侧脚本也用绝对路径调用，不依赖 cwd。
 - `pi --help` 里没有单独授予目录访问的 flag，因此不要照搬其他 CLI 的参数；确实需要额外授权时按 `pi --help` 与本地配置处理，并把差异告诉用户。
 - **委派 prompt 只有一句话**，由 `prepare-handoff.py` 生成：运行 `source .venv/bin/activate && python3 scripts/prepare-handoff.py <ws> <step>`，把输出 JSON 里的 `dispatch_prompt` 原样派发。例如：
@@ -41,8 +43,8 @@ Pi 已核实的 flag（`pi --help`）：
 
 1. **委派包的基础指令**（`references/delegation/<step>/base-instructions.md`）；
 2. **模板的组装说明**（仅 composition 步骤）：`modules/templates/<template>/<template>.md`。选哪个模板由该步骤的 agent 在开始工作时决定并写回 `inputs.json`，选定后才读它；不选模板则跳过。其他步骤不读它，也不为旁白或场景规划选模板；
-3. **用户在对话中提出的要求**，按阶段分开记在 `inputs.json`：旁白要求写进 `narration_requests`（script 步骤读），画面要求写进 `composition_requests`（composition 步骤读）。catalog 步骤不读要求；
-4. 这些要求由主 agent 在对应阶段整理后写入 `inputs.json`，再运行 `prepare-handoff.py`：Additional Instructions 在生成 handoff 时计算一次，之后才写的要求不会出现在已生成的 handoff 里——这时重新运行一次 `prepare-handoff.py`（幂等；已物化的副本不会被覆盖）再派发。
+3. **用户在对话中提出的要求**，按阶段分开记在 `inputs.json`：旁白要求写进 `narration_requests`（script 步骤读），画面要求写进 `composition_requests`（composition 步骤读）。catalog 步骤读可选的 `<work_dir>/<topic_name>/catalog-instructions.md`（用户素材要求），不读旁白 / 画面要求列表；
+4. 这些要求由主 agent 在对应阶段整理后写入 `inputs.json`（catalog 素材要求写入 `catalog-instructions.md`），再运行 `prepare-handoff.py`：Additional Instructions 在生成 handoff 时计算一次，之后才写的要求不会出现在已生成的 handoff 里——这时重新运行一次 `prepare-handoff.py`（幂等；已物化的副本不会被覆盖）再派发。
 
 要求列表都是可选的：没有就写 `None`，但 handoff 的 Additional Instructions 一节始终保留。
 

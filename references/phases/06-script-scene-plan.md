@@ -1,6 +1,6 @@
 # Phase 6 — 脚本与场景规划（委派给 coding agent）
 
-本 phase 整体委派给 coding agent 完成：旁白（显示稿 + 词表）与叙事层场景规划由 script agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认 pi-coding-agent；派发 prompt 只有一句话，让对方读 handoff）。
+本 phase 整体委派给 coding agent 完成：旁白（显示稿 + 词表）与叙事层场景规划由 script agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认 pi-coding-agent（命令 `pi`）；派发 prompt 只有一句话，让对方读 handoff）。
 
 ## 输入
 
@@ -58,7 +58,7 @@ Phase 7（配音与时间对齐）：只对 `narration.txt` 配音，并生成�
 1. 运行 `source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topic_name} script`。它把委派约定和 script 委派包拷进 `{work_dir}/{topic_name}/references/delegation/`（已存在的副本不覆盖，要覆盖加 `--refresh`），再按 `inputs.json` 生成 `{work_dir}/{topic_name}/script-handoff.md`：Coding Agent、Inputs、Outputs、Required References（基础指令）、Additional Instructions（`narration_requests` 逐条列出，没有写 None），路径全是绝对路径。主 agent 不手写 handoff。
 
    用户在本阶段又提出旁白要求时，先按 `references/pipeline-control.md` 写进 `inputs.json` 的 `narration_requests`，再生成 handoff——handoff 只算一次，生成后追加的要求进不去。
-2. 把输出 JSON 里的 `dispatch_prompt` 原样派发，派发方式见 `references/delegation/conventions.md`。
+2. 用输出 JSON 里的 `coding_agent` / `coding_model` 选择实际 agent / model，把 `dispatch_prompt` 原样派发，派发方式见 `references/delegation/conventions.md`。
 3. script agent 返回后做 **Phase 6.2 的确定性校验**。
 
 ## Phase 6.2 — 主 agent 校验与按需审稿

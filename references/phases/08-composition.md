@@ -59,7 +59,7 @@ Phase 9（检查与混音）：渲染后 QA（`check-render.py` 确定性检查 
 
 ---
 
-本 phase 整体委派给 coding agent 完成：字幕生成、storyboard、画面组装、渲染前自查与渲染由 composition agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认 pi-coding-agent；派发 prompt 只有一句话，让对方读 handoff）。composition agent 使用 `hyperframes`、`hyperframes-cli` 与 `hyperframes-animation` skills；主 agent 不读委派包里的基础指令。
+本 phase 整体委派给 coding agent 完成：字幕生成、storyboard、画面组装、渲染前自查与渲染由 composition agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认 pi-coding-agent（命令 `pi`）；派发 prompt 只有一句话，让对方读 handoff）。composition agent 使用 `hyperframes`、`hyperframes-cli` 与 `hyperframes-animation` skills；主 agent 不读委派包里的基础指令。
 
 #### 8.0 — 选 layout
 
@@ -96,13 +96,13 @@ design textures、组件和模板资源不在这里拷：用哪些由 compositio
 
 #### 8.2 — handoff
 
-同一次调用还会生成 `{work_dir}/{topic_name}/composition-handoff.md`：Coding Agent（`inputs.json` 的 `coding_agent`，默认 pi-coding-agent）、Inputs、Outputs（含生成字幕、check-composition 与渲染前自查的命令）、Required References（基础指令 → `modules/modules.md` → design 文档 → layout 的 json 与文档 → 模板目录 `templates.md`（供 agent 选模板）→ 已选模板的文档与 `supported_layouts` 声明 → pattern / 组件目录，全部指向 8.1 物化的工作区副本）、Additional Instructions（`composition_requests` 逐条列出；没有写 None）。路径全是绝对路径，命令里的 skill 脚本从 skill 根目录运行。主 agent 不手写 handoff。
+同一次调用还会生成 `{work_dir}/{topic_name}/composition-handoff.md`：Coding Agent（按 `inputs.json` 解析本阶段的 agent / model，默认 pi-coding-agent，命令 `pi`）、Inputs、Outputs（含生成字幕、check-composition 与渲染前自查的命令）、Required References（基础指令 → `modules/modules.md` → design 文档 → layout 的 json 与文档 → 模板目录 `templates.md`（供 agent 选模板）→ 已选模板的文档与 `supported_layouts` 声明 → pattern / 组件目录，全部指向 8.1 物化的工作区副本）、Additional Instructions（`composition_requests` 逐条列出；没有写 None）。路径全是绝对路径，命令里的 skill 脚本从 skill 根目录运行。主 agent 不手写 handoff。
 
 `template` 缺省时 handoff 写“未选择（由本阶段决定）”，并仍给出模板目录；为 null 时写“无（不使用模板）”，不列具体模板文档；非法或不兼容的模板名会在写任何物化副本之前 exit 1。
 
 #### 8.3 — 委派 composition agent
 
-把 `prepare-handoff.py` 输出 JSON 里的 `dispatch_prompt` 原样派发，派发方式见 `references/delegation/conventions.md`。
+用 `prepare-handoff.py` 输出 JSON 里的 `coding_agent` / `coding_model` 选择实际 agent / model，把 `dispatch_prompt` 原样派发，派发方式见 `references/delegation/conventions.md`。
 
 被委派的 agent 自己从磁盘读 handoff 与 Required References 列出的文件（含工作区的委派包与 modules 副本）；主 agent 不在 prompt 里复述指令内容，也**不要**在主 agent 的会话里驱动 composition authoring 或手工 patch `composition/index.html`。
 
