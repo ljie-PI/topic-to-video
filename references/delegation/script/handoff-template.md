@@ -13,10 +13,10 @@
 | `{{skill_root_q}}` / `{{venv_activate_q}}` | skill 根目录 / venv activate 脚本的 shell 引号版：**命令行里必须用引号版**（路径可能含空格） |
 | `{{script_txt_q}}` / `{{lexicon_q}}` / `{{output_dir_q}}` | make-narration 命令里三条路径的 shell 引号版 |
 | `{{coding_agent}}` / `{{coding_model_instruction}}` | 按 `inputs.json.delegation.script` 与全局 `coding_agent` 解析的有效 agent / model；未指定 model 时模型说明为空 |
-| `{{duration}}` / `{{language}}` / `{{input_mode}}` / `{{template}}` | `inputs.json` 的对应字段（`template` 为 null 时写“无”） |
+| `{{duration}}` / `{{language}}` / `{{input_mode}}` | `inputs.json` 的对应字段 |
 | `{{material_catalog}}` | `fetch_materials` 为真：catalog 的路径；图片 / 视频 ref 用 `<slug>/<id>`，clip 用 `<slug>/<video_id>:<start>-<end>`；否则“无” |
-| `{{required_references}}` | 按叠加顺序编号：基础指令（工作区副本，含论文模式解说结构与素材引用格式）→ 所选模板的旁白要求（skill 目录；未选模板或模板没有旁白要求则省略） |
-| `{{additional_instructions}}` | 实际存在的 `narration-instructions.md`；没有写 `None` |
+| `{{required_references}}` | 按叠加顺序编号：基础指令（工作区副本，含论文模式解说结构与素材引用格式）。模板是 Phase 8 的画面选择，不在这里 |
+| `{{additional_instructions}}` | `inputs.json` 的 `narration_requests` 逐条列出；没有写 `None` |
 
 ```markdown
 # script-handoff — {{topic_name}}
@@ -31,7 +31,7 @@
 - 工作区：{{ws}}/
 - research-brief.md：{{ws}}/research-brief.md
 - material-catalog.json：{{material_catalog}}
-- inputs.json：{{ws}}/inputs.json（目标时长 {{duration}}、语言 {{language}}、input_mode {{input_mode}}、所选模板 {{template}}）
+- inputs.json：{{ws}}/inputs.json（目标时长 {{duration}}、语言 {{language}}、input_mode {{input_mode}}）
 
 ## Outputs
 

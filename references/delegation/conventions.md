@@ -11,15 +11,24 @@ Phase 5（素材 catalog）、Phase 6（脚本与场景规划）与 Phase 8（co
 
 ## 怎么派发
 
-先按本阶段有效的目标 agent 选择派发方式，**不是按主 agent 所在客户端决定目标**。
+先解析目标，再选手段：两件事不能弄反。
 
-- **目标是 pi-coding-agent（默认）**：由主 agent 在工作区执行 headless 的 `pi`。已用本机 `pi --help` 核实：
-  - `-p` / `--print`：非交互模式，执行 prompt 后打印结果退出；
-  - `--model <provider/model-id>`：选择模型；也可用 `--provider <provider> --model <model-id>` 精确指定；
-  - 未指定 model：`cd "<ws>" && pi -p "<dispatch_prompt>"`；
-  - 指定了 model：`cd "<ws>" && pi --model "<coding_model>" -p "<dispatch_prompt>"`，用返回的模型标识，不用模糊简称猜模型。
-  - `pi` 使用当前目录作为项目工作区。handoff 的输入路径都是绝对路径；handoff 里的命令（`source <skill_root>/.venv/bin/activate && python3 <skill_root>/scripts/...`）指向 skill 根目录。派发前确认目标 agent 能读工作区和 skill 根目录，凭据通过目标 agent 支持的登录 / 环境变量提供，不写进 handoff。具体 flag 以本机 `pi --help` 为准，CLI 说明见 https://pi.dev/docs/latest/cli 。
-- **用户明确指定其他 agent**：先核实该 agent 的原生委派工具或 headless CLI 与模型选择参数，再按用户指定的 agent / model 派发。本约定不预设其他 agent 的命令或参数，也不因主 agent 所在客户端切换目标。指定目标不可用时先说明并确认，不能用默认 agent 替代。
+1. **先确定目标**：按 `inputs.json.delegation` 的当前阶段要求与全局 `coding_agent` 解析目标（默认 `pi-coding-agent`），用 `prepare-handoff.py` 返回的 `coding_agent` / `coding_model` 派发。用户指定的阶段级 agent / model 优先，不能仅写进 prompt。
+2. **再判断可用工具能不能派发这个目标**：
+   - **能明确派发到该目标并选中指定模型时**用当前客户端的原生 sub-agent / 委派工具，被委派的 agent 同样只拿到那一句 prompt 与 handoff 路径。
+   - **否则用该目标自己的非交互入口**。Pi 的形态是 `cd <ws> && pi -p -- "<dispatch_prompt>"`。
+
+**“有原生 sub-agent 工具”不等于“能派发 Pi”。** 原生工具只能跑它自己那个后端时，它无法代替 `pi`；这时要走 Pi 的入口，而不是用原生工具派发到另一个 agent。
+
+用户点名了其他 agent 时，用那个目标自己的入口（具体 flag 以它的 `--help` 为准），不要仍落到 `pi`。目标未知或该工具不可用时**明确报告**并停下来问用户，不要静默换成别的 agent。
+
+Pi 已核实的 flag（`pi --help`）：
+
+- `-p` / `--print`：非交互模式，处理完 prompt 后退出；
+- `--`：后面全部当作 message，prompt 以 `-` 开头也不会被当成参数；
+- `--model <provider/model-id>`：指定模型（可选；使用完整模型标识，不猜模糊简称）。指定了 model 时命令形态为 `cd <ws> && pi --model "<coding_model>" -p -- "<dispatch_prompt>"`。
+- 命令形态：`cd <ws> && pi -p -- "<dispatch_prompt>"`。在当前目录启动，被委派的 agent 就能直接读写工作区；handoff 与 Required References 里都是绝对路径，skill 侧脚本也用绝对路径调用，不依赖 cwd。
+- `pi --help` 里没有单独授予目录访问的 flag，因此不要照搬其他 CLI 的参数；确实需要额外授权时按 `pi --help` 与本地配置处理，并把差异告诉用户。
 - **委派 prompt 只有一句话**，由 `prepare-handoff.py` 生成：运行 `source .venv/bin/activate && python3 scripts/prepare-handoff.py <ws> <step>`，把输出 JSON 里的 `dispatch_prompt` 原样派发。例如：
 
   ```text
@@ -33,11 +42,11 @@ Phase 5（素材 catalog）、Phase 6（脚本与场景规划）与 Phase 8（co
 委派时，被委派的 agent 按以下顺序读取指令，**后面的补充前面的**，冲突时以后者为准：
 
 1. **委派包的基础指令**（`references/delegation/<step>/base-instructions.md`）；
-2. **所选模板的指令**：script 步骤读 `modules/templates/<template>/narration.md`（旁白要求）；composition 步骤读模板的组装说明。未选模板则跳过；
-3. **工作区里的项目指令文件**：script 步骤读 `<work_dir>/<topic_name>/narration-instructions.md`，composition 步骤读 `<work_dir>/<topic_name>/composition-instructions.md`。旧项目的 `style-prompt.md` 视为 composition 项目指令的一部分，由 composition 步骤读取；catalog 步骤读 `<work_dir>/<topic_name>/catalog-instructions.md`（素材要求与用户原话，如有）；
-4. **用户在对话中提出的要求**，由主 agent 追加写入第 3 项对应的项目指令文件（`catalog-instructions.md` / `narration-instructions.md` / `composition-instructions.md`），再委派。agent / model 的选择另按「委派给谁」记入 `inputs.json`。**追加必须在运行 `prepare-handoff.py` 之前**：Additional Instructions 在生成 handoff 时计算一次，之后才写的指令不会出现在已生成的 handoff 里——这时重新运行一次 `prepare-handoff.py`（幂等；已物化的副本不会被覆盖）再派发。
+2. **所选模板的组装说明**（仅 composition 步骤）：`modules/templates/<template>/<template>.md`。模板在 Phase 8 才确定，其他步骤不读它；未选模板则跳过；
+3. **用户在对话中提出的要求**，按阶段分开记在 `inputs.json`：旁白要求写进 `narration_requests`（script 步骤读），画面要求写进 `composition_requests`（composition 步骤读）。catalog 步骤读可选的 `<work_dir>/<topic_name>/catalog-instructions.md`（用户素材要求），不读旁白 / 画面要求列表；
+4. 这些要求由主 agent 在对应阶段整理后写入 `inputs.json`（catalog 素材要求写入 `catalog-instructions.md`），再运行 `prepare-handoff.py`：Additional Instructions 在生成 handoff 时计算一次，之后才写的要求不会出现在已生成的 handoff 里——这时重新运行一次 `prepare-handoff.py`（幂等；已物化的副本不会被覆盖）再派发。
 
-项目指令文件都是可选的：不存在就跳过，但 handoff 的 Additional Instructions 一节始终保留，写 None 或实际文件列表。
+要求列表都是可选的：没有就写 `None`，但 handoff 的 Additional Instructions 一节始终保留。
 
 ## handoff 模板
 

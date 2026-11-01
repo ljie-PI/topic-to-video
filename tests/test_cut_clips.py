@@ -235,15 +235,19 @@ def test_an_unusable_clip_is_an_error_entry_not_a_crash(ws: Path, video: dict, d
     assert not (ws / 'clips').exists() or list((ws / 'clips').rglob('*.mp4')) == []
 
 
-def test_an_absolute_local_path_from_an_old_catalog_is_used_as_is(tmp_path: Path):
+def test_an_absolute_local_path_is_rejected_not_used_as_is(tmp_path: Path):
+    """catalog 里的绝对 local_path 不是当前格式：明确报错，不去读基准目录外的文件。"""
     ws = tmp_path / 'ws'
     source = make_source_with_audio(tmp_path / 'elsewhere' / 'vid_001.mp4')
     write_catalog(ws, [video_item('vid_001', str(source), [CLIP_A])])
 
     proc = run_cli(str(ws))
 
-    assert proc.returncode == 0, proc.stderr
-    assert media.probe(ws / CLIP_A_PATH)['has_audio'] is False
+    assert proc.returncode == 1
+    result = parse_result(proc)
+    assert result['clips'] == []
+    assert 'not relative to the harvest directory' in result['errors'][0]['error']
+    assert not (ws / 'clips').exists()
 
 
 def test_a_catalog_without_video_clips_is_a_successful_no_op(tmp_path: Path):
@@ -357,6 +361,7 @@ def complete_pipeline_prerequisites(ws: Path) -> None:
         encoding='utf-8',
     )
     (ws / 'harvest_page' / 'manifest.json').write_text(json.dumps({
+        'version': 2,
         'entries': [{'slug': 'example', 'images': [], 'videos': []}],
         'harvest_batches': [{
             'at': '2026-01-01T00:00:00Z',

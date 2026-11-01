@@ -2,7 +2,9 @@
 
 你负责为一个解说视频撰写**显示稿、词表和叙事层的场景规划**。主 agent 不会替你做这些决定；你独立完成并落盘产物。
 
-先读工作区里的输入（Inputs 一节列出的文件），再按下面的结构写作。指令冲突时，按 `references/delegation/conventions.md` 的叠加顺序处理：后读的（模板旁白要求 → 项目指令 → 用户追加要求）覆盖先读的。
+先读工作区里的输入（Inputs 一节列出的文件），再按下面的结构写作。指令冲突时，按 `references/delegation/conventions.md` 的叠加顺序处理：后读的（用户在 `inputs.json` 的 `narration_requests` 里提出的要求）覆盖先读的。
+
+模板（`modules/templates/`）是 Phase 8 的画面选择，不在你的输入里：按内容写旁白，不要为了套某个模板去改叙事。
 
 ## 叙事结构
 
@@ -29,6 +31,8 @@ Phase 6 撰写旁白时，论文模式沿用论文自身的逻辑流，而非通
 7. Takeaway / CTA
 
 论文 figure（`source_type: "paper_pdf"` 条目）是**首选**素材。从 web 抓取的资源作为补充 B-roll。叙述中合适时自然引用图号 / 表号：`"如表一所示..."`。
+
+**方法、模型结构、关键实验结果等关键图必须在讲解里都用上**（对应 catalog 的 `required_material_refs`），关掉网络素材抓取也不例外；关键图在要讲它的那个 scene 里选为 `material_candidates`。哪些图属于关键图由 catalog 与你看论文内容判断，不要凭图号顺序挑。
 
 ### 通用要求
 
@@ -65,13 +69,12 @@ TTS 朗读稿由 `scripts/make-narration.py` 按词表确定性生成，不要�
      "scene_id": "scene_1",
      "paragraphs": [1, 2],
      "intent": "这一段帮助观众理解什么",
-     "template_scene": "trending-overview",
      "pattern_hints": ["leaderboard"],
      "facts": ["数字、实体、列表、代码等关键事实"],
      "material_candidates": [
        {"ref": "example/img_001", "score": 8, "reason": "对应旁白提到的 X"}
      ],
-     "cues": ["模板需要的锚点句摘录"],
+     "cues": ["原样取自显示稿、需要卡准秒数的关键句"],
      "beats": [{"type": "idea", "text": "原样取自显示稿的一小段"}]
    }
    ```
@@ -79,10 +82,10 @@ TTS 朗读稿由 `scripts/make-narration.py` 按词表确定性生成，不要�
    - `scene_id`：`scene_1`, `scene_2`, ... 顺序编号。
    - `paragraphs`：覆盖的**段落序号（1 起）**；所有 scene 的段落并集必须覆盖 `script.txt` 的全部段落，段落可以属于多个 scene（合并 / 拆分时）。
    - `intent`：这场景要帮观众理解什么。
-   - `template_scene` / `pattern_hints`：可选。选了模板时，`cues` 按模板的旁白要求（`modules/templates/<template>/narration.md`）摘录需要的锚点句——这些句子会用来从配音里算出秒数，务必原样取自显示稿。
+   - `pattern_hints` / `cues`：可选。`cues` 是本 scene 里值得对齐到秒的关键句（例如要卡住画面切换的那一句），必须原样取自显示稿；Phase 7 用它们从配音里算出秒数。不要为了让某个模板好看而倒推旁白。
    - `beats`：可选的语义节拍列表，每项含 `type` 和 `text`。`type` 只能取 `question`（抛出问题）、`idea`（关键思路 / 原理）、`caveat`（限制 / 注意事项）、`highlight`（亮点 / 关键数字）、`negation`（否定 / 不推荐）、`confirm`（认同 / 讲完一个要点）。`text` 必须逐字取自显示稿，落在该 scene 的 `paragraphs` 范围内，长度 8–30 个字符。全片平均每分钟不超过 4 个；同一个 scene 里，两个 beat 的文本不能重叠。没有合适的时刻就不写，这个字段可以省略。
    - `facts`：这一段旁白依赖的关键事实（数字、实体、列表、代码）。
-   - `material_candidates`：候选素材引用，每项含 `ref`、`score`（1–10）、`reason`。**只是候选，不做排他分配**；同一素材可以被多个 scene 候选。`ref` 的格式（即上面论文结构里说的 `material_ref`）：图片和视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>`；`slug` 必须等于 catalog 的 `entries[*].slug`，id 只需存在于该 entry，裸 id 无效。即使两个 entry 都有 `img_001` 或同一个 video id，也必须用各自 slug 区分。clip 秒数与该 entry 的 `selected_clips` 对应——数字间不加空格，起止时间要与某一项相差不超过 0.01 秒。没有 catalog（`fetch_materials = false` 且不是论文模式）时留空列表。
+   - `material_candidates`：候选素材引用，每项含 `ref`、`score`（1–10）、`reason`。catalog 的 `required_material_refs` 必须至少各被一个 scene 选中（状态脚本会打回没覆盖的），但选为候选不等于已经出现在成片：实际画面由 composition 阶段落实。**只是候选，不做排他分配**；同一素材可以被多个 scene 候选。`ref` 的格式（即上面论文结构里说的 `material_ref`）：图片和视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>`；`slug` 必须等于 catalog 的 `entries[*].slug`，id 只需存在于该 entry，裸 id 无效。即使两个 entry 都有 `img_001` 或同一个 video id，也必须用各自 slug 区分。clip 秒数与该 entry 的 `selected_clips` 对应——数字间不加空格，起止时间要与某一项相差不超过 0.01 秒。没有 catalog（`fetch_materials = false` 且不是论文模式）时留空列表。
    - **不包含** `layout_role` / `visual_role` / `display_text`——那是 composition 阶段的设计空间。
 
 ## 完成后
@@ -94,6 +97,7 @@ TTS 朗读稿由 `scripts/make-narration.py` 按词表确定性生成，不要�
 - 每个事实、数字、人名、日期都能在 `research-brief.md` 里找到；找不到的删掉或标“据报道”。
 - 开头有钩子，各部分讲的是同一件事，段落之间没有断裂或重复。
 - 每个 scene 的 `intent` 与它覆盖的段落对得上；引用的素材能讲这段内容。
-- 用户的要求（语气、结尾不要 CTA、模板风格）都体现了。
+- 用户的要求（语气、结尾不要 CTA 等，见 `narration_requests`）都体现了。
+- catalog 声明为 `required_material_refs` 的素材（论文模式的关键图 / 表）是否都被某个 scene 的 `material_candidates` 选中了。
 
 任何一项不通过就自己改了再报告；如果问题是上游不足（简报缺证据、素材不对），在报告里写清楚是哪一项、建议回退到哪个阶段，不要自己编造补充。

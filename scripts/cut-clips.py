@@ -16,8 +16,8 @@ Phase 5 把 `selected_clips` 以引用（`{start, end, reason, ...}`）的形式
 用法：
   python3 scripts/cut-clips.py <workspace_dir>
 
-视频的相对 `local_path` 相对于 `<workspace_dir>/harvest_page/`（v2 manifest 的
-基准目录）；绝对路径（旧 catalog）则原样使用。
+视频的 `local_path` 是相对 `<workspace_dir>/harvest_page/` 的 POSIX 路径；绝对
+路径、~ 展开或跨出该目录的路径不属于当前格式，直接报错。
 
 输出：stdout 上的一份 JSON 文档。
   {"success": true, "clips": [{"ref": "<slug>/<video_id>:<start>-<end>", "clip_path": "clips/...", "skipped": false}],
@@ -40,7 +40,7 @@ from typing import Any
 import cli
 import clip_paths
 import media
-from harvest_manifest import _stage_json
+from harvest_manifest import _stage_json, stored_path_problem
 
 TOOL_NAME = 'cut-clips'
 
@@ -98,9 +98,10 @@ def source_path(ws: Path, video: dict[str, Any]) -> Path:
     local_path = video.get('local_path')
     if not isinstance(local_path, str) or not local_path:
         raise ClipError('video has no local_path')
-    path = Path(local_path)
-    if not path.is_absolute():
-        path = ws / HARVEST_DIR / path
+    problem = stored_path_problem(local_path)
+    if problem:
+        raise ClipError(f'video local_path is unusable: {problem}')
+    path = ws / HARVEST_DIR / local_path
     if not path.is_file():
         raise ClipError(f'source video not found: {path}')
     return path

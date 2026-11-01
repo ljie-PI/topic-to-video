@@ -5,8 +5,8 @@
 检查，都是确定性的：
 
   1. 容器元数据检查：存在音轨；容器时长与音频时长的偏差 <= 0.5s；视频分辨率与
-     inputs.json 中记录的 orientation 相符（横屏：宽 > 高；竖屏 / portrait-3:4：
-     高 > 宽）。
+     inputs.json 中记录的 orientation 对应的精确画布一致（1920×1080、1080×1920
+     或 1080×1440），不是只判断横竖。
   2. 通过 ffmpeg 的 blackdetect 滤镜检测黑屏（在 ffmpeg 内部对解码帧分析）：
      任何长于 --black-threshold（默认 0.5s）的黑屏区间，以及片尾的黑屏尾巴。
   3. 通过 ffmpeg 的 freezedetect 滤镜检测定格：任何长于 --freeze-threshold
@@ -45,6 +45,7 @@ from pathlib import Path
 
 import cli
 import media
+import video_contract
 from timeline_scenes import normalize_scenes, scene_ranges
 
 TOOL_NAME = 'check-render'
@@ -56,10 +57,6 @@ DURATION_TOLERANCE_S = 0.5
 BLACK_PIX_THRESHOLD = 0.10
 FREEZE_NOISE_THRESHOLD = 0.001
 END_EPSILON_S = 0.1
-
-# inputs.json 的 orientation 取值 -> 期望的宽高关系。
-LANDSCAPE_ORIENTATIONS = {'landscape'}
-PORTRAIT_ORIENTATIONS = {'portrait', 'portrait-3:4', 'portrait-3x4'}
 
 BLACK_START_RE = re.compile(r'black_start[:=]?\s*([0-9.]+)')
 BLACK_END_RE = re.compile(r'black_end[:=]?\s*([0-9.]+)')
@@ -100,7 +97,10 @@ def load_orientation(inputs_path: Path) -> str | None:
     if not isinstance(data, dict):
         raise ValueError(f'{inputs_path} is not a JSON object')
     orientation = data.get('orientation')
-    return orientation if isinstance(orientation, str) else None
+    problem = video_contract.orientation_problem(orientation)
+    if problem:
+        raise ValueError(problem)
+    return orientation
 
 
 def load_timeline_scene_ranges(timeline_path: Path | None) -> list[tuple[str, float, float]]:
@@ -228,21 +228,15 @@ def check_container(probe: dict[str, object], orientation: str | None) -> list[d
             )
     width = int(probe['width'])
     height = int(probe['height'])
-    if orientation in LANDSCAPE_ORIENTATIONS and width <= height:
+    expected = video_contract.orientation_canvas(orientation)
+    if expected is None:
+        raise ValueError(video_contract.orientation_problem(orientation))
+    if (width, height) != expected:
         findings.append(
             {
                 'scene_id': None,
                 'check': 'orientation',
-                'issue': f'expected landscape (width > height) but video is {width}x{height}',
-                'time_s': None,
-            }
-        )
-    elif orientation in PORTRAIT_ORIENTATIONS and height <= width:
-        findings.append(
-            {
-                'scene_id': None,
-                'check': 'orientation',
-                'issue': f'expected portrait (height > width) but video is {width}x{height}',
+                'issue': f'expected {orientation} {expected[0]}x{expected[1]} but video is {width}x{height}',
                 'time_s': None,
             }
         )
@@ -313,9 +307,6 @@ def main() -> int:
         'container_duration_s': metadata['duration_seconds'] or 0.0,
     }
     orientation = load_orientation(inputs_path.resolve())
-    if orientation not in LANDSCAPE_ORIENTATIONS | PORTRAIT_ORIENTATIONS:
-        log(f'orientation {orientation!r} not recognized; skipping orientation check')
-        orientation = None
     scene_ranges = load_timeline_scene_ranges(Path(args.timeline).expanduser().resolve() if args.timeline else None)
 
     findings = check_container(probe, orientation)

@@ -25,6 +25,7 @@
 - `title` / `abstract` 是不是这篇论文（URL 或文件名对不上就是抓错了）。
 - 解析出的 markdown 有没有明显缺页、整段乱码、公式变空白。
 - `figure_captions` / `table_captions` 与图片文件是否对得上；某张图明显配错标题时，在 catalog 阶段前修正或标注。
+- 方法、模型结构、关键实验结果等关键图是否都抽出来了（它们后面会进 catalog 的 `required_material_refs`，必须全部用上）；解析没抽到的先补解析或从 PDF 里取，不要带着缺图进 catalog。
 
 ## 下一步
 

@@ -2,7 +2,7 @@
 
 ## 输入
 
-- `harvest_page/manifest.json`（Phase 4 产出；论文 entry 由 Phase 2 / Phase 3 写入）；
+- `harvest_page/manifest.json`（Phase 4 产出且已做过尺寸 / 清晰度筛选；论文 entry 由 Phase 2 / Phase 3 写入）；
 - `inputs.json`（用户来源输入、目标时长、语言、朝向，以及全局 / 阶段级 agent 与 model 要求）；
 - `research-brief.md`（调研结果与证据）；
 - `vision_analyze/topic-context.txt`（从用户输入和调研结果提炼的 summary，含叙事角度）；
@@ -20,19 +20,23 @@
 ## 完成判据
 
 - `material-catalog.json` 存在、非空、JSON 可解析，`entries` 为非空列表；
-- 每张图片 / 每个视频都有非空字符串的 `id` 和 `semantic_description`（适配度评分 <7 或偏题的素材已过滤）；
+- 每张图片 / 每个视频都有非空字符串的 `id` 和 `semantic_description`（适配度评分 <7 或偏题的非必用素材已过滤；论文必用关键图按 `required_material_refs` 规则保留）；
 - 每个 `selected_clip` 都有 `clip_path`，且它指向的文件（相对工作区）存在且非空；
+- `required_material_refs` 必须是不重复、且能在本 catalog 里按 entry 解析的 ref；标准模式下它是可选的，论文模式下必须显式声明（没有适用的关键图时写 `[]`）；
 - 状态脚本检查结构、描述与文件；评分、相关性和片段内容由执行 agent 自检，不由状态脚本判定。
-- `catalog-instructions.md` 是可选上游输入：生成 catalog 后新增、修改或删除该文件，状态脚本会将本阶段标为 `stale`，并暂停下游；缺省时不要求创建该文件。旧戳首次补齐新增依赖时沿用兼容规则，不强制重做，之后的文件变化照常判为过期。
+- `catalog-instructions.md` 是可选上游输入：生成 catalog 后新增、修改或删除该文件，状态脚本会将本阶段标为 `stale`，并暂停下游；缺省时不要求创建该文件。上游依赖集合也按当前契约校验；旧戳缺少这个依赖时判为过期，不自动补齐基线。
 
 ## 执行后自检
 
 `pipeline-status` 会逐项检查引用、描述、`clip_path`。此外由委派的 catalog agent 自己（或主 agent 兜底时）判断：
 
 - 每条 `semantic_description` 是否真的描述了这张图 / 这段画面，而不是照标语。
-- 打分是否过低（<7 / 10；量表见委派包基础指令）却仍留在 catalog 里，或者高质量的却漏掉了。
+- 非必用素材的打分是否过低（<7 / 10；量表见委派包基础指令）却仍留在 catalog 里，或者高质量的却漏掉了；论文关键图不得因低分静默省略。
 - 视频是否按“粗看每请求最多 8 帧 → 局部细看每请求一张最多 16 帧的 4×4 拼图”完成分析；拼图 prompt 是否附源时间范围，`selected_clips` 的起止是否有局部帧依据，真的落在关键动作 / 界面的那几秒，而不是只用粗帧估计。
 - 论文条目是否按 caption 规则处理，缺失 caption 的是否跑了视觉分析。
+- 论文模式：方法、模型结构、关键实验结果等关键图是否都在 `required_material_refs` 里，一张不漏（确实没图的写 `[]`）；关掉网络素材抓取也不影响这批图。该字段只声明“必须用”，不代替 Phase 6 / Phase 8 真的把它们用上。
+
+Phase 4 已把太小、看不清的 web 素材从 manifest 中剔除；本阶段**不要**回原目录把已剔除的素材重新加回 catalog。发现被保留的素材实际不可用时，把它从 catalog 去掉（或退回 Phase 4 重做），不要拿低清素材凑数。
 
 ## 下一步
 

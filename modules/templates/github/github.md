@@ -82,10 +82,12 @@
 - **项目信息**：每个项目的名次、owner、repo、一句话描述、本周 star 数、主要语言，都取自 GitHub Trending 页面或仓库页面。
 - **README 截图**：每个项目一张，PNG，宽度至少 1044px，从 README 顶部开始的长截图。
 - **logo**：项目自己的 logo 图片；没有可以不填，封面会显示首字母卡片。
-- **配音**：
+- **配音与时间**：
   - 字幕的逐句时间就取自配音；
-  - 每个项目的 `cue`，以及封面的 `nameAt`、`taglineAt`、`starsAt`，都取配音里对应那句话的开始时间；
-  - 嘴型数据用 `components/jay/make-envelope.mjs` 从配音生成。
+  - 每个项目的 `cue`，以及封面的 `nameAt` / `taglineAt` / `starsAt`，都必须是旁白里**实际念到**那句话的时间：在 `composition/assets/template-cues.json` 里按 scene-plan 形状声明那句原句，用 `align-narration.py --mode timing` 得到 `composition/assets/template-timeline.json` 里的秒数，再换算成参数（全片组件用视频秒，scene 内的用相对 `data-start` 的秒数）；
+  - 没念到的字段不要编时间：省略 `taglineAt` / `starsAt` 会由组件隐藏相应内容并跳过动画；`nameAt` 与榜单每个项目的 `cue` 必填，没有可用朗读锚点就不用那个场景 / 项目，不能依赖默认秒数；确实无法适配时按 Phase 8 文档写 `template: null` 并说明原因；
+  - 嘴型数据用 `components/jay/make-envelope.mjs` 从配音生成；
+  - 机器可读的模板声明（支持哪些 layout、有哪些场景、每个场景要哪些锚点）在 `templates/github/github.json`，以它为准。
 
 ## 5. 人物怎么演（写在 `VIDEO.jay`，时间是视频秒）
 
@@ -94,5 +96,5 @@
 | 时刻 | 动作 |
 |---|---|
 | 榜单总览里每个项目的 `cue` 和 `cue + 1.7` 秒 | 分别在 `cue` 瞥视 `[cue, 1.0, "U"]` 看榜单，在 `cue + 1.7` 瞥视 `[cue + 1.7, 1.0, "L"]` 看 README |
-| 封面的 star 数出现时（段开始 + `starsAt`） | `["eureka", 2700]`，头顶冒出“!” |
+| 封面给出了 `starsAt` 且 star 数出现时（段开始 + `starsAt`） | `["eureka", 2700]`，头顶冒出“!” |
 | 封面的介绍出现时 | 瞥视 `"L"` |

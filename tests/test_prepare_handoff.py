@@ -50,14 +50,16 @@ def make_workspace(tmp_path: Path, step: str = 'script', **overrides) -> Path:
     if inputs['fetch_materials'] and step != 'catalog':
         write(ws / 'material-catalog.json', '{"entries": []}')
     if step == 'catalog':
-        write(ws / 'harvest_page' / 'manifest.json', '{"entries": []}')
+        write(ws / 'harvest_page' / 'manifest.json', '{"version": 2, "entries": []}')
         write(ws / 'vision_analyze' / 'topic-context.txt', '话题摘要\n')
     if step == 'composition':
         write(ws / 'script.txt', '甲\n\n乙\n')
         write(ws / 'scene-plan.json', '[]')
         write(ws / 'voice_clone' / 'narration.mp3')
-        write(ws / 'transcribe' / 'subtitle-units.json', '{"units": []}')
+        write(ws / 'transcribe' / 'transcript.json', '[]')
         write(ws / 'transcribe' / 'timeline.json', '{"paragraphs": []}')
+        write(ws / 'narration.txt', '甲\n\n乙\n')
+        write(ws / 'narration-offsets.json', '{"version": 1, "segments": []}')
     return ws
 
 
@@ -136,6 +138,67 @@ class TestScriptHandoff:
         assert '{{' not in text and '}}' not in text
 
 
+class TestRequestLists:
+    """用户原话进 handoff：不能被当成模板、不能破坏小节结构。"""
+
+    def additional(self, ws: Path, step: str = 'script') -> str:
+        return handoff_sections((ws / f'{step}-handoff.md').read_text(encoding='utf-8'))[
+            'Additional Instructions'
+        ]
+
+    def test_absent_and_empty_request_lists_write_the_same_section(self, tmp_path: Path):
+        absent = make_workspace(tmp_path / 'a')
+        prepare(absent, 'script')
+        empty = make_workspace(tmp_path / 'b', narration_requests=[])
+        prepare(empty, 'script')
+
+        assert self.additional(absent) == 'None'
+        assert self.additional(empty) == 'None'
+
+    def test_literal_braces_in_a_request_survive(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, narration_requests=['保留 {{name}} 这种字面量'])
+
+        prepare(ws, 'script')
+
+        # 写入的值不再被当成占位符：literal braces 原样到手。
+        assert self.additional(ws) == '- 保留 {{name}} 这种字面量'
+
+    def test_a_multiline_request_stays_one_list_item(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'composition', composition_requests=['第一句\n第二句\n\n第三句'])
+
+        prepare(ws, 'composition')
+
+        section = self.additional(ws, 'composition')
+        # 续行缩进，因此不会凭空多出顶级小节，也没有变成第二个列表项。
+        assert section.startswith('- 第一句')
+        assert section.count('\n- ') == 0
+        assert '  第二句' in section and '  第三句' in section
+        assert list(
+            handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))
+        ) == SECTIONS
+
+    def test_a_request_list_change_reaches_the_handoff(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, narration_requests=['语气更口语'])
+        prepare(ws, 'script')
+        assert self.additional(ws) == '- 语气更口语'
+
+        write(ws / 'inputs.json', json.dumps(
+            {**INPUTS, 'narration_requests': ['语气更口语', '结尾不要 CTA']}, ensure_ascii=False
+        ))
+        prepare(ws, 'script')
+
+        assert self.additional(ws) == '- 语气更口语\n- 结尾不要 CTA'
+
+    def test_the_catalog_step_reads_no_request_list(self, tmp_path: Path):
+        ws = make_workspace(
+            tmp_path, 'catalog', narration_requests=['语气更口语'], composition_requests=['不要人物区'],
+        )
+
+        prepare(ws, 'catalog')
+
+        assert self.additional(ws, 'catalog') == 'None'
+
+
 ABSOLUTE_PATH = re.compile(r'(?:(?<=[\s`（(、，；：])|^)(/[^\s`，。；：、（）()]+)', re.MULTILINE)
 
 
@@ -208,7 +271,8 @@ class TestHandoffContent:
 
 
 class TestRequiredReferences:
-    def test_references_are_numbered_in_overlay_order_with_the_template_item(self, tmp_path: Path):
+    def test_script_references_are_just_the_base_instructions(self, tmp_path: Path):
+        # 模板是 Phase 8 的画面选择：即使 inputs.json 里已经有 template，script 也不读它。
         ws = make_workspace(tmp_path, template='github')
         prepare(ws, 'script')
 
@@ -217,16 +281,7 @@ class TestRequiredReferences:
         items = re.findall(r'^\d+\. (.+)$', body, flags=re.MULTILINE)
         assert [absolute_paths(item) for item in items] == [
             {ws / 'references' / 'delegation' / 'script' / 'base-instructions.md'},
-            {REPO_ROOT / 'modules' / 'templates' / 'github' / 'narration.md'},
         ]
-
-    def test_null_template_drops_the_template_item(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, template=None)
-        prepare(ws, 'script')
-
-        body = handoff_sections((ws / 'script-handoff.md').read_text(encoding='utf-8'))['Required References']
-
-        assert re.findall(r'^(\d+)\. ', body, flags=re.MULTILINE) == ['1']
         assert 'modules/templates' not in body
 
 
@@ -239,15 +294,22 @@ class TestAdditionalInstructions:
 
         assert sections['Additional Instructions'] == 'None'
 
-    def test_lists_the_instruction_file_that_exists(self, tmp_path: Path):
-        ws = make_workspace(tmp_path)
-        write(ws / 'narration-instructions.md', '结尾不要 CTA')
+    def test_inlines_the_script_requests_and_ignores_old_instruction_files(self, tmp_path: Path):
+        ws = make_workspace(
+            tmp_path,
+            narration_requests=['语气更口语', '结尾不要 CTA'],
+            composition_requests=['不要人物区'],
+        )
+        # 旧项目可能还留着这些文件；它们不再被读取。
+        write(ws / 'narration-instructions.md', '旧文件里的旁白要求')
         write(ws / 'composition-instructions.md', 'not for the script step')
         prepare(ws, 'script')
 
         sections = handoff_sections((ws / 'script-handoff.md').read_text(encoding='utf-8'))
 
-        assert sections['Additional Instructions'] == f'- {ws}/narration-instructions.md'
+        assert sections['Additional Instructions'] == '- 语气更口语\n- 结尾不要 CTA'
+        assert 'narration-instructions.md' not in sections['Additional Instructions']
+        assert '不要人物区' not in sections['Additional Instructions']
 
 
 class TestMaterialization:
@@ -340,7 +402,9 @@ class TestCatalogHandoff:
         assert 'python3 scripts/' not in outputs
 
     def test_required_references_and_none_without_catalog_instructions(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'catalog')
+        ws = make_workspace(
+            tmp_path, 'catalog', narration_requests=['x'], composition_requests=['y']
+        )
         write(ws / 'narration-instructions.md', 'not for catalog')
         write(ws / 'composition-instructions.md', 'not for catalog')
         prepare(ws, 'catalog')
@@ -410,6 +474,13 @@ COMPOSITION_PRODUCTS = {
     'composition/renders/final.mp4',
 }
 
+# 本阶段自己生成的产物：handoff 命令会写它们，所以生成前它们不该存在。
+COMPOSITION_GENERATED = {
+    'composition/assets/subtitle-units.json',
+    'composition/assets/template-cues.json',
+    'composition/assets/template-timeline.json',
+}
+
 
 class TestCompositionHandoff:
     def test_writes_a_five_section_handoff_of_absolute_paths(self, tmp_path: Path):
@@ -424,7 +495,9 @@ class TestCompositionHandoff:
         assert text.startswith('# composition-handoff — demo-topic')
         assert list(handoff_sections(text)) == SECTIONS
         assert '{{' not in text and '}}' not in text
-        assert pointed_at_paths_that_do_not_exist(text) == {ws / product for product in COMPOSITION_PRODUCTS}
+        assert pointed_at_paths_that_do_not_exist(text) == {
+            ws / product for product in COMPOSITION_PRODUCTS | COMPOSITION_GENERATED
+        }
 
     def test_commands_use_the_workspace_copies_of_layout_and_design(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition', design='default', layout='stage')
@@ -469,7 +542,7 @@ class TestCompositionHandoff:
         assert f'design github、layout presenter、template 无、orientation landscape' in inputs
 
     def test_required_references_follow_the_overlay_order(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'composition', template='github', design='producthunt', layout='portrait', orientation='portrait')
+        ws = make_workspace(tmp_path, 'composition', template='github', design='producthunt', layout='presenter', orientation='landscape')
         prepare(ws, 'composition')
 
         body = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))['Required References']
@@ -493,8 +566,8 @@ class TestCompositionHandoff:
                 'modules/designs/producthunt/producthunt.json',
                 'modules/designs/producthunt/producthunt.md',
             ],
-            ['modules/layouts/portrait.json', 'modules/layouts/portrait.md'],
-            ['modules/templates/github/github.md'],
+            ['modules/layouts/presenter.json', 'modules/layouts/presenter.md'],
+            ['modules/templates/github/github.json', 'modules/templates/github/github.md'],
             ['modules/components', 'modules/patterns'],
         ]
         assert items[-1].startswith('按 storyboard 需要，自行阅读 ')
@@ -511,19 +584,23 @@ class TestCompositionHandoff:
         assert 'modules/templates' not in body
         assert 'modules/examples' not in body
 
-    def test_additional_instructions_list_the_existing_files(self, tmp_path: Path):
+    def test_additional_instructions_inline_the_composition_requests(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition')
         write(ws / 'narration-instructions.md', 'script step only')
 
         prepare(ws, 'composition')
         none = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))['Additional Instructions']
-        write(ws / 'composition-instructions.md', '深色')
+        # 旧项目可能还留着这些文件；它们不再被读取。
+        write(ws / 'composition-instructions.md', '旧文件里的画面要求')
         write(ws / 'style-prompt.md', '旧项目')
+        write(ws / 'inputs.json', json.dumps(
+            {**INPUTS, 'composition_requests': ['深色', '强调实验对比图']}, ensure_ascii=False
+        ))
         prepare(ws, 'composition')
         listed = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))['Additional Instructions']
 
         assert none == 'None'
-        assert listed == f'- {ws}/composition-instructions.md\n- {ws}/style-prompt.md'
+        assert listed == '- 深色\n- 强调实验对比图'
 
 
 class TestCompositionMaterialization:
@@ -550,18 +627,46 @@ class TestCompositionMaterialization:
     def test_rerun_keeps_an_edited_modules_copy_and_refresh_restores_it(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition')
         prepare(ws, 'composition')
-        layout = ws / 'modules' / 'layouts' / 'presenter.json'
-        layout.write_text('{"edited": true}', encoding='utf-8')
+        layout_doc = ws / 'modules' / 'layouts' / 'presenter.md'
+        layout_doc.write_text('edited by the agent', encoding='utf-8')
 
         rerun = prepare(ws, 'composition')
 
-        assert layout.read_text(encoding='utf-8') == '{"edited": true}'
+        assert layout_doc.read_text(encoding='utf-8') == 'edited by the agent'
         assert rerun['materialized'] == []
 
         refreshed = prepare(ws, 'composition', '--refresh')
 
-        assert layout.read_bytes() == (REPO_ROOT / 'modules' / 'layouts' / 'presenter.json').read_bytes()
+        assert layout_doc.read_bytes() == (REPO_ROOT / 'modules' / 'layouts' / 'presenter.md').read_bytes()
         assert str(ws / 'modules') in refreshed['materialized']
+
+    def test_an_edited_workspace_layout_copy_is_what_gets_validated(self, tmp_path: Path):
+        """校验的必须是 handoff 实际引用的那份副本，不是库里的原文件。"""
+        ws = make_workspace(tmp_path, 'composition')
+        prepare(ws, 'composition')
+        copy = ws / 'modules' / 'layouts' / 'presenter.json'
+        data = json.loads(copy.read_text(encoding='utf-8'))
+        data['canvas'] = {'width': 1080, 'height': 1920}  # 正竖屏画布，与项目朝向不符
+        copy.write_text(json.dumps(data), encoding='utf-8')
+
+        proc, result = run_cli(str(ws), 'composition')
+
+        assert proc.returncode == 1
+        assert '1080x1920' in result['error'] and 'landscape' in result['error']
+
+        # --refresh 把副本换回库文件后，同一个 workspace 又能生成 handoff。
+        refreshed = prepare(ws, 'composition', '--refresh')
+        assert refreshed['success'] is True
+
+    def test_a_template_that_cannot_use_the_layout_is_rejected(self, tmp_path: Path):
+        """模板只支持 presenter，竖屏项目不能带着它生成矛盾的 handoff。"""
+        ws = make_workspace(tmp_path, 'composition', template='github', layout='portrait', orientation='portrait')
+
+        proc, result = run_cli(str(ws), 'composition')
+
+        assert proc.returncode == 1
+        assert "supports layouts presenter" in result['error']
+        assert not (ws / 'composition-handoff.md').exists()
 
 
 class TestFonts:
@@ -660,6 +765,40 @@ class TestFailures:
         assert not (ws / 'modules').exists()
         assert not (ws / 'composition').exists()
 
+    def test_the_script_step_needs_no_template_or_layout(self, tmp_path: Path):
+        # 旁白在 Phase 8 之前就写完了：那时的 inputs.json 里还没有模板与 layout。
+        ws = make_workspace(tmp_path)
+        inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
+        for name in ('template', 'layout'):
+            inputs.pop(name, None)
+        write(ws / 'inputs.json', json.dumps(inputs, ensure_ascii=False))
+
+        result = prepare(ws, 'script')
+
+        assert result['success'] is True
+
+    def test_the_composition_step_requires_the_layout(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'composition')
+        inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
+        inputs.pop('layout')
+        write(ws / 'inputs.json', json.dumps(inputs, ensure_ascii=False))
+
+        proc, result = run_cli(str(ws), 'composition')
+
+        assert proc.returncode == 1
+        assert 'layout' in result['error']
+
+    @pytest.mark.parametrize('field', ['narration_requests', 'composition_requests'])
+    @pytest.mark.parametrize('value', ['语气更口语', None, [''], ['ok', 3]])
+    def test_requests_must_be_lists_of_non_empty_strings(self, tmp_path: Path, field: str, value):
+        step = 'script' if field == 'narration_requests' else 'composition'
+        ws = make_workspace(tmp_path, step, **{field: value})
+
+        proc, result = run_cli(str(ws), step)
+
+        assert proc.returncode == 1
+        assert field in result['error']
+
     def test_the_script_step_requires_the_research_brief(self, tmp_path: Path):
         ws = make_workspace(tmp_path)
         (ws / 'research-brief.md').unlink()
@@ -678,10 +817,47 @@ class TestFailures:
         assert proc.returncode == 1
         assert str(ws / 'material-catalog.json') in result['error']
 
-    def test_unknown_template_exits_1(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, template='no-such-template')
+    @pytest.mark.parametrize('layout, orientation', [
+        ('presenter', 'portrait'),
+        ('stage', 'portrait-3:4'),
+        ('portrait', 'landscape'),
+        ('portrait-3x4', 'landscape'),
+    ])
+    def test_layout_canvas_must_match_the_orientation(self, tmp_path: Path, layout: str, orientation: str):
+        ws = make_workspace(tmp_path, 'composition', layout=layout, orientation=orientation)
 
-        proc, result = run_cli(str(ws), 'script')
+        proc, result = run_cli(str(ws), 'composition')
+
+        assert proc.returncode == 1
+        assert layout in result['error'] and orientation in result['error']
+        assert not (ws / 'composition-handoff.md').exists()
+
+    def test_an_unknown_orientation_exits_1(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'composition', orientation='vertical')
+
+        proc, result = run_cli(str(ws), 'composition')
+
+        assert proc.returncode == 1
+        assert 'orientation' in result['error']
+
+    @pytest.mark.parametrize('layout, orientation', [
+        ('presenter', 'landscape'),
+        ('stage', 'landscape'),
+        ('portrait', 'portrait'),
+        ('portrait-3x4', 'portrait-3:4'),
+    ])
+    def test_matching_layout_and_orientation_is_accepted(self, tmp_path: Path, layout: str, orientation: str):
+        ws = make_workspace(tmp_path, 'composition', layout=layout, orientation=orientation)
+
+        result = prepare(ws, 'composition')
+
+        assert result['success'] is True
+
+    def test_unknown_template_exits_1(self, tmp_path: Path):
+        # 模板在 Phase 8 才确定，所以由 composition 步骤校验它的存在性。
+        ws = make_workspace(tmp_path, 'composition', template='no-such-template')
+
+        proc, result = run_cli(str(ws), 'composition')
 
         assert proc.returncode == 1
         assert 'no-such-template' in result['error']
@@ -692,7 +868,7 @@ class TestFailures:
         proc, result = run_cli(str(ws), 'composition')
 
         assert proc.returncode == 1
-        assert 'no-such-layout.json' in result['error']
+        assert 'no-such-layout' in result['error']
         assert not (ws / 'composition-handoff.md').exists()
         # Sources are validated before anything is written.
         assert not (ws / 'references').exists()
@@ -719,18 +895,18 @@ class TestFailures:
 
     def test_a_trailing_newline_in_a_name_is_rejected(self, tmp_path: Path):
         # `re.match` with $ would let 'github\n' through; fullmatch must not.
-        ws = make_workspace(tmp_path, design='github\n')
+        ws = make_workspace(tmp_path, 'composition', design='github\n')
 
-        proc, result = run_cli(str(ws), 'script')
+        proc, result = run_cli(str(ws), 'composition')
 
         assert proc.returncode == 1
         assert 'design' in result['error']
 
     @pytest.mark.parametrize('field', ['design', 'layout', 'template'])
     def test_names_in_inputs_cannot_be_paths(self, tmp_path: Path, field: str):
-        ws = make_workspace(tmp_path, **{field: '../escape'})
+        ws = make_workspace(tmp_path, 'composition', **{field: '../escape'})
 
-        proc, result = run_cli(str(ws), 'script')
+        proc, result = run_cli(str(ws), 'composition')
 
         assert proc.returncode == 1
         assert field in result['error']
@@ -803,7 +979,7 @@ class TestInputsRendering:
 
         inputs = handoff_sections((ws / 'script-handoff.md').read_text(encoding='utf-8'))['Inputs']
 
-        assert '（目标时长 5 分钟、语言 en、input_mode paper、所选模板 无）' in inputs
+        assert '（目标时长 5 分钟、语言 en、input_mode paper）' in inputs
 
 
 class TestReviewRoundFixes:
@@ -811,7 +987,7 @@ class TestReviewRoundFixes:
 
     def test_portrait_3x4_uses_the_shared_portrait_doc(self, tmp_path: Path):
         # portrait-3x4 has only a .json; portrait.md covers both portrait canvases.
-        ws = make_workspace(tmp_path, 'composition', layout='portrait-3x4', orientation='portrait')
+        ws = make_workspace(tmp_path, 'composition', layout='portrait-3x4', orientation='portrait-3:4')
 
         prepare(ws, 'composition')
 
@@ -829,8 +1005,10 @@ class TestReviewRoundFixes:
         write(ws / 'script.txt', '甲\n\n乙\n')
         write(ws / 'scene-plan.json', '[]')
         write(ws / 'voice_clone' / 'narration.mp3')
-        write(ws / 'transcribe' / 'subtitle-units.json', '{"units": []}')
+        write(ws / 'transcribe' / 'transcript.json', '[]')
         write(ws / 'transcribe' / 'timeline.json', '{"paragraphs": []}')
+        write(ws / 'narration.txt', '甲\n\n乙\n')
+        write(ws / 'narration-offsets.json', '{"version": 1, "segments": []}')
 
         prepare(ws, 'composition')
         prepare(ws, 'script')
@@ -880,9 +1058,8 @@ class TestReviewRoundFixes:
         assert proc.returncode == 1
         assert 'Ws2' in result['error']  # recognized as a placeholder, reported unreplaced
 
-    def test_a_design_kept_only_in_the_workspace_still_gets_fonts(self, tmp_path: Path, skill_copy: Path):
-        # pipeline-status accepts a design removed from the skill when the
-        # workspace holds its copy; the handoff must not fail at fonts either.
+    def test_a_design_kept_only_in_the_workspace_is_rejected(self, tmp_path: Path, skill_copy: Path):
+        # 已从库中移除的 design 不再靠工作区的历史副本继续驱动生成。
         (skill_copy / 'modules').unlink()
         gutted = tmp_path / 'gutted-modules'
         shutil.copytree(REPO_ROOT / 'modules', gutted, ignore=shutil.ignore_patterns('github', 'examples'))
@@ -891,10 +1068,11 @@ class TestReviewRoundFixes:
         copied = ws / 'modules' / 'designs' / 'github'
         shutil.copytree(REPO_ROOT / 'modules' / 'designs' / 'github', copied)
 
-        result = prepare(ws, 'composition', script=skill_copy / 'scripts' / 'prepare-handoff.py')
+        proc, result = run_cli(str(ws), 'composition', script=skill_copy / 'scripts' / 'prepare-handoff.py')
 
-        assert result['fonts']['success'] is True
-        assert (ws / 'composition' / 'assets' / 'fonts' / 'github-fonts.css').is_file()
+        assert proc.returncode == 1
+        assert "design 'github' is not an available design" in result['error']
+        assert not (ws / 'composition' / 'assets' / 'fonts').exists()
 
 
 class TestDelegationDocs:
@@ -915,20 +1093,14 @@ class TestDelegationDocs:
         assert 'dispatch_prompt' in text
         assert 'handoff-template.md' not in text
 
-    def test_conventions_grant_the_skill_root_to_headless_agents(self):
+    def test_conventions_dispatch_through_pi_from_the_workspace(self):
         text = (REPO_ROOT / 'references' / 'delegation' / 'conventions.md').read_text(encoding='utf-8')
 
-        assert 'cd "<ws>" && pi -p "<dispatch_prompt>"' in text
-        assert 'pi --model "<coding_model>" -p "<dispatch_prompt>"' in text
-        assert '不是按主 agent 所在客户端决定目标' in text
-        assert '用户明确指定其他 agent' in text
-        assert '不预设其他 agent 的命令或参数' in text
-        assert '指定目标不可用时先说明并确认' in text
-        assert 'claude' not in text.lower()
-        assert (
-            'handoff 里的命令（`source <skill_root>/.venv/bin/activate && '
-            'python3 <skill_root>/scripts/...`）'
-        ) in text
+        assert '默认 coding agent 是 **pi-coding-agent**' in text
+        assert 'pi -p -- "<dispatch_prompt>"' in text
+        # Pi 没有 --add-dir 那类目录授权开关：靠 cwd 与绝对路径，而不是照搬其他 CLI。
+        assert '--add-dir' not in text
+        assert '--permission-mode' not in text
         assert (
             '运行 `source .venv/bin/activate && python3 scripts/prepare-handoff.py <ws> <step>`'
         ) in text

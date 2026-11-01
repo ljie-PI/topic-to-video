@@ -77,9 +77,7 @@ def make_workspace(tmp_path: Path, *, scene_plan: bool = True) -> Path:
             'duration': 0.1,
             'language': 'zh',
             'orientation': 'landscape',
-            'template': None,
             'design': 'default',
-            'layout': 'stage',
             'coding_agent': 'pi-coding-agent',
             'fetch_materials': False,
             'qa_level': 'standard',
@@ -121,13 +119,14 @@ def test_full_command_writes_all_products_and_pipeline_completes_phase_7(tmp_pat
     products = {
         'audio': ws / 'voice_clone' / 'narration.mp3',
         'transcript': ws / 'transcribe' / 'transcript.json',
-        'subtitle_units': ws / 'transcribe' / 'subtitle-units.json',
         'timeline': ws / 'transcribe' / 'timeline.json',
     }
     assert result['products'] == {
         name: str(path.resolve()) for name, path in products.items()
     }
     assert all(path.stat().st_size > 0 for path in products.values())
+    # 最终字幕属于 Phase 8：layout 定下来之后再生成，Phase 7 不预先按容量切。
+    assert not (ws / 'transcribe' / 'subtitle-units.json').exists()
     timeline = json.loads(products['timeline'].read_text(encoding='utf-8'))
     assert timeline['scenes'][0]['scene_id'] == 'scene_1'
     assert any('cue not found' in warning for warning in result['warnings'])
@@ -136,8 +135,6 @@ def test_full_command_writes_all_products_and_pipeline_completes_phase_7(tmp_pat
     phases = {phase['id']: phase['status'] for phase in status['phases']}
     assert phases['7-voice-subtitles'] == 'completed'
     assert status['next_phase']['id'] == '8-composition'
-    assert status['approval_gates'] == []
-    assert not (ws / '.pipeline' / 'approvals.json').exists()
 
 
 @pytest.mark.usefixtures('require_ffmpeg')
@@ -154,7 +151,8 @@ def test_missing_scene_plan_produces_timeline_without_scenes(tmp_path: Path):
 
 
 @pytest.mark.usefixtures('require_ffmpeg')
-def test_nonexistent_layout_is_an_align_failure_with_child_json(tmp_path: Path):
+def test_phase_7_never_reads_layout(tmp_path: Path):
+    """layout 是 Phase 8 的决定：本阶段不读它，也不因它无效而失败。"""
     ws = make_workspace(tmp_path)
     inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
     inputs['layout'] = 'does-not-exist'
@@ -162,12 +160,9 @@ def test_nonexistent_layout_is_an_align_failure_with_child_json(tmp_path: Path):
 
     proc = run_voice_subtitles(ws)
 
-    assert proc.returncode == 1
-    result = parse_stdout(proc)
-    assert result['success'] is False
-    assert result['failed_step'] == 'align'
-    assert result['child']['success'] is False
-    assert 'does-not-exist.json' in result['child']['error']
+    assert proc.returncode == 0, proc.stderr
+    assert parse_stdout(proc)['success'] is True
+    assert (ws / 'transcribe' / 'timeline.json').is_file()
 
 
 def test_empty_required_input_fails_before_tts(tmp_path: Path):
@@ -226,7 +221,6 @@ def test_an_external_transcript_resumes_with_align_only_and_a_rerun_drops_it(tmp
     assert recovered.returncode == 0, recovered.stderr
     assert parse_stdout(recovered)['success'] is True
     assert audio.read_bytes() == audio_before
-    assert (ws / 'transcribe' / 'subtitle-units.json').is_file()
     assert (ws / 'transcribe' / 'timeline.json').is_file()
 
 

@@ -13,12 +13,13 @@ import re
 import stat
 import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 from urllib.parse import urlparse
 
 VIDEO_EXTS = {'.mp4', '.webm', '.mov', '.mkv', '.m4v', '.avi'}
 SUBTITLE_EXTS = {'.srt', '.vtt'}
+MANIFEST_VERSION = 2
 _PATH_FIELDS = {'local_path', 'subtitle_path', 'suggested_output_dir', 'full_markdown_path'}
 
 
@@ -41,7 +42,7 @@ def _read(path: Path) -> dict[str, Any]:
 
 def _new_manifest() -> dict[str, Any]:
     return {
-        'version': 2,
+        'version': MANIFEST_VERSION,
         'entries': [],
         'pending_downloads': [],
         'harvest_batches': [],
@@ -61,40 +62,117 @@ def _replace_entries(target: list[dict[str, Any]], entries: list[dict[str, Any]]
 
 
 def load(harvest_dir: str | os.PathLike[str]) -> dict[str, Any]:
-    """载入 v2 数据；对旧版 manifest 则合并 ``manifest_papers.json``。"""
+    """载入 v2 数据。
+
+    manifest.json 不存在时得到一份新的 v2 manifest（首次写入时落盘）；已经存在时
+    必须自己声明当前版本，否则报错而不是去合并旧文件或就地升级——那样的项目应该
+    重建素材。
+    """
     root = _root(harvest_dir)
-    raw = _read(root / 'manifest.json')
+    path = root / 'manifest.json'
+    raw = _read(path)
+    if path.exists():
+        problem = manifest_problem(raw, base=root)
+        if problem:
+            raise ValueError(f'{path}: {problem}; regenerate the manifest with the current scripts')
     manifest = _new_manifest()
-    entries = raw.get('entries', [])
-    if not isinstance(entries, list):
-        raise ValueError('manifest.json entries must be a list')
-    _replace_entries(manifest['entries'], copy.deepcopy(entries))
-    if raw.get('version') != 2:
-        papers = _read(root / 'manifest_papers.json')
-        paper_entries = papers.get('entries', [])
-        if not isinstance(paper_entries, list):
-            raise ValueError('manifest_papers.json entries must be a list')
-        _replace_entries(manifest['entries'], copy.deepcopy(paper_entries))
-    batches = raw.get('harvest_batches', [])
-    if not isinstance(batches, list):
-        raise ValueError('manifest.json harvest_batches must be a list')
-    manifest['harvest_batches'] = copy.deepcopy(batches)
+    manifest['entries'] = copy.deepcopy(raw.get('entries', []))
+    manifest['harvest_batches'] = copy.deepcopy(raw.get('harvest_batches', []))
     manifest['updated_at'] = raw.get('updated_at', '')
     manifest['pending_downloads'] = pending_downloads(manifest['entries'])
     return manifest
 
 
+def stored_path_problem(rel: Any, *, base: Path | None = None) -> str | None:
+    """一个已持久化的路径不合法的原因，或 None。
+
+    持久化路径只能是相对 harvest 根目录的 POSIX 路径：绝对路径、~ 展开、以及用
+    .. 走到基准目录之外的路径都不接受，因为那样读出来的文件已经不在这个项目的
+    素材目录里了。
+    """
+    if not isinstance(rel, str) or not rel:
+        return f'{rel!r} is not a non-empty path'
+    if '\\' in rel:
+        return f'{rel!r} is not a POSIX path'
+    path = Path(rel)
+    if path.is_absolute() or PureWindowsPath(rel).drive or rel.startswith('~'):
+        return f'{rel!r} is not relative to the harvest directory'
+    if '..' in path.parts:
+        return f'{rel!r} leaves the harvest directory'
+    if base is not None:
+        try:
+            (base / path).resolve().relative_to(base.resolve())
+        except ValueError:
+            return f'{rel!r} resolves outside the harvest directory'
+    return None
+
+
+def paths_problem(value: Any, *, base: Path | None = None, where: str = '') -> str | None:
+    """读取持久化路径的共同校验；不改写或迁移已经保存的数据。"""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            label = f'{where}.{key}' if where else key
+            if key in _PATH_FIELDS and item is not None:
+                problem = stored_path_problem(item, base=base)
+            else:
+                problem = paths_problem(item, base=base, where=label)
+            if problem:
+                return f'{label}: {problem}' if key in _PATH_FIELDS else problem
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            problem = paths_problem(item, base=base, where=f'{where}[{index}]')
+            if problem:
+                return problem
+    return None
+
+
+def manifest_problem(
+    data: Any, *, base: Path | None = None, validate_paths: bool = True,
+) -> str | None:
+    """manifest 的当前读取契约，生产者与状态验收共用。"""
+    if not isinstance(data, dict):
+        return 'manifest JSON root is not an object'
+    if data.get('version') != MANIFEST_VERSION:
+        return f'not a version {MANIFEST_VERSION} manifest (found version {data.get("version")!r})'
+    entries = data.get('entries')
+    if not isinstance(entries, list):
+        return 'manifest entries must be a list'
+    slugs: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            return 'manifest entry is not an object'
+        slug = entry.get('slug')
+        if not isinstance(slug, str) or not slug or any(c in slug for c in '/\\') or slug in {'.', '..'}:
+            return f'invalid entry slug: {slug!r}'
+        if slug in slugs:
+            return f'manifest repeats entry slug: {slug!r}'
+        slugs.add(slug)
+    if not isinstance(data.get('harvest_batches', []), list):
+        return 'manifest harvest_batches must be a list'
+    return paths_problem(data, base=base) if validate_paths else None
+
+
 def resolve(harvest_dir: str | os.PathLike[str], rel: str | os.PathLike[str]) -> Path:
-    """解析一个已存储的路径；遗留的绝对路径仍按绝对路径处理。"""
-    path = Path(rel).expanduser()
-    return path if path.is_absolute() else _root(harvest_dir) / path
+    """把已持久化的相对路径解析到 harvest 根目录下。"""
+    problem = stored_path_problem(str(rel), base=_root(harvest_dir))
+    if problem:
+        raise ValueError(f'stored path is unusable: {problem}')
+    return _root(harvest_dir) / Path(rel)
 
 
 def _relative_path(root: Path, value: str) -> str:
+    """把生产者内部的绝对路径规范成持久化相对路径。
+
+    这是写入时的规范化，不是读取时的兼容：读到的绝对路径仍然一律拒绝。
+    """
     path = Path(value).expanduser()
-    if not path.is_absolute():
-        return Path(value).as_posix()
-    return Path(os.path.relpath(path, root)).as_posix()
+    if path.is_absolute():
+        path = Path(os.path.relpath(path.resolve(), root))
+    relpath = path.as_posix()
+    problem = stored_path_problem(relpath, base=root)
+    if problem:
+        raise ValueError(f'cannot persist {value!r} under {root}: {problem}')
+    return relpath
 
 
 def _normalize_paths(value: Any, root: Path) -> Any:
@@ -195,23 +273,25 @@ def save(
 ) -> dict[str, Any]:
     """原子地保存 v2 manifest，并为有变化的条目更新镜像文件。"""
     root = _root(harvest_dir)
-    root.mkdir(parents=True, exist_ok=True)
+    problem = manifest_problem(manifest, validate_paths=False)
+    if problem:
+        raise ValueError(problem)
+    entries = copy.deepcopy(manifest['entries'])
     saved = _new_manifest()
-    saved['entries'] = _normalize_paths(copy.deepcopy(manifest.get('entries', [])), root)
+    saved['entries'] = _normalize_paths(entries, root)
     saved['harvest_batches'] = copy.deepcopy(manifest.get('harvest_batches', []))
     saved['pending_downloads'] = pending_downloads(saved['entries'])
     saved['updated_at'] = _now()
+    problem = manifest_problem(saved, base=root)
+    if problem:
+        raise ValueError(problem)
     normalized_slugs = {
         normalized.get('slug')
-        for original, normalized in zip(manifest.get('entries', []), saved['entries'])
+        for original, normalized in zip(entries, saved['entries'])
         if original != normalized
     }
     effective_dirty = dirty_slugs if dirty_slugs is not None else set()
     effective_dirty = set(effective_dirty) | normalized_slugs
-    for entry in saved['entries']:
-        slug = entry.get('slug')
-        if not slug or Path(slug).name != slug or slug in {'.', '..'}:
-            raise ValueError(f'invalid entry slug: {slug!r}')
     mirrors = saved['entries'] if dirty_slugs is None else [
         entry for entry in saved['entries'] if entry.get('slug') in effective_dirty
     ]

@@ -1,8 +1,10 @@
-# Phase 1 — 收集输入（一次问用户一个问题）
+# Phase 1 — 收集输入
 
 ## 输入
 
-用户在对话中给出的主题、文章 URL、粘贴的文本或论文 PDF / URL；项目工作区里可选的项目指令文件：`catalog-instructions.md`（素材要求）、`narration-instructions.md`（旁白要求）、`composition-instructions.md`（画面要求）、旧的 `style-prompt.md`（视为 composition 指令的一部分）。
+用户在对话中给出的需求：主题、文章 URL、粘贴的文本或论文 PDF / URL，以及他明确说过的其他要求（时长、语言、朝向、风格、素材、要不要审稿）。
+
+先把这些需求读全，再动手写 `inputs.json`：已经说过的就不要重复问，没说的用下表的默认值。
 
 ## 输出
 
@@ -12,32 +14,32 @@
 | --- | --- |
 | `source` | 来源：要抓取的 URL、粘贴的文本，或仅一个主题 |
 | `input_mode` | `standard`（默认）/ `topic` / `article` / `text` / `paper`（论文模式） |
-| `duration` | 目标时长，单位分钟，写成数字（如 `5`）；也接受数字加分钟单位的字符串（`"5min"`、`"5 分钟"`）。没有默认值：用户没说就先问一句。`"90秒"`、`"1h"`、`"3-5分钟"` 这类写法不接受，会被判为损坏 |
+| `duration` | 目标时长，单位分钟，写成数字（默认 `3`）；也接受数字加分钟单位的字符串（`"5min"`、`"5 分钟"`）。用户说了就照他说的，不自行设上下限。`"90秒"`、`"1h"`、`"3-5分钟"` 这类写法不接受，会被判为损坏 |
 | `language` | 解说语言，默认中文 |
-| `orientation` | `landscape`（横屏 1920×1080）/ `portrait`（竖屏 1080×1920）/ `portrait-3:4`（1080×1440） |
-| `template` | 所选模板，未选为 `null` |
+| `orientation` | `landscape`（横屏 1920×1080）/ `portrait`（竖屏 1080×1920，仅显式 9:16）/ `portrait-3:4`（1080×1440，默认竖屏） |
 | `design` | 所选 design：`default` / `github` / `producthunt`，对应 `modules/designs/<design>/<design>.md` |
-| `layout` | 所选 layout：`presenter` / `stage` / `portrait` / `portrait-3x4`，由模板或朝向决定，区域定义在 `modules/layouts/` |
 | `coding_agent` | 全局委派目标，默认 `pi-coding-agent`（命令 `pi`） |
 | `delegation` | 可选，阶段级 agent / model 要求。对象的键为 `catalog` / `script` / `composition`，各值只含 `agent` 和 / 或 `model`（非空字符串）；如 `{"catalog": {"agent": "pi-coding-agent", "model": "<provider>/<model-id>"}}`。未指定 agent 时继承 `coding_agent`，未指定 model 时使用目标 agent 自身的模型配置；用户点名时严格遵循，未提就不填 |
 | `fetch_materials` | 是否联网抓取视觉素材（布尔） |
 | `approval_gates` | 可选，默认 `[]`（全自动、不停下来审稿）；不主动询问是否审稿。用户要求审稿时按入口的表填：只看调研用 `["research-brief"]`，只看旁白用 `["script"]`，只说“中途让我审稿”就两处都填。续跑保留已有要求，用户明确改才动 |
+| `narration_requests` | 可选，字符串列表，默认不填。用户对旁白提出的长期要求（“语气更口语”“结尾不要 CTA”），逐条用他的原话记下；Phase 6 委派前读它 |
+| `composition_requests` | 可选，字符串列表，默认不填。用户对画面提出的长期要求（“强调方法图”“不要人物区”），逐条记下；Phase 8 委派前读它 |
 | `material_search_requests` | 可选，字符串列表，默认不填。用户点名要用某个平台找素材（“去 Google 图片搜某产品的界面”“在 B 站找演示视频”）时，把原话逐条记下；Phase 4 读它。它只是记录，不会自动让素材阶段重做：用户新提或修改这类要求时，另按 `references/pipeline-control.md` 登记 Phase 4 重做。不主动要求平台搜索 |
-| `qa_level` | 渲染后 QA 档位（缺省视为 `standard`）：`quick` = 渲染前检查 + 渲染后确定性检查，contact sheet 照常生成给用户看但不作 vision；`standard` = 全部检查（quick + 主 agent 逐张过 contact sheet，每张只看渲染完整 / 画面与旁白相符 / 符合 design / 明显空洞或错位 4 项）；`strict` = standard + 每个 scene 加一张入场帧、每个切点加前 / 中 / 后三帧。三档的完整流程见 Phase 9 |
+| `qa_level` | 可选，渲染后 QA 档位：`quick` / `standard`（缺省）/ `strict`。只按用户明确要求写，不主动问；三档的完整流程见 Phase 9 |
 
 ## 完成判据
 
-`inputs.json` 存在、非空、JSON 可解析，且上表字段齐全（`design` 必须是 `modules/designs/` 下现有的主题，旧项目里已删除的主题会被判为不合格、回到本 phase 重选；`fetch_materials` 必须是布尔；`duration` 必须是分钟数；`qa_level` 可缺省，缺省视为 `standard`，填写时必须是三档之一；`approval_gates` 可缺省，填写时必须是由 `research-brief` / `script` 组成的列表，不能重复，空列表表示全自动；`material_search_requests` 可缺省，填写时必须是非空字符串的列表；`delegation` 可缺省，填写时按上表校验阶段名及 agent / model 字符串）。
+`inputs.json` 存在、非空、JSON 可解析，且上表字段齐全（`design` 必须是 `modules/designs/` 下现有的主题，旧项目里已删除的主题会被判为不合格、回到本 phase 重选；`fetch_materials` 必须是布尔；`duration` 必须是分钟数；`orientation` 必须是三个规范朝向之一；`qa_level`、`approval_gates`、`narration_requests`、`composition_requests`、`material_search_requests` 和 `delegation` 都可缺省，填写时按上表类型校验）。
 
 ## 执行后自检
 
 程序能判断的由 `pipeline-status` 检查（见上）。写入前自己再过一遍：
 
-- 用户说过的每一项（来源、时长、语言、朝向、模板与风格、要不要素材、要不要审稿）是否都有对应字段；用户没提的项是否用了默认值，而不是编的。
-- 用户的原话有没有丢：不要 CTA、语气要求这类写进项目指令文件；素材要求写进 `catalog-instructions.md`；点名要在某平台找素材的写进 `material_search_requests`；阶段级 agent / model 要求写进 `delegation`。
-- 拿不准的项是问过了，还是猜的。猜的要先问。
+- 用户说过的每一项（来源、时长、语言、朝向、风格、要不要素材、要不要审稿）是否都有对应字段；用户没提的项是否用了默认值，而不是编的。
+- 用户的原话有没有丢：旁白要求进 `narration_requests`，画面要求进 `composition_requests`，点名要在某平台找素材的进 `material_search_requests`；素材理解 / 筛选要求写进 `catalog-instructions.md`，阶段级 agent / model 要求写进 `delegation`。
+- 拿不准、又没有可默认项的字段（比如用户只说了“做个短视频”却看不出用途和重点）是问过了，还是猜的。猜的要先问，一次只问一个。
 
-发现问题就改 `inputs.json` 再查状态；本阶段没有下游，改完不需要重做别的阶段。
+发现问题就改 `inputs.json` 再查状态。已经有下游产物时，改输入会让依赖它的阶段变 stale，按状态脚本的提示处理，不要自己另找一套记录。
 
 ## 下一步
 
@@ -45,34 +47,36 @@
 
 ## 护栏
 
-无
+- **先读已有需求，再补默认值；能默认的不问。** 只问两类问题：缺了就没法开工、又没有默认值的，以及用户的要求互相冲突的。需要问时一次问一个，不要把整张字段表当问卷逐项确认。
+  ↳ DO NOT：把用户已经说过的来源、语言、时长再问一遍；为了凑齐字段而编值。
+- **用户的原话要落地，不要只留在对话里。** 旁白要求写进 `narration_requests`，画面要求写进 `composition_requests`，平台搜索要求写进 `material_search_requests`。下游 agent 只读文件，不回看本次对话。
+  ↳ DO NOT：把要求记在 Scratchpad 或只在回复里复述一遍。
+- **模板和字幕排版不在本阶段决定。** 模板是 Phase 8 的画面选择，本阶段不选，也不为将来可能选的模板改旁白或时长。
+  ↳ DO NOT：为了让某个模板好看而提前改叙事或朝向。
 
 ---
 
-一次问一个问题，逐项确认：
+按下面的顺序把输入集齐：
 
 1. 来源：要抓取的 URL、粘贴的文本，或仅一个主题。
-2. 朝向：`1920×1080`（横屏）、`1080×1920`（竖屏）或 `1080×1440`（3:4 竖向）。
-3. 模板与 layout：主题命中已有模板（如 GitHub 热榜，模板见 `modules/templates/`）→ 选模板，layout 用模板指定的那个（github 模板是讲解模式，用 `presenter`）。不选模板时按朝向选通用 layout：
-   - 横屏：用户明确要求“主持人”“有人讲解”“讲解员”或“Jay”时，用 `presenter`；其他横屏情况仍用 `stage`（1920×1080，无主持人），默认值不变。不为此额外向用户提问。
-   - 竖屏：用 `portrait`（1080×1920）或 `portrait-3x4`（1080×1440）。用户要求主持人时，告诉用户竖屏布局没有人物区，照常用竖屏布局，不加主持人。
-   选定的 layout 写进 `inputs.json` 的 `layout` 字段（`pipeline-status` 会校验该字段），区域定义读 `modules/layouts/<layout>.md` + 同名的 `.json`。
-4. 风格：从用户措辞推断。项目工作区里已有的 `narration-instructions.md` / `composition-instructions.md` 是用户为单个项目追加的旁白 / 画面要求（叠加顺序见 `references/delegation/conventions.md`）；旧项目的 `style-prompt.md` 视为 composition 指令的一部分。
-   - 用户在对话中对旁白或画面提出的额外要求（例如“结尾不要 CTA”“语气更口语”），由主 agent **追加写入对应的项目指令文件**（旁白要求追加到 `narration-instructions.md`，画面要求追加到 `composition-instructions.md`），再进入对应 phase；追加前若文件不存在则新建。
+2. 朝向：默认横屏 `1920×1080`。用户说“竖屏”但没给比例时用 `1080×1440`（`orientation` 写 `portrait-3:4`）；明确要 9:16 时才用 `1080×1920`（`portrait`）。
+3. 风格：只确定 `design` 的值。
    - 三个主题都在 `modules/designs/` 里（契约见 `modules/designs/designs.md`）：
    - 默认：`default`——燕麦纸，安静的编辑风（`modules/designs/default/default.md`）
-   - 主题是 GitHub trending / repo launch / open source 项目介绍，或选了 github 模板 → **github**（`modules/designs/github/github.md`）
+   - 主题是 GitHub trending / repo launch / open source 项目介绍 → **github**（`modules/designs/github/github.md`）
    - 主题是 Product Hunt 周榜 / SaaS launch / 新产品发布 → **producthunt**（`modules/designs/producthunt/producthunt.md`）
-   - 用户要求手绘、深色等现有主题都没有的风格 → 告诉用户目前没有对应主题，`design` 写 **default**；深色或杂志风可以按 `modules/designs/designs.md` 的草案把配色写进 `composition-instructions.md` 覆盖 default 的变量，先和用户确认
+   - 用户要求手绘、深色等现有主题都没有的风格 → 告诉用户目前没有对应主题，`design` 写 **default**，并把这条要求记进 `composition_requests`；Phase 8 按 `modules/designs/designs.md` 的草案覆盖配色前会先和用户确认
    - 未指定时保持默认主题。
-5. 时长：从用户需求中提取；用户没说就问一句（“想做几分钟？”），不假设默认值。用户要多长就多长，不自行设上下限。
-6. 语言：默认中文。若用户想要其他语言要询问确认。
-7. 询问是否需要搜索视觉素材（图片/视频片段）来丰富场景。默认：是。论文模式下，论文自己的 figure 无论如何都会用上。用户点名要在某个平台找素材（图片搜索、视频网站等）时，把原话记进 `material_search_requests`；没提就不加。
-8. **输入类型识别：**
+4. 时长：用户说了就用他的值，不设上下限；没说用 3 分钟。
+5. 语言：默认中文；用户要其他语言时照他说的写。
+6. 视觉素材：默认联网搜索。用户说不要就用 `fetch_materials = false`；论文模式即使不联网搜索，论文自己的关键图也照样进视频。用户点名要在某个平台找素材（图片搜索、视频网站等）时，把原话记进 `material_search_requests`；没提就不加。
+7. 旁白与画面的额外要求：用户对旁白说的（“语气更口语”“结尾不要 CTA”）进 `narration_requests`；对画面说的（“强调实验对比图”“不要人物区”）进 `composition_requests`。同一件事不要两处都记。
+8. 审稿：默认不审稿（`approval_gates` 为 `[]`）。只有用户明确要求时才填 `research-brief` / `script`，不主动询问。
+9. **输入类型识别：**
    - 来源是 `.pdf` 文件路径 → 置 `input_mode = "paper"`
    - 来源是以 `.pdf` 结尾的 URL（例如 arXiv） → 置 `input_mode = "paper"`，并将该 URL 保留用于 `parse-pdf.py --url`
-   - 否则 → `input_mode = "standard"`（默认；后续所有 "paper mode" 段落都跳过）
+   - 否则 → 置 `input_mode = "standard"`（默认；后续所有 "paper mode" 段落都跳过）
 
-**如果已经存在一个姊妹项目**（例如用户说 "用和 `claude-code-video/` 一样的风格"），把该项目的 `composition-instructions.md`（旧的 `style-prompt.md` 视为其中一部分）复制进本项目工作区，并在对话中向用户确认要选同一个 design / layout；外观 token 只从所选 design 的文档取，不再复制任何 DESIGN.md。
+**如果用户要求沿用另一个项目的风格**（例如“用和 `xxx-video/` 一样的风格”），去那个项目读它实际保存的 `inputs.json`，采用相同的 `design`；它自己的主题相关要求不要照搬，只把与本项目主题相关的部分按第 7 条记进本项目的列表。外观 token 只从所选 design 的文档取，不要复制任何 DESIGN.md。
 
-全部确认后，把结果落盘为 `inputs.json`，再运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}` 进入下一个 phase。续跑 / 回退永远以状态脚本的输出为准，不要自己扫描工作区猜进度。
+把结果落盘为 `inputs.json`，再运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}` 进入下一个 phase。续跑 / 回退永远以状态脚本的输出为准，不要自己扫描工作区猜进度。

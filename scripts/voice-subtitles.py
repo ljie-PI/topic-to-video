@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""为一个 workspace 跑 Phase 7 的配音合成与字幕对齐。
+"""为一个 workspace 跑 Phase 7 的配音与时间对齐。
 
 用法：
   python3 scripts/voice-subtitles.py <workspace> [--backend <name>]
   python3 scripts/voice-subtitles.py <workspace> --align-only
 
-workspace 提供 narration.txt、narration-offsets.json、script.txt 和 inputs.json
-（其 layout 字段选定 modules/layouts/<layout>.json）。已存在的 scene-plan.json
-会自动传给对齐器。stdout 是一个 JSON 结果；子进程的诊断信息留在 stderr，子进程
-的错误 JSON 在 "child" 下返回，并带有 failed_step "tts" 或 "align"。
+本阶段与最终排版无关：它只产出音频、本轮 fresh transcript 与时间轴（段落以及
+scene / cue / beat 秒数），不读 layout、不确定字幕宽度 / 字号 / 行数。字幕单元
+由 Phase 8 在 layout 定下之后用 align-narration.py --mode subtitles 生成。
+
+workspace 需要 narration.txt、narration-offsets.json、script.txt 和 inputs.json。
+已存在的 scene-plan.json 会自动传给对齐器。stdout 是一个 JSON 结果；子进程的
+诊断信息留在 stderr，子进程的错误 JSON 在 "child" 下返回，并带有 failed_step
+"tts" 或 "align"。
 """
 from __future__ import annotations
 
@@ -58,21 +62,21 @@ def require_nonempty(path: Path) -> None:
         raise ValueError(f'required input is empty: {path}')
 
 
-def read_layout(workspace: Path) -> str:
+def check_inputs(workspace: Path) -> None:
+    """本阶段自己的输入：基本输入文件与逐字映射表。
+
+    这里不读 layout，也不从 orientation 推导字幕预算：排版是 Phase 8 的输入。
+    """
     inputs_path = workspace / 'inputs.json'
     require_nonempty(inputs_path)
     try:
         inputs = json.loads(inputs_path.read_text(encoding='utf-8'))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f'cannot read {inputs_path}: {exc}') from exc
-    if not isinstance(inputs, dict) or not isinstance(inputs.get('layout'), str):
-        raise ValueError(f'{inputs_path} must contain a string layout field')
-    layout = inputs['layout'].strip()
-    if not layout:
-        raise ValueError(f'{inputs_path} has an empty layout field')
+    if not isinstance(inputs, dict):
+        raise ValueError(f'{inputs_path} must contain a JSON object')
     for name in ('narration.txt', 'narration-offsets.json', 'script.txt'):
         require_nonempty(workspace / name)
-    return layout
 
 
 def parse_child_json(stdout: str) -> dict[str, Any] | None:
@@ -125,7 +129,7 @@ def main() -> int:
     args = parse_args()
     workspace = Path(args.workspace).expanduser().resolve()
     try:
-        layout = read_layout(workspace)
+        check_inputs(workspace)
     except (OSError, ValueError) as exc:
         cli.fail(
             TOOL_NAME,
@@ -158,13 +162,12 @@ def main() -> int:
         align_command = [
             sys.executable,
             str(SCRIPTS_DIR / 'align-narration.py'),
+            '--mode', 'timing',
             '--transcript', str(transcript),
             '--narration', str(workspace / 'narration.txt'),
             '--offsets', str(workspace / 'narration-offsets.json'),
             '--script', str(workspace / 'script.txt'),
-            '--units-output', str(workspace / 'transcribe' / 'subtitle-units.json'),
             '--timeline-output', str(workspace / 'transcribe' / 'timeline.json'),
-            '--layout', str(SKILL_ROOT / 'modules' / 'layouts' / f'{layout}.json'),
         ]
         scene_plan = workspace / 'scene-plan.json'
         if scene_plan.is_file():
@@ -188,7 +191,6 @@ def main() -> int:
             'products': {
                 'audio': str((workspace / 'voice_clone' / 'narration.mp3').resolve()),
                 'transcript': str(transcript.resolve()),
-                'subtitle_units': str((workspace / 'transcribe' / 'subtitle-units.json').resolve()),
                 'timeline': str((workspace / 'transcribe' / 'timeline.json').resolve()),
             },
             'warnings': warnings,

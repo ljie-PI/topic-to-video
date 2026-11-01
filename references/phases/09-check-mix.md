@@ -4,7 +4,8 @@
 
 - Phase 8 产出的 `composition/renders/final.mp4`；
 - `transcribe/timeline.json`；
-- `inputs.json`（`qa_level`、BGM 选择）。
+- `inputs.json`（`qa_level`、BGM 选择）；
+- `search-notes.md`（可选，Phase 4 记录的来源限制，用于交付说明）。
 
 ## 输出
 
@@ -20,6 +21,8 @@
 ## 执行后自检
 
 本阶段的检查已经写在下面的流程里（确定性检查 + 按 `qa_level` 的 vision 检查 + 最多两轮修复），不需要额外再看别的东西。根据问题类型决定退回哪一层，而不是硬改：
+
+- catalog 阶段适用时，必用素材（catalog 的 `required_material_refs`）没在成片里出现，或关键图看不清：交回 Phase 8 补上，不要只记一笔就放行。
 
 - 黑屏、冻结、音画时长不符、渲染残缺：留在本阶段，交回 composition agent 修。
 - 画面与旁白对不上：可能是叙事或场景计划的问题，按 `references/pipeline-control.md` 找到对应阶段，不要只改画面。
@@ -54,7 +57,7 @@ python3 scripts/check-render.py \
 
 一个脚本跑完三类检查（stdout 一个 JSON，verdict 为 pass / fail）：
 
-- **ffprobe 容器检查**：有音轨；容器时长与音轨时长偏差 ≤ 0.5s；分辨率与 `inputs.json` 的 `orientation` 一致（横屏 width > height；竖屏 / 竖屏 3:4 height > width）。
+- **ffprobe 容器检查**：有音轨；容器时长与音轨时长偏差 ≤ 0.5s；分辨率等于 `inputs.json` 的 `orientation` 对应的精确画布（横屏 1920×1080；显式 9:16 为 1080×1920；竖屏 3:4 为 1080×1440）；两个竖屏比例不互相代替。
 - **黑屏检测**：ffmpeg `blackdetect`（默认 ≥ 0.5s 的黑段报警，另报片尾黑尾）。
 - **冻结检测**：ffmpeg `freezedetect`，默认阈值 4s，`--freeze-threshold` 可调。
 
@@ -115,3 +118,13 @@ python3 scripts/mix-bgm.py \
 ```
 
 混音脚本逻辑保持不变：一次 ffmpeg pass 循环 `--bgm`（默认 `resources/bgm.mp3`，24 秒可循环片段）填满整个视频时长、以 `--bgm-volume`（默认线性增益 `0.03`）垫在解说底下、`-c:v copy` 不重编码视频流。如需换曲或调音量用 `--bgm` / `--bgm-volume`。**BGM 混的是修复轮之后的 `final.mp4`**——QA 通过后才生成最终交付文件。
+
+#### 9.6 — 交付时说明素材限制
+
+把成片与 contact sheet 交给用户时，一并说明素材阶段留下的限制。信息来自工作区的 `search-notes.md`（Phase 4 写的可选记录，不是阶段产物，缺失就不提）：
+
+- 哪些来源未被获取（需登录 / 地区限制 / 反机器人验证 / 已下线），以及用什幺替代或是否接受 B-roll 少一些。
+- 只能匿名抓到的站点：说明共享 profile 里已有登录态时会尽量用上，但登录不保证绕过平台其他限制。
+- 用户希望补抓时的入口：在 `{work_dir}/chrome_profile` 里登录后要求重跑 Phase 4（按 `references/pipeline-control.md` 登记 `--redo 4-material-harvest`），再按依赖让下游重做。
+
+这不影响 QA 结果，不写成 `qa-report.json` 的 finding，也不是新的审稿环节。

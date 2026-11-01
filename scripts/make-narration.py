@@ -181,7 +181,7 @@ def main() -> None:
         # 脚本自身的字节：文本模式读取会翻译换行，因此哈希必须取自文件，
         # 而不是取自解码后的文本。
         'script_sha256': hashlib.sha256(script_path.read_bytes()).hexdigest(),
-        'narration_sha256': hashlib.sha256(narration_text.encode('utf-8')).hexdigest(),
+        'narration_sha256': hashlib.sha256(narration_path.read_bytes()).hexdigest(),
         'segments': segments,
     }
     offsets_path.write_text(
