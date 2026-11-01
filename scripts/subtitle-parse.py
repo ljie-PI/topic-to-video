@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Parse SRT/VTT subtitle files and print JSON.
+"""解析 SRT/VTT 字幕文件并输出 JSON。
 
-Usage:
+用法：
   python3 subtitle-parse.py subtitles.srt
   python3 subtitle-parse.py subtitles.vtt --keywords "AI,machine learning"
 """

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""yt-dlp wrapper for downloading a video and/or subtitles.
+"""用 yt-dlp 下载视频和 / 或字幕的封装。
 
-Usage:
+用法：
   python3 video-download.py --url "https://youtube.com/watch?v=xxx" --output-dir downloads
   python3 video-download.py --url "https://bilibili.com/video/BVxxx" --subtitles-only
 """

@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Shared timeline.json scene normalization for the QA scripts.
+"""QA 脚本共享的 timeline.json scene 归一化。
 
-Both check-render.py (scene_id mapping for findings) and
-make-contact-sheet.py (frame extraction) need the same lenient reading of
-timeline.json's optional `scenes` list. Policy: invalid scenes are skipped
-with a warning, never fatal — callers decide whether an empty result is an
-error (make-contact-sheet) or fine (check-render).
+check-render.py（把发现映射到 scene_id）和 make-contact-sheet.py（抽帧）都需
+要以同样宽松的方式读取 timeline.json 中可选的 `scenes` 列表。策略是：非法的
+scene 跳过并给出警告，绝不致命——由调用方决定空结果算错误（make-contact-sheet）
+还是可以接受（check-render）。
 """
 
 from __future__ import annotations
@@ -14,12 +13,11 @@ from typing import Any
 
 
 def normalize_scenes(data: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
-    """Normalize timeline.json's optional scenes list.
+    """归一化 timeline.json 中可选的 scenes 列表。
 
-    Returns (scenes, warnings). Each scene is a dict with exactly scene_id,
-    begin_s, and end_s. Results are sorted by begin_s. Missing `scenes` key
-    and invalid entries are reported as
-    warnings / skipped entries, not exceptions.
+    返回 (scenes, warnings)。每个 scene 是只含 scene_id、begin_s、end_s 的
+    dict，结果按 begin_s 排序。缺少 `scenes` 键和非法条目都会作为警告 / 被
+    跳过的条目报告，而不是抛异常。
     """
     warnings: list[str] = []
     raw_scenes = data.get('scenes')
@@ -54,5 +52,5 @@ def normalize_scenes(data: dict[str, Any]) -> tuple[list[dict[str, Any]], list[s
 
 
 def scene_ranges(scenes: list[dict[str, Any]]) -> list[tuple[str, float, float]]:
-    """Compact (scene_id, begin_s, end_s) tuples for containment lookups."""
+    """用于包含关系查询的紧凑 (scene_id, begin_s, end_s) 元组。"""
     return [(s['scene_id'], s['begin_s'], s['end_s']) for s in scenes]

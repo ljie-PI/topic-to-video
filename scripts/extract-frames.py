@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Extract JPEG frames from a video with ffmpeg.
+"""用 ffmpeg 从视频中抽取 JPEG 帧。
 
-Usage:
+用法：
   python3 extract-frames.py video.mp4 frames/ --max-frames 20
   python3 extract-frames.py video.mp4 frames/ --start-time 00:01:30 --end-time 00:02:00
 
-Output JSON includes interval_s and frames as {path, t_s} objects. Frame names
-use their source-video timestamps, for example frame_t0012.50s.jpg.
+输出的 JSON 包含 interval_s 以及由 {path, t_s} 对象组成的 frames。帧文件名使用其
+在源视频中的时间戳，例如 frame_t0012.50s.jpg。
 """
 
 from __future__ import annotations

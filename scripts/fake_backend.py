@@ -1,13 +1,12 @@
-"""Deterministic stand-ins for the TTS / ASR models (test-only backends).
+"""TTS / ASR 模型的确定性替身（仅用于测试的后端）。
 
-``voice-clone.py --backend fake`` and ``transcribe.py --backend fake`` use
-these helpers so the full synthesis + transcript path runs without loading any
-model. They are reachable ONLY by naming ``fake`` explicitly (``--backend``,
-``TTS_BACKEND`` or ``ASR_BACKEND``); auto resolution never picks them.
+``voice-clone.py --backend fake`` 和 ``transcribe.py --backend fake`` 使用这些
+辅助函数，使完整的合成 + 转写链路无需加载任何模型即可跑通。它们只能通过显式
+指定 ``fake`` 触达（``--backend``、``TTS_BACKEND`` 或 ``ASR_BACKEND``）；自动
+解析永远不会选中它们。
 
-The fake "aligner" treats every non-whitespace character as one word and
-spreads the words evenly over the audio duration, then groups them into
-sentences with the same ``transcript_schema`` rules as the real aligners.
+假的“对齐器”把每个非空白字符当作一个词，在音频时长上均匀铺开，然后按与真实
+对齐器相同的 ``transcript_schema`` 规则把它们分组成句。
 """
 from __future__ import annotations
 
@@ -17,13 +16,13 @@ from types import SimpleNamespace
 import media
 from transcript_schema import transcript_from_torch_alignment
 
-# Synthetic speaking pace and the floor that keeps very short texts non-empty.
+# 合成的语速，以及保证极短文本不会被压成空的下限。
 CHARS_PER_SECOND = 7.5
 MIN_DURATION_S = 1.0
 
 
 def alignable_chars(text: str) -> list[str]:
-    """Every non-whitespace character (punctuation included) is one fake word."""
+    """每个非空白字符（含标点）都算一个假词。"""
     return [ch for ch in text if not ch.isspace()]
 
 
@@ -45,7 +44,7 @@ def write_silent_mp3(path: Path, duration_s: float) -> None:
 
 
 def uniform_transcript(text: str, duration_s: float) -> list[dict]:
-    """Transcript schema for ``text`` spoken at an even pace over ``duration_s``."""
+    """``text`` 以均匀语速在 ``duration_s`` 内念完时对应的 transcript schema。"""
     chars = alignable_chars(text)
     if not chars:
         raise ValueError('no alignable text (only whitespace)')

@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""Run Phase 7 voice synthesis and subtitle alignment for one workspace.
+"""为一个 workspace 跑 Phase 7 的配音合成与字幕对齐。
 
-Usage:
+用法：
   python3 scripts/voice-subtitles.py <workspace> [--backend <name>]
   python3 scripts/voice-subtitles.py <workspace> --align-only
 
-The workspace supplies narration.txt, narration-offsets.json, script.txt and
-inputs.json (whose layout selects modules/layouts/<layout>.json). An existing
-scene-plan.json is passed to the aligner automatically. stdout is one JSON
-result; child-process diagnostics remain on stderr and child error JSON is
-returned under "child" with failed_step "tts" or "align".
+workspace 提供 narration.txt、narration-offsets.json、script.txt 和 inputs.json
+（其 layout 字段选定 modules/layouts/<layout>.json）。已存在的 scene-plan.json
+会自动传给对齐器。stdout 是一个 JSON 结果；子进程的诊断信息留在 stderr，子进程
+的错误 JSON 在 "child" 下返回，并带有 failed_step "tts" 或 "align"。
 """
 from __future__ import annotations
 
@@ -77,7 +76,7 @@ def read_layout(workspace: Path) -> str:
 
 
 def parse_child_json(stdout: str) -> dict[str, Any] | None:
-    """Use the last JSON object, tolerating third-party stray stdout lines."""
+    """取最后一行 JSON 对象，容忍第三方多输出的 stdout 行。"""
     for line in reversed([line for line in stdout.splitlines() if line.strip()]):
         try:
             result = json.loads(line)

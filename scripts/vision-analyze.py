@@ -1,34 +1,33 @@
 #!/usr/bin/env python3
-"""Model-agnostic vision analysis CLI.
+"""与模型无关的图像分析 CLI。
 
-Two modes, selected by environment:
+两种模式，由环境变量选择：
 
-  Mode 1 — Explicit VLM (when VLM_API_KEY is set):
-    Calls any OpenAI-compatible /chat/completions endpoint.
-    Required env: VLM_API_KEY, VLM_BASE_URL, VLM_MODEL.
-    Example (any OpenAI-compatible VLM endpoint):
+  模式 1 —— 显式 VLM（设置了 VLM_API_KEY 时）：
+    调用任意 OpenAI 兼容的 /chat/completions 端点。
+    必需的环境变量：VLM_API_KEY、VLM_BASE_URL、VLM_MODEL。
+    示例（任意 OpenAI 兼容的 VLM 端点）：
       export VLM_API_KEY="..."
       export VLM_BASE_URL="https://<host>/v1"
       export VLM_MODEL="<model id>"
 
-  Mode 2 — Delegate to agent (when VLM_API_KEY is unset):
-    Emits a `delegate_to_agent` directive (no API call, no base64 in stdout).
-    The calling agent is expected to use its own `view` tool on each local
-    image path returned by the script, then answer the prompt using its own
-    vision-capable model.
+  模式 2 —— 委派给 agent（未设置 VLM_API_KEY 时）：
+    输出一条 `delegate_to_agent` 指令（不发 API 调用，stdout 里不含 base64）。
+    调用方 agent 应对脚本返回的每个本地图片路径使用自己的 `view` 工具，再用自己
+    具备视觉能力的模型回答 prompt。
 
-Usage:
+用法：
   python3 vision-analyze.py --prompt "描述内容并给出 1-10 的质量评分" \
       --images frame_001.jpg frame_002.jpg https://example.com/img.jpg \
       [--context-file topic-context.txt] [--model <model>] [--detail low|high|auto]
 
-Output convention:
-  stdout: single JSON object
-    Mode 1 success: {"success": true, "mode": "vlm", "analysis": "...", "model": "...", "image_count": N}
-    Mode 2:         {"success": true, "mode": "delegate_to_agent", "instruction": "...", "prompt": "...", "images": {"local": [...], "remote": [...]}, "image_count": N}
-    Error:          {"success": false, "error": "..."}
-  stderr: human-readable progress lines prefixed with `[vision-analyze]`
-  Exit codes: 0 success, 1 runtime error, 2 invalid arguments
+输出约定：
+  stdout: 单个 JSON 对象
+    模式 1 成功: {"success": true, "mode": "vlm", "analysis": "...", "model": "...", "image_count": N}
+    模式 2:      {"success": true, "mode": "delegate_to_agent", "instruction": "...", "prompt": "...", "images": {"local": [...], "remote": [...]}, "image_count": N}
+    错误:        {"success": false, "error": "..."}
+  stderr: 带 `[vision-analyze]` 前缀的人类可读进度行
+  退出码：0 成功，1 运行时错误，2 参数非法
 """
 
 import argparse

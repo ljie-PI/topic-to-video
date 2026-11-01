@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Forced alignment of a narration script to its TTS audio (mlx-audio).
+"""把旁白脚本强制对齐到其 TTS 音频（mlx-audio）。
 
-Library home of ``align_text`` / ``group_sentences`` for the mlx direct-
-alignment path in voice-clone.py. The mlx model import stays lazy inside
-align_text, so importing this module is cheap. text_align.py re-exports
-align_text for compatibility with library callers.
+voice-clone.py 中 mlx 直接对齐路径的 ``align_text`` / ``group_sentences`` 库
+所在地。mlx 模型仍在 align_text 内部才惰性导入，因此导入本模块开销很小。
+text_align.py 为兼容库调用方转出 align_text。
 """
 from __future__ import annotations
 
@@ -12,7 +11,7 @@ import re
 import time
 from pathlib import Path
 
-# sentence-ending punctuation for Chinese/English scripts
+# 用于中英文脚本的句子结束标点
 _SENT_SPLIT = re.compile(r"(?<=[。！？!?；;])|\n+")
 
 
@@ -23,11 +22,11 @@ def align_text(
     model_path: str | Path | None = None,
     language: str = "Chinese",
     load_model_fn=None,
-) -> dict:  # pragma: no cover - requires a real mlx-audio aligner on supported hardware.
-    """Align `text` to `audio_path` and return word/sentence timestamps.
+) -> dict:  # pragma: no cover - 需要受支持硬件上有真实的 mlx-audio 对齐器。
+    """把 `text` 对齐到 `audio_path`，返回词级 / 句级时间戳。
 
-    Returns {"words": [...], "sentences": [...], "align_s": float}.
-    `load_model_fn` lets callers reuse an already-loaded aligner model.
+    返回 {"words": [...], "sentences": [...], "align_s": float}。
+    `load_model_fn` 让调用方复用已经加载好的对齐模型。
     """
     from mlx_audio.stt.utils import load_model as _load_model
 
@@ -45,25 +44,24 @@ def align_text(
 
 
 def group_sentences(words: list[dict], script_text: str) -> list[dict]:
-    """Group aligned word spans into sentence spans using the script's punctuation.
+    """用脚本自带的标点，把对齐后的词区间分组成句区间。
 
-    Each punctuated chunk of the script consumes aligned words until their
-    combined length covers the chunk's alignable text, so every sentence span
-    starts at its first word and ends at its last. Chunks with no alignable
-    characters (pure punctuation) are skipped.
+    脚本中每个带标点的片段会依次吃掉对齐词，直到这些词的总长度覆盖该片段里可
+    对齐的文本，因此每个句区间都从它的第一个词开始、到最后一个词结束。没有可
+    对齐字符的片段（纯标点）会被跳过。
     """
     stripped = [s.strip() for s in _SENT_SPLIT.split(script_text)]
     stripped = [s for s in stripped if s]
 
     sentences = []
-    pos = 0  # pointer into words
+    pos = 0  # words 中的指针
     for chunk in stripped:
         target = re.sub(r"[\s，,、.．:：\"'\"'()（）-]", "", chunk)
         if not target:
             continue
         if pos >= len(words):
             break
-        # find the word span covering this chunk
+        # 找出覆盖该片段的词区间
         acc = ""
         start_word = pos
         while pos < len(words) and len(acc) < len(target):

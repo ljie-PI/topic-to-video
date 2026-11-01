@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
-"""MinerU-based PDF paper parser for harvest-manifest-compatible output.
+"""基于 MinerU 的 PDF 论文解析器，输出与 harvest-manifest 兼容的结果。
 
-Wraps MinerU cloud API (primary) with local CLI fallback to extract
-figures, tables, charts, and full markdown from academic PDFs.
+以 MinerU 云 API 为主、本地 CLI 作为兜底，从学术 PDF 中抽取图、表、图表和完整的
+markdown。
 
-Usage:
+用法：
   python3 scripts/parse-pdf.py --url https://arxiv.org/pdf/2605.03675 \\
     --output-dir ./harvest_page/ --slug main-paper
 
   python3 scripts/parse-pdf.py --pdf /path/to/paper.pdf \\
     --output-dir ./harvest_page/ --slug main-paper
 
-Requires:
-  export MINERU_API_TOKEN="..."   (for cloud path)
-  or `mineru` CLI on PATH         (for local fallback)
+依赖：
+  export MINERU_API_TOKEN="..."   （走云端路径时）
+  或 PATH 上有 `mineru` CLI      （走本地兜底时）
 
-Output convention:
-  stdout : JSON result with metadata + manifest entry
-  stderr : human-readable progress prefixed with [parse-pdf]
-  exit   : 0 success, 1 runtime error, 2 invalid arguments
+输出约定：
+  stdout : 带 metadata + manifest entry 的 JSON 结果
+  stderr : 带 [parse-pdf] 前缀的人类可读进度
+  exit   : 0 成功，1 运行时错误，2 参数非法
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ API_BASE = 'https://mineru.net/api/v4'
 
 
 # ---------------------------------------------------------------------------
-# I/O helpers
+# I/O 辅助函数
 # ---------------------------------------------------------------------------
 
 log = cli.make_logger(TOOL_NAME)
@@ -64,7 +64,7 @@ def parse_args() -> argparse.Namespace:
 
 
 # ---------------------------------------------------------------------------
-# Cloud API helpers
+# 云 API 辅助函数
 # ---------------------------------------------------------------------------
 
 def cloud_headers(token: str) -> dict[str, str]:
@@ -72,7 +72,7 @@ def cloud_headers(token: str) -> dict[str, str]:
 
 
 def cloud_extract_url(url: str, token: str, model_version: str) -> str:
-    """Submit a URL extraction task. Returns task_id."""
+    """提交一个 URL 抽取任务。返回 task_id。"""
     import requests
 
     resp = requests.post(
@@ -98,12 +98,12 @@ def cloud_extract_url(url: str, token: str, model_version: str) -> str:
 
 
 def cloud_extract_file(pdf_path: str, token: str, model_version: str) -> str:
-    """Upload a local file and submit extraction. Returns task_id."""
+    """上传本地文件并提交抽取。返回 task_id。"""
     import requests
 
     filename = os.path.basename(pdf_path)
 
-    # Step 1: get pre-signed upload URL
+    # 步骤 1：获取预签名的上传 URL
     resp = requests.post(
         f'{API_BASE}/file-urls/batch',
         headers=cloud_headers(token),
@@ -119,7 +119,7 @@ def cloud_extract_file(pdf_path: str, token: str, model_version: str) -> str:
     if not batch_id or not file_urls:
         raise RuntimeError(f'no batch_id/file_urls in response: {data}')
 
-    # Step 2: upload file to pre-signed URL
+    # 步骤 2：把文件上传到预签名 URL
     oss_url = file_urls[0]
     log(f'uploading {filename} to cloud storage...')
     with open(pdf_path, 'rb') as f:
@@ -127,7 +127,7 @@ def cloud_extract_file(pdf_path: str, token: str, model_version: str) -> str:
     put_resp.raise_for_status()
     log('upload complete')
 
-    # Step 3: submit batch extraction
+    # 步骤 3：提交批量抽取
     resp = requests.post(
         f'{API_BASE}/extract/task/batch',
         headers=cloud_headers(token),
@@ -146,7 +146,7 @@ def cloud_extract_file(pdf_path: str, token: str, model_version: str) -> str:
 
 
 def cloud_poll(task_id: str, token: str) -> dict[str, Any]:
-    """Poll until task is done or timeout. Returns task result data."""
+    """轮询直到任务完成或超时。返回任务结果数据。"""
     import requests
 
     deadline = time.time() + POLL_TIMEOUT_S
@@ -172,7 +172,7 @@ def cloud_poll(task_id: str, token: str) -> dict[str, Any]:
 
 
 def cloud_download_zip(task_data: dict[str, Any], dest_dir: str) -> str:
-    """Download and unzip cloud result. Returns path to extracted output dir."""
+    """下载并解压云端结果。返回解压后输出目录的路径。"""
     import requests
 
     zip_url = task_data.get('full_zip_url')
@@ -199,11 +199,11 @@ def cloud_download_zip(task_data: dict[str, Any], dest_dir: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Cloud path (primary)
+# 云端路径（首选）
 # ---------------------------------------------------------------------------
 
 def run_cloud(args: argparse.Namespace, token: str) -> str:
-    """Run cloud extraction. Returns path to MinerU output directory."""
+    """运行云端抽取。返回 MinerU 输出目录的路径。"""
     tmp_dir = tempfile.mkdtemp(prefix='mineru-cloud-')
     try:
         if args.url:
@@ -214,17 +214,17 @@ def run_cloud(args: argparse.Namespace, token: str) -> str:
         cloud_download_zip(task_data, tmp_dir)
         return tmp_dir
     except Exception:
-        # Cleanup on failure so temp doesn't leak when fallback runs
+        # 失败时做清理，避免兜底运行时留下临时目录
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise
 
 
 # ---------------------------------------------------------------------------
-# Local fallback
+# 本地兜底
 # ---------------------------------------------------------------------------
 
 def run_local(args: argparse.Namespace) -> tuple:
-    """Run local mineru CLI. Returns (output_dir, tmp_root) for cleanup."""
+    """运行本地 mineru CLI。返回 (output_dir, tmp_root) 供清理使用。"""
     if not shutil.which('mineru'):
         raise RuntimeError('mineru CLI not found on PATH')
 
@@ -232,7 +232,7 @@ def run_local(args: argparse.Namespace) -> tuple:
     try:
         pdf_path = args.pdf
 
-        # If URL, download the PDF first
+        # 若给的是 URL，先下载 PDF
         if args.url:
             import requests
 
@@ -259,7 +259,7 @@ def run_local(args: argparse.Namespace) -> tuple:
             raise RuntimeError(f'mineru CLI failed (rc={result.returncode}): {stderr_tail}')
         log('mineru CLI completed')
 
-        # MinerU local output is in {tmp_dir}/{pdf_stem}/auto/
+        # MinerU 本地输出位于 {tmp_dir}/{pdf_stem}/auto/
         pdf_stem = Path(pdf_path).stem
         auto_dir = os.path.join(tmp_dir, pdf_stem, 'auto')
         output_dir = auto_dir if os.path.isdir(auto_dir) else tmp_dir
@@ -270,29 +270,29 @@ def run_local(args: argparse.Namespace) -> tuple:
 
 
 # ---------------------------------------------------------------------------
-# Processing: MinerU output -> harvest format
+# 处理：MinerU 输出 -> harvest 格式
 # ---------------------------------------------------------------------------
 
 def find_content_list(mineru_dir: str) -> str | None:
-    """Find *_content_list.json in the MinerU output (has UUID prefix)."""
+    """在 MinerU 输出中查找 *_content_list.json（带 UUID 前缀）。"""
     matches = glob.glob(os.path.join(mineru_dir, '**', '*_content_list.json'), recursive=True)
     return matches[0] if matches else None
 
 
 def find_full_md(mineru_dir: str) -> str | None:
-    """Find full.md in the MinerU output."""
+    """在 MinerU 输出中查找 full.md。"""
     matches = glob.glob(os.path.join(mineru_dir, '**', 'full.md'), recursive=True)
     return matches[0] if matches else None
 
 
 def extract_title(md_text: str) -> str:
-    """Extract title from first # heading."""
+    """从第一个 # 标题中提取标题。"""
     m = re.search(r'^#\s+(.+)$', md_text, re.MULTILINE)
     return m.group(1).strip() if m else ''
 
 
 def extract_abstract(md_text: str) -> str:
-    """Extract text between # Abstract and the next # heading."""
+    """提取 # Abstract 与下一个 # 标题之间的文本。"""
     m = re.search(
         r'^#\s+Abstract\s*\n(.*?)(?=^#\s|\Z)',
         md_text,
@@ -308,7 +308,7 @@ def process_mineru_output(
     source_url: str | None,
     pdf_path: str | None,
 ) -> dict[str, Any]:
-    """Process MinerU output into harvest-compatible format. Returns manifest entry."""
+    """把 MinerU 输出处理成 harvest 兼容格式。返回 manifest entry。"""
     from PIL import Image
 
     output_path = Path(output_dir)
@@ -316,13 +316,13 @@ def process_mineru_output(
     images_dir = slug_dir / 'images'
     images_dir.mkdir(parents=True, exist_ok=True)
 
-    # Keep the complete raw MinerU output beside the entry it produced.
+    # 把完整的 MinerU 原始输出保留在它所产出条目的旁边。
     mineru_archive = slug_dir / 'mineru'
     if Path(mineru_dir).resolve() != mineru_archive.resolve():
         shutil.copytree(mineru_dir, mineru_archive, dirs_exist_ok=True)
     mineru_dir = str(mineru_archive)
 
-    # Find key files
+    # 定位关键文件
     content_list_path = find_content_list(mineru_dir)
     full_md_path = find_full_md(mineru_dir)
 
@@ -343,7 +343,7 @@ def process_mineru_output(
     abstract = extract_abstract(md_text)
     text_excerpt = abstract[:2000] if abstract else md_text[:2000]
 
-    # Process figures, tables, charts
+    # 处理图、表、图表
     images_meta: list[dict[str, Any]] = []
     figure_captions: dict[str, str] = {}
     table_captions: dict[str, str] = {}
@@ -356,11 +356,11 @@ def process_mineru_output(
         if item_type not in ('image', 'table', 'chart'):
             continue
 
-        # Determine source image path
+        # 确定源图片路径
         img_path_raw = item.get('img_path', '')
         if not img_path_raw:
             continue
-        # img_path may be relative to the MinerU output dir
+        # img_path 可能是相对于 MinerU 输出目录的路径
         src_path = Path(img_path_raw)
         if not src_path.is_absolute():
             src_path = Path(mineru_dir) / img_path_raw
@@ -368,7 +368,7 @@ def process_mineru_output(
             log(f'  image not found: {src_path}')
             continue
 
-        # Determine caption
+        # 确定 caption
         if item_type == 'image':
             img_idx += 1
             file_id = f'img_{img_idx:03d}'
@@ -387,7 +387,7 @@ def process_mineru_output(
             caption = caption_list[0] if caption_list else ''
             img_type = 'table_screenshot'
             table_captions[file_id] = caption
-        else:  # chart
+        else:  # 图表
             chart_idx += 1
             file_id = f'chart_{chart_idx:03d}'
             caption_list = item.get('chart_caption', [])
@@ -397,7 +397,7 @@ def process_mineru_output(
             img_type = 'raster'
             figure_captions[file_id] = caption
 
-        # Copy image with sequential name
+        # 以顺序命名的文件名复制图片
         ext = src_path.suffix or '.jpg'
         dest_name = f'{file_id}{ext}'
         dest_path = images_dir / dest_name
@@ -419,7 +419,7 @@ def process_mineru_output(
                 meta['table_body_html'] = table_body
         images_meta.append(meta)
 
-    # Build manifest entry
+    # 构建 manifest entry
     entry_url = source_url or ''
     if not entry_url and pdf_path:
         entry_url = Path(pdf_path).resolve().as_uri()
@@ -448,20 +448,20 @@ def process_mineru_output(
 
 
 def update_manifest(output_dir: str, entry: dict[str, Any]) -> dict[str, Any]:
-    """Upsert through the shared v2 manifest writer."""
+    """通过共享的 v2 manifest 写入器做 upsert。"""
     manifest = harvest_manifest.upsert_entries(output_dir, [entry])
     log(f'manifest.json updated ({len(manifest["entries"])} entries)')
     return manifest
 
 
 # ---------------------------------------------------------------------------
-# Main
+# 主流程
 # ---------------------------------------------------------------------------
 
 def main() -> None:
     args = parse_args()
 
-    # Validate inputs
+    # 校验输入
     if args.pdf and not os.path.isfile(args.pdf):
         cli.fail(TOOL_NAME, f'PDF file not found: {args.pdf}', exit_code=2)
 
@@ -478,7 +478,7 @@ def main() -> None:
     tmp_root = None
     backend = 'unknown'
 
-    # Try cloud path first
+    # 优先尝试云端路径
     if token:
         log('attempting cloud extraction...')
         try:
@@ -491,7 +491,7 @@ def main() -> None:
             log('falling back to local CLI...')
             mineru_dir = None
 
-    # Local fallback
+    # 本地兜底
     if mineru_dir is None:
         if not token:
             log('MINERU_API_TOKEN not set, using local CLI')
@@ -502,7 +502,7 @@ def main() -> None:
         except Exception as exc:
             cli.fail(TOOL_NAME, f'both cloud and local extraction failed: {exc}')
 
-    # Process output
+    # 处理输出
     try:
         entry = process_mineru_output(
             mineru_dir, output_dir, slug,
@@ -512,10 +512,10 @@ def main() -> None:
     except Exception as exc:
         cli.fail(TOOL_NAME, f'post-processing failed: {exc}')
 
-    # Update manifest
+    # 更新 manifest
     update_manifest(output_dir, entry)
 
-    # Count figures/tables
+    # 统计图 / 表数量
     figure_count = sum(1 for img in entry['images'] if img['type'] == 'raster')
     table_count = sum(1 for img in entry['images'] if img['type'] == 'table_screenshot')
 
@@ -533,7 +533,7 @@ def main() -> None:
     cli.print_json(result)
     log(f'done: {figure_count} figures, {table_count} tables')
 
-    # Cleanup temp dirs
+    # 清理临时目录
     if tmp_root and os.path.realpath(tmp_root).startswith(os.path.realpath(tempfile.gettempdir())):
         shutil.rmtree(tmp_root, ignore_errors=True)
 

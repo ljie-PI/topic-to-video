@@ -1,4 +1,4 @@
-"""Shared Chrome discovery, CDP attachment, and isolated browser launching."""
+"""共享的 Chrome 发现、CDP 连接与隔离浏览器启动逻辑。"""
 from __future__ import annotations
 
 import os
@@ -34,7 +34,7 @@ CHROME_CANDIDATES_WIN = [
 
 @dataclass
 class ChromeSession:
-    """A Playwright browser plus the lifecycle and CDP attachment metadata."""
+    """一个 Playwright 浏览器，外加生命周期与 CDP 连接相关的元信息。"""
 
     browser: Any
     launched: bool
@@ -60,7 +60,7 @@ class ChromeSession:
         self.close()
 
     def close(self) -> None:
-        """Close the Playwright connection; attached Chrome is left running."""
+        """关闭 Playwright 连接；被连上的 Chrome 仍保持运行。"""
         try:
             self.browser.close()
         finally:
@@ -76,7 +76,7 @@ def compute_ignored_flags(
     chrome_path: object = None,
     no_sandbox: object = None,
 ) -> list[str]:
-    """Return explicit launch flags that cannot affect an attached Chrome."""
+    """返回那些对已连接的 Chrome 不可能生效的显式启动参数。"""
     if not reused:
         return []
     values = (
@@ -100,7 +100,7 @@ def _chrome_candidates() -> list[str]:
 
 
 def find_chrome(explicit: Optional[str]) -> Optional[str]:
-    """Find Chrome using an explicit path, CHROME_PATH, then system paths."""
+    """按显式路径、CHROME_PATH、系统默认路径的顺序查找 Chrome。"""
     if explicit:
         return explicit if Path(explicit).is_file() else None
     env_path = os.environ.get('CHROME_PATH')
@@ -113,7 +113,7 @@ def find_chrome(explicit: Optional[str]) -> Optional[str]:
 
 
 def cdp_ready(url: str) -> bool:
-    """Return whether a Chrome DevTools endpoint answers ``/json/version``."""
+    """返回 Chrome DevTools 端点是否响应 ``/json/version``。"""
     try:
         with urlrequest.urlopen(f'{url.rstrip("/")}/json/version', timeout=2.0) as response:
             return response.status == 200
@@ -201,7 +201,7 @@ def attach_or_launch(
     no_sandbox: Optional[bool],
     chrome_path: Optional[str],
 ) -> ChromeSession:
-    """Attach to ready CDP or launch Chrome with the required shared profile."""
+    """连接到已就绪的 CDP，或启动使用指定共享 profile 的 Chrome。"""
     from playwright.sync_api import sync_playwright
 
     reused = cdp_ready(cdp_url)
@@ -256,7 +256,7 @@ def attach_or_launch(
 
 
 def launch_isolated(chrome_path: Optional[str] = None, headless: bool = True) -> ChromeSession:
-    """Launch Chrome with Playwright's temporary profile, closed by session.close()."""
+    """用 Playwright 的临时 profile 启动 Chrome，由 session.close() 关闭。"""
     from playwright.sync_api import sync_playwright
 
     executable = find_chrome(chrome_path)

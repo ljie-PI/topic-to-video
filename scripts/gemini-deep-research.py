@@ -1,31 +1,27 @@
 #!/usr/bin/env python3
-"""Gemini Deep Research automation via Playwright over CDP.
+"""通过 Playwright over CDP 自动化 Gemini Deep Research。
 
-Submits a research prompt to Google Gemini's Deep Research feature and waits
-for the full report.  Browser model: attaches over CDP (default
-http://localhost:9222) to a Chrome process.  If no CDP responder is reachable,
-auto-launches system Chrome with --user-data-dir=<profile-dir>. The required
-profile is SHARED with other tools (harvest-pages, etc.). Chrome is left running
-on exit so subsequent invocations reconnect instantly. When reusing CDP, explicit
-launch flags are reported in stderr and the output's chrome.ignored_flags field.
+向 Google Gemini 的 Deep Research 功能提交一个研究 prompt，并等待完整报告。
+浏览器模型：通过 CDP（默认 http://localhost:9222）连到一个 Chrome 进程。若没有可
+达的 CDP 响应者，则自动以 --user-data-dir=<profile-dir> 启动系统 Chrome。所需的
+profile 与其他工具（harvest-pages 等）共享。退出时 Chrome 保持运行，以便后续调用
+能立即重连。复用 CDP 时，被忽略的显式启动参数会在 stderr 以及输出的
+chrome.ignored_flags 字段中报告。
 
-The automation ALWAYS opens a brand-new browser tab for its work and never
-navigates any tab the user already had open.
+自动化始终为自己的工作打开一个全新的标签页，绝不导航用户已打开的标签页。
 
-Self-check mode (--self-check) submits nothing: it only verifies that Gemini
-is logged in and that the Deep Research entry is reachable.  Use it before
-starting a long research run.
+自检模式（--self-check）不提交任何东西：它只验证 Gemini 已登录、且 Deep Research
+入口可达。在开始长时间研究之前使用它。
 
-Resumability: immediately after the prompt is submitted, the session URL is
-written to a state file (default <output-dir>/gemini_deep_research_state.json)
-and is also embedded in the failure JSON ("session_url") of any later error
-(e.g. timeout).  To resume from the wait-for-completion step after a timeout
-or interruption, re-run with the saved URL:
+可恢复性：prompt 提交之后，会话 URL 会立刻写入状态文件（默认
+<output-dir>/gemini_deep_research_state.json），并同时嵌入之后任何错误（例如超时）
+的失败 JSON（"session_url"）中。要在超时或中断之后从“等待完成”这一步恢复，用保存
+下来的 URL 重跑：
 
   python3 gemini-deep-research.py --output-dir ... --resume \\
     --profile-dir {work_dir}/chrome_profile
 
-Usage:
+用法：
   python3 gemini-deep-research.py \\
     --prompt "关于量子计算的全面综述" \\
     --output-dir ./quantum_computing/ \\
@@ -34,16 +30,15 @@ Usage:
   python3 gemini-deep-research.py --self-check \\
     --profile-dir {work_dir}/chrome_profile
 
-Output convention:
-  stdout : single JSON object
+输出约定：
+  stdout : 单个 JSON 对象
     success: {"success": true, "report_path": "...", "sources_path": "...",
               "report_length": N, "source_count": N}
     self-check success: {"success": true, "self_check": true}
     error:   {"success": false, "error": "...", "failed_step": N,
-              "session_url": "..."}   # session_url only once the prompt
-                                      # has been submitted
-  stderr : human-readable progress prefixed with `[gemini-deep-research]`
-  exit   : 0 success, 1 runtime error, 2 invalid arguments
+              "session_url": "..."}   # session_url 仅在 prompt 提交之后出现
+  stderr : 带 `[gemini-deep-research]` 前缀的人类可读进度
+  exit   : 0 成功，1 运行时错误，2 参数非法
 """
 
 import argparse
@@ -81,7 +76,7 @@ SEL = {
 
 
 # ---------------------------------------------------------------------------
-# I/O helpers
+# I/O 辅助函数
 # ---------------------------------------------------------------------------
 
 log = cli.make_logger(TOOL_NAME)
@@ -145,11 +140,11 @@ def apply_resume_state(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
-# HTML-to-Markdown conversion
+# HTML 转 Markdown
 # ---------------------------------------------------------------------------
 
 def html_to_markdown(page: Any, container_handle: Any) -> str:
-    """Convert an element's children to Markdown by traversing in the browser."""
+    """在浏览器内遍历子树，把该元素的子节点转成 Markdown。"""
     md = page.evaluate('''(container) => {
         function escMd(t) { return t; }
         function inlineText(el) {
@@ -199,12 +194,12 @@ def html_to_markdown(page: Any, container_handle: Any) -> str:
             if (tag === 'BLOCKQUOTE') {
                 return el.textContent.split('\\n').map(l => '> ' + l).join('\\n') + '\\n\\n';
             }
-            // Recurse for divs and other containers
+            // 对 div 等容器递归处理
             let out = '';
             for (const child of el.children) { out += convertNode(child); }
             return out || (inlineText(el) + '\\n\\n');
         }
-        // Look for .markdown child first, fall back to container itself
+        // 先找 .markdown 子节点，找不到就用容器自身
         const target = container.querySelector('.markdown') || container;
         let result = '';
         for (const child of target.children) { result += convertNode(child); }
@@ -214,7 +209,7 @@ def html_to_markdown(page: Any, container_handle: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Source extraction
+# 抽取来源
 # ---------------------------------------------------------------------------
 
 def extract_sources(page: Any) -> List[Dict[str, str]]:
@@ -277,20 +272,20 @@ def extract_sources(page: Any) -> List[Dict[str, str]]:
 
 
 # ---------------------------------------------------------------------------
-# Main automation flow
+# 主自动化流程
 # ---------------------------------------------------------------------------
 
 def run_self_check(args: argparse.Namespace, browser: Any, chrome_metadata: Dict[str, Any]) -> None:
-    """Verify login state + Deep Research entry only; submit nothing.
+    """只验证登录状态与 Deep Research 入口；不提交任何内容。
 
-    Always works in a freshly opened tab so the user's existing tabs are
-    never touched. failed_step values: 2 = login, 3 = deep research entry.
+    始终在新建的标签页中工作，因此用户已有的标签页绝不会被触碰。failed_step
+    取值：2 = 登录，3 = Deep Research 入口。
     """
     if browser.contexts:
         context = browser.contexts[0]
     else:
         context = browser.new_context()
-    page = context.new_page()  # NEVER reuse an existing tab
+    page = context.new_page()  # 绝不复用已有的标签页
     try:
         log('Self-check: opening Gemini in a new tab...')
         page.goto(GEMINI_URL, wait_until='domcontentloaded', timeout=30000)
@@ -324,7 +319,7 @@ def run(args: argparse.Namespace) -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
     start = args.start_from_step
 
-    # Step 1: Connect to Chrome via CDP (always ensure CDP is ready)
+    # 步骤 1：通过 CDP 连接 Chrome（总是先确保 CDP 就绪）
     log('Step 1: Connecting to Chrome via CDP...')
     try:
         chrome_session = chrome_cdp.attach_or_launch(
@@ -345,23 +340,21 @@ def run(args: argparse.Namespace) -> None:
             run_self_check(args, browser, chrome_metadata)
             return
 
-        # Track the session URL once the prompt has been submitted, so every
-        # subsequent failure JSON can carry it for resuming.  A resumed run
-        # (--page-url) seeds it directly: steps <= 6 are skipped, so without
-        # the seed a second timeout would lose the URL entirely.
+        # prompt 提交后记录会话 URL，这样之后每个失败 JSON 都能带上它用于恢复。
+        # 恢复运行（--page-url）会直接以它为种子：步骤 <= 6 都被跳过，因此没有这个
+        # 种子的话，第二次超时就会把这个 URL 彻底丢掉。
         session: Dict[str, Any] = {'session_url': args.page_url}
         session_extra = {'session_url': session['session_url']} if session['session_url'] else {}
         session_fail = partial(cli.fail, TOOL_NAME, extra=session_extra)
 
-        # ALWAYS open a brand-new tab for the automation; never navigate a tab
-        # the user already had open.
+        # 自动化总是打开一个全新的标签页；绝不导航用户已经打开的标签页。
         if browser.contexts:
             context = browser.contexts[0]
         else:
             context = browser.new_context()
         page = context.new_page()
 
-        # Step 2: Navigate
+        # 步骤 2：导航
         if start <= 2:
             nav_url = args.page_url if args.page_url else GEMINI_URL
             log(f'Step 2: Navigating to {nav_url}...')
@@ -378,7 +371,7 @@ def run(args: argparse.Namespace) -> None:
             except Exception as e:
                 session_fail(f'Step 2 failed: navigation error: {e}', failed_step=2)
 
-        # Step 3: Verify login
+        # 步骤 3：验证登录
         if start <= 3:
             log('Step 3: Verifying Gemini login...')
             try:
@@ -386,7 +379,7 @@ def run(args: argparse.Namespace) -> None:
             except Exception:
                 session_fail('Step 3 failed: Not logged in to Gemini. Please log in manually first.', failed_step=3)
 
-        # Step 4: Activate Deep Research mode
+        # 步骤 4：激活 Deep Research 模式
         if start <= 4:
             log('Step 4: Activating Deep Research mode...')
             try:
@@ -397,7 +390,7 @@ def run(args: argparse.Namespace) -> None:
             except Exception as e:
                 session_fail(f'Step 4 failed: could not activate Deep Research: {e}', failed_step=4)
 
-        # Step 5: Type the research prompt
+        # 步骤 5：输入研究 prompt
         if start <= 5:
             log('Step 5: Typing research prompt...')
             try:
@@ -411,7 +404,7 @@ def run(args: argparse.Namespace) -> None:
             except Exception as e:
                 session_fail(f'Step 5 failed: could not type prompt: {e}', failed_step=5)
 
-        # Step 6: Submit
+        # 步骤 6：提交
         if start <= 6:
             log('Step 6: Submitting prompt...')
             try:
@@ -420,8 +413,8 @@ def run(args: argparse.Namespace) -> None:
             except Exception as e:
                 session_fail(f'Step 6 failed: could not submit: {e}', failed_step=6)
 
-            # IMMEDIATELY persist the session URL: from here on, a timeout or
-            # interruption can be resumed from step 9 with this URL.
+            # 立刻持久化会话 URL：从这里往后，超时或中断都可以用这个 URL 从步骤 9
+            # 恢复。
             session['session_url'] = page.url
             if session['session_url']:
                 session_extra['session_url'] = session['session_url']
@@ -437,7 +430,7 @@ def run(args: argparse.Namespace) -> None:
             )
             log(f'Session URL saved to {state_path}')
 
-        # Step 7: Wait for research plan (confirm button)
+        # 步骤 7：等待研究计划（确认按钮）
         if start <= 7:
             log('Step 7: Waiting for research plan...')
             try:
@@ -453,7 +446,7 @@ def run(args: argparse.Namespace) -> None:
             except Exception as e:
                 session_fail(f'Step 7 failed: error waiting for plan: {e}', failed_step=7)
 
-        # Step 8: Confirm the research plan
+        # 步骤 8：确认研究计划
         if start <= 8:
             log('Step 8: Confirming research plan...')
             try:
@@ -462,7 +455,7 @@ def run(args: argparse.Namespace) -> None:
             except Exception as e:
                 session_fail(f'Step 8 failed: could not confirm plan: {e}', failed_step=8)
 
-        # Step 9: Wait for research completion
+        # 步骤 9：等待研究完成
         if start <= 9:
             log(f'Step 9: Waiting for research completion (timeout {args.timeout}s)...')
             try:
@@ -470,14 +463,14 @@ def run(args: argparse.Namespace) -> None:
                 prev_text_len = 0
                 stable_count = 0
                 while time.time() < deadline:
-                    # Primary signal: sources carousel appears
+                    # 主信号：出现来源 carousel
                     if page.locator(f'xpath={SEL["last_sources"]}').count() > 0:
                         log('Step 9: Sources carousel detected — research complete.')
                         break
-                    # Secondary signal: message length stabilized (not growing)
-                    # This catches completion even if sources carousel doesn't render.
-                    # Require >=5000 chars AND stable for 3 consecutive checks (15s)
-                    # to avoid treating mid-stream output as complete.
+                    # 次信号：消息长度稳定（不再增长）
+                    # 即使来源 carousel 没有渲染出来，这也能捕获完成状态。
+                    # 要求 >=5000 字符且连续 3 次检查（15s）保持稳定，
+                    # 以免把流式输出的中途当成已完成。
                     last_msg = page.locator(f'xpath={SEL["last_message"]}')
                     if last_msg.count() > 0:
                         text_len = len(last_msg.first.inner_text() or '')
@@ -497,7 +490,7 @@ def run(args: argparse.Namespace) -> None:
             except Exception as e:
                 session_fail(f'Step 9 failed: error waiting for completion: {e}', failed_step=9)
 
-        # Step 10: Extract report and sources
+        # 步骤 10：抽取报告与来源
         log('Step 10: Extracting report and sources...')
         try:
             last_msg = page.locator(f'xpath={SEL["last_message"]}').last
@@ -533,7 +526,7 @@ def run(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Entry point
+# 入口点
 # ---------------------------------------------------------------------------
 
 def main() -> None:

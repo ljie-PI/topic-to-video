@@ -1,4 +1,4 @@
-"""Shared voice-utils helpers for resource monitoring and latency logging."""
+"""语音相关工具共享的资源监控与延迟日志辅助函数。"""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ from typing import Any, Optional
 
 
 class ResourceMonitor:
-    """Background sampler of process CPU / RSS and MLX GPU memory.
+    """后台采样进程 CPU / RSS 与 MLX GPU 显存。
 
-    Process CPU% on macOS can exceed 100 when multiple cores are used.
+    macOS 上多核并行时，进程 CPU% 可能超过 100。
     """
 
     def __init__(self, sample_interval: float = 0.5):
@@ -28,7 +28,7 @@ class ResourceMonitor:
 
             self._psutil = psutil
             self._proc = psutil.Process(os.getpid())
-            self._proc.cpu_percent(None)  # prime
+            self._proc.cpu_percent(None)  # 预热
         except ImportError:
             pass
         try:
@@ -113,11 +113,11 @@ class ResourceMonitor:
 
 
 def log_latency(stage: str, started: float) -> float:
-    """Log a stage's wall time to STDERR and return the elapsed seconds.
+    """把某阶段的实际耗时写到 STDERR，并返回耗秒数。
 
-    Diagnostics MUST NOT go to stdout: ``voice-clone.py`` (mlx backend) calls
-    this through ``tts_qwen.synthesize`` and its stdout is exactly one JSON
-    document, so a ``[latency]`` line on stdout would break that contract.
+    诊断信息绝不能写到 stdout：``voice-clone.py``（mlx 后端）通过
+    ``tts_qwen.synthesize`` 调用这里，而它的 stdout 必须恰好是一个 JSON 文档，
+    所以往 stdout 打一行 ``[latency]`` 会破坏这一约定。
     """
     elapsed = time.perf_counter() - started
     print(f"[latency] {stage}: {elapsed:.2f}s", file=sys.stderr)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MLX forced-alignment library exports."""
+"""MLX 强制对齐库的导出入口。"""
 
 from __future__ import annotations
 
