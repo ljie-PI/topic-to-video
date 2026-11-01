@@ -359,8 +359,6 @@ def complete_pipeline_prerequisites(ws: Path) -> None:
             'rejected': [],
         }],
     }), encoding='utf-8')
-    approval = run_pipeline_status_cli(ws, '--approve', 'research-brief')
-    assert approval.returncode == 0, approval.stderr
 
 
 def test_an_ffmpeg_that_hangs_times_out_and_leaves_no_file(

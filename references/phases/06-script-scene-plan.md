@@ -19,7 +19,7 @@ Phase 3 的 `research-brief.md` + Phase 5 的 `material-catalog.json`（标准�
 - `narration-offsets.json` 是 `version` 为 1 的 JSON 对象，带非空的 `segments` 列表；它记录的 `script_length` / `narration_length` 等于当前 `script.txt` / `narration.txt` 的字符数；表里的 `script_sha256` / `narration_sha256`（make-narration 写入）必须等于当前两个文件的内容哈希——等长修改字符数看不出来，哈希躲不掉（改了 `script.txt` 就要重跑 make-narration）；
 - `scene-plan.json` 是非空列表，每个 scene 有 `scene_id` 和整数 `paragraphs`；所有 scene 的段落并集恰好是 `script.txt` 的第 1 段到最后一段；可选 `beats` 是列表，每项的 `type` 为 `question` / `idea` / `caveat` / `highlight` / `negation` / `confirm` 之一，`text` 是非空字符串且逐字出现在 `script.txt`；`material_candidates[].ref` 都能在 catalog 里按 entry 解析（图片 / 视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>` 且与该 entry 某个 `selected_clips` 的起止相差都不超过 0.01 秒；裸 id 无效）；没有 catalog（`fetch_materials = false` 且不是论文模式）时，`material_candidates` 必须是空列表。
 
-通过后，把旁白和场景摘要交给用户确认；用户确认后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve script`，再进入 TTS。除非用户已经明确确认，否则不要自己执行 `--approve`。
+校验通过后默认自动进入 TTS；只有 `inputs.json` 的 `approval_gates` 包含 `script` 时，才把旁白和场景摘要交给用户确认，再运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve script`。未明确确认前不要自己批准。
 
 ## 下一步
 
@@ -40,14 +40,14 @@ Phase 7（配音与字幕）：只对 `narration.txt` 配音，并生成词级�
 2. 把输出 JSON 里的 `dispatch_prompt` 原样派发，派发方式见 `references/delegation/conventions.md`。
 3. script agent 返回后做 **Phase 6.2 的确定性校验**。
 
-## Phase 6.2 — 主 agent 校验与用户确认
+## Phase 6.2 — 主 agent 校验与按需审稿
 
 script agent 报告完成后：
 
 1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`。
 2. `next_phase` 仍是 Phase 6 且 `reason` 为 `missing` / `corrupt` 时，把 `next_phase.problems`（产物 → 原因）原样交给 script agent 修复，修完再跑一次。字数、段落覆盖、素材引用都由状态脚本判定：不要自己手算，也不要改产物。
-3. `next_phase.reason` 为 `awaiting_approval` 且 `gate` 为 `script` 时，把旁白和场景摘要（每个 scene 的 `scene_id` + `intent`）交给用户确认；用户确认后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve script`。除非用户已经明确确认，否则不要自己执行 `--approve`；用户确认前不要进入 Phase 7。
+3. `next_phase.reason` 为 `awaiting_approval` 且 `gate` 为 `script` 时，把旁白和场景摘要（每个 scene 的 `scene_id` + `intent`）交给用户确认；明确确认后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve script`。未确认前不要自己批准或进入 Phase 7；用户明确授权后续全自动时，把 `inputs.json` 的 `approval_gates` 改为 `[]` 再跑状态脚本，不用 `--approve` 代替。未启用此 gate 时，不额外找用户审稿，按状态脚本的 `next_phase` 自动继续。
 
 ## Phase 6.3 — 朗读稿生成归属
 
-`narration.txt` 与 `narration-offsets.json` 由 **script agent** 在委派任务内作为最后一步生成（handoff 的 Outputs 已列出 `scripts/make-narration.py` 命令；生成是确定性的）。主 agent 不运行 make-narration，只靠 6.2 的状态脚本确认这两份产物合格。不要手改 `narration.txt`；要改就改显示稿或词表，然后让 script agent 重新生成（改了显示稿需重新过一遍 6.2 校验与用户确认）。
+`narration.txt` 与 `narration-offsets.json` 由 **script agent** 在委派任务内作为最后一步生成（handoff 的 Outputs 已列出 `scripts/make-narration.py` 命令；生成是确定性的）。主 agent 不运行 make-narration，只靠 6.2 的状态脚本确认这两份产物合格。不要手改 `narration.txt`；要改就改显示稿或词表，然后让 script agent 重新生成（改了显示稿需重新过一遍 6.2 校验；只有启用了 `script` gate 才需重新确认）。

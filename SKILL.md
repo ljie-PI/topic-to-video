@@ -25,7 +25,12 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 3. 按该文档执行；文档头部的「输入 / 输出 / 完成判据 / 下一步」是自包含的，不需要查其他 phase 文档。
 4. 回到第 1 步，直到脚本报告 `next_phase` 为 `null`（全部完成）。
 
-`next_phase.reason == "awaiting_approval"` 时，按 `instruction` 找用户确认；除非用户已经明确确认，否则不要自己执行 `--approve`。
+**默认全自动跑完，不主动询问是否审稿，也不调用 `--approve`。** 审稿策略只记在 `inputs.json` 的可选字段 `approval_gates`，缺省或 `[]` 表示全自动：
+
+- 只有用户明确要求审稿时，才启用对应 gate：调研简报用 `["research-brief"]`，旁白与场景计划用 `["script"]`；泛指“中途让我审稿”时用 `["research-brief", "script"]`。续跑保留已有审稿要求，除非用户明确修改。
+- `next_phase.reason == "awaiting_approval"` 只会出现在已启用的 gate。按 `instruction` 展示内容并找用户确认：有询问工具就使用它，否则在对话中提问并结束本轮；sub-agent 报给主 agent，由主 agent 找用户确认。未明确确认前不得执行 `--approve` 或进入下游。
+- 用户只确认当前稿件时，执行 `--approve <gate>`，保留其他审稿要求；用户明确授权“后面全自动 / 不用再审”时，把 `approval_gates` 改为 `[]`，再跑状态脚本。不要用批量 `--approve` 冒充全自动授权，也不要把普通“继续”擅自理解成取消后续审稿。
+- 审稿策略变化不要求重做已有产物；自动模式仍必须通过缺失 / 损坏 / stale 和 QA 检查。旧工作区没有 `approval_gates` 时同样按全自动续跑。
 
 续跑、回退与重做都由状态脚本驱动。状态由三部分组成：`inputs.json`、各 phase 的产物，以及 `.pipeline/`（状态脚本记下的上游指纹，**只由状态脚本写，不要手改**）。
 
@@ -61,7 +66,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 | 脚本 | 用途 | 依赖 |
 | --- | --- | --- |
-| `pipeline-status.py` | 扫描工作区，输出已完成 / 下一个 phase、要读的文档、缺失 / 损坏 / stale 的产物；`--restamp <phase_id>` 接受某个 stale phase 的现有产物；`--approve <gate>` 在用户明确确认后记录 gate 及产物指纹 | — |
+| `pipeline-status.py` | 扫描工作区，默认自动推进；只有 `inputs.json` 的 `approval_gates` 启用的 gate 才等待审稿；输出已完成 / 下一个 phase、要读的文档、缺失 / 损坏 / stale 的产物；`--restamp <phase_id>` 接受某个 stale phase 的现有产物；`--approve <gate>` 在用户明确确认稿件后记录 gate 及产物指纹 | — |
 | `prepare-handoff.py` | 委派步骤（catalog / script / composition）的准备：物化委派包（composition 另含 modules 与预置字体）、生成 handoff，输出可原样派发的 `dispatch_prompt` | — |
 | `fonts-download.sh` | 按 `<design>.json` 的 `fonts` 清单把仓库里预置的 WOFF2 字体（CSS 在 `resources/fonts/<design>/`，WOFF2 在共用池 `resources/fonts/files/`）装进工程，不联网；`--refresh` 才从 Google Fonts 重新下载（维护用） | — |
 | `voice-subtitles.py` | Phase 7 一条命令：配音、fresh transcript、字幕单元与时间轴；`--align-only` 只重跑对齐 | 见 voice-clone.py / transcribe.py 顶部说明 |

@@ -20,11 +20,12 @@
 | `layout` | 所选 layout：`presenter` / `stage` / `portrait` / `portrait-3x4`，由模板或朝向决定，区域定义在 `modules/layouts/` |
 | `coding_agent` | 委派目标，默认 `claude-code` |
 | `fetch_materials` | 是否联网抓取视觉素材（布尔） |
+| `approval_gates` | 可选，默认 `[]`（全自动、不停下来审稿）；只有用户要求时才填 `research-brief`（调研简报）和 / 或 `script`（旁白与场景计划），例如 `["script"]`；泛指中途审稿时填 `["research-brief", "script"]`。不主动询问是否审稿；续跑保留已有要求，用户明确授权后续全自动时改为 `[]` |
 | `qa_level` | 渲染后 QA 档位（缺省视为 `standard`）：`quick` = 渲染前检查 + 渲染后确定性检查，contact sheet 照常生成给用户看但不作 vision；`standard` = 全部检查（quick + 主 agent 逐张过 contact sheet，每张只看渲染完整 / 画面与旁白相符 / 符合 design / 明显空洞或错位 4 项）；`strict` = standard + 每个 scene 加一张入场帧、每个切点加前 / 中 / 后三帧。三档的完整流程见 Phase 9 |
 
 ## 完成判据
 
-`inputs.json` 存在、非空、JSON 可解析，且上表字段齐全（`design` 必须是 `modules/designs/` 下现有的主题，旧项目里已删除的主题会被判为不合格、回到本 phase 重选；`fetch_materials` 必须是布尔；`duration` 必须是分钟数；`qa_level` 可缺省，缺省视为 `standard`，填写时必须是三档之一）。
+`inputs.json` 存在、非空、JSON 可解析，且上表字段齐全（`design` 必须是 `modules/designs/` 下现有的主题，旧项目里已删除的主题会被判为不合格、回到本 phase 重选；`fetch_materials` 必须是布尔；`duration` 必须是分钟数；`qa_level` 可缺省，缺省视为 `standard`，填写时必须是三档之一；`approval_gates` 可缺省，填写时必须是由 `research-brief` / `script` 组成的列表，不能重复，空列表表示全自动）。
 
 ## 下一步
 

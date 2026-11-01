@@ -91,10 +91,6 @@ def make_workspace(tmp_path: Path, *, scene_plan: bool = True) -> Path:
     return ws
 
 
-def approve_current_phase(ws: Path, gate: str) -> None:
-    run_pipeline_status(ws, '--approve', gate)
-
-
 @pytest.mark.usefixtures('require_ffmpeg')
 def test_full_command_writes_all_products_and_pipeline_completes_phase_7(tmp_path: Path):
     ws = make_workspace(tmp_path)
@@ -102,9 +98,6 @@ def test_full_command_writes_all_products_and_pipeline_completes_phase_7(tmp_pat
         '# research brief\n\n## Key facts (verified)\n- fact [source]\n',
         encoding='utf-8',
     )
-    approve_current_phase(ws, 'research-brief')
-    approve_current_phase(ws, 'script')
-
     proc = run_voice_subtitles(ws)
 
     assert proc.returncode == 0, proc.stderr
@@ -130,6 +123,8 @@ def test_full_command_writes_all_products_and_pipeline_completes_phase_7(tmp_pat
     phases = {phase['id']: phase['status'] for phase in status['phases']}
     assert phases['7-voice-subtitles'] == 'completed'
     assert status['next_phase']['id'] == '8-composition'
+    assert status['approval_gates'] == []
+    assert not (ws / '.pipeline' / 'approvals.json').exists()
 
 
 @pytest.mark.usefixtures('require_ffmpeg')
