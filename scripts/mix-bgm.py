@@ -1,27 +1,26 @@
 #!/usr/bin/env python3
-"""Mix a background-music track onto a finished video.
+"""把一条背景音乐混音到成片视频上。
 
-Single ffmpeg pass: load the bundled `resources/bgm.mp3` (a 24-second loopable
-clip that ships with the skill), loop it to cover the video, and mix it under
-the existing narration. The narration stays at full volume; the BGM is
-attenuated by `--bgm-volume` (default 0.03).
+单次 ffmpeg 处理：载入随 skill 分发的 `resources/bgm.mp3`（一段 24 秒可循环的
+片段），把它循环铺满视频时长，并混在已有旁白之下。旁白保持满音量；BGM 由
+`--bgm-volume`（默认 0.03）衰减。
 
-Usage:
+用法：
   python3 scripts/mix-bgm.py \\
       --video composition/renders/final.mp4 \\
       --output composition/renders/final_with_bgm.mp4
 
-  # Override the music file or its volume if needed:
+  # 需要时覆盖音乐文件或其音量：
   python3 scripts/mix-bgm.py \\
       --video composition/renders/final.mp4 \\
       --bgm /path/to/other.mp3 \\
       --bgm-volume 0.05 \\
       --output composition/renders/final_with_bgm.mp4
 
-Output convention:
+输出约定：
   stdout : JSON {success, output_path, bgm_path, duration_s}
-  stderr : human-readable progress prefixed with `[mix-bgm]`
-  exit   : 0 success, 1 runtime error, 2 invalid arguments
+  stderr : 带 `[mix-bgm]` 前缀的人类可读进度
+  exit   : 0 成功，1 运行时错误，2 参数非法
 """
 import argparse
 from pathlib import Path
@@ -31,8 +30,8 @@ import media
 
 TOOL_NAME = 'mix-bgm'
 
-# Bundled BGM lives at <skill_root>/resources/bgm.mp3. The path is derived
-# from __file__ so the script works from any CWD.
+# 随 skill 分发的 BGM 位于 <skill_root>/resources/bgm.mp3。路径由 __file__ 推导，
+# 因此在任何当前工作目录下都能工作。
 DEFAULT_BGM_PATH = Path(__file__).resolve().parent.parent / 'resources' / 'bgm.mp3'
 
 
@@ -58,16 +57,14 @@ def parse_args() -> argparse.Namespace:
 
 def mux_bgm(ffmpeg: str, video: Path, bgm: Path, volume: float, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    # `-stream_loop -1` on the bgm input causes ffmpeg to loop it forever.
-    # `amix duration=longest` lets the mixed audio extend with the looping bgm;
-    # `-shortest` then cuts the final container at whichever stream ends first.
-    # Pairing `longest` with `-shortest` (instead of `duration=first` with
-    # `-shortest`) avoids truncating the video stream when the narration audio
-    # happens to be slightly shorter than the video — the mixed audio stretches
-    # to cover the video, so `-shortest` clips on the video duration.
-    # `normalize=0` disables amix's default 1/N input scaling — without it the
-    # narration would be silently halved alongside the (already quiet) bgm,
-    # making --bgm-volume affect both tracks instead of just the music.
+    # bgm 输入上的 `-stream_loop -1` 让 ffmpeg 无限循环它。
+    # `amix duration=longest` 让混合后的音频随循环的 bgm 一起延长；
+    # `-shortest` 则在两条流中先结束的那条处截断最终容器。
+    # 用 `longest` 配 `-shortest`（而不是 `duration=first` 配 `-shortest`），
+    # 可避免旁白音频恰好比视频略短时把视频流截断——混合音频会拉长以覆盖整个
+    # 视频，于是 `-shortest` 会在视频时长处收尾。
+    # `normalize=0` 关掉 amix 默认的 1/N 输入缩放——否则旁白会和（本来就很轻的）
+    # bgm 一起被悄悄减半，使 --bgm-volume 同时影响两条音轨而不只影响音乐。
     filter_complex = (
         f'[1:a]volume={volume}[bgm];'
         f'[0:a][bgm]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[aout]'

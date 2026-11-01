@@ -1,4 +1,4 @@
-"""Shared ffmpeg/ffprobe invocation and metadata helpers."""
+"""共享的 ffmpeg/ffprobe 调用与媒体元数据辅助函数。"""
 from __future__ import annotations
 
 import json
@@ -11,15 +11,15 @@ from typing import Any
 
 
 class MediaToolMissing(FileNotFoundError):
-    """A required media binary cannot be found."""
+    """找不到所需的媒体二进制程序。"""
 
 
 class MediaProbeError(RuntimeError):
-    """A media file could not be probed."""
+    """无法探测该媒体文件。"""
 
 
 class FfmpegError(RuntimeError):
-    """An ffmpeg process exited unsuccessfully."""
+    """ffmpeg 进程以非成功状态退出。"""
 
     def __init__(self, command: Sequence[str], returncode: int, stderr: str | None) -> None:
         self.command = list(command)

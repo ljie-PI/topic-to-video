@@ -1,42 +1,39 @@
 #!/usr/bin/env python3
-"""Deterministic post-render checks for a finished video.
+"""对成品视频做确定性的渲染后检查。
 
-Runs after composition rendering (Phase 9 final.mp4) and replaces any
-whole-film frame sampling. Three families of checks, all deterministic:
+在 composition 渲染（Phase 9 的 final.mp4）之后运行，替代任何整片抽帧采样。三组
+检查，都是确定性的：
 
-  1. Container metadata checks: audio track present; container duration
-     vs audio duration deviation <= 0.5s; video resolution matches the
-     orientation recorded in inputs.json (landscape: width > height;
-     portrait / portrait-3:4: height > width).
-  2. Black-screen detection via ffmpeg's blackdetect filter (decoded-frame
-     analysis inside ffmpeg): any black segment longer than --black-threshold
-     (default 0.5s), plus a black tail at the very end of the film.
-  3. Freeze detection via ffmpeg's freezedetect filter: any frozen segment
-     longer than --freeze-threshold (default 4s).
+  1. 容器元数据检查：存在音轨；容器时长与音频时长的偏差 <= 0.5s；视频分辨率与
+     inputs.json 中记录的 orientation 相符（横屏：宽 > 高；竖屏 / portrait-3:4：
+     高 > 宽）。
+  2. 通过 ffmpeg 的 blackdetect 滤镜检测黑屏（在 ffmpeg 内部对解码帧分析）：
+     任何长于 --black-threshold（默认 0.5s）的黑屏区间，以及片尾的黑屏尾巴。
+  3. 通过 ffmpeg 的 freezedetect 滤镜检测定格：任何长于 --freeze-threshold
+     （默认 4s）的定格区间。
 
-Both filters run in a single ffmpeg decode pass; their interval reports are
-parsed from stderr. A freeze that runs to the end of the file has no
-freeze_end line; it is clamped to the container duration.
+两个滤镜在单次 ffmpeg 解码中运行；它们的区间报告从 stderr 解析。一直持续到文件
+末尾的定格没有 freeze_end 行，会按容器时长收口。
 
-Every finding is mapped back to a scene_id through the time ranges in
-timeline.json's optional `scenes` list ([{scene_id, begin_s, end_s}]). When a
-finding's time falls inside no scene, the scene whose midpoint is nearest is
-used; when timeline.json has no scenes at all, scene_id is null.
+每条发现都通过 timeline.json 中可选 `scenes` 列表
+（[{scene_id, begin_s, end_s}]）的时间范围映射回 scene_id。当发现的时间不落在
+任何 scene 内时，取中点最近的 scene；当 timeline.json 完全没有 scenes 时，
+scene_id 为 null。
 
-Usage:
+用法：
   python3 check-render.py --video composition/renders/final.mp4 \
       --inputs inputs.json [--timeline transcribe/timeline.json] \
       [--freeze-threshold 4.0] [--black-threshold 0.5]
 
-Output convention:
-  stdout: single JSON object
+输出约定：
+  stdout: 单个 JSON 对象
     success:  {"success": true, "video": ..., "duration_s": ...,
                "findings": [{"scene_id", "check", "issue", "time_s", "frame"}],
                "verdict": "pass" | "fail"}
     error:    {"success": false, "error": "..."}
-  stderr: human-readable progress lines prefixed with `[check-render]`
-  Exit codes: 0 = run completed (check verdict pass/fail is in the JSON),
-              1 = runtime error, 2 = invalid arguments
+  stderr: 带 `[check-render]` 前缀的人类可读进度行
+  退出码：0 = 运行完成（检查结论 pass/fail 在 JSON 里），
+          1 = 运行时错误，2 = 参数非法
 """
 
 from __future__ import annotations
@@ -60,7 +57,7 @@ BLACK_PIX_THRESHOLD = 0.10
 FREEZE_NOISE_THRESHOLD = 0.001
 END_EPSILON_S = 0.1
 
-# inputs.json orientation values -> expected width/height relation.
+# inputs.json 的 orientation 取值 -> 期望的宽高关系。
 LANDSCAPE_ORIENTATIONS = {'landscape'}
 PORTRAIT_ORIENTATIONS = {'portrait', 'portrait-3:4', 'portrait-3x4'}
 
@@ -107,7 +104,7 @@ def load_orientation(inputs_path: Path) -> str | None:
 
 
 def load_timeline_scene_ranges(timeline_path: Path | None) -> list[tuple[str, float, float]]:
-    """Optional scene time ranges from timeline.json (shared lenient reader)."""
+    """来自 timeline.json 的可选 scene 时间范围（共享的宽松读取器）。"""
     if timeline_path is None:
         return []
     data = json.loads(Path(timeline_path).read_text(encoding='utf-8'))
@@ -120,21 +117,21 @@ def load_timeline_scene_ranges(timeline_path: Path | None) -> list[tuple[str, fl
 
 
 def map_time_to_scene(scene_ranges: list[tuple[str, float, float]], time_s: float) -> str | None:
-    # Half-open ranges so a finding starting exactly at a cut maps to the
-    # scene that follows the cut; the final scene also claims its end point.
+    # 半开区间，使恰好从切点开始的发现归到切点之后的那个 scene；
+    # 最后一个 scene 同时认领它的终点。
     for index, (scene_id, begin, end) in enumerate(scene_ranges):
         is_last = index == len(scene_ranges) - 1
         if begin <= time_s < end or (is_last and time_s == end):
             return scene_id
     if not scene_ranges:
         return None
-    # Fall back to the scene whose midpoint is nearest to the finding.
+    # 回退到中点离该发现最近的 scene。
     nearest = min(scene_ranges, key=lambda r: abs((r[1] + r[2]) / 2 - time_s))
     return nearest[0]
 
 
 def run_detection_pass(video_path: Path, black_threshold: float, freeze_threshold: float) -> str:
-    """One ffmpeg decode pass running blackdetect + freezedetect; returns stderr."""
+    """一次 ffmpeg 解码同时跑 blackdetect + freezedetect；返回 stderr。"""
     filter_expr = (
         f'blackdetect=d={black_threshold}:pix_th={BLACK_PIX_THRESHOLD},'
         f'freezedetect=n={FREEZE_NOISE_THRESHOLD}:d={freeze_threshold}'
@@ -184,8 +181,8 @@ def parse_intervals(stderr_text: str) -> tuple[list[tuple[float, float]], list[t
             continue
         if 'black' in line or 'freeze' in line:
             unmatched_count += 1
-    # Pair starts with ends in order; a start whose end never arrived (freeze
-    # running into EOF) keeps None and is clamped to the container duration.
+    # 按顺序把 start 与 end 配对；始终没等到 end 的 start（定格跑到 EOF）保留
+    # None，之后按容器时长收口。
     if len(freeze_starts) != len(freeze_ends):
         log(
             f'warning: {len(freeze_starts)} freeze_start line(s) but {len(freeze_ends)} '
@@ -328,8 +325,8 @@ def main() -> int:
             stderr_text, probe['container_duration_s'], args.freeze_threshold, scene_ranges
         )
     )
-    # Deterministic findings carry no frame reference; qa-report.json
-    # requires the frame key on every finding, so default it to null.
+    # 确定性检查不带帧引用；qa-report.json 要求每条发现都有 frame 键，
+    # 因此默认置为 null。
     for finding in findings:
         finding.setdefault('frame', None)
 

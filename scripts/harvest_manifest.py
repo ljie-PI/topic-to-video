@@ -1,7 +1,7 @@
-"""Versioned harvest manifest persistence, path, and download helpers.
+"""带版本的 harvest manifest 持久化、路径与下载辅助函数。
 
-All writes to ``manifest.json`` and per-slug ``metadata.json`` belong here.
-Paths persisted in either file are POSIX paths relative to the harvest root.
+对 ``manifest.json`` 和各 slug 的 ``metadata.json`` 的所有写入都应集中在这里。
+这两种文件里持久化的路径都是相对于 harvest 根的 POSIX 路径。
 """
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def _replace_entries(target: list[dict[str, Any]], entries: list[dict[str, Any]]
 
 
 def load(harvest_dir: str | os.PathLike[str]) -> dict[str, Any]:
-    """Load v2 data, or merge ``manifest_papers.json`` for legacy manifests."""
+    """载入 v2 数据；对旧版 manifest 则合并 ``manifest_papers.json``。"""
     root = _root(harvest_dir)
     raw = _read(root / 'manifest.json')
     manifest = _new_manifest()
@@ -85,7 +85,7 @@ def load(harvest_dir: str | os.PathLike[str]) -> dict[str, Any]:
 
 
 def resolve(harvest_dir: str | os.PathLike[str], rel: str | os.PathLike[str]) -> Path:
-    """Resolve a stored path; legacy absolute paths remain absolute."""
+    """解析一个已存储的路径；遗留的绝对路径仍按绝对路径处理。"""
     path = Path(rel).expanduser()
     return path if path.is_absolute() else _root(harvest_dir) / path
 
@@ -141,11 +141,10 @@ def pending_downloads(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _stage_json(path: Path, payload: dict[str, Any]) -> Path:
-    """Write and fsync a temporary file beside its atomic-rename target.
+    """把临时文件写到原子改名目标旁边，并做 fsync。
 
-    mkstemp creates the temporary 0600; the replace must not turn a shared
-    manifest/catalog unreadable to the group or other users, so the target's
-    existing mode is kept (0644 for a file that does not exist yet).
+    mkstemp 创建的临时文件权限是 0600；替换时不能让共享的 manifest / catalog 对
+    同组或其他用户变得不可读，因此保留目标原有的权限（目标尚不存在时用 0644）。
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
@@ -194,7 +193,7 @@ def save(
     *,
     dirty_slugs: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Atomically save the v2 manifest and mirrors for changed entries."""
+    """原子地保存 v2 manifest，并为有变化的条目更新镜像文件。"""
     root = _root(harvest_dir)
     root.mkdir(parents=True, exist_ok=True)
     saved = _new_manifest()
@@ -222,14 +221,14 @@ def save(
     staged: dict[Path, Path] = {}
     replaced: list[Path] = []
     try:
-        # Serialization and mirror staging must all succeed before any target changes.
+        # 任何目标被修改之前，序列化与镜像暂存都必须全部成功。
         for path, payload in targets:
             staged[path] = _stage_json(path, payload)
         for path, _ in targets:
             os.replace(staged[path], path)
             replaced.append(path)
     except Exception:
-        # Best-effort rollback keeps the manifest and all mirrors on one generation.
+        # 尽力回滚，使 manifest 与所有镜像停留在同一代数据上。
         for path in reversed(replaced):
             try:
                 _restore_file(path, originals[path])
@@ -245,7 +244,7 @@ def save(
 def _preserve_completed_downloads(
     existing: dict[str, Any], incoming: dict[str, Any],
 ) -> dict[str, Any]:
-    """Refresh harvest metadata without turning completed videos back into pending."""
+    """刷新 harvest 元数据，同时不把已完成的视频重新变成待下载。"""
     previous_videos = {
         video.get('url'): video
         for video in existing.get('videos', []) or []
@@ -295,7 +294,7 @@ def record_harvest_batch(
 def apply_download(
     harvest_dir: str | os.PathLike[str], url: str, result: dict[str, Any],
 ) -> dict[str, Any]:
-    """Fan a successful yt-dlp result out to every entry referencing ``url``."""
+    """把一次成功的 yt-dlp 结果分发到所有引用 ``url`` 的条目上。"""
     manifest = load(harvest_dir)
     if result.get('success') is False:
         return manifest

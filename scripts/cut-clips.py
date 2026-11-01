@@ -1,33 +1,31 @@
 #!/usr/bin/env python3
-"""Cut every selected clip of the material catalog into a silent video file.
+"""把素材 catalog 中每个选中片段切成静音视频文件。
 
-Phase 5 writes `selected_clips` as references (`{start, end, reason, ...}`) into
-a source video. This script materialises each one as `<ws>/clips/<video_id>_<start:.2f>-<end:.2f>.mp4`
-with the audio track stripped (Phase 5 guardrails:
-`references/phases/05-material-catalog.md`), so composition embeds a
-short silent file instead of the whole original video. The clip's catalog
-entry gets `clip_path` (relative to the workspace, POSIX separators), and
-material-catalog.json is updated in place (atomic write).
+Phase 5 把 `selected_clips` 以引用（`{start, end, reason, ...}`）的形式写进某个源
+视频。本脚本把每一个都落地为
+`<ws>/clips/<video_id>_<start:.2f>-<end:.2f>.mp4` 并去掉音轨（Phase 5 的护栏见
+`references/phases/05-material-catalog.md`），这样 composition 嵌入的是一个短的
+静音文件，而不是整段原始视频。该片段在 catalog 中的条目会被写上 `clip_path`
+（相对于 workspace，POSIX 分隔符），material-catalog.json 就地更新（原子写入）。
 
-A clip whose target file already exists and is non-empty is not cut again. A
-clip that fails (bad window, missing source, ffmpeg error) is reported in
-`errors` and carries no clip_path; the others are still cut. The catalog is saved incrementally —
-after every clip and again in a `finally`, so an interrupted run keeps the
-clip_path updates of the clips it already finished.
+目标文件已存在且非空的片段不再重切。失败的片段（时间窗非法、源文件缺失、ffmpeg
+报错）会写进 `errors` 且不携带 clip_path；其余片段仍会被切出。catalog 是增量保存
+的——每切完一个片段保存一次，并在 `finally` 中再保存一次，因此被中断的运行会保留
+其已完成的那些片段的 clip_path 更新。
 
-Usage:
+用法：
   python3 scripts/cut-clips.py <workspace_dir>
 
-A video's relative `local_path` is relative to `<workspace_dir>/harvest_page/`
-(the v2 manifest base); an absolute one (old catalogs) is used as is.
+视频的相对 `local_path` 相对于 `<workspace_dir>/harvest_page/`（v2 manifest 的
+基准目录）；绝对路径（旧 catalog）则原样使用。
 
-Output: one JSON document on stdout.
+输出：stdout 上的一份 JSON 文档。
   {"success": true, "clips": [{"ref": "<slug>/<video_id>:<start>-<end>", "clip_path": "clips/...", "skipped": false}],
    "errors": []}
-  A failed clip is {"ref": ..., "error": "...", "stderr_tail": "..."?} in `errors`
-  and makes `success` false.
-Exit codes: 0 = every clip is in place, 1 = a clip failed or a runtime error
-(e.g. no catalog), 2 = invalid arguments.
+  失败的片段是 `errors` 中的 {"ref": ..., "error": "...", "stderr_tail": "..."?}，
+  并使 `success` 为 false。
+退出码：0 = 所有片段均已就位，1 = 有片段失败或运行时错误（例如没有 catalog），
+2 = 参数非法。
 """
 from __future__ import annotations
 
@@ -49,12 +47,12 @@ TOOL_NAME = 'cut-clips'
 CATALOG_NAME = 'material-catalog.json'
 HARVEST_DIR = 'harvest_page'
 FFMPEG_TIMEOUT_SECONDS = 600
-# A clip cut from the very end of a source may come out a few frames short.
+# 从源视频末尾切出的片段可能短掉几帧。
 DURATION_SLACK_S = 0.1
 
 
 class ClipError(ValueError):
-    """One selected clip cannot be cut; the other clips are unaffected."""
+    """某个选中片段无法切出；其他片段不受影响。"""
 
 
 log = cli.make_logger(TOOL_NAME)
@@ -85,7 +83,7 @@ def load_catalog(ws: Path) -> dict[str, Any]:
 
 
 def iter_selected_clips(catalog: dict[str, Any]):
-    """Yield (slug, video, clip) for every selected clip of every catalog video."""
+    """对 catalog 中每个视频的每个选中片段产出 (slug, video, clip)。"""
     for entry in catalog['entries']:
         videos = entry.get('videos') if isinstance(entry, dict) else None
         slug = entry.get('slug') if isinstance(entry, dict) else None
@@ -124,8 +122,8 @@ def is_cut(target: Path) -> bool:
 
 
 def cut(source: Path, start: float, end: float, target: Path) -> None:
-    """Cut into a sibling file and rename it, so an interrupted ffmpeg never leaves a
-    half-written file at the path later runs treat as done."""
+    """切到同级的一个文件再改名，因此被中断的 ffmpeg 绝不会在后续运行视为
+    已完成的路径上留下写了一半的文件。"""
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_name(f'.{target.stem}.part{target.suffix}')
     try:
@@ -139,7 +137,7 @@ def cut(source: Path, start: float, end: float, target: Path) -> None:
             ],
             timeout=float(os.environ.get('CUT_CLIPS_FFMPEG_TIMEOUT', FFMPEG_TIMEOUT_SECONDS)),
         )
-        # A window past the end of the source makes ffmpeg exit 0 with a tiny file holding no frames.
+        # 时间窗超出源视频末尾时，ffmpeg 会以退出码 0 产出一个不含任何帧的极小文件。
         try:
             info = media.probe(partial)
         except media.MediaProbeError as exc:
@@ -158,7 +156,7 @@ def cut(source: Path, start: float, end: float, target: Path) -> None:
 
 
 def process_clip(ws: Path, video: dict[str, Any], clip: dict[str, Any]) -> tuple[dict[str, Any], bool]:
-    """Make sure the clip's file exists and clip_path is set. Returns (result, catalog_changed)."""
+    """确保该片段的文件存在且 clip_path 已设置。返回 (result, catalog_changed)。"""
     start, end = clip.get('start'), clip.get('end')
     relpath = clip_relpath(video, start, end)
     target = ws / relpath
@@ -174,7 +172,7 @@ def process_clip(ws: Path, video: dict[str, Any], clip: dict[str, Any]) -> tuple
 
 
 def save_catalog(ws: Path, catalog: dict[str, Any]) -> None:
-    """Atomically, preserving the catalog's existing file permissions."""
+    """原子写入，并保留 catalog 原有的文件权限。"""
     staged = _stage_json(ws / CATALOG_NAME, catalog)
     os.replace(staged, ws / CATALOG_NAME)
 
@@ -184,8 +182,8 @@ def main() -> int:
     ws = Path(args.workspace).expanduser()
     if not ws.is_dir():
         raise NotADirectoryError(f'workspace is not a directory: {args.workspace}')
-    # cut() probes every finished clip, so ffprobe is required up front —
-    # a missing probe used to surface only after the first full re-encode.
+    # cut() 会探测每个切完的片段，因此一开始就要求有 ffprobe ——
+    # 否则缺少它时，要等到第一次完整重编码之后才会暴露。
     media.ensure_media_binaries()
     catalog = load_catalog(ws)
 
@@ -203,15 +201,15 @@ def main() -> int:
                 if isinstance(exc, media.FfmpegError):
                     error['stderr_tail'] = exc.stderr_tail
                 errors.append(error)
-                # clip_path must name the file of the clip's current window, or nothing.
+                # clip_path 必须指向该片段当前时间窗的文件，否则就什么都不指。
                 if clip.pop('clip_path', None) is not None:
                     catalog_changed = True
                 continue
             clips.append({'ref': ref, **result})
             catalog_changed = catalog_changed or changed
             if changed:
-                # Incremental: a crash or a kill must not lose the clip_path
-                # updates of the clips already finished.
+                # 增量保存：崩溃或被 kill 都不能丢掉已切完片段的 clip_path
+                # 更新。
                 save_catalog(ws, catalog)
                 catalog_changed = False
     finally:

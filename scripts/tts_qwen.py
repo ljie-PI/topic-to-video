@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Qwen TTS library for cloning a reference voice with mlx-audio.
+"""用 mlx-audio 克隆参考音色的 Qwen TTS 库。
 
-The mlx-audio imports stay lazy inside :func:`synthesize`, so callers can import
-this module without installing MLX. Latency diagnostics go to stderr.
+mlx-audio 的导入仍留在 :func:`synthesize` 内部惰性执行，因此调用方无需安装 MLX
+即可导入本模块。延迟诊断信息写到 stderr。
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# make utils importable regardless of CWD
+# 让 utils 无论当前工作目录是什么都能被导入
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from utils import ResourceMonitor, log_latency
@@ -25,11 +25,11 @@ def synthesize(
     language: str = "auto",
     ref_text: str | None = None,
     load_model_fn=None,
-) -> dict:  # pragma: no cover - requires a real mlx-audio TTS model on supported hardware.
-    """Clone the reference voice and synthesize `text` into `output_path`.
+) -> dict:  # pragma: no cover - 需要受支持硬件上有真实的 mlx-audio TTS 模型。
+    """克隆参考音色，并把 `text` 合成到 `output_path`。
 
-    Returns a metrics dict (latencies + resources). `load_model_fn` lets
-    callers reuse an already-loaded model across calls.
+    返回一个指标 dict（各阶段延迟 + 资源占用）。`load_model_fn` 让调用方在多
+    次调用之间复用已加载的模型。
     """
     import time as _time
 
@@ -66,7 +66,7 @@ def synthesize(
     )
     metrics["synthesize_s"] = log_latency("synthesize", t0)
 
-    # mlx-audio may suffix segmented output with _000 — pick what was produced
+    # mlx-audio 可能给分段输出加 _000 后缀 —— 取实际产出的那个
     candidates = sorted(output_dir.glob(f"{prefix}*.wav"))
     if not candidates:
         raise RuntimeError(f"synthesis produced no file matching {prefix}*.wav in {output_dir}")

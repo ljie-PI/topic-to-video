@@ -1,32 +1,30 @@
 #!/usr/bin/env python3
-"""Build per-scene contact sheets from a rendered video.
+"""从渲染好的视频生成按 scene 分组的 contact sheet。
 
-Extracts one frame per scene at the scene midpoint. qa_level strict adds an
-entrance frame per scene (scene begin + 0.25s) and three frames per cut point
-between consecutive scenes (0.4s before / at / 0.4s after the cut, clamped to
-the video duration).
+在每个 scene 的中点抽一帧。qa_level=strict 额外为每个 scene 抽一张入场帧
+（scene 起点 + 0.25s），并在相邻 scene 之间的每个切点抽三帧（切点前 0.4s / 切点
+/ 切点后 0.4s，均夹到视频时长之内）。
 
-Every 4 frames are montaged into one 2x2 sheet with Pillow: each frame gets a
-black strip annotated with scene_id, frame kind and timestamp. Sheets are
-written to the output directory (default qa/) as sheet_001.jpg, ...; the
-individual annotated frames are kept under <output_dir>/frames/.
+每 4 帧用 Pillow 拼成一张 2x2 的 sheet：每帧带一条黑色标注条，写明 scene_id、
+帧类型和时间戳。sheet 以 sheet_001.jpg…… 写入输出目录（默认 qa/）；单张标注过的
+帧保留在 <output_dir>/frames/ 下。
 
-This script makes no vision calls — the main agent (and the user) look at the
-sheets. Frame-to-scene mapping is reported on stdout.
+本脚本不做任何视觉调用 —— 由主 agent（和用户）自己看 sheet。帧与 scene 的对应
+关系在 stdout 上报告。
 
-Usage:
+用法：
   python3 make-contact-sheet.py --video composition/renders/final.mp4 \
       --timeline transcribe/timeline.json --inputs inputs.json [--output-dir qa]
 
-Output convention:
-  stdout: single JSON object
+输出约定：
+  stdout: 单个 JSON 对象
     success: {"success": true, "output_dir": ..., "qa_level": ...,
               "vision_check_required": bool, "frame_count": N,
               "sheet_count": M, "sheets": [...],
               "frames": [{"scene_id", "kind", "time_s", "image", "sheet", "cell"}]}
     error:   {"success": false, "error": "..."}
-  stderr: human-readable progress lines prefixed with `[make-contact-sheet]`
-  Exit codes: 0 = success, 1 = runtime error, 2 = invalid arguments
+  stderr: 带 `[make-contact-sheet]` 前缀的人类可读进度行
+  退出码：0 = 成功，1 = 运行时错误，2 = 参数非法
 """
 
 from __future__ import annotations
@@ -81,10 +79,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_scenes(timeline_path: Path) -> list[dict[str, object]]:
-    """Scene list from timeline.json (shared lenient reader).
+    """timeline.json 中的 scene 列表（共享的宽松读取器）。
 
-    Invalid scenes are skipped with a warning; only a completely empty
-    result is an error, since there would be nothing to build sheets from.
+    非法的 scene 会被跳过并给出警告；只有结果完全为空才算错误，因为没有东西可以
+    用来生成 sheet。
     """
     data = json.loads(timeline_path.read_text(encoding='utf-8'))
     if not isinstance(data, dict):
@@ -158,7 +156,7 @@ def extract_frame(video_path: Path, time_s: float, output_path: Path) -> None:
 
 
 def annotate_frame(image_path: Path, spec: FrameSpec) -> None:
-    """Draw a black annotation strip (scene_id, kind, timestamp) onto the frame."""
+    """在帧上画一条黑色标注条（scene_id、类型、时间戳）。"""
     from PIL import Image, ImageDraw, ImageFont
 
     with Image.open(image_path) as image:
@@ -170,7 +168,7 @@ def annotate_frame(image_path: Path, spec: FrameSpec) -> None:
     font_size = max(14, strip_height - 10)
     try:
         font = ImageFont.load_default(size=font_size)
-    except TypeError:  # Pillow < 10.1 fallback
+    except TypeError:  # Pillow < 10.1 的兜底
         font = ImageFont.load_default()
     text = f'{spec.scene_id}  [{spec.kind}]  t={spec.time_s:.2f}s'
     draw.text((8, strip_height // 2), text, fill=(255, 255, 255), font=font, anchor='lm')

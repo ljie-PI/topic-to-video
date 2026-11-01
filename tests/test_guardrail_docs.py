@@ -76,7 +76,7 @@ def test_cut_clips_points_to_the_current_phase5_guardrails():
     script = doc_text('scripts/cut-clips.py')
 
     assert 'SKILL.md guardrail 6' not in script
-    assert 'Phase 5 guardrails' in script
+    assert 'Phase 5 的护栏' in script
     assert 'references/phases/05-material-catalog.md' in script
 
 

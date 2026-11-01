@@ -1,29 +1,27 @@
 #!/usr/bin/env python3
-"""Shared definition of a composition's checkable sources.
+"""composition 可检查源文件的共享定义。
 
-Both check-composition.py (which embeds a sources fingerprint in its report)
-and pipeline-status.py (which compares that fingerprint on later scans) must
-agree on exactly which files determine the rendered DOM, so the rule lives
-here in one place.
+check-composition.py（把源文件指纹写进报告）与 pipeline-status.py（在后续扫描
+中比对这份指纹）必须对“哪些文件决定渲染出的 DOM”有完全一致的判断，因此规则只
+在这里写一份。
 
-The checkable sources are index.html plus every visible file under
-compositions/ and assets/, except assets/fonts/: fonts are byte-identical
-copies from resources/fonts/, and re-copying them (fonts-download.sh runs on
-every prepare) must not invalidate a saved check report.
+可检查源文件是 index.html 加上 compositions/ 与 assets/ 下所有可见文件，但
+assets/fonts/ 除外：字体是从 resources/fonts/ 原样字节复制而来，重新复制它们
+（每次 prepare 都会跑 fonts-download.sh）不应让已保存的检查报告失效。
 """
 from __future__ import annotations
 
 import hashlib
 from pathlib import Path
 
-# Directories whose visible files are part of the checkable sources, relative
-# to the composition dir. index.html is always included when present.
+# 其可见文件属于可检查源文件的目录（相对于 composition 目录）。
+# index.html 存在时总是包含在内。
 SOURCE_DIRS = ('compositions', 'assets')
 FONT_DIR = 'assets/fonts'
 
 
 def visible_files(directory: Path) -> list[Path]:
-    """The files under `directory` at any depth; hidden ones such as .DS_Store are left out."""
+    """`directory` 下任意深度的文件；像 .DS_Store 这样的隐藏文件不计入。"""
     return [
         item
         for item in directory.rglob('*')
@@ -32,7 +30,7 @@ def visible_files(directory: Path) -> list[Path]:
 
 
 def composition_source_relpaths(composition_dir: Path) -> list[str]:
-    """The checkable source files as posix paths relative to composition_dir, sorted."""
+    """可检查源文件，表示为相对于 composition_dir 的 posix 路径，已排序。"""
     paths: list[Path] = []
     index = composition_dir / 'index.html'
     if index.is_file():
@@ -49,10 +47,10 @@ def composition_source_relpaths(composition_dir: Path) -> list[str]:
 
 
 def fingerprint_relpaths(root: Path, relpaths: list[str]) -> str:
-    """One sha256 over the sorted relpaths and the current content of each.
+    """对排序后的各 relpath 及其当前内容算出一个 sha256。
 
-    A file that no longer exists hashes as <absent>, so deleting a source
-    without re-checking also shows up as a fingerprint change.
+    已不存在的文件按 <absent> 参与哈希，因此删掉一个源文件却不重新检查，也会
+    表现为指纹变化。
     """
     digest = hashlib.sha256()
     for relpath in sorted(relpaths):
@@ -70,5 +68,5 @@ def fingerprint_relpaths(root: Path, relpaths: list[str]) -> str:
 
 
 def composition_sources_fingerprint(composition_dir: Path) -> str:
-    """The sources fingerprint embedded in a check-composition report."""
+    """嵌入 check-composition 报告中的源文件指纹。"""
     return fingerprint_relpaths(composition_dir, composition_source_relpaths(composition_dir))

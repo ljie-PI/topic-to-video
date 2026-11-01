@@ -1,40 +1,33 @@
 #!/usr/bin/env python3
-"""Prepare the handoff of a delegated step: materialize its package, fill the handoff.
+"""准备一个委派步骤的交接：落地其包，并填好 handoff。
 
-The main agent delegates the catalog (Phase 5), script (Phase 6) and
-composition (Phase 8) steps to a coding agent, which reads a handoff file.
-The handoff is deterministic,
-so this script generates it instead of the main agent filling a prose
-template by hand. Per call it does three things:
+主 agent 把 catalog（Phase 5）、script（Phase 6）和 composition（Phase 8）三个
+步骤委派给 coding agent，由后者读取一份 handoff 文件。handoff 是确定性的，因此由
+本脚本生成，而不是让主 agent 手填散文模板。每次调用做三件事：
 
-  1. Materialize: copy references/delegation/conventions.md and
-     references/delegation/<step>/ into <ws>/references/delegation/; the
-     composition step also copies modules/ (without examples/) into
-     <ws>/modules/. A file that already exists in the workspace is kept
-     (the copy may have been edited); --refresh overwrites it.
-  2. Fonts (composition only): install the selected design's vendored WOFF2
-     fonts into <ws>/composition/assets/fonts/ with scripts/fonts-download.sh
-     (no network). Runs on every call.
-  3. Handoff: read the markdown code block of
-     references/delegation/<step>/handoff-template.md, replace its {{name}}
-     placeholders and write <ws>/<step>-handoff.md. All paths in it are
-     absolute; commands run the skill's scripts from the skill root. A
-     placeholder left unreplaced, or an input or reference file that does not
-     exist, is an error.
+  1. 落地：把 references/delegation/conventions.md 和
+     references/delegation/<step>/ 复制到 <ws>/references/delegation/；
+     composition 步骤还复制 modules/（不含 examples/）到 <ws>/modules/。workspace
+     中已存在的文件会被保留（该副本可能被编辑过）；--refresh 会覆盖它。
+  2. 字体（仅 composition）：用 scripts/fonts-download.sh（不联网）把所选 design
+     自带的 WOFF2 字体安装到 <ws>/composition/assets/fonts/。每次调用都执行。
+  3. Handoff：读取 references/delegation/<step>/handoff-template.md 中的 markdown
+     代码块，替换其中的 {{name}} 占位符，写出 <ws>/<step>-handoff.md。其中所有
+     路径都是绝对路径；命令从 skill 根目录运行本 skill 的脚本。留下未替换的占位
+     符，或不存在的输入 / 引用文件，都算错误。
 
-Usage:
+用法：
   python3 scripts/prepare-handoff.py <workspace_dir> <catalog|script|composition> [--refresh]
 
-Output: one JSON document on stdout,
+输出：stdout 上的一份 JSON 文档，
   {"success": true, "handoff_path": "...", "materialized": [...],
    "fonts": null | {"success": true, "output_dir": "...", "installed": N},
    "dispatch_prompt": "读取 <handoff> 并按它执行；完成后报告产物路径。"}
-materialized lists the package paths this call wrote files into. fonts is a
-summary (the file list is ~100+ paths the main agent has no use for; the full
-fonts-download JSON goes to the delegated agent via the handoff). The main
-agent dispatches dispatch_prompt verbatim. If fonts-download fails the output
-is {"success": false, "error": "...", "fonts": {fonts-download's error JSON}}.
-Exit codes: 0 = success, 1 = runtime error, 2 = invalid arguments.
+materialized 列出本次调用写入了文件的那些包路径。fonts 是一份摘要（文件清单有
+100 多条路径，对主 agent 没有用处；完整的 fonts-download JSON 会随 handoff 交给
+被委派的 agent）。主 agent 原样派发 dispatch_prompt。若 fonts-download 失败，输出
+为 {"success": false, "error": "...", "fonts": {fonts-download 的错误 JSON}}。
+退出码：0 = 成功，1 = 运行时错误，2 = 参数非法。
 """
 from __future__ import annotations
 
@@ -63,9 +56,9 @@ PLACEHOLDER = re.compile(r'\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}')
 TEMPLATE_BLOCK = re.compile(r'^```markdown\n(.*?)^```$', re.MULTILINE | re.DOTALL)
 NAME = re.compile(r'[\w-]+')
 
-# The same minutes spellings pipeline-status.py accepts; anything else
-# ("90秒", "1h", "3-5 min") is rejected here too instead of being written
-# into a handoff the pipeline would send back to Phase 1.
+# 与 pipeline-status.py 接受的时间表述一致；其他写法
+# （"90秒"、"1h"、"3-5 min"）在这里也一并拒绝，而不是写进一份
+# 会被流水线打回 Phase 1 的 handoff。
 DURATION_MINUTES = re.compile(
     r'^\s*(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|分钟|分)?\s*$', re.IGNORECASE
 )
@@ -76,7 +69,7 @@ log = cli.make_logger(TOOL_NAME)
 
 
 class FontsError(Exception):
-    """fonts-download.sh failed; payload is its JSON (or a stand-in for it)."""
+    """fonts-download.sh 失败；payload 是它的 JSON（或它的替身）。"""
 
     def __init__(self, payload: dict[str, Any]) -> None:
         super().__init__(str(payload.get('error') or 'fonts-download failed'))
@@ -98,7 +91,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-# --- inputs ---------------------------------------------------------------------
+# --- 输入 --------------------------------------------------------------------
 
 
 def load_inputs(ws: Path) -> dict[str, Any]:
@@ -142,14 +135,14 @@ def duration_text(duration: Any) -> str:
     return f'{duration} 分钟' if isinstance(duration, (int, float)) else str(duration)
 
 
-# --- materialize ------------------------------------------------------------------
+# --- 落地包 -------------------------------------------------------------------
 
 
 def copy_missing(source: Path, target: Path, refresh: bool, skip: tuple[str, ...] = ()) -> bool:
-    """Copy a file or directory tree; existing files are kept unless refresh.
+    """复制一个文件或目录树；已存在的文件除非 refresh 否则保留。
 
-    skip names top-level entries of a directory source that are left out.
-    Returns whether any file was written.
+    skip 指定目录源中不复制的一级条目。
+    返回是否写了任何文件。
     """
     if source.is_file():
         pairs = [(source, target)]
@@ -164,15 +157,15 @@ def copy_missing(source: Path, target: Path, refresh: bool, skip: tuple[str, ...
         if destination.exists() and not refresh:
             continue
         destination.parent.mkdir(parents=True, exist_ok=True)
-        # copyfile, not copy2: source permission bits (a read-only install)
-        # must not turn the workspace copy read-only and break --refresh.
+        # 用 copyfile 而不是 copy2：源文件的权限位（只读安装）不能把 workspace
+        # 里的副本也变成只读，从而让 --refresh 失效。
         shutil.copyfile(file, destination)
         wrote = True
     return wrote
 
 
 def materialize(ws: Path, step: str, refresh: bool) -> list[str]:
-    """Copy the step's package into the workspace; returns the paths written into."""
+    """把该步骤的包复制进 workspace；返回写入了文件的那些路径。"""
     units: list[tuple[Path, Path, tuple[str, ...]]] = [
         (SKILL_ROOT / DELEGATION / 'conventions.md', ws / DELEGATION / 'conventions.md', ()),
         (SKILL_ROOT / DELEGATION / step, ws / DELEGATION / step, ()),
@@ -188,11 +181,11 @@ def materialize(ws: Path, step: str, refresh: bool) -> list[str]:
 
 
 def install_fonts(ws: Path, design: str) -> dict[str, Any]:
-    """Run fonts-download.sh for the selected design; returns a summary.
+    """为所选 design 运行 fonts-download.sh；返回一份摘要。
 
-    A design removed from the skill is still usable when the workspace holds
-    its copy (pipeline-status accepts the same fallback), so the theme path
-    falls back to <ws>/modules/designs/<design>.
+    已从 skill 移除的 design，在 workspace 里存有其副本时仍然可用
+    （pipeline-status 接受同样的兜底），因此 theme 路径会退回到
+    <ws>/modules/designs/<design>。
     """
     target = ws / 'composition' / 'assets' / 'fonts'
     theme = SKILL_ROOT / 'modules' / 'designs' / design
@@ -226,19 +219,17 @@ def install_fonts(ws: Path, design: str) -> dict[str, Any]:
     }
 
 
-# --- handoff ----------------------------------------------------------------------
+# --- handoff -------------------------------------------------------------------
 
 
 @dataclass
 class Plan:
-    """What a step contributes to its handoff.
+    """一个步骤对其 handoff 的贡献。
 
-    values fill the step's placeholders; inputs are workspace files the
-    handoff reads (they must exist before anything is written); references
-    are the package and module files it points at (they must exist once the
-    package is materialized); sources are the skill-side files the package is
-    copied from — validated BEFORE anything is written, so a bad layout or
-    template name fails with the workspace untouched.
+    values 填该步骤的占位符；inputs 是 handoff 会读取的 workspace 文件（它们必须
+    在任何东西被写出之前就存在）；references 是 handoff 指向的包与模块文件（包落地
+    之后它们必须存在）；sources 是包复制自的 skill 侧文件——在任何写入之前就校验，
+    因此非法的 layout 或 template 名会让 workspace 完全未被改动时就失败。
     """
 
     values: dict[str, str]
@@ -288,7 +279,7 @@ def script_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
         template_dir = SKILL_ROOT / 'modules' / 'templates' / template
         if not template_dir.is_dir():
             raise FileNotFoundError(f'template {template!r} not found: {template_dir}')
-        # A template without narration requirements contributes no item.
+        # 没有旁白要求的模板不贡献任何条目。
         narration = template_dir / 'narration.md'
         if narration.is_file():
             references.append((f'{narration}（所选模板 {template} 的旁白要求）', [narration]))
@@ -311,11 +302,10 @@ def script_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
 
 
 def layout_reference(modules: Path, layout: str) -> Reference:
-    """The layout's region definition json (always required) and its doc.
+    """该 layout 的区域定义 json（始终必需）及其文档。
 
-    Some canvases share one doc: portrait-3x4 has only a .json, and
-    portrait.md covers both portrait canvases. The json never falls back — a
-    missing region definition is an error, not a doc-lessness.
+    有些画布共用一份文档：portrait-3x4 只有 .json，portrait.md 同时覆盖两个竖屏
+    画布。json 从不兜底——缺少区域定义是错误，而不是“没有文档”。
     """
     layout_json = modules / 'layouts' / f'{layout}.json'
     layout_doc = modules / 'layouts' / f'{layout}.md'
@@ -340,9 +330,8 @@ def composition_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
     layout_item = ' + '.join(str(path) for path in layout_paths)
 
     def source(skill_path: Path) -> Path:
-        """Where a modules/ reference is validated against: the skill copy,
-        unless the design was removed from the skill and only the workspace
-        copy remains (pipeline-status accepts the same fallback)."""
+        """modules/ 引用按哪个副本校验：优先 skill 里的那份，除非该 design 已从
+        skill 移除而只剩 workspace 中的副本（pipeline-status 接受同样的兜底）。"""
         return skill_path if skill_path.exists() else ws / skill_path.relative_to(SKILL_ROOT)
 
     sources: list[Path] = [
@@ -424,9 +413,9 @@ def fill(template: str, values: dict[str, str]) -> str:
 
 
 def render_handoff(ws: Path, step: str, inputs: dict[str, Any], plan: Plan) -> str:
-    # _q values are shell-quoted FULL paths for use inside commands: a topic
-    # name or skill root with spaces (e.g. "AI Agents 2026") must not split
-    # the line. Prose keeps using the plain {{ws}} / {{skill_root}}.
+    # _q 开头的值是供命令中使用的、经 shell 引用的完整路径：带空格的 topic 名或
+    # skill 根目录（例如 "AI Agents 2026"）不能把该行拆开。散文里仍用普通的
+    # {{ws}} / {{skill_root}}。
     design, layout = inputs['design'], inputs['layout']
     values = {
         'topic_name': ws.name,
@@ -471,9 +460,9 @@ def main() -> int:
     plan = STEP_PLANS[args.step](ws, inputs)
     text = render_handoff(ws, args.step, inputs, plan)
     require_files(plan.inputs, f'inputs of the {args.step} step')
-    # Validate the skill-side sources before anything is written: a bad layout
-    # or design name must fail with the workspace untouched, like a missing
-    # input does — not after modules/ has been copied into it.
+    # 在任何东西被写出之前校验 skill 侧的源文件：非法的 layout 或 design 名必须
+    # 在 workspace 完全未被改动时就失败，就像缺少输入那样 —— 而不是等 modules/
+    # 已被复制进去之后才失败。
     require_files(plan.sources, f'skill files the {args.step} handoff is built from')
     materialized = materialize(ws, args.step, args.refresh)
     fonts = None

@@ -1,4 +1,4 @@
-"""Shared command-line JSON output and exit-code helpers."""
+"""共享的命令行 JSON 输出与退出码辅助函数。"""
 from __future__ import annotations
 
 import argparse

@@ -1,23 +1,17 @@
 #!/usr/bin/env python3
-"""Generate the TTS narration draft from the display draft and a TTS lexicon.
+"""从展示稿与 TTS 词典生成 TTS 旁白稿。
 
-The script stage of the pipeline produces a display draft (`script.txt`,
-paragraph-separated, used for subtitles and visuals) and a lexicon
-(`tts-lexicon.json`, a display form -> reading form map for brand names,
-numbers, years, etc.).  This script derives the narration draft
-(`narration.txt`) deterministically, so only the display draft and the
-lexicon are ever hand-written.
+流水线的脚本阶段产出展示稿（`script.txt`，按段落分隔，用于字幕与画面）和词典
+（`tts-lexicon.json`，品牌名、数字、年份等的展示形式 -> 读音形式映射）。本脚本
+确定性地推导出旁白稿（`narration.txt`），因此需要手写的只有展示稿和词典。
 
-Replacement rule (deterministic):
-  Scan the display draft left to right.  At each position, among the lexicon
-  entries whose display form matches the text starting at that position, the
-  LONGEST display form wins.  Ties (same display-form length) break on the
-  display form string itself.  If no entry matches, the character is copied
-  unchanged.  Newlines and paragraph structure are preserved as-is.
+替换规则（确定性）：
+  从左到右扫描展示稿。在每个位置，凡展示形式与该位置起始文本相匹配的词典条目
+  中，最长（LONGEST）的展示形式获胜。长度相同时按展示形式字符串本身比较决定。
+  若没有条目匹配，该字符原样复制。换行与段落结构保持原样。
 
-Offset table (`narration-offsets.json`): every narration character position
-can be mapped back to a display-draft position.  The table is a sorted,
-contiguous list of segments covering [0, len(narration)):
+偏移表（`narration-offsets.json`）：每个旁白字符位置都能映射回展示稿中的位置。
+该表是一份有序、连续的段列表，覆盖 [0, len(narration))：
 
   {"version": 1,
    "script_length": S, "narration_length": N,
@@ -25,31 +19,30 @@ contiguous list of segments covering [0, len(narration)):
    "segments": [{"narration_start": a, "narration_end": b,
                  "script_start": c, "script_end": d}]}
 
-  The two hashes are the sha256 of the exact script.txt / narration.txt the
-  table was built from; pipeline-status rejects a same-length edit that the
-  character counts alone cannot see.
+  两个哈希是构建该表时所用的那份 script.txt / narration.txt 的 sha256；
+  pipeline-status 用它拒绝仅靠字符数看不出来的等长编辑。
 
-  narration position i maps back to
-  script_start + min(i - narration_start, script_end - script_start - 1).
+  旁白位置 i 映射回
+  script_start + min(i - narration_start, script_end - script_start - 1)。
 
-Usage:
+用法：
   python3 scripts/make-narration.py \
     --script {work_dir}/{topic_name}/script.txt \
     --lexicon {work_dir}/{topic_name}/tts-lexicon.json \
     --output-dir {work_dir}/{topic_name}/
 
-  Outputs (paths derived from --output-dir):
-    <output-dir>/narration.txt          the TTS narration draft
-    <output-dir>/narration-offsets.json the offset table
+  产出（路径由 --output-dir 推导）：
+    <output-dir>/narration.txt          TTS 旁白稿
+    <output-dir>/narration-offsets.json 偏移表
 
-Output convention:
-  stdout : single JSON object
+输出约定：
+  stdout : 单个 JSON 对象
     success: {"success": true, "narration_path": "...",
               "offsets_path": "...", "script_length": N,
               "narration_length": N, "replacement_count": N}
     error:   {"success": false, "error": "..."}
-  stderr : human-readable progress prefixed with `[make-narration]`
-  exit   : 0 success, 1 runtime error, 2 invalid arguments
+  stderr : 带 `[make-narration]` 前缀的人类可读进度
+  exit   : 0 成功，1 运行时错误，2 参数非法
 """
 
 from __future__ import annotations
@@ -80,7 +73,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_lexicon(path: Path) -> dict[str, str]:
-    """Load and validate the lexicon: a JSON object of non-empty str -> non-empty str."""
+    """载入并校验词典：一个非空 str -> 非空 str 的 JSON 对象。"""
     if not path.is_file():
         raise FileNotFoundError(f'lexicon file not found: {path}')
     try:
@@ -100,17 +93,16 @@ def load_lexicon(path: Path) -> dict[str, str]:
 
 
 def build_matches(lexicon: dict[str, str]) -> list[tuple[str, str]]:
-    """Lexicon entries sorted for deterministic scanning:
-    display-form length descending, then display form string ascending."""
+    """为确定性扫描排好序的词典条目：
+    展示形式长度降序，再按展示形式字符串升序。"""
     return sorted(lexicon.items(), key=lambda kv: (-len(kv[0]), kv[0]))
 
 
 def render(script_text: str, lexicon: dict[str, str]) -> tuple[str, list[dict[str, int]], int]:
-    """Deterministically replace lexicon entries in the display draft.
+    """确定性地把词典条目替换进展示稿。
 
-    Returns (narration_text, segments, replacement_count).  Segments map
-    contiguous narration spans back to contiguous display-draft spans; both
-    sides include newlines so paragraph structure lines up.
+    返回 (narration_text, segments, replacement_count)。segments 把连续的旁白
+    区间映射回连续的展示稿区间；两侧都包含换行，因此段落结构能对齐。
     """
     matches = build_matches(lexicon)
     narration_chars: list[str] = []
@@ -139,7 +131,7 @@ def render(script_text: str, lexicon: dict[str, str]) -> tuple[str, list[dict[st
                 break
         if hit is not None:
             display, reading = hit
-            # flush pending 1:1 span before the replacement
+            # 替换之前先冲刷掉待定的 1:1 区间
             flush_segment(len(narration_chars), i)
             narration_chars.extend(reading)
             segments.append({
@@ -186,8 +178,8 @@ def main() -> None:
         'version': OFFSETS_VERSION,
         'script_length': len(script_text),
         'narration_length': len(narration_text),
-        # The script's own bytes: text-mode reading translates newlines, so the
-        # hash must come from the file, not from the decoded text.
+        # 脚本自身的字节：文本模式读取会翻译换行，因此哈希必须取自文件，
+        # 而不是取自解码后的文本。
         'script_sha256': hashlib.sha256(script_path.read_bytes()).hexdigest(),
         'narration_sha256': hashlib.sha256(narration_text.encode('utf-8')).hexdigest(),
         'segments': segments,

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Shared derivation of a selected clip's silent-file path.
+"""共享的“选中片段静音文件”路径推导。
 
-cut-clips.py writes the file and records ``clip_path``; pipeline-status.py
-re-derives the same path to validate that ``clip_path`` names the file of the
-clip's current window. One rule lives here so the two cannot drift.
+cut-clips.py 负责写出该文件并记录 ``clip_path``；pipeline-status.py 用同一套
+规则重新推导路径，以校验 ``clip_path`` 是否指向该片段当前时间窗对应的文件。
+规则只在这里写一份，两边就不会各自漂移。
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ CLIPS_DIR = 'clips'
 
 
 def clip_relpath(video_id: Any, start: Any, end: Any) -> str:
-    """Return clips/<video_id>_<start:.2f>-<end:.2f>.mp4."""
+    """返回 clips/<video_id>_<start:.2f>-<end:.2f>.mp4。"""
     if not isinstance(video_id, str) or not video_id:
         raise ValueError('video has no id')
     if any(char in video_id for char in '/\\\0') or video_id.startswith('.'):

@@ -1,23 +1,20 @@
-"""Shared backend selection for the TTS / ASR pipeline scripts.
+"""TTS / ASR 流水线脚本共享的后端选择逻辑。
 
-``voice-clone.py`` and ``transcribe.py`` both pick a backend from the same
-three inputs — ``--backend``, an environment variable, then a documented
-environment probe — and both expose ``--resolve-backend`` to print that
-decision as one JSON document. This module holds the common half:
+``voice-clone.py`` 与 ``transcribe.py`` 都从同样的三个输入挑后端——``--backend``、
+环境变量，以及一个有文档记录的环境探测——并且都提供 ``--resolve-backend`` 把该
+决定打印成一个 JSON 文档。本模块持有其中公共的那一半：
 
-* the platform / machine / CUDA / mlx-audio probes, each reading a
-  documented ``<PREFIX>_DETECT_*`` override so the decision is testable
-  without the hardware (the script docstrings name the prefix), plus the
-  ``DASHSCOPE_API_KEY`` check;
-* :func:`resolve_backend_name` — CLI > env > auto resolution, with the
-  per-script auto order injected as ``auto_resolve``;
-* the error types auto resolution raises;
-* :func:`resolve_backend_cli` and :func:`backend_error_response` — the
-  shared ``--resolve-backend`` output and the exit-code mapping
-  (unknown backend -> 2, no usable backend -> 1).
+* 平台 / 机器 / CUDA / mlx-audio 探测，每个都优先读取有文档记录的
+  ``<PREFIX>_DETECT_*`` 覆盖值，使该决定在没有对应硬件时也可测试（各脚本的
+  docstring 会写明自己的 prefix），另外还有 ``DASHSCOPE_API_KEY`` 检查；
+* :func:`resolve_backend_name` —— CLI > 环境变量 > 自动解析，每个脚本的自动
+  解析顺序通过 ``auto_resolve`` 注入；
+* 自动解析抛出的错误类型；
+* :func:`resolve_backend_cli` 与 :func:`backend_error_response` —— 共享的
+  ``--resolve-backend`` 输出，以及退出码映射（未知后端 -> 2，无可用后端 -> 1）。
 
-Only stdlib is imported at module load; the torch probe imports torch
-lazily (heavy imports stay function-local in this repo).
+模块加载时只导入标准库；torch 探测才惰性导入 torch（本仓库把重的导入留在函数
+内部）。
 """
 
 from __future__ import annotations
@@ -28,12 +25,12 @@ import platform
 import sys
 from collections.abc import Callable, Mapping
 
-# Default probe prefix; each script passes its documented one.
+# 默认探测前缀；每个脚本传入自己文档里写的那个。
 DEFAULT_PROBE_PREFIX = 'TTS_DETECT'
 
 
 class BackendUnavailableError(Exception):
-    """Auto resolution found no usable backend; carries the missing list."""
+    """自动解析没找到可用后端；携带缺失项清单。"""
 
     def __init__(
         self,
@@ -47,13 +44,13 @@ class BackendUnavailableError(Exception):
 
 
 class UnknownBackendError(Exception):
-    """The requested backend name is not registered by the calling script."""
+    """调用方脚本没有注册所请求的后端名。"""
 
 
-# --- environment probes (auto backend) -----------------------------------------
+# --- 环境探测（自动后端） -------------------------------------------------------
 #
-# Every probe reads a ``<PREFIX>_DETECT_*`` override first so the auto decision
-# is testable without the hardware (documented in each script's docstring).
+# 每个探测都优先读取 ``<PREFIX>_DETECT_*`` 覆盖值，使自动决定在没有对应硬件时
+# 也可测试（在各脚本的 docstring 中有说明）。
 
 
 def detect_platform(probe_prefix: str = DEFAULT_PROBE_PREFIX) -> str:
@@ -72,7 +69,7 @@ def detect_cuda(probe_prefix: str = DEFAULT_PROBE_PREFIX) -> bool:
         import torch
 
         return bool(torch.cuda.is_available())
-    except Exception:  # noqa: BLE001 - no torch / broken torch => no CUDA
+    except Exception:  # noqa: BLE001 - 没有 torch / torch 损坏 => 无 CUDA
         return False
 
 
@@ -86,7 +83,7 @@ def detect_mlx_audio(probe_prefix: str = DEFAULT_PROBE_PREFIX) -> bool:
 def environment_probes(
     probe_prefix: str = DEFAULT_PROBE_PREFIX, *, include_mlx: bool = False
 ) -> dict[str, object]:
-    """Snapshot the probes: platform, machine, [mlx_audio,] cuda, dashscope_key."""
+    """对各项探测做快照：platform、machine、[mlx_audio、]cuda、dashscope_key。"""
     probes: dict[str, object] = {
         'platform': detect_platform(probe_prefix),
         'machine': detect_machine(probe_prefix),
@@ -108,13 +105,13 @@ def resolve_backend_name(
     label: str = 'backend',
     include_mlx: bool = False,
 ) -> tuple[str, str, dict[str, object]]:
-    """Resolve the effective backend. Returns (name, source, probes).
+    """解析出实际生效的后端。返回 (name, source, probes)。
 
-    ``source`` is ``'cli'`` (``--backend``), ``'env'`` (``env_var``) or
-    ``'auto'``. Explicit values must be registered in ``backends`` (or be
-    ``'auto'``); "auto" delegates the decision to ``auto_resolve(probes)``,
-    which returns ``(name, probes)`` or raises :class:`BackendUnavailableError`.
-    Raises :class:`UnknownBackendError` for unregistered explicit values.
+    ``source`` 是 ``'cli'``（``--backend``）、``'env'``（``env_var``）或
+    ``'auto'``。显式取值必须已在 ``backends`` 中注册（或为 ``'auto'``）；
+    "auto" 把决定交给 ``auto_resolve(probes)``，它返回 ``(name, probes)``，或
+    抛出 :class:`BackendUnavailableError`。对未注册的显式取值抛出
+    :class:`UnknownBackendError`。
     """
     env_backend = os.environ.get(env_var)
     explicit = cli_backend or env_backend
@@ -128,7 +125,7 @@ def resolve_backend_name(
     return backend_name, 'auto', probes
 
 
-# --- CLI: --resolve-backend + error payloads -----------------------------------
+# --- CLI：--resolve-backend 与错误载荷 ----------------------------------------
 
 
 def backend_error_response(
@@ -137,10 +134,10 @@ def backend_error_response(
     log: Callable[[str], None],
     print_json: Callable[[dict[str, object]], None],
 ) -> int:
-    """Print the JSON error for a backend-resolution failure; return its exit code.
+    """为后端解析失败打印 JSON 错误；返回其退出码。
 
-    Unknown backend (a bad ``--backend`` / env value) is a usage error -> 2;
-    no usable backend is a runtime/environment failure -> 1.
+    未知后端（非法的 ``--backend`` / 环境变量取值）属于用法错误 -> 2；无可用
+    后端属于运行时 / 环境故障 -> 1。
     """
     if isinstance(exc, UnknownBackendError):
         log(f'error: {exc}')
@@ -166,11 +163,11 @@ def resolve_backend_cli(
     log: Callable[[str], None],
     print_json: Callable[[dict[str, object]], None],
 ) -> int:
-    """Shared ``--resolve-backend`` body: print the decision, no model is loaded.
+    """共享的 ``--resolve-backend`` 主体：打印决定，不加载任何模型。
 
-    ``resolve`` is the calling script's zero-argument resolver, so this module
-    stays independent of the TTS / ASR backend registries. Always exits 0 with
-    a JSON decision on success; 1 / 2 via :func:`backend_error_response`.
+    ``resolve`` 是调用方脚本自己的无参解析函数，因此本模块不依赖 TTS / ASR
+    的后端注册表。成功时总是以一条 JSON 决定退出 0；失败时经
+    :func:`backend_error_response` 返回 1 / 2。
     """
     try:
         backend_name, source, probes = resolve()
