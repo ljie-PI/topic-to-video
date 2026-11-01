@@ -96,6 +96,7 @@ import clip_paths
 import script_text
 from composition_hash import composition_source_relpaths, composition_sources_fingerprint, visible_files
 from harvest_manifest import _stage_json as stage_json
+from delegation_config import validate_delegation
 
 TOOL_NAME = 'pipeline-status'
 
@@ -634,6 +635,10 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
         ), None
     if not isinstance(data['fetch_materials'], bool):
         return CheckResult(STATUS_CORRUPT, 'field fetch_materials is not a boolean'), None
+    try:
+        validate_delegation(data)
+    except ValueError as exc:
+        return CheckResult(STATUS_CORRUPT, str(exc)), None
     if duration_minutes(data['duration']) is None:
         # 与“design 被移除”同理：inputs.json 的其余部分仍可用于
         # 判断阶段适用性，只有 Phase 1 需要重写这个字段。
@@ -1167,7 +1172,11 @@ PHASES: list[dict[str, Any]] = [
         'title': '素材 catalog',
         'doc': 'references/phases/05-material-catalog.md',
         'applies': 'fetch_or_paper',
-        'upstream': ['harvest_page/manifest.json', 'research-brief.md'],
+        'upstream': [
+            'harvest_page/manifest.json',
+            'research-brief.md',
+            'catalog-instructions.md',  # 可选：用户的素材理解 / 筛选要求
+        ],
         'products': {'material-catalog.json': check_material_catalog},
     },
     {
@@ -1632,8 +1641,8 @@ def reconcile_stamp(
 
     返回变化的上游键（过期）、空列表（新）或 None（没有戳且不允许隐式信任：
     stamps.json 曾不可用，这个阶段还没人确认过）。在以下情形把戳更新到当下：
-    首次见到该阶段时、其产物在上游未变时被编辑时、或在上游变化之后被完整重新
-    生成时。上游变化期间，戳保留变化前的产物指纹：只有每个产物都与它们不同之后
+    首次见到该阶段时、兼容旧戳补齐新增上游键时、其产物在上游未变时被编辑时、
+    或在上游变化之后被完整重新生成时。上游变化期间，戳保留变化前的产物指纹：只有每个产物都与它们不同之后
     过期标记才会清除，因此部分重做 —— 部分产物已重新生成、其他仍是旧构建 ——
     永远无法掩盖过期。对能产出字节相同产物的确定性重做，请用 --restamp。
     """
@@ -1647,7 +1656,9 @@ def reconcile_stamp(
         return []
     changed = stale_upstream(stamp, upstream, products)
     if not changed:
-        if stamp['products'] != products:
+        # Adopt new optional upstream keys without invalidating old builds. Otherwise
+        # their later changes would be ignored forever because the old key stays absent.
+        if stamp['products'] != products or stamp['upstream'] != upstream:
             stamps.put(phase['id'], upstream, products)
         return []
     return changed

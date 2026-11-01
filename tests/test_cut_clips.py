@@ -345,7 +345,7 @@ def complete_pipeline_prerequisites(ws: Path) -> None:
         'template': None,
         'design': 'default',
         'layout': 'stage',
-        'coding_agent': 'claude-code',
+        'coding_agent': 'pi-coding-agent',
         'fetch_materials': True,
     }), encoding='utf-8')
     (ws / 'research-brief.md').write_text(

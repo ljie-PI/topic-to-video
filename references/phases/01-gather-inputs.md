@@ -2,7 +2,7 @@
 
 ## 输入
 
-用户在对话中给出的主题、文章 URL、粘贴的文本或论文 PDF / URL；项目工作区里可选的项目指令文件：`narration-instructions.md`（旁白要求）、`composition-instructions.md`（画面要求）、旧的 `style-prompt.md`（视为 composition 指令的一部分）。
+用户在对话中给出的主题、文章 URL、粘贴的文本或论文 PDF / URL；项目工作区里可选的项目指令文件：`catalog-instructions.md`（素材要求）、`narration-instructions.md`（旁白要求）、`composition-instructions.md`（画面要求）、旧的 `style-prompt.md`（视为 composition 指令的一部分）。
 
 ## 输出
 
@@ -18,7 +18,8 @@
 | `template` | 所选模板，未选为 `null` |
 | `design` | 所选 design：`default` / `github` / `producthunt`，对应 `modules/designs/<design>/<design>.md` |
 | `layout` | 所选 layout：`presenter` / `stage` / `portrait` / `portrait-3x4`，由模板或朝向决定，区域定义在 `modules/layouts/` |
-| `coding_agent` | 委派目标，默认 `claude-code` |
+| `coding_agent` | 全局委派目标，默认 `pi-coding-agent`（命令 `pi`） |
+| `delegation` | 可选，阶段级 agent / model 要求。对象的键为 `catalog` / `script` / `composition`，各值只含 `agent` 和 / 或 `model`（非空字符串）；如 `{"catalog": {"agent": "pi-coding-agent", "model": "<provider>/<model-id>"}}`。未指定 agent 时继承 `coding_agent`，未指定 model 时使用目标 agent 自身的模型配置；用户点名时严格遵循，未提就不填 |
 | `fetch_materials` | 是否联网抓取视觉素材（布尔） |
 | `approval_gates` | 可选，默认 `[]`（全自动、不停下来审稿）；不主动询问是否审稿。用户要求审稿时按入口的表填：只看调研用 `["research-brief"]`，只看旁白用 `["script"]`，只说“中途让我审稿”就两处都填。续跑保留已有要求，用户明确改才动 |
 | `material_search_requests` | 可选，字符串列表，默认不填。用户点名要用某个平台找素材（“去 Google 图片搜某产品的界面”“在 B 站找演示视频”）时，把原话逐条记下；Phase 4 读它。它只是记录，不会自动让素材阶段重做：用户新提或修改这类要求时，另按 `references/pipeline-control.md` 登记 Phase 4 重做。不主动要求平台搜索 |
@@ -26,14 +27,14 @@
 
 ## 完成判据
 
-`inputs.json` 存在、非空、JSON 可解析，且上表字段齐全（`design` 必须是 `modules/designs/` 下现有的主题，旧项目里已删除的主题会被判为不合格、回到本 phase 重选；`fetch_materials` 必须是布尔；`duration` 必须是分钟数；`qa_level` 可缺省，缺省视为 `standard`，填写时必须是三档之一；`approval_gates` 可缺省，填写时必须是由 `research-brief` / `script` 组成的列表，不能重复，空列表表示全自动；`material_search_requests` 可缺省，填写时必须是非空字符串的列表）。
+`inputs.json` 存在、非空、JSON 可解析，且上表字段齐全（`design` 必须是 `modules/designs/` 下现有的主题，旧项目里已删除的主题会被判为不合格、回到本 phase 重选；`fetch_materials` 必须是布尔；`duration` 必须是分钟数；`qa_level` 可缺省，缺省视为 `standard`，填写时必须是三档之一；`approval_gates` 可缺省，填写时必须是由 `research-brief` / `script` 组成的列表，不能重复，空列表表示全自动；`material_search_requests` 可缺省，填写时必须是非空字符串的列表；`delegation` 可缺省，填写时按上表校验阶段名及 agent / model 字符串）。
 
 ## 执行后自检
 
 程序能判断的由 `pipeline-status` 检查（见上）。写入前自己再过一遍：
 
 - 用户说过的每一项（来源、时长、语言、朝向、模板与风格、要不要素材、要不要审稿）是否都有对应字段；用户没提的项是否用了默认值，而不是编的。
-- 用户的原话有没有丢：不要 CTA、语气要求这类写进项目指令文件；点名要在某平台找素材的写进 `material_search_requests`。
+- 用户的原话有没有丢：不要 CTA、语气要求这类写进项目指令文件；素材要求写进 `catalog-instructions.md`；点名要在某平台找素材的写进 `material_search_requests`；阶段级 agent / model 要求写进 `delegation`。
 - 拿不准的项是问过了，还是猜的。猜的要先问。
 
 发现问题就改 `inputs.json` 再查状态；本阶段没有下游，改完不需要重做别的阶段。

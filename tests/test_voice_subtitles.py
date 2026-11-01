@@ -80,7 +80,7 @@ def make_workspace(tmp_path: Path, *, scene_plan: bool = True) -> Path:
             'template': None,
             'design': 'default',
             'layout': 'stage',
-            'coding_agent': 'claude-code',
+            'coding_agent': 'pi-coding-agent',
             'fetch_materials': False,
             'qa_level': 'standard',
         },

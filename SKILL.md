@@ -56,8 +56,8 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
    ↳ DO NOT：自己扫描工作区猜进度；把 Scratchpad 当进度记录；手改 `.pipeline/`。
 3. **每步自检，但不把工具的“成功”当内容合格。** 文件、格式、时长、字数、引用这类能由程序判断的以脚本为准；事实、叙事、素材是否贴题、画面是否对得上旁白这类内容判断由执行者按该阶段文档做，发现问题按 `references/pipeline-control.md` 登记重做。
    ↳ DO NOT：跳过阶段的执行后自检；用改无关文件或 `--restamp` 过关；把内容不合格的产物交给下游。
-4. **委派步骤（Phase 5 / 6 / 8）的内容由 sub-agent 产出。** 主 agent 只准备 handoff、派发并验收。唯一例外：Phase 5 当前环境没有 sub-agent 工具时，主 agent 按 `references/phases/05-material-catalog.md` 的兜底流程生成 catalog。
-   ↳ DO NOT：主 agent 手写旁白或 composition HTML；有 sub-agent 工具时主 agent 手写 catalog。
+4. **委派步骤（Phase 5 / 6 / 8）的内容由 sub-agent 产出。** 主 agent 只准备 handoff、派发并验收。唯一例外：Phase 5 未指定 agent / model，且当前环境没有 sub-agent 工具也不能运行目标 CLI 时，主 agent 按 `references/phases/05-material-catalog.md` 的兜底流程生成 catalog；用户指定的 agent / model 不可用时先说明，不得自动替换。
+   ↳ DO NOT：主 agent 手写旁白或 composition HTML；能委派时主 agent 手写 catalog。
 5. **屏幕上的每个素材都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。
    ↳ DO NOT：让没有 catalog 引用的素材出现在屏幕上。
 6. **跑 Python 前一律 `source .venv/bin/activate`。** 用 `python3`。

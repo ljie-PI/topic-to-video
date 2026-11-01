@@ -31,7 +31,7 @@ INPUTS = {
     'template': None,
     'design': 'github',
     'layout': 'presenter',
-    'coding_agent': 'claude-code',
+    'coding_agent': 'pi-coding-agent',
     'fetch_materials': True,
 }
 
@@ -84,6 +84,40 @@ def handoff_sections(text: str) -> dict[str, str]:
     """Section title -> body, for the '## ' headings of a handoff."""
     parts = re.split(r'^## (.+)$', text, flags=re.MULTILINE)
     return {title.strip(): body.strip() for title, body in zip(parts[1::2], parts[2::2])}
+
+
+class TestDelegationSelection:
+    @pytest.mark.parametrize('step', ['catalog', 'script', 'composition'])
+    def test_exact_stage_agent_and_model_reach_handoff_and_dispatch_result(self, tmp_path: Path, step: str):
+        ws = make_workspace(
+            tmp_path, step, coding_agent='claude-code',
+            delegation={step: {'agent': 'pi-coding-agent', 'model': 'provider/exact-model'}},
+        )
+        result = prepare(ws, step)
+        section = handoff_sections((ws / f'{step}-handoff.md').read_text(encoding='utf-8'))['Coding Agent']
+
+        assert result['coding_agent'] == 'pi-coding-agent'
+        assert result['coding_model'] == 'provider/exact-model'
+        assert section.startswith('pi-coding-agent\n')
+        assert '模型：provider/exact-model' in section
+        assert 'claude-code' not in section
+
+    def test_catalog_selection_does_not_override_script(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, delegation={'catalog': {'agent': 'codex', 'model': 'provider/model'}})
+        result = prepare(ws, 'script')
+
+        assert result['coding_agent'] == 'pi-coding-agent'
+        assert result['coding_model'] is None
+        assert handoff_sections((ws / 'script-handoff.md').read_text(encoding='utf-8'))['Coding Agent'] == 'pi-coding-agent'
+
+    def test_invalid_model_is_rejected_before_writing_any_handoff(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, delegation={'catalog': {'model': ''}})
+        proc, result = run_cli(str(ws), 'script')
+
+        assert proc.returncode == 1
+        assert 'delegation.catalog.model' in result['error']
+        assert not (ws / 'script-handoff.md').exists()
+        assert not (ws / 'references').exists()
 
 
 class TestScriptHandoff:
@@ -305,7 +339,7 @@ class TestCatalogHandoff:
         ) in outputs
         assert 'python3 scripts/' not in outputs
 
-    def test_required_references_and_fixed_none_additional_instructions(self, tmp_path: Path):
+    def test_required_references_and_none_without_catalog_instructions(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'catalog')
         write(ws / 'narration-instructions.md', 'not for catalog')
         write(ws / 'composition-instructions.md', 'not for catalog')
@@ -319,6 +353,18 @@ class TestCatalogHandoff:
             ws / 'references' / 'delegation' / 'conventions.md',
         }
         assert sections['Additional Instructions'] == 'None'
+
+
+    def test_catalog_receives_user_material_instructions(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'catalog')
+        instructions = ws / 'catalog-instructions.md'
+        write(instructions, '优先选择能看清操作步骤的界面。')
+        prepare(ws, 'catalog')
+
+        sections = handoff_sections((ws / 'catalog-handoff.md').read_text(encoding='utf-8'))
+
+        assert sections['Additional Instructions'] == f'- {instructions}'
+        assert instructions.read_text(encoding='utf-8') == '优先选择能看清操作步骤的界面。'
 
 
 class TestCatalogMaterialization:
@@ -587,7 +633,7 @@ class TestFailures:
         (None, 'inputs.json not found'),
         ('{not json', 'not valid JSON'),
         ('[]', 'not an object'),
-        ('{"coding_agent": "claude-code"}', 'missing fields'),
+        ('{"coding_agent": "pi-coding-agent"}', 'missing fields'),
     ])
     def test_unusable_inputs_json_exits_1(self, tmp_path: Path, inputs_text: str | None, message: str):
         ws = make_workspace(tmp_path)
@@ -872,7 +918,13 @@ class TestDelegationDocs:
     def test_conventions_grant_the_skill_root_to_headless_agents(self):
         text = (REPO_ROOT / 'references' / 'delegation' / 'conventions.md').read_text(encoding='utf-8')
 
-        assert 'claude -p "<dispatch_prompt>" --add-dir <ws> --add-dir <skill_root>' in text
+        assert 'cd "<ws>" && pi -p "<dispatch_prompt>"' in text
+        assert 'pi --model "<coding_model>" -p "<dispatch_prompt>"' in text
+        assert '不是按主 agent 所在客户端决定目标' in text
+        assert '用户明确指定其他 agent' in text
+        assert '不预设其他 agent 的命令或参数' in text
+        assert '指定目标不可用时先说明并确认' in text
+        assert 'claude' not in text.lower()
         assert (
             'handoff 里的命令（`source <skill_root>/.venv/bin/activate && '
             'python3 <skill_root>/scripts/...`）'
@@ -941,11 +993,12 @@ class TestDelegationDocs:
 
         assert '写进委派 prompt' not in text
         assert '把摘要内容直接写进委派 prompt' not in text
-        assert '主 agent 只做四件事' in text
+        assert '主 agent 做四件事' in text
         assert '200 字以内' in text
         assert '3-5 个核心论点或关键概念' in text
         assert 'pipeline-status.py {work_dir}/{topic_name}' in text
-        assert '没有 sub-agent 工具' in text
+        assert '环境既不能原生委派也不能运行目标 CLI' in text
+        assert '未指定 agent' in text
         assert 'references/delegation/catalog/base-instructions.md' in text
         assert '一次处理一条 manifest entry' in text
         assert '增量写入 `material-catalog.json`' in text
@@ -957,14 +1010,16 @@ class TestDelegationDocs:
 
         for required in (
             '**路径 base（必须保持一致）',
-            '1. **抽帧**',
-            '2. **解析字幕**',
+            '## 公共视觉分析方式',
+            '## 图片',
+            '## 视频与滚动录像',
+            '### 抽帧与字幕',
             '**Mode 1（显式 VLM）',
-            '**Mode 2（主 agent 直接分析）',
+            '**Mode 2（执行 agent 直接分析）',
             '**Paper-origin entries',
-            '4. **组合**',
-            '5. **过滤：**',
-            '**切片段（所有 entry 的 catalog 写完之后，运行一次）',
+            '## 组合与切片段',
+            '**过滤阈值为 7 分',
+            '**所有 entry 写完后运行一次',
             'scripts/cut-clips.py {work_dir}/{topic_name}',
             '`material-catalog.json` 的结构',
             '## 仅论文素材（`input_mode = "paper"` 且 `fetch_materials = false`）',

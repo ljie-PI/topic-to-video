@@ -30,7 +30,7 @@ INPUTS = {
     'template': None,
     'design': 'default',
     'layout': 'stage',
-    'coding_agent': 'claude-code',
+    'coding_agent': 'pi-coding-agent',
     'fetch_materials': True,
     'qa_level': 'standard',
 }
@@ -240,6 +240,24 @@ def write_paper_metadata(ws: Path) -> None:
             'paper_metadata': {'full_markdown_path': 'main-paper/mineru/full.md'},
         },
     )
+
+
+@pytest.mark.parametrize('delegation, expected_phase', [
+    ({'catalog': {'agent': 'pi-coding-agent', 'model': 'provider/model'}}, '3-research'),
+    ({'catalog': {'model': ''}}, '1-gather-inputs'),
+    ({'catlog': {'agent': 'pi-coding-agent'}}, '1-gather-inputs'),
+    ([], '1-gather-inputs'),
+])
+def test_stage_delegation_is_validated_at_phase1(tmp_path: Path, delegation, expected_phase):
+    ws = tmp_path / 'ws'
+    complete_through_inputs(ws, delegation=delegation)
+    proc = run_cli(str(ws))
+    result = parse_result(proc)
+
+    assert proc.returncode == 0
+    assert result['next_phase']['id'] == expected_phase
+    if expected_phase == '1-gather-inputs':
+        assert 'delegation' in json.dumps(result['next_phase']['problems'])
 
 
 def complete_through_research(ws: Path, *, approved: bool = True, **inputs_overrides) -> None:
@@ -1836,7 +1854,7 @@ UPSTREAM_KEYS = {
         'harvest_page/main-paper/metadata.json',
     ],
     '4-material-harvest': ['research-brief.md'],
-    '5-material-catalog': ['harvest_page/manifest.json', 'research-brief.md'],
+    '5-material-catalog': ['harvest_page/manifest.json', 'research-brief.md', 'catalog-instructions.md'],
     '6-script-scene-plan': [
         'research-brief.md', 'material-catalog.json', 'inputs.json#duration', 'inputs.json#language',
         'inputs.json#input_mode', 'inputs.json#template', 'narration-instructions.md',
@@ -2009,6 +2027,10 @@ def test_an_upstream_key_missing_from_an_old_stamp_is_not_a_change(tmp_path: Pat
 
     assert result['next_phase'] is None
     assert result['stale_phases'] == []
+    assert read_stamps(tmp_path)['phases']['9-check-mix']['upstream']['inputs.json#qa_level'] == field_sha256('standard')
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'qa_level': 'strict'})
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['changed_upstream'] == ['inputs.json#qa_level']
 
 
 def test_fingerprint_cache_is_written_and_trusted(tmp_path: Path):
@@ -2075,6 +2097,54 @@ def test_a_newly_created_optional_upstream_file_makes_its_phase_stale(tmp_path: 
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase']['id'] == '8-composition'
     assert result['next_phase']['changed_upstream'] == ['composition-instructions.md']
+
+
+@pytest.mark.parametrize('change', ['create', 'edit', 'delete'])
+def test_catalog_instruction_changes_stale_catalog_and_stop_downstream(tmp_path: Path, change: str):
+    instructions = tmp_path / 'catalog-instructions.md'
+    if change != 'create':
+        write_text(instructions, '优先展示 UI 操作。')
+    settle(tmp_path)
+    original_stamp = read_stamps(tmp_path)['phases']['5-material-catalog']
+
+    if change == 'delete':
+        instructions.unlink()
+    else:
+        write_text(instructions, '不要使用当前 img_001，只选择流程图。')
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '5-material-catalog'
+    assert result['next_phase']['reason'] == 'stale'
+    assert result['next_phase']['changed_upstream'] == ['catalog-instructions.md']
+    assert '5-material-catalog' not in result['completed_phases']
+    assert result['pending_phases'] == ['6-script-scene-plan', '7-voice-subtitles', '8-composition', '9-check-mix']
+    assert read_stamps(tmp_path)['phases']['5-material-catalog'] == original_stamp
+
+
+def test_unchanged_catalog_instructions_keep_the_pipeline_current(tmp_path: Path):
+    write_text(tmp_path / 'catalog-instructions.md', '优先展示 UI 操作。')
+    settle(tmp_path)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase'] is None
+    assert result['stale_phases'] == []
+
+
+def test_old_catalog_stamp_adopts_the_optional_instruction_without_forcing_a_redo(tmp_path: Path):
+    settle(tmp_path)
+    stamps = read_stamps(tmp_path)
+    del stamps['phases']['5-material-catalog']['upstream']['catalog-instructions.md']
+    write_json(tmp_path / '.pipeline' / 'stamps.json', stamps)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase'] is None
+    assert result['stale_phases'] == []
+    assert read_stamps(tmp_path)['phases']['5-material-catalog']['upstream']['catalog-instructions.md'] == 'absent'
+    write_text(tmp_path / 'catalog-instructions.md', '只选择流程图。')
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['changed_upstream'] == ['catalog-instructions.md']
 
 
 def test_reapproving_an_edited_product_stales_the_next_phase(tmp_path: Path):

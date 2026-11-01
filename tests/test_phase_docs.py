@@ -210,6 +210,76 @@ def test_phase_4_no_longer_documents_merging_the_parsed_paper():
     assert 'Paper mode' not in doc_text('references/phases/04-material-harvest.md')
 
 
+def test_catalog_docs_separate_media_tasks_and_use_a_defined_seven_point_threshold():
+    catalog = doc_text('references/delegation/catalog/base-instructions.md')
+    phase = doc_text('references/phases/05-material-catalog.md')
+
+    for heading in ('## 公共视觉分析方式', '## 图片', '## 视频与滚动录像', '## 论文', '## 组合与切片段'):
+        assert heading in catalog
+    assert '1. **视觉理解：**' in catalog
+    assert '2. **话题语义匹配：**' in catalog
+    assert '3. **展示建议：**' in catalog
+    assert '<7' in catalog and '<7' in phase
+    assert '<5' not in catalog and '<5' not in phase
+    assert '评分量表' in catalog
+    assert '话题相关性 | 0–4' in catalog
+    assert 'max(1, floor(D / max_frames))' in catalog
+    assert '视频粗看每请求最多 8 帧' in catalog
+    assert '不是把看图任务交回调用者' in catalog
+    assert '不合格就重做本阶段' not in phase
+    assert '不要靠手改 catalog' not in phase
+    assert '不合格就自己重做' not in catalog
+
+
+def test_catalog_defaults_to_ordered_coarse_frames_then_local_detail():
+    catalog = doc_text('references/delegation/catalog/base-instructions.md')
+    phase = doc_text('references/phases/05-material-catalog.md')
+    flow = catalog.split('### 默认流程：多帧粗看 → 候选片段局部细看')[1].split('## 论文')[0]
+
+    steps = ('1. **多帧粗看。**', '2. **提名候选窗口。**', '3. **候选片段局部细看。**', '4. **合成视频级结果。**')
+    positions = [flow.index(step) for step in steps]
+    assert positions == sorted(positions)
+    for required in (
+        '8 + 8 两批',
+        '前一批的简短时序摘要',
+        '--detail low',
+        '不直接写成最终 `selected_clips`',
+        '--detail high',
+        '原帧最大宽度 1280 px',
+        '--max-frames 20',
+        '不能因上限截断而漏看后半段',
+        '`frame_paths` 引用局部核对帧',
+        '每张 4×4 拼图最多 16 帧',
+        '每请求只输入一张拼图',
+        '`sheets[*].prompt`',
+        '作为整体理解',
+        '源视频时间范围',
+    ):
+        assert required in flow
+    assert '--max-frames 16 --max-width 512' in catalog
+    assert '局部帧依据' in phase
+    assert '每请求最多 8 帧' in phase
+    assert 'scripts/stitch-frames.py' in catalog
+    assert '调研依据：' not in catalog
+    assert '不生成 4×4 拼图' not in flow
+    assert '仅作为后续可评测' not in flow
+
+
+def test_all_documented_coding_agent_defaults_use_pi():
+    for path in (REPO_ROOT / 'references').rglob('*.md'):
+        text = path.read_text(encoding='utf-8')
+        assert not re.search(r'默认\s+`?claude-code', text), str(path)
+    for doc in (
+        'references/delegation/conventions.md',
+        'references/phases/01-gather-inputs.md',
+        'references/phases/05-material-catalog.md',
+        'references/phases/06-script-scene-plan.md',
+        'references/phases/08-composition.md',
+    ):
+        assert 'pi-coding-agent' in doc_text(doc)
+        assert '`pi`' in doc_text(doc)
+
+
 def test_catalog_delegation_package_documents_the_paper_only_path():
     catalog = doc_text('references/delegation/catalog/base-instructions.md')
     section = catalog.split('## 仅论文素材')[1]

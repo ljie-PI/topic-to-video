@@ -20,7 +20,8 @@
   python3 scripts/prepare-handoff.py <workspace_dir> <catalog|script|composition> [--refresh]
 
 输出：stdout 上的一份 JSON 文档，
-  {"success": true, "handoff_path": "...", "materialized": [...],
+  {"success": true, "coding_agent": "...", "coding_model": null | "...",
+   "handoff_path": "...", "materialized": [...],
    "fonts": null | {"success": true, "output_dir": "...", "installed": N},
    "dispatch_prompt": "读取 <handoff> 并按它执行；完成后报告产物路径。"}
 materialized 列出本次调用写入了文件的那些包路径。fonts 是一份摘要（文件清单有
@@ -43,12 +44,11 @@ from pathlib import Path
 from typing import Any
 
 import cli
+from delegation_config import STEPS, resolve_delegation, validate_delegation
 
 TOOL_NAME = 'prepare-handoff'
 
 SKILL_ROOT = Path(__file__).resolve().parent.parent
-
-STEPS = ['catalog', 'script', 'composition']
 
 DELEGATION = Path('references') / 'delegation'
 
@@ -128,6 +128,7 @@ def load_inputs(ws: Path) -> dict[str, Any]:
             f'inputs.json field duration must be the target length in minutes '
             f'(a number, or a number with a minutes unit such as "5min"), got {duration!r}'
         )
+    validate_delegation(data)
     return data
 
 
@@ -256,7 +257,7 @@ def catalog_plan(ws: Path, inputs: dict[str, Any]) -> Plan:
     return Plan(
         values={
             'required_references': numbered([f'{base}（基础指令：素材处理、catalog schema、仅论文素材路径、切片段）']),
-            'additional_instructions': 'None',
+            'additional_instructions': instruction_list(ws, 'catalog-instructions.md'),
         },
         inputs=[
             ws / 'harvest_page' / 'manifest.json',
@@ -417,6 +418,7 @@ def render_handoff(ws: Path, step: str, inputs: dict[str, Any], plan: Plan) -> s
     # skill 根目录（例如 "AI Agents 2026"）不能把该行拆开。散文里仍用普通的
     # {{ws}} / {{skill_root}}。
     design, layout = inputs['design'], inputs['layout']
+    coding_agent, coding_model = resolve_delegation(inputs, step)
     values = {
         'topic_name': ws.name,
         'ws': str(ws),
@@ -435,7 +437,10 @@ def render_handoff(ws: Path, step: str, inputs: dict[str, Any], plan: Plan) -> s
         'script_txt_q': shlex.quote(str(ws / 'script.txt')),
         'lexicon_q': shlex.quote(str(ws / 'tts-lexicon.json')),
         'output_dir_q': shlex.quote(str(ws)),
-        'coding_agent': str(inputs['coding_agent']),
+        'coding_agent': coding_agent,
+        'coding_model_instruction': (
+            f'模型：{coding_model}（必须用于实际派发，不得仅作为 prompt 要求）' if coding_model else ''
+        ),
         'duration': duration_text(inputs['duration']),
         'language': str(inputs['language']),
         'input_mode': str(inputs['input_mode']),
@@ -477,8 +482,11 @@ def main() -> int:
     handoff = ws / f'{args.step}-handoff.md'
     handoff.write_text(text, encoding='utf-8')
     log(f'wrote {handoff}')
+    coding_agent, coding_model = resolve_delegation(inputs, args.step)
     cli.print_json({
         'success': True,
+        'coding_agent': coding_agent,
+        'coding_model': coding_model,
         'handoff_path': str(handoff),
         'materialized': materialized,
         'fonts': fonts,
