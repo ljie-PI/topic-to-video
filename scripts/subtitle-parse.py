@@ -5,6 +5,7 @@
   python3 subtitle-parse.py subtitles.srt
   python3 subtitle-parse.py subtitles.vtt --keywords "AI,machine learning"
 """
+from __future__ import annotations
 
 import argparse
 import os
