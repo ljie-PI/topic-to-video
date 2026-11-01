@@ -2,15 +2,20 @@
 
 ## 输入
 
-Phase 8 产出的 `composition/renders/final.mp4` + `transcribe/timeline.json` + `inputs.json`（`qa_level`、BGM 选择）。
+- Phase 8 产出的 `composition/renders/final.mp4`；
+- `transcribe/timeline.json`；
+- `inputs.json`（`qa_level`、BGM 选择）。
 
 ## 输出
 
-`qa/`（contact sheet 拼图 + `qa/qa-report.json`）+ `composition/renders/final_with_bgm.mp4`（解说 + 低音量背景乐的最终成片）。
+- `qa/`（contact sheet 拼图 + `qa/qa-report.json`）；
+- `composition/renders/final_with_bgm.mp4`（解说 + 低音量背景乐的最终成片）。
 
 ## 完成判据
 
-`qa/qa-report.json` 存在且含 `findings` + `verdict` 两部分（修复轮结束后 verdict 为 `pass` 或 `handed_off`）；`final_with_bgm.mp4` 存在且非空；解说音量不变，BGM 按默认线性增益 `0.03` 垫在底下。
+- `qa/qa-report.json` 存在且含 `findings` + `verdict` 两部分（修复轮结束后 verdict 为 `pass` 或 `handed_off`）；
+- `composition/renders/final_with_bgm.mp4` 存在且非空；
+- 解说音量不变，BGM 按默认线性增益 `0.03` 垫在底下。
 
 ## 执行后自检
 

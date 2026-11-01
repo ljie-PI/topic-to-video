@@ -4,15 +4,19 @@
 
 ## 输入
 
-`inputs.json`（`input_mode = "paper"`，来源是 `.pdf` 文件路径或以 `.pdf` 结尾的 URL）。
+- `inputs.json`（`input_mode = "paper"`，来源是 `.pdf` 文件路径或以 `.pdf` 结尾的 URL）。
 
 ## 输出
 
-`harvest_page/main-paper/metadata.json`（`source_type = "paper_pdf"`，含 `title`、`paper_metadata.full_markdown_path` / `abstract` / `figure_captions` / `table_captions`）+ 解析出的论文 markdown 与图片 + 论文 entry（upsert 进 `harvest_page/manifest.json`，Phase 5 从 manifest 建 catalog）。
+- `harvest_page/main-paper/metadata.json`（`source_type = "paper_pdf"`，含 `title`、`paper_metadata.full_markdown_path` / `abstract` / `figure_captions` / `table_captions`）；
+- 解析出的论文 markdown 与图片；
+- 论文 entry（upsert 进 `harvest_page/manifest.json`，Phase 5 从 manifest 建 catalog）。
 
 ## 完成判据
 
-`harvest_page/main-paper/metadata.json` 存在、非空、JSON 可解析，`source_type = "paper_pdf"` 且 `paper_metadata` 字段齐全；`harvest_page/manifest.json` 里必须有 slug 为 `main-paper` 的论文 entry（状态脚本校验两者；不通过则回退到本 phase 重跑——旧工作区可能只有 metadata.json 没有 manifest entry，重跑 parse-pdf 会幂等补上）。
+- `harvest_page/main-paper/metadata.json` 存在、非空、JSON 可解析，`source_type = "paper_pdf"` 且 `paper_metadata` 字段齐全；
+- `harvest_page/manifest.json` 里必须有 slug 为 `main-paper` 的论文 entry；
+- 状态脚本校验上面两项；不通过则回退到本 phase 重跑——旧工作区可能只有 metadata.json 没有 manifest entry，重跑 parse-pdf 会幂等补上。
 
 ## 执行后自检
 

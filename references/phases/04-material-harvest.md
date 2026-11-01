@@ -2,15 +2,21 @@
 
 ## 输入
 
-`research-brief.md` 的 **Source URLs** 一节（研究阶段已按可抓取页面类型预筛）+ 用户提供的 URL + `gemini_deep_research_sources.json`。
+- `research-brief.md` 的 **Source URLs** 一节（研究阶段已按可抓取页面类型预筛）；
+- 用户提供的 URL；
+- `gemini_deep_research_sources.json`。
 
 ## 输出
 
-`harvest_page/manifest.json`（v2，`entries` 与 `harvest_batches` 非空）+ `harvest_page/<url-slug>/` 目录；YouTube/Bilibili 条目带 `pending_downloads[]`，`video-download.py --harvest-dir` 会在下载成功后直接更新 manifest。论文 entry 已由 Phase 2 / Phase 3 写入同一份 manifest，后续 harvest 不会覆盖它。
+- `harvest_page/manifest.json`（v2，`entries` 与 `harvest_batches` 非空）；
+- `harvest_page/<url-slug>/` 目录；
+- YouTube/Bilibili 条目带 `pending_downloads[]`，`video-download.py --harvest-dir` 会在下载成功后直接更新 manifest；
+- 论文 entry 已由 Phase 2 / Phase 3 写入同一份 manifest，后续 harvest 不会覆盖它。
 
 ## 完成判据
 
-`harvest_page/manifest.json` 存在、非空、JSON 可解析且 `entries` 与 `harvest_batches` 为非空列表（只有论文 entry 不算完成 web harvest）；`pending_downloads[]` 已逐项顺序处理（失败项保留 `download_required: true`）。
+- `harvest_page/manifest.json` 存在、非空、JSON 可解析且 `entries` 与 `harvest_batches` 为非空列表（只有论文 entry 不算完成 web harvest）。
+- `pending_downloads[]` 已逐项顺序处理（失败项保留 `download_required: true`）。
 
 ## 执行后自检
 
