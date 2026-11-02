@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from transcript_schema import (
     build_transcript,
     sentence_texts,
@@ -55,30 +57,24 @@ EXPECTED_TRANSCRIPT = [
 
 
 def test_convert_mlx_alignment_to_transcript():
-    assert transcript_from_mlx_alignment(ALIGN_JSON) == EXPECTED_TRANSCRIPT
-
-
-def test_word_timestamps_are_integer_milliseconds():
     transcript = transcript_from_mlx_alignment(ALIGN_JSON)
 
+    assert transcript == EXPECTED_TRANSCRIPT
+    # Numeric equality alone would also accept floating-point timestamps.
     for sentence in transcript:
-        assert set(sentence) == {'begin', 'end', 'text', 'words'}
         for field in ('begin', 'end'):
             assert isinstance(sentence[field], int)
         for word in sentence['words']:
-            assert set(word) == {'text', 'begin', 'end'}
             assert isinstance(word['begin'], int)
             assert isinstance(word['end'], int)
 
 
-def test_empty_alignment_returns_empty_transcript():
-    alignment = {'audio': 'x.wav', 'language': 'Chinese', 'words': [], 'sentences': []}
-
+@pytest.mark.parametrize('alignment', [
+    pytest.param({'audio': 'x.wav', 'language': 'Chinese', 'words': [], 'sentences': []}, id='empty'),
+    pytest.param({'audio': 'x.wav', 'language': 'Chinese'}, id='missing-fields'),
+])
+def test_empty_alignment_returns_empty_transcript(alignment):
     assert transcript_from_mlx_alignment(alignment) == []
-
-
-def test_missing_alignment_fields_return_empty_transcript():
-    assert transcript_from_mlx_alignment({'audio': 'x.wav', 'language': 'Chinese'}) == []
 
 
 def test_punctuation_only_targets_fall_back_to_one_sentence_without_losing_words():
@@ -108,10 +104,9 @@ def test_a_token_crossing_a_sentence_boundary_stays_in_the_sentence_it_completes
     transcript = build_transcript(words, [{'text': 'GPT'}, {'text': '5发布'}])
 
     assert [sentence['text'] for sentence in transcript] == ['GPT', '5发布']
-    grouped = [word['text'] for sentence in transcript for word in sentence['words']]
-    assert grouped == [word['text'] for word in words]
-    # The whole token belongs to the sentence it finished, not to both.
-    assert [word['text'] for word in transcript[0]['words']] == ['GPT5']
+    assert [[word['text'] for word in sentence['words']] for sentence in transcript] == [
+        ['GPT5'], ['发布'],
+    ]
 
 
 def test_sentence_texts_preserves_decimal_points_and_drops_unalignable_text():

@@ -1,10 +1,13 @@
 """CLI coverage for SRT/VTT subtitle parsing."""
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
+
+from cli_helpers import parse_stdout
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'subtitle-parse.py'
@@ -22,9 +25,7 @@ def run_parser(tmp_path: Path, name: str, content: str, *args: str) -> dict:
         check=False,
     )
     assert proc.returncode == 0, proc.stderr
-    assert 'Traceback' not in proc.stderr
-    assert len(proc.stdout.splitlines()) == 1
-    return json.loads(proc.stdout)
+    return parse_stdout(proc)
 
 
 def test_srt_outputs_begin_and_end_seconds(tmp_path: Path):
@@ -47,40 +48,20 @@ def test_srt_outputs_begin_and_end_seconds(tmp_path: Path):
     ]
 
 
-def test_vtt_with_hours(tmp_path: Path):
+@pytest.mark.parametrize('timing, end_s, text', [
+    pytest.param('00:00:01.000 --> 01:02:03.500', 3723.5, 'Hourly cue', id='hours'),
+    pytest.param('00:01.000 --> 01:02.500', 62.5, 'Short cue', id='minutes'),
+    pytest.param('00:01.000 --> 00:02.000 align:start position:0%', 2.0, 'Aligned cue', id='cue-settings'),
+])
+def test_vtt_timestamps_exclude_cue_settings(tmp_path: Path, timing, end_s, text):
     result = run_parser(
         tmp_path,
         'captions.vtt',
-        'WEBVTT\n\n00:00:01.000 --> 01:02:03.500\nHourly cue\n',
+        f'WEBVTT\n\n{timing}\n{text}\n',
     )
 
-    assert result['entries'][0]['begin_s'] == 1.0
-    assert result['entries'][0]['end_s'] == 3723.5
-    assert result['entries'][0]['text'] == 'Hourly cue'
-
-
-def test_vtt_without_hours(tmp_path: Path):
-    result = run_parser(
-        tmp_path,
-        'captions.vtt',
-        'WEBVTT\n\n00:01.000 --> 01:02.500\nShort cue\n',
-    )
-
-    assert result['entries'][0]['begin_s'] == 1.0
-    assert result['entries'][0]['end_s'] == 62.5
-    assert result['entries'][0]['text'] == 'Short cue'
-
-
-def test_vtt_cue_settings_are_not_part_of_timestamp(tmp_path: Path):
-    result = run_parser(
-        tmp_path,
-        'captions.vtt',
-        'WEBVTT\n\n00:01.000 --> 00:02.000 align:start position:0%\nAligned cue\n',
-    )
-
-    assert result['entries'][0]['begin_s'] == 1.0
-    assert result['entries'][0]['end_s'] == 2.0
-    assert result['entries'][0]['text'] == 'Aligned cue'
+    entry = result['entries'][0]
+    assert (entry['begin_s'], entry['end_s'], entry['text']) == (1.0, end_s, text)
 
 
 def test_keywords_filter_entries_case_insensitively(tmp_path: Path):

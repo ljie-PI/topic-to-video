@@ -14,8 +14,6 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / 'scripts'
 TESTS_DIR = REPO_ROOT / 'tests'
-EXEMPT = {}
-
 
 def _test_sources() -> list[tuple[Path, str]]:
     return [
@@ -36,18 +34,12 @@ def _is_referenced(script: Path, sources: list[tuple[Path, str]]) -> bool:
     return False
 
 
-def test_exemptions_are_empty():
-    assert EXEMPT == {}
-
-
 @pytest.mark.parametrize(
     'script',
     sorted([*SCRIPTS_DIR.glob('*.py'), *SCRIPTS_DIR.glob('*.sh')]),
     ids=lambda path: path.name,
 )
 def test_every_script_is_referenced_by_a_test(script: Path):
-    if script.name in EXEMPT:
-        pytest.fail(f'exemptions are not permitted: {script.name}: {EXEMPT[script.name]}')
     assert _is_referenced(script, _test_sources()), (
         f'{script.relative_to(REPO_ROOT)} is not referenced by any tests/test_*.py; '
         'add a behavioral test using its public CLI or import seam'

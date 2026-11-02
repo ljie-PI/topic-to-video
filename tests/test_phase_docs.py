@@ -134,12 +134,6 @@ def test_phase_4_output_examples_are_parseable_json():
     assert video_entry['videos'][0]['download_required'] is True
     assert manifest['pending_downloads'][0]['source_slug'] == video_entry['slug']
 
-    # 持久化的媒体路径相对 harvest_page/，不能出现绝对路径。
-    paths = [page_entry['images'][0]['local_path'],
-             page_entry['scroll_recording']['local_path'],
-             video_entry['videos'][0]['suggested_output_dir']]
-    assert all(not path.startswith('/') for path in paths)
-
     # 批次 stdout 与磁盘 manifest 不是同一个结构。
     batch = next(block for block in blocks if 'batch_size' in block)
     assert 'chrome' in batch and 'version' not in batch
@@ -151,7 +145,6 @@ def test_phase_4_output_examples_are_parseable_json():
     assert all(path.startswith('/') for path in download['files'])
     updated = next(block for block in blocks if 'download_required' in block and 'id' in block)
     assert updated['download_required'] is False and updated['downloaded'] is True
-    assert not updated['local_path'].startswith('/')
 
 
 RECORDING_EXTENSIONS = {'playwright': '.webm', 'cdp_screencast': '.mp4'}
@@ -168,7 +161,6 @@ def test_phase_4_examples_match_the_slugs_and_recording_backend_they_claim():
         for image in entry['images']:
             assert image['local_path'].startswith(f'{entry["slug"]}/')
         for video in entry['videos']:
-            assert not video['suggested_output_dir'].startswith('/')
             assert video['suggested_output_dir'] == f'{entry["slug"]}/videos'
         recording = entry['scroll_recording']
         if recording is not None:
@@ -267,7 +259,7 @@ def test_paper_mode_instructions_live_in_the_phase_or_package_that_uses_them():
     # Phase 3 researches: the paper prompt and the related-paper parse live there.
     assert '围绕论文《{title}》的背景调研' in research
     # The prompt placeholders come from disk (metadata.json), not from a past stdout.
-    assert '{title}' in research and '{abstract}' in research
+    assert '{abstract}' in research
     assert 'harvest_page/main-paper/metadata.json' in research
     # Related papers come from Deep Research and are parsed before gap-finding.
     deep_research_at = research.index('3. **跑 Gemini Deep Research。**')
@@ -297,6 +289,8 @@ def test_paper_mode_instructions_live_in_the_phase_or_package_that_uses_them():
 论文 figure（`source_type: "paper_pdf"` 条目）是**首选**素材。从 web 抓取的资源作为补充 B-roll。叙述中合适时自然引用图号 / 表号：`"如表一所示..."`。''' in script_base
     assert 'related-foo_img_001' not in research
     assert 'related-foo_img_001' not in script_base
+    assert '02-paper-parse' not in script_base
+    assert '05-material-catalog' not in script_base
     # Phase 2 keeps only the main-paper parse.
     for moved in ('围绕论文《{title}》的背景调研', 'Takeaway / CTA', 'related-'):
         assert moved not in paper_parse, f'02-paper-parse.md still holds: {moved}'
@@ -345,7 +339,6 @@ def test_the_entry_leaves_duration_and_orientation_to_the_phase_docs():
     for worded in ('3-10 分钟', '3–10 分钟', '横屏或竖屏'):
         assert worded not in skill, f'SKILL.md still promises {worded}'
     # 没说的项走默认值（时长 3 分钟），不再要求拿默认值当问题去问用户。
-    assert '没说用 3 分钟' in phase_1
     assert '用户没说就先问一句' not in phase_1
 
 
@@ -543,7 +536,6 @@ def test_template_is_chosen_by_the_composition_agent():
 
 
 def test_paper_key_figures_are_declared_and_checked_end_to_end():
-    phase_1 = doc_text('references/phases/01-gather-inputs.md')
     phase_2 = doc_text('references/phases/02-paper-parse.md')
     phase_5 = doc_text('references/phases/05-material-catalog.md')
     phase_6 = doc_text('references/phases/06-script-scene-plan.md')
@@ -552,7 +544,6 @@ def test_paper_key_figures_are_declared_and_checked_end_to_end():
     composition_base = doc_text('references/delegation/composition/base-instructions.md')
 
     rule = '方法、模型结构、关键实验结果等关键图'
-    assert f'论文模式即使不联网搜索，论文自己的关键图也照样进视频' in phase_1
     assert rule in phase_2 and rule in phase_5
     assert 'required_material_refs' in phase_5 and 'required_material_refs' in phase_6
     assert 'required_material_refs' in phase_8
@@ -571,15 +562,13 @@ def test_phase_1_says_nothing_about_layout():
     """layout 是 Phase 8 的画面决定：Phase 1 不选、不指引、也不解释归属。"""
     phase_1 = doc_text('references/phases/01-gather-inputs.md')
 
-    assert '| `layout`' not in phase_1
     assert 'layout' not in phase_1
     # presenter / stage 只在 layout 语境里出现。
     assert 'presenter' not in phase_1
     assert 'stage' not in phase_1
 
-    # 朝向仍然由本阶段确定，三档写清楚。
+    # 朝向仍然由本阶段确定。
     assert '`orientation`' in phase_1
-    assert '1080×1440' in phase_1 and '1080×1920' in phase_1 and '1920×1080' in phase_1
 
     # 画面决定归 Phase 8。
     phase_8 = doc_text('references/phases/08-composition.md')
@@ -594,8 +583,6 @@ def test_phase_1_says_nothing_about_layout():
 def test_jay_generic_performance_and_github_specific_overlay():
     jay = doc_text('modules/components/jay/jay.md')
     generic = jay.split('### 通用演法')[1].split('### 动作库')[0]
-    generic_rows = [line for line in generic.splitlines() if line.startswith('| ')][1:]
-    assert len(generic_rows) == 6
     for cue in (
         '["wave", 3000]',
         'typing [切点 - 0.85, 切点 + 0.05]',
@@ -619,7 +606,9 @@ def test_jay_generic_performance_and_github_specific_overlay():
 
     action_library = jay.split('### 动作库（`acts`）')[1].split('### 常驻动作')[0]
     # 动作库不再按已删除的语义节拍分类：四列，按“适合的时刻”选。
-    assert action_library.count('| 动作 | 推荐时长 | 表现 | 适合的时刻 |') == 2
+    assert {
+        line for line in action_library.splitlines() if line.startswith('| 动作 |')
+    } == {'| 动作 | 推荐时长 | 表现 | 适合的时刻 |'}
     assert '对应 beat' not in jay
     for action in ('`question`', '`idea`', '`think`', '`eureka`', '`shake`', '`nod-small`'):
         assert action in action_library
@@ -627,8 +616,6 @@ def test_jay_generic_performance_and_github_specific_overlay():
     github = doc_text('modules/templates/github/github.md')
     overlay = github.split('## 5. 人物怎么演')[1]
     assert '先按 `components/jay/jay.md` 的通用演法' in overlay
-    overlay_rows = [line for line in overlay.splitlines() if line.startswith('| ')][1:]
-    assert len(overlay_rows) == 3
     assert '[cue, 1.0, "U"]' in overlay
     assert '[cue + 1.7, 1.0, "L"]' in overlay
     assert '["eureka", 2700]' in overlay

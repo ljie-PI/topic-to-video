@@ -116,7 +116,12 @@ NO_ASR_ENV = {
 
 
 @pytest.mark.usefixtures('require_ffmpeg')
-def test_both_paths_failing_exits_1_with_attempts_and_keeps_the_mp3(tmp_path: Path):
+@pytest.mark.parametrize('stale_transcript', [False, True], ids=['fresh', 'stale-transcript'])
+def test_both_paths_failing_removes_the_transcript_and_keeps_the_mp3(tmp_path: Path, stale_transcript):
+    transcript = tmp_path / 'tr' / 'transcript.json'
+    if stale_transcript:
+        transcript.parent.mkdir(parents=True)
+        transcript.write_text('[]', encoding='utf-8')
     proc = synthesize(tmp_path, env={'TTS_FAKE_ALIGN_FAIL': '1', **NO_ASR_ENV})
 
     assert proc.returncode == 1
@@ -131,27 +136,8 @@ def test_both_paths_failing_exits_1_with_attempts_and_keeps_the_mp3(tmp_path: Pa
     assert 'TTS_FAKE_ALIGN_FAIL' in direct['error']
     assert asr['method'] == 'asr'
     assert 'no usable ASR backend' in asr['error']
-    assert not (tmp_path / 'tr' / 'transcript.json').exists()
-
-
-@pytest.mark.usefixtures('require_ffmpeg')
-def test_stale_transcript_does_not_survive_a_failed_run(tmp_path: Path):
-    stale = tmp_path / 'tr' / 'transcript.json'
-    stale.parent.mkdir(parents=True)
-    stale.write_text(
-        json.dumps([{'begin': 0, 'end': 999, 'text': '旧的。', 'words': [
-            {'text': '旧', 'begin': 0, 'end': 500},
-            {'text': '的', 'begin': 500, 'end': 999},
-        ]}], ensure_ascii=False),
-        encoding='utf-8',
-    )
-
-    proc = synthesize(tmp_path, env={'TTS_FAKE_ALIGN_FAIL': '1', **NO_ASR_ENV})
-
-    assert proc.returncode == 1
-    result = parse_stdout(proc)
     assert 'transcript_path' not in result
-    assert not stale.exists()
+    assert not transcript.exists()
 
 
 @pytest.mark.usefixtures('require_ffmpeg')
@@ -289,7 +275,12 @@ def test_help_marks_fake_as_test_only():
 
 
 @pytest.mark.usefixtures('require_ffmpeg')
-def test_always_backend_emits_at_the_default_path_without_any_flags(tmp_path: Path):
+@pytest.mark.parametrize('env, method', [
+    pytest.param({}, 'direct_align', id='direct-align'),
+    pytest.param({'TTS_FAKE_ALIGN_FAIL': '1', 'ASR_BACKEND': 'fake', 'ASR_FAKE_TEXT': NARRATION},
+                 'asr', id='asr-fallback'),
+])
+def test_always_backend_emits_at_the_default_path_without_any_flags(tmp_path: Path, env, method):
     # mlx's guarantee — "a run produces a transcript, flag or not" — rests on
     # wants_transcript() returning True for always-emits backends; this pins it.
     narration = tmp_path / 'narration.txt'
@@ -299,32 +290,15 @@ def test_always_backend_emits_at_the_default_path_without_any_flags(tmp_path: Pa
         '--backend', 'fake',
         '--input-file', str(narration),
         '--output-dir', str(tmp_path / 'out'),
+        env=env,
     )
 
     assert proc.returncode == 0, proc.stderr
     result = parse_stdout(proc)
-    assert result['transcript_method'] == 'direct_align'
+    assert result['transcript_method'] == method
     transcript = tmp_path / 'out' / 'transcript.json'
     assert result['transcript_path'] == str(transcript.resolve())
     assert transcript.is_file()
-
-
-@pytest.mark.usefixtures('require_ffmpeg')
-def test_asr_fallback_hits_the_default_path_without_flags(tmp_path: Path):
-    narration = tmp_path / 'narration.txt'
-    narration.write_text(NARRATION, encoding='utf-8')
-
-    proc = run_voice_clone(
-        '--backend', 'fake',
-        '--input-file', str(narration),
-        '--output-dir', str(tmp_path / 'out'),
-        env={'TTS_FAKE_ALIGN_FAIL': '1', 'ASR_BACKEND': 'fake', 'ASR_FAKE_TEXT': NARRATION},
-    )
-
-    assert proc.returncode == 0, proc.stderr
-    result = parse_stdout(proc)
-    assert result['transcript_method'] == 'asr'
-    assert result['transcript_path'] == str((tmp_path / 'out' / 'transcript.json').resolve())
 
 
 # --- ASR subprocess stdout parsing and success guards, through the CLI -------
@@ -411,42 +385,29 @@ def test_asr_cli_accepts_stray_stdout_before_a_successful_result(tmp_path: Path)
 
 
 @pytest.mark.usefixtures('require_ffmpeg')
-def test_asr_cli_success_without_sentences_is_a_public_failure(tmp_path: Path):
+@pytest.mark.parametrize('failure', ['no-sentences', 'missing-file'])
+def test_asr_cli_success_without_a_usable_transcript_is_a_public_failure(tmp_path: Path, failure):
     root, env = fake_asr_process_env(tmp_path)
-    (root / 'qwen_asr' / '__init__.py').write_text(
-        'from types import SimpleNamespace\n'
-        'class Qwen3ASRModel:\n'
-        '    @staticmethod\n'
-        '    def from_pretrained(*args, **kwargs):\n'
-        '        return Qwen3ASRModel()\n'
-        '    def transcribe(self, audio, language, return_time_stamps):\n'
-        "        return [SimpleNamespace(text='', time_stamps=None)]\n",
-        encoding='utf-8',
-    )
-
-    proc = synthesize(tmp_path, env={**env, 'ASR_BACKEND': 'qwen3'})
-
-    assert proc.returncode == 1
-    result = parse_stdout(proc)
-    assert result['success'] is False
-    assert 'reported success but wrote no sentences' in asr_failure(result)['error']
-    assert not (tmp_path / 'tr' / 'transcript.json').exists()
-    assert (tmp_path / 'out' / 'narration.mp3').is_file()
-
-
-@pytest.mark.usefixtures('require_ffmpeg')
-def test_asr_cli_success_without_a_transcript_file_is_a_public_failure(tmp_path: Path):
-    _root, env = fake_asr_process_env(tmp_path)
-
-    proc = synthesize(
-        tmp_path,
-        env={
+    if failure == 'no-sentences':
+        (root / 'qwen_asr' / '__init__.py').write_text(
+            'from types import SimpleNamespace\n'
+            'class Qwen3ASRModel:\n'
+            '    @staticmethod\n'
+            '    def from_pretrained(*args, **kwargs):\n'
+            '        return Qwen3ASRModel()\n'
+            '    def transcribe(self, audio, language, return_time_stamps):\n'
+            "        return [SimpleNamespace(text='', time_stamps=None)]\n",
+            encoding='utf-8',
+        )
+        env = {**env, 'ASR_BACKEND': 'qwen3'}
+    else:
+        env = {
             **env,
             'ASR_BACKEND': 'fake',
             'ASR_FAKE_TEXT': NARRATION,
             'FAKE_TRANSCRIBE_DELETE_OUTPUT': '1',
-        },
-    )
+        }
+    proc = synthesize(tmp_path, env=env)
 
     assert proc.returncode == 1
     result = parse_stdout(proc)

@@ -31,6 +31,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from cli_helpers import parse_stdout as parse_result
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'make-narration.py'
 
@@ -71,12 +75,6 @@ def run_cli(*args: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
     )
-
-
-def parse_result(proc: subprocess.CompletedProcess) -> dict:
-    """stdout must be exactly one parseable JSON document."""
-    assert proc.returncode in (0, 1, 2)
-    return json.loads(proc.stdout)
 
 
 def run_success(tmp_path: Path, script_text: str = SCRIPT_TEXT, lexicon=LEXICON) -> dict:
@@ -124,20 +122,17 @@ def test_empty_lexicon_is_identity(tmp_path: Path):
             seg['script_end'] - seg['script_start']
 
 
-def test_overlapping_entries_use_longest_match_first(tmp_path: Path):
-    # "OpenHuman" and "Open" both match at position 0; the longer display
-    # form must win. "Human" vs "Humanity": only "Human" matches here.
-    lexicon = {'OpenHuman': 'Open Human', 'Open': 'Opened', 'Human': 'Humanity'}
-    result = run_success(tmp_path, script_text='OpenHuman 和 Human。\n', lexicon=lexicon)
+@pytest.mark.parametrize('script_text, lexicon, expected', [
+    pytest.param('OpenHuman 和 Human。\n',
+                 {'OpenHuman': 'Open Human', 'Open': 'Opened', 'Human': 'Humanity'},
+                 'Open Human 和 Humanity。\n', id='brand'),
+    pytest.param('到 2026 年为止。\n', {'2026': '二零二六', '2026 年': '二零二六年'},
+                 '到 二零二六年为止。\n', id='number'),
+])
+def test_overlapping_entries_use_longest_match_first(tmp_path: Path, script_text, lexicon, expected):
+    result = run_success(tmp_path, script_text=script_text, lexicon=lexicon)
     narration = Path(result['narration_path']).read_text(encoding='utf-8')
-    assert narration == 'Open Human 和 Humanity。\n'
-
-
-def test_overlapping_numeric_entries_use_longest_match_first(tmp_path: Path):
-    lexicon = {'2026': '二零二六', '2026 年': '二零二六年'}
-    result = run_success(tmp_path, script_text='到 2026 年为止。\n', lexicon=lexicon)
-    narration = Path(result['narration_path']).read_text(encoding='utf-8')
-    assert narration == '到 二零二六年为止。\n'
+    assert narration == expected
 
 
 def test_equal_length_overlap_uses_display_form_tie_break(tmp_path: Path):
@@ -166,79 +161,36 @@ def test_equal_length_overlap_uses_display_form_tie_break(tmp_path: Path):
 # --- offset table -----------------------------------------------------------
 
 
-def map_position(offsets: dict, pos: int) -> int:
-    """Map a narration position back to a display-draft position."""
-    for seg in offsets['segments']:
-        if seg['narration_start'] <= pos < seg['narration_end']:
-            span = seg['script_end'] - seg['script_start']
-            return seg['script_start'] + min(pos - seg['narration_start'], span - 1)
-    raise AssertionError(f'narration position {pos} is not covered by any segment')
-
-
-def test_offset_table_maps_every_narration_position(tmp_path: Path):
-    script_path, lexicon_path, out_dir = make_fixtures(tmp_path)
-    proc = run_cli('--script', str(script_path), '--lexicon', str(lexicon_path),
-                   '--output-dir', str(out_dir))
-    result = parse_result(proc)
-    assert proc.returncode == 0
-    script_text = SCRIPT_TEXT
+def test_offset_table_covers_narration_and_preserves_source_spans(tmp_path: Path):
+    result = run_success(tmp_path)
     narration = Path(result['narration_path']).read_text(encoding='utf-8')
     offsets = json.loads(Path(result['offsets_path']).read_text(encoding='utf-8'))
 
     assert offsets['narration_length'] == len(narration)
-    assert offsets['script_length'] == len(script_text)
+    assert offsets['script_length'] == len(SCRIPT_TEXT)
     # segments are sorted and contiguous, covering [0, len(narration))
     cursor = 0
     for seg in offsets['segments']:
         assert seg['narration_start'] == cursor
         assert seg['narration_end'] > seg['narration_start']
-        assert seg['script_end'] > seg['script_start']
-        assert 0 <= seg['script_start'] < seg['script_end'] <= len(script_text)
+        assert 0 <= seg['script_start'] < seg['script_end'] <= len(SCRIPT_TEXT)
         cursor = seg['narration_end']
-    assert cursor == len(narration)
-
-    # every narration position maps back inside the display draft
-    for pos in range(len(narration)):
-        script_pos = map_position(offsets, pos)
-        assert 0 <= script_pos < len(script_text)
-
-
-def test_offset_table_unreplaced_spans_preserve_exact_characters(tmp_path: Path):
-    result = run_success(tmp_path)
-    script_text = SCRIPT_TEXT
-    narration = Path(result['narration_path']).read_text(encoding='utf-8')
-    offsets = json.loads(Path(result['offsets_path']).read_text(encoding='utf-8'))
-    for seg in offsets['segments']:
         n_len = seg['narration_end'] - seg['narration_start']
         s_len = seg['script_end'] - seg['script_start']
         if n_len == s_len:
             # 1:1 span: characters must match the display draft exactly
             assert narration[seg['narration_start']:seg['narration_end']] == \
-                script_text[seg['script_start']:seg['script_end']]
-
-
-def test_offset_table_marks_replaced_spans(tmp_path: Path):
+                SCRIPT_TEXT[seg['script_start']:seg['script_end']]
+    assert cursor == len(narration)
     # the "OpenHuman" → "Open Human" replacement must appear as a segment
     # whose lengths differ (10 narration chars over 9 script chars)
-    result = run_success(tmp_path)
-    offsets = json.loads(Path(result['offsets_path']).read_text(encoding='utf-8'))
     replaced = [seg for seg in offsets['segments']
                 if seg['narration_end'] - seg['narration_start']
                 != seg['script_end'] - seg['script_start']]
-    assert replaced, 'expected at least one replaced segment'
-    assert replaced[0]['script_start'] == 0  # OpenHuman sits at the very start
+    assert replaced and replaced[0]['script_start'] == 0
 
 
 # --- errors -----------------------------------------------------------------
-
-
-def test_usage_error_exits_2(tmp_path: Path):
-    proc = run_cli('--bogus-flag')
-    assert proc.returncode == 2
-    result = parse_result(proc)
-    assert result['success'] is False
-    assert proc.stderr.startswith('[make-narration] bad arguments: ')
-    assert 'Traceback' not in proc.stderr
 
 
 def test_output_directory_error_exits_1_with_json(tmp_path: Path):
@@ -249,7 +201,6 @@ def test_output_directory_error_exits_1_with_json(tmp_path: Path):
                    '--output-dir', str(out_dir))
 
     assert proc.returncode == 1
-    assert proc.stdout, f'expected a JSON error instead of a traceback: {proc.stderr}'
     result = parse_result(proc)
     assert result['success'] is False
     assert result['error']

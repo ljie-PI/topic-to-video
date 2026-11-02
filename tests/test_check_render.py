@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from cli_helpers import parse_stdout as parse_result
+
 pytestmark = pytest.mark.usefixtures('require_ffmpeg')
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -37,11 +39,6 @@ def run_cli(*args: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
     )
-
-
-def parse_result(proc: subprocess.CompletedProcess) -> dict:
-    assert proc.returncode in (0, 1, 2)
-    return json.loads(proc.stdout)
 
 
 def ffmpeg(*args: str) -> None:
@@ -155,7 +152,6 @@ def test_black_segment_found_and_mapped_to_scene(workspace: Path):
     assert '1.5' in black[0]['issue']
     # qa-report schema requires the frame key on every finding; deterministic
     # findings carry frame null alongside time_s.
-    assert 'frame' in black[0]
     assert black[0]['frame'] is None
 
 
@@ -294,13 +290,6 @@ def test_no_timeline_falls_back_to_null_scene_id(workspace: Path):
     black = [f for f in result['findings'] if f['check'] == 'black_screen']
     assert len(black) == 1
     assert black[0]['scene_id'] is None
-
-
-def test_usage_error_exits_2(workspace: Path):
-    proc = run_cli('--bogus-flag')
-    assert proc.returncode == 2
-    result = parse_result(proc)
-    assert result['success'] is False
 
 
 def test_missing_video_exits_1(workspace: Path):

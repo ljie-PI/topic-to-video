@@ -104,27 +104,16 @@ def test_volume_outside_unit_interval_is_a_usage_error(tmp_path: Path, media_fil
     assert parse_stdout(proc)['success'] is False
 
 
-def test_missing_video_is_a_runtime_error(tmp_path: Path, media_files: tuple[Path, Path]):
-    _, bgm = media_files
+@pytest.mark.parametrize('missing', ['video', 'bgm'])
+def test_missing_media_is_a_runtime_error(tmp_path: Path, media_files: tuple[Path, Path], missing):
+    video, bgm = media_files
     proc = run_mix(
-        '--video', str(tmp_path / 'missing.mp4'), '--bgm', str(bgm),
+        '--video', str(tmp_path / 'missing.mp4' if missing == 'video' else video),
+        '--bgm', str(tmp_path / 'missing.mp3' if missing == 'bgm' else bgm),
         '--output', str(tmp_path / 'out.mp4'),
     )
 
     assert proc.returncode == 1
     result = parse_stdout(proc)
     assert result['success'] is False
-    assert '--video not found' in result['error']
-
-
-def test_missing_bgm_is_a_runtime_error(tmp_path: Path, media_files: tuple[Path, Path]):
-    video, _ = media_files
-    proc = run_mix(
-        '--video', str(video), '--bgm', str(tmp_path / 'missing.mp3'),
-        '--output', str(tmp_path / 'out.mp4'),
-    )
-
-    assert proc.returncode == 1
-    result = parse_stdout(proc)
-    assert result['success'] is False
-    assert '--bgm not found' in result['error']
+    assert f'--{missing} not found' in result['error']

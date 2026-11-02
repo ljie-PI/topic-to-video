@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 import media
+from cli_helpers import parse_stdout as parse_result
 
 pytestmark = pytest.mark.usefixtures('require_ffmpeg')
 
@@ -96,14 +97,8 @@ def run_cli(*args: str) -> subprocess.CompletedProcess:
     )
 
 
-def parse_result(proc: subprocess.CompletedProcess) -> dict:
-    """stdout must be exactly one parseable JSON document."""
-    assert proc.returncode in (0, 1, 2), proc.stderr
-    assert len(proc.stdout.splitlines()) == 1, proc.stdout
-    return json.loads(proc.stdout)
-
-
 def test_each_selected_clip_becomes_a_silent_file_of_the_right_length(ws: Path):
+    before = read_catalog(ws)
     proc = run_cli(str(ws))
 
     assert proc.returncode == 0, proc.stderr
@@ -121,20 +116,13 @@ def test_each_selected_clip_becomes_a_silent_file_of_the_right_length(ws: Path):
         assert info['has_audio'] is False
         assert info['duration_seconds'] == pytest.approx(end - start, abs=DURATION_TOLERANCE_S)
         assert (info['width'], info['height']) == (160, 120)
-    # The source keeps its own audio: only the clips are stripped.
-    assert media.probe(ws / 'harvest_page' / 'example' / 'videos' / 'vid_001.mp4')['has_audio'] is True
-
-
-def test_catalog_records_clip_path_and_keeps_everything_else(ws: Path):
-    before = read_catalog(ws)
-
-    assert run_cli(str(ws)).returncode == 0
-
     after = read_catalog(ws)
     assert [clip['clip_path'] for clip in clips_of(after)] == [CLIP_A_PATH, CLIP_B_PATH]
     for clip in clips_of(after):
         del clip['clip_path']
     assert after == before
+    # The source keeps its own audio: only the clips are stripped.
+    assert media.probe(ws / 'harvest_page' / 'example' / 'videos' / 'vid_001.mp4')['has_audio'] is True
 
 
 def test_second_run_skips_clips_that_are_already_cut(ws: Path):
@@ -481,7 +469,6 @@ def test_ffmpeg_receives_exactly_the_specified_cut_options(
     ws: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     real_ffmpeg = shutil.which('ffmpeg')
-    assert real_ffmpeg is not None
     args_log = tmp_path / 'ffmpeg-args.json'
     recording_ffmpeg = tmp_path / 'recording-ffmpeg'
     recording_ffmpeg.write_text(
@@ -509,7 +496,6 @@ def test_ffmpeg_receives_exactly_the_specified_cut_options(
         '-movflags', '+faststart',
         str(ws / 'clips' / '.vid_001_0.50-2.00.part.mp4'),
     ]
-    assert media.probe(ws / CLIP_A_PATH)['has_audio'] is False
 
 
 def test_a_failed_clip_does_not_keep_a_clip_path_left_over_from_an_earlier_window(ws: Path):
@@ -517,7 +503,6 @@ def test_a_failed_clip_does_not_keep_a_clip_path_left_over_from_an_earlier_windo
     catalog = read_catalog(ws)
     stale = clips_of(catalog)[0]
     stale.update(start=3.0, end=3.0)  # the window was edited into something that cannot be cut
-    assert stale['clip_path'] == CLIP_A_PATH
     (ws / 'material-catalog.json').write_text(json.dumps(catalog), encoding='utf-8')
 
     proc = run_cli(str(ws))

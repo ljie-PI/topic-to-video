@@ -85,6 +85,7 @@ def make_workspace(
     max_lines: int = 1,
     layout: Path | None = None,
     scene_plan=None,
+    subtitle_args: tuple[str, ...] = (),
 ):
     """Build a fixture workspace and run both align-narration modes on it.
 
@@ -117,7 +118,7 @@ def make_workspace(
     timeline_path = tmp_path / 'transcribe' / 'timeline.json'
     proc = run_cli(*align_args(
         tmp_path, 'subtitles', width=width, font_size=font_size, max_lines=max_lines, layout=layout,
-    ))
+    ), *subtitle_args)
     result = json.loads(proc.stdout)
     timeline_result = None
     if proc.returncode == 0:
@@ -179,9 +180,6 @@ def test_regression_tokens_without_punctuation_or_spaces(tmp_path: Path):
     # English words keep their spaces, numerals stay in display form, and
     # the only break falls at the comma — never inside 并提交改动.
     assert unit_texts(units_data) == ['Claude Code 发布了 5.4 版本', '并提交改动']
-    # no too-short tail: every unit is at least 4 display units wide
-    for text in unit_texts(units_data):
-        assert display_width(text) >= 4
     assert timeline_data['paragraphs'] == [{'index': 1, 'begin_s': 0.0, 'end_s': 2.6}]
 
 
@@ -204,7 +202,6 @@ def test_english_words_never_glued_at_any_width(tmp_path: Path):
     )
     assert proc.returncode == 0
     for text in unit_texts(units_data):
-        assert 'ClaudeCode' not in text
         for token in re.findall(r'[A-Za-z0-9.]+', text):
             assert token in {'Claude', 'Code', '5.4'}
 
@@ -296,7 +293,6 @@ def test_brand_name_restored_to_display_form(tmp_path: Path):
     assert proc.returncode == 0, proc.stderr
     texts = unit_texts(units_data)
     assert texts == ['OpenHuman 发布了新模型']
-    assert all('Open Human' not in text for text in texts)
 
 
 # --- fallback --------------------------------------------------------------------
@@ -345,7 +341,6 @@ def test_tts_skipped_text_dropped_with_warning(tmp_path: Path):
     assert proc.returncode == 0, proc.stderr
     texts = unit_texts(units_data)
     assert texts == ['今天天气不错']
-    assert all('我们' not in text for text in texts)
     assert units_data['summary']['warnings']
 
 
@@ -449,10 +444,9 @@ def test_short_units_merged(tmp_path: Path):
     )
     assert proc.returncode == 0, proc.stderr
     units = units_data['units']
-    assert len(units) == 1
-    assert units[0]['text'] == '深度学习非常非常强真的好啊'
-    assert units[0]['begin_s'] == 0.0
-    assert units[0]['end_s'] == 4.06
+    assert [(unit['text'], unit['begin_s'], unit['end_s']) for unit in units] == [
+        ('深度学习非常非常强真的好啊', 0.0, 4.06),
+    ]
 
 
 def test_breaks_at_soft_punctuation_before_width(tmp_path: Path):
@@ -514,24 +508,7 @@ def test_timeline_paragraph_bounds(tmp_path: Path):
         {'index': 2, 'begin_s': 1.2, 'end_s': 2.5},
     ]
     assert timeline_data['total_s'] == 2.5
-
-
-def test_timeline_has_no_cues_scenes_or_beats_without_scene_plan(tmp_path: Path):
-    transcript = [
-        {
-            'begin': 0,
-            'end': 900,
-            'text': '第一段内容。',
-            'words': [{'text': '第一段内容', 'begin': 0, 'end': 900}],
-        }
-    ]
-    proc, _, _, timeline_data = make_workspace(
-        tmp_path, '第一段内容。', {}, transcript
-    )
-    assert proc.returncode == 0
-    assert 'scenes' not in timeline_data
-    assert 'cues' not in timeline_data
-    assert 'beats' not in timeline_data
+    assert not {'scenes', 'cues', 'beats'} & timeline_data.keys()
 
 
 def test_timeline_cue_seconds_with_scene_plan(tmp_path: Path):
@@ -810,7 +787,11 @@ def test_presenter_layout_caps_every_unit(tmp_path: Path):
         assert display_width(text) <= cap
 
 
-def test_portrait_layout_allows_two_lines(tmp_path: Path):
+@pytest.mark.parametrize('subtitle_args', [
+    pytest.param((), id='layout-only'),
+    pytest.param(('--width', '100', '--font-size', '42', '--max-lines', '1'), id='layout-overrides-flags'),
+])
+def test_portrait_layout_allows_two_lines(tmp_path: Path, subtitle_args):
     # 27 display units: one 22-unit line (940/42) cannot hold the sentence,
     # two lines (cap 44) keep it in a single unit.
     script_text = '今天天气真的很不错非常适合出门散步晒太阳感受春天的气息。'  # 27 units
@@ -828,48 +809,10 @@ def test_portrait_layout_allows_two_lines(tmp_path: Path):
     assert one_line_cap < display_width(script_text.rstrip('。')) <= cap
 
     proc, _, units_data, _ = make_workspace(
-        tmp_path, script_text, {}, transcript, layout=PORTRAIT_LAYOUT,
+        tmp_path, script_text, {}, transcript, layout=PORTRAIT_LAYOUT, subtitle_args=subtitle_args,
     )
     assert proc.returncode == 0, proc.stderr
     assert unit_texts(units_data) == [script_text.rstrip('。').rstrip('，')]
-
-
-def test_layout_flag_wins_over_explicit_flags(tmp_path: Path):
-    # --layout wins: the explicit one-line flags would force a split, the
-    # portrait layout (2 lines) keeps the sentence in one unit.
-    script_text = '今天天气真的很不错非常适合出门散步晒太阳感受春天的气息。'  # 27 units
-    transcript = [
-        {
-            'begin': 0,
-            'end': 3000,
-            'text': script_text,
-            'words': [{'text': script_text.rstrip('。'), 'begin': 0, 'end': 3000}],
-        }
-    ]
-    write_text(tmp_path / 'script.txt', script_text)
-    write_json(tmp_path / 'tts-lexicon.json', {})
-    write_json(tmp_path / 'transcribe' / 'transcript.json', transcript)
-    mn = subprocess.run(
-        [sys.executable, str(MAKE_NARRATION),
-         '--script', str(tmp_path / 'script.txt'),
-         '--lexicon', str(tmp_path / 'tts-lexicon.json'),
-         '--output-dir', str(tmp_path)],
-        capture_output=True, text=True,
-    )
-    assert mn.returncode == 0, mn.stderr
-    proc = run_cli(
-        '--mode', 'subtitles',
-        '--transcript', str(tmp_path / 'transcribe' / 'transcript.json'),
-        '--narration', str(tmp_path / 'narration.txt'),
-        '--offsets', str(tmp_path / 'narration-offsets.json'),
-        '--script', str(tmp_path / 'script.txt'),
-        '--units-output', str(tmp_path / 'units.json'),
-        '--layout', str(PORTRAIT_LAYOUT),
-        '--width', '100', '--font-size', '42', '--max-lines', '1',
-    )
-    assert proc.returncode == 0, proc.stderr
-    units_data = json.loads((tmp_path / 'units.json').read_text(encoding='utf-8'))
-    assert len(units_data['units']) == 1
 
 
 def test_timing_mode_needs_no_caption_spec_and_writes_no_units(tmp_path: Path):

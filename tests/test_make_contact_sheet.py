@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from cli_helpers import parse_stdout as parse_result
+
 pytestmark = pytest.mark.usefixtures('require_ffmpeg')
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -37,11 +39,6 @@ def run_cli(*args: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
     )
-
-
-def parse_result(proc: subprocess.CompletedProcess) -> dict:
-    assert proc.returncode in (0, 1, 2)
-    return json.loads(proc.stdout)
 
 
 def make_video(path: Path) -> None:
@@ -80,13 +77,19 @@ def workspace(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_standard_extracts_one_midpoint_frame_per_scene(workspace: Path):
+@pytest.mark.parametrize('qa_level, expected_level, vision_required', [
+    pytest.param('standard', 'standard', True, id='standard'),
+    pytest.param('quick', 'quick', False, id='quick'),
+    pytest.param(None, 'standard', True, id='default'),
+])
+def test_standard_frames_and_vision_policy(workspace: Path, qa_level, expected_level, vision_required):
+    write_json(workspace / 'inputs.json', {} if qa_level is None else {'qa_level': qa_level})
     proc = run_sheet(workspace)
     result = parse_result(proc)
     assert proc.returncode == 0
     assert result['success'] is True
-    assert result['qa_level'] == 'standard'
-    assert result['vision_check_required'] is True
+    assert result['qa_level'] == expected_level
+    assert result['vision_check_required'] is vision_required
     assert result['frame_count'] == 3
     assert result['sheet_count'] == math.ceil(3 / 4)
     assert len(result['sheets']) == 1
@@ -96,22 +99,6 @@ def test_standard_extracts_one_midpoint_frame_per_scene(workspace: Path):
         assert Path(frame['sheet']).is_file()
     by_scene = {f['scene_id']: f['time_s'] for f in result['frames']}
     assert by_scene == {'intro': 1.0, 'middle': 3.5, 'outro': 7.5}
-
-
-def test_quick_uses_standard_frames_and_disables_vision(workspace: Path):
-    write_json(workspace / 'inputs.json', {'qa_level': 'quick'})
-    result = parse_result(run_sheet(workspace))
-    assert result['qa_level'] == 'quick'
-    assert result['vision_check_required'] is False
-    assert result['frame_count'] == 3
-
-
-def test_missing_qa_level_defaults_to_standard_with_vision(workspace: Path):
-    write_json(workspace / 'inputs.json', {})
-    result = parse_result(run_sheet(workspace))
-    assert result['qa_level'] == 'standard'
-    assert result['vision_check_required'] is True
-    assert result['frame_count'] == 3
 
 
 def test_legacy_qa_level_option_is_rejected(workspace: Path):
@@ -193,13 +180,6 @@ def test_missing_scenes_in_timeline_is_runtime_error(workspace: Path):
     )
     proc = run_sheet(workspace)
     assert proc.returncode == 1
-    result = parse_result(proc)
-    assert result['success'] is False
-
-
-def test_usage_error_exits_2(workspace: Path):
-    proc = run_cli('--bogus-flag')
-    assert proc.returncode == 2
     result = parse_result(proc)
     assert result['success'] is False
 

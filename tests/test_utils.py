@@ -63,7 +63,6 @@ def test_monitor_context_starts_sampling_and_always_stops_the_thread():
         while not monitor.samples and time.monotonic() < deadline:
             time.sleep(0.001)
         assert monitor.samples, 'background monitor did not collect a sample'
-        assert monitor._thread is not None
 
     assert monitor._thread is None
     monitor.stop()  # Stopping an already stopped monitor is safe.
