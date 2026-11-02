@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from cli_helpers import parse_stdout as assert_single_json_stdout
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / 'scripts'
 MAIN_GUARD = re.compile(r"if __name__ == ['\"]__main__['\"]")
@@ -36,12 +38,6 @@ def run_script(script: Path, *args: str, cwd: Path) -> subprocess.CompletedProce
         timeout=30,
         check=False,
     )
-
-
-def assert_single_json_stdout(proc: subprocess.CompletedProcess[str]) -> dict:
-    lines = proc.stdout.splitlines()
-    assert len(lines) == 1, f'expected one stdout line, got: {proc.stdout!r}'
-    return json.loads(lines[0])
 
 
 @pytest.mark.parametrize('script', ENTRYPOINTS, ids=lambda path: path.name)

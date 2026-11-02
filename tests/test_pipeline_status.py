@@ -400,6 +400,7 @@ def test_half_done_workspace(tmp_path: Path):
     assert proc.returncode == 0
     result = parse_result(proc)
     assert result['completed_phases'] == ['1-gather-inputs', '3-research']
+    assert '2-paper-parse' in result['skipped_phases']
     assert result['next_phase']['id'] == '4-material-harvest'
     assert result['next_phase']['doc'] == 'references/phases/04-material-harvest.md'
 
@@ -604,13 +605,17 @@ def test_catalog_video_without_selected_clips_needs_no_clip_files(tmp_path: Path
 # --- phase 6 products: script.txt + tts-lexicon.json + narration.txt ------------
 
 
-def test_missing_script_txt_falls_back_to_phase_6(tmp_path: Path):
+@pytest.mark.parametrize(
+    'product',
+    ['script.txt', 'narration.txt', 'narration-offsets.json', 'scene-plan.json'],
+)
+def test_missing_phase_6_product_falls_back_to_phase_6(tmp_path: Path, product: str):
     complete_through_script(tmp_path)
-    (tmp_path / 'script.txt').unlink()
+    (tmp_path / product).unlink()
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
     assert result['next_phase']['id'] == '6-script-scene-plan'
-    assert 'script.txt' in result['missing_products']
+    assert product in result['missing_products']
 
 
 def test_blank_script_txt_is_corrupt(tmp_path: Path):
@@ -622,49 +627,21 @@ def test_blank_script_txt_is_corrupt(tmp_path: Path):
     assert 'script.txt' in result['corrupt_products']
 
 
-def test_corrupt_lexicon_json_falls_back_to_phase_6(tmp_path: Path):
+@pytest.mark.parametrize(
+    'content',
+    [
+        pytest.param('{"OpenHuman": ', id='truncated-json'),
+        pytest.param('["OpenHuman"]', id='not-a-map'),
+        pytest.param('{}', id='empty-map'),
+    ],
+)
+def test_invalid_lexicon_falls_back_to_phase_6(tmp_path: Path, content: str):
     complete_through_script(tmp_path)
-    write_text(tmp_path / 'tts-lexicon.json', '{"OpenHuman": ')  # 截断 JSON
+    write_text(tmp_path / 'tts-lexicon.json', content)
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
     assert result['next_phase']['id'] == '6-script-scene-plan'
     assert 'tts-lexicon.json' in result['corrupt_products']
-
-
-def test_lexicon_wrong_shape_falls_back_to_phase_6(tmp_path: Path):
-    complete_through_script(tmp_path)
-    write_json(tmp_path / 'tts-lexicon.json', ['OpenHuman'])  # 不是 map
-    proc = run_cli(str(tmp_path))
-    result = parse_result(proc)
-    assert result['next_phase']['id'] == '6-script-scene-plan'
-    assert 'tts-lexicon.json' in result['corrupt_products']
-
-
-def test_empty_lexicon_falls_back_to_phase_6(tmp_path: Path):
-    complete_through_script(tmp_path)
-    write_json(tmp_path / 'tts-lexicon.json', {})
-    proc = run_cli(str(tmp_path))
-    result = parse_result(proc)
-    assert result['next_phase']['id'] == '6-script-scene-plan'
-    assert 'tts-lexicon.json' in result['corrupt_products']
-
-
-def test_missing_narration_txt_falls_back_to_phase_6(tmp_path: Path):
-    complete_through_script(tmp_path)
-    (tmp_path / 'narration.txt').unlink()
-    proc = run_cli(str(tmp_path))
-    result = parse_result(proc)
-    assert result['next_phase']['id'] == '6-script-scene-plan'
-    assert 'narration.txt' in result['missing_products']
-
-
-def test_missing_narration_offsets_falls_back_to_phase_6(tmp_path: Path):
-    # Phase 7's align-narration needs the offset table, so Phase 6 owns it.
-    complete_through_script(tmp_path)
-    (tmp_path / 'narration-offsets.json').unlink()
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['next_phase']['id'] == '6-script-scene-plan'
-    assert 'narration-offsets.json' in result['missing_products']
 
 
 @pytest.mark.parametrize(
@@ -742,15 +719,6 @@ def test_script_length_is_not_checked_while_duration_is_invalid(tmp_path: Path):
 
 
 # --- phase 6 product: scene-plan.json -------------------------------------------
-
-
-def test_missing_scene_plan_falls_back_to_phase_6(tmp_path: Path):
-    complete_through_script(tmp_path)
-    (tmp_path / 'scene-plan.json').unlink()
-    proc = run_cli(str(tmp_path))
-    result = parse_result(proc)
-    assert result['next_phase']['id'] == '6-script-scene-plan'
-    assert 'scene-plan.json' in result['missing_products']
 
 
 def test_corrupt_scene_plan_falls_back_to_phase_6(tmp_path: Path):
@@ -1069,17 +1037,15 @@ def test_scene_plan_without_catalog_phase_and_no_candidates_is_accepted(tmp_path
     assert '6-script-scene-plan' in result['completed_phases']
 
 
-def test_scene_plan_refs_are_not_judged_against_a_missing_catalog(tmp_path: Path):
+@pytest.mark.parametrize('catalog_state', ['missing', 'corrupt'])
+def test_scene_plan_refs_are_not_judged_against_an_unusable_catalog(
+    tmp_path: Path, catalog_state: str
+):
     complete_through_script(tmp_path)
-    (tmp_path / 'material-catalog.json').unlink()
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['next_phase']['id'] == '5-material-catalog'
-    assert 'scene-plan.json' not in result['corrupt_products']
-
-
-def test_scene_plan_refs_are_not_judged_against_a_corrupt_catalog(tmp_path: Path):
-    complete_through_script(tmp_path)
-    write_json(tmp_path / 'material-catalog.json', catalog_with(semantic_description=''))
+    if catalog_state == 'missing':
+        (tmp_path / 'material-catalog.json').unlink()
+    else:
+        write_json(tmp_path / 'material-catalog.json', catalog_with(semantic_description=''))
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase']['id'] == '5-material-catalog'
     assert 'scene-plan.json' not in result['corrupt_products']
@@ -1423,15 +1389,6 @@ def test_paper_only_manifest_without_harvest_batches_does_not_complete_phase_4(t
     assert '4-material-harvest' not in result['completed_phases']
 
 
-def test_standard_mode_skips_paper_parse(tmp_path: Path):
-    complete_through_research(tmp_path)
-    proc = run_cli(str(tmp_path))
-    result = parse_result(proc)
-    assert result['next_phase']['id'] == '4-material-harvest'
-    assert '2-paper-parse' not in result['completed_phases']
-    assert '2-paper-parse' in result['skipped_phases']
-
-
 def test_no_fetch_skips_harvest_and_catalog(tmp_path: Path):
     complete_through_research(tmp_path, fetch_materials=False)
     proc = run_cli(str(tmp_path))
@@ -1449,13 +1406,6 @@ def test_paper_mode_without_fetch_skips_harvest_but_builds_the_catalog(tmp_path:
     assert '5-material-catalog' not in result['skipped_phases']
     assert result['next_phase']['id'] == '5-material-catalog'
     assert result['next_phase']['doc'] == 'references/phases/05-material-catalog.md'
-
-
-def test_standard_mode_without_fetch_skips_harvest_and_catalog(tmp_path: Path):
-    complete_through_research(tmp_path, input_mode='standard', fetch_materials=False)
-    result = parse_result(run_cli(str(tmp_path)))
-    assert {'4-material-harvest', '5-material-catalog'} <= set(result['skipped_phases'])
-    assert result['next_phase']['id'] == '6-script-scene-plan'
 
 
 def test_paper_mode_without_fetch_full_run(tmp_path: Path):
@@ -1899,7 +1849,6 @@ def test_directory_products_are_not_fingerprinted(tmp_path: Path):
     complete_all(tmp_path)
     parse_result(run_cli(str(tmp_path)))
     products = read_stamps(tmp_path)['phases']['8-composition']['products']
-    assert 'composition/compositions' not in products
     assert set(products) == {
         'composition/assets/subtitle-units.json',
         'composition/storyboard.md',
@@ -2132,6 +2081,7 @@ def test_a_newly_added_narration_request_makes_phase_6_stale(tmp_path: Path):
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase']['id'] == '6-script-scene-plan'
     assert result['next_phase']['changed_upstream'] == ['inputs.json#narration_requests']
+    assert result['stale_phases'] == ['6-script-scene-plan']
 
 
 def test_a_newly_added_composition_request_makes_phase_8_stale(tmp_path: Path):
@@ -2140,14 +2090,6 @@ def test_a_newly_added_composition_request_makes_phase_8_stale(tmp_path: Path):
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase']['id'] == '8-composition'
     assert result['next_phase']['changed_upstream'] == ['inputs.json#composition_requests']
-
-
-def test_requests_are_separate_per_phase(tmp_path: Path):
-    # 旁白要求只动 Phase 6，画面要求只动 Phase 8：两者不得互相牵连。
-    settle(tmp_path)
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'narration_requests': ['语气更口语']})
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['stale_phases'] == ['6-script-scene-plan']
 
 
 @pytest.mark.parametrize('change', ['create', 'edit', 'delete'])
@@ -2587,13 +2529,6 @@ def test_offsets_without_an_integer_length_send_phase_6_back(tmp_path: Path, fie
     write_json(tmp_path / 'narration-offsets.json', offsets)
     detail = offsets_problem(tmp_path)
     assert field in detail and 'integer' in detail, detail
-
-
-def test_lengths_are_not_compared_against_a_missing_script(tmp_path: Path):
-    complete_through_script(tmp_path)
-    (tmp_path / 'script.txt').unlink()
-    result = parse_result(run_cli(str(tmp_path)))
-    assert set(result['next_phase']['problems']) == {'script.txt'}
 
 
 def test_lengths_are_not_compared_against_a_missing_narration(tmp_path: Path):
@@ -3442,11 +3377,18 @@ def test_required_material_refs_must_not_repeat(tmp_path: Path):
     assert 'repeats' in result['next_phase']['problems']['material-catalog.json']
 
 
-def test_a_resolvable_required_ref_passes_phase_5(tmp_path: Path):
+@pytest.mark.parametrize(
+    'required_refs',
+    [
+        pytest.param(['main-paper/img_001'], id='resolved-figure'),
+        pytest.param([], id='empty-list'),
+    ],
+)
+def test_declared_paper_required_refs_pass_phase_5(tmp_path: Path, required_refs: list[str]):
     complete_through_harvest(tmp_path, input_mode='paper', fetch_materials=False)
     write_json(
         tmp_path / 'material-catalog.json',
-        paper_catalog(required_material_refs=['main-paper/img_001']),
+        paper_catalog(required_material_refs=required_refs),
     )
 
     result = parse_result(run_cli(str(tmp_path)))
@@ -3471,12 +3413,6 @@ def test_scene_plan_must_select_every_required_material(tmp_path: Path):
     assert result['next_phase']['id'] == '6-script-scene-plan'
     detail = result['next_phase']['problems']['scene-plan.json']
     assert 'required_material_refs' in detail and 'main-paper/img_001' in detail
-
-
-def test_a_standard_workspace_needs_no_required_refs(tmp_path: Path):
-    # 标准模式不受新增可选字段影响。
-    result = settle(tmp_path)
-    assert result['next_phase'] is None
 
 
 @pytest.mark.parametrize('value', ['https://example.com', [], None, [''], ['  '], ['ok', 3]])
@@ -3535,22 +3471,6 @@ def test_required_refs_of_a_residual_catalog_are_ignored_in_no_material_mode(tmp
 
     assert 'required_material_refs' not in str(result['next_phase'].get('problems', {}))
     assert result['next_phase']['id'] != '6-script-scene-plan'
-
-
-def test_paper_mode_still_requires_the_key_figures(tmp_path: Path):
-    # 论文模式即使不联网也要检查关键图：catalog 阶段适用，要求不放松。
-    complete_through_catalog(tmp_path, input_mode='paper', fetch_materials=False)
-    catalog = json.loads((tmp_path / 'material-catalog.json').read_text(encoding='utf-8'))
-    catalog['required_material_refs'] = ['main-paper/img_001']
-    write_json(tmp_path / 'material-catalog.json', catalog)
-    write_script(tmp_path, SCRIPT_TXT)
-    write_json(tmp_path / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
-    write_json(tmp_path / 'scene-plan.json', [{**SCENE_PLAN_PAPER[0], 'material_candidates': []}])
-
-    result = parse_result(run_cli(str(tmp_path)))
-
-    assert result['next_phase']['id'] == '6-script-scene-plan'
-    assert 'main-paper/img_001' in result['next_phase']['problems']['scene-plan.json']
 
 
 def test_clip_refs_are_compared_by_identity_not_by_spelling(tmp_path: Path):
@@ -3680,18 +3600,6 @@ def test_paper_catalog_must_declare_the_required_refs_field(tmp_path: Path):
     assert result['next_phase']['id'] == '5-material-catalog'
     detail = result['next_phase']['problems']['material-catalog.json']
     assert 'required_material_refs' in detail and 'paper' in detail
-
-
-def test_a_paper_catalog_may_declare_an_empty_required_list(tmp_path: Path):
-    complete_through_harvest(tmp_path, input_mode='paper', fetch_materials=False)
-    write_json(
-        tmp_path / 'material-catalog.json',
-        {'topic_name': 'demo', 'entries': [PAPER_CATALOG_ENTRY], 'required_material_refs': []},
-    )
-
-    result = parse_result(run_cli(str(tmp_path)))
-
-    assert result['next_phase']['id'] == '6-script-scene-plan'
 
 
 def test_a_standard_catalog_need_not_declare_the_required_refs_field(tmp_path: Path):

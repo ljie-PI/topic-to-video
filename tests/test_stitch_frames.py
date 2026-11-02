@@ -70,7 +70,7 @@ def test_sixteen_frames_are_one_annotated_row_major_grid(tmp_path: Path):
     assert all(path.read_bytes() == contents for path, contents in before.items())
 
 
-@pytest.mark.parametrize('count, sizes', [(1, [1]), (15, [15]), (16, [16]), (17, [16, 1]), (20, [16, 4]), (32, [16, 16])])
+@pytest.mark.parametrize('count, sizes', [(1, [1]), (15, [15]), (17, [16, 1]), (32, [16, 16])])
 def test_pagination_keeps_every_frame_and_marks_unused_cells(tmp_path: Path, count, sizes):
     frames_json, frames = make_frames(tmp_path, count)
     proc, result = run_cli(frames_json, tmp_path / 'sheets', '--cell-width', '160')

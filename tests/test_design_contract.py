@@ -94,7 +94,6 @@ def test_only_theme_named_json_contracts_remain():
     assert sorted(path.name for path in DESIGNS_ROOT.glob('*/*.json')) == [
         'default.json', 'github.json', 'producthunt.json',
     ]
-    assert list(DESIGNS_ROOT.glob('*/fonts.json')) == []
 
 
 def test_extension_docs_require_markdown_and_json_contracts():

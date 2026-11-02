@@ -86,9 +86,13 @@ def test_frame_timestamps_include_the_start_time(
     assert result['interval_s'] == 1.0
 
 
-@pytest.mark.parametrize('binary_env', ['FFMPEG_BIN', 'FFPROBE_BIN'])
+@pytest.mark.parametrize('binary_env, extra', [
+    pytest.param('FFMPEG_BIN', (), id='ffmpeg'),
+    pytest.param('FFPROBE_BIN', (), id='ffprobe'),
+    pytest.param('FFMPEG_BIN', ('--start-time', '00:00:01', '--end-time', '00:00:03'), id='explicit-window'),
+])
 def test_missing_media_binary_preserves_existing_frames(
-    tmp_path: Path, video: Path, monkeypatch: pytest.MonkeyPatch, binary_env: str
+    tmp_path: Path, video: Path, monkeypatch: pytest.MonkeyPatch, binary_env: str, extra,
 ):
     output_dir = tmp_path / 'frames'
     output_dir.mkdir()
@@ -97,7 +101,7 @@ def test_missing_media_binary_preserves_existing_frames(
     monkeypatch.setenv(binary_env, '/nonexistent')
 
     proc = subprocess.run(
-        [sys.executable, str(SCRIPT), str(video), str(output_dir)],
+        [sys.executable, str(SCRIPT), str(video), str(output_dir), *extra],
         capture_output=True,
         text=True,
         timeout=60,
@@ -125,24 +129,3 @@ def test_explicit_window_does_not_require_ffprobe(
     result = json.loads(proc.stdout)
     assert result['success'] is True
     assert result['frame_count'] == 2
-
-
-def test_explicit_window_missing_ffmpeg_preserves_existing_frames(
-    tmp_path: Path, video: Path, monkeypatch: pytest.MonkeyPatch,
-):
-    output_dir = tmp_path / 'frames'
-    output_dir.mkdir()
-    existing = output_dir / 'frame_existing.jpg'
-    existing.write_bytes(b'pre-existing frame')
-    monkeypatch.setenv('FFMPEG_BIN', '/nonexistent')
-
-    proc = subprocess.run(
-        [
-            sys.executable, str(SCRIPT), str(video), str(output_dir),
-            '--start-time', '00:00:01', '--end-time', '00:00:03',
-        ],
-        capture_output=True, text=True, timeout=60, check=False,
-    )
-
-    assert proc.returncode == 1
-    assert existing.read_bytes() == b'pre-existing frame'

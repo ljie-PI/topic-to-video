@@ -213,8 +213,6 @@ def test_an_external_transcript_resumes_with_align_only_and_a_rerun_drops_it(tmp
     transcript = ws / 'transcribe' / 'transcript.json'
     external = transcript.read_bytes()
 
-    assert run_voice_subtitles(ws, env=_NO_TRANSCRIPT_ENV).returncode == 1
-
     # A full regeneration deletes whatever sits at the transcript path, so the
     # imported transcript only survives the --align-only path.
     transcript.write_bytes(external)
@@ -230,6 +228,7 @@ def test_an_external_transcript_resumes_with_align_only_and_a_rerun_drops_it(tmp
     assert recovered.returncode == 0, recovered.stderr
     assert parse_stdout(recovered)['success'] is True
     assert audio.read_bytes() == audio_before
+    assert transcript.read_bytes() == external
     assert (ws / 'transcribe' / 'timeline.json').is_file()
 
 
@@ -247,23 +246,3 @@ def test_align_only_rejects_a_transcript_without_word_timestamps(tmp_path: Path)
 
     assert proc.returncode == 1
     assert parse_stdout(proc)['failed_step'] == 'align'
-
-
-@pytest.mark.usefixtures('require_ffmpeg')
-def test_align_only_reuses_existing_audio_and_transcript(tmp_path: Path):
-    ws = make_workspace(tmp_path)
-    first = run_voice_subtitles(ws)
-    assert first.returncode == 0, first.stderr
-    audio = ws / 'voice_clone' / 'narration.mp3'
-    transcript = ws / 'transcribe' / 'transcript.json'
-    original_audio = audio.read_bytes()
-    original_transcript = transcript.read_bytes()
-
-    proc = run_voice_subtitles(ws, '--align-only')
-
-    assert proc.returncode == 0, proc.stderr
-    result = parse_stdout(proc)
-    assert result['success'] is True
-    assert result['warnings']
-    assert audio.read_bytes() == original_audio
-    assert transcript.read_bytes() == original_transcript

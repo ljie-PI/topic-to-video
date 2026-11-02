@@ -236,54 +236,39 @@ def test_qwen3_asr_cli_groups_aligner_tokens_into_the_transcript_schema(
 
 
 @pytest.mark.usefixtures('require_ffmpeg')
-def test_torch_aligner_cli_writes_the_transcript_schema(tmp_path: Path, fake_packages: Path):
-    proc = run_voice_clone(tmp_path, fake_packages, backend='qwen3tts')
+@pytest.mark.parametrize('backend, text, expected', [
+    pytest.param('qwen3tts', TEXT, EXPECTED, id='torch'),
+    pytest.param('mlx', MLX_TEXT, [
+        {**sentence, 'text': text} for sentence, text in zip(EXPECTED, ['你好', '再见'])
+    ], id='mlx'),
+])
+def test_direct_aligner_cli_writes_the_transcript_schema(tmp_path: Path, fake_packages: Path, backend, text, expected):
+    proc = run_voice_clone(tmp_path, fake_packages, backend=backend, text=text)
 
     assert proc.returncode == 0, proc.stderr
     assert parse_stdout(proc)['transcript_method'] == 'direct_align'
-    assert read_json(tmp_path / 'transcript.json') == EXPECTED
-
-
-@pytest.mark.usefixtures('require_ffmpeg')
-def test_torch_aligner_cli_reports_unavailable_aligner_and_writes_nothing(
-    tmp_path: Path, fake_packages: Path
-):
-    (fake_packages / 'qwen_asr' / '__init__.py').write_text(
-        "raise ImportError('qwen_asr deliberately unavailable')\n", encoding='utf-8'
-    )
-
-    proc = run_voice_clone(tmp_path, fake_packages, backend='qwen3tts')
-
-    assert_direct_align_failure(proc, 'unavailable')
-    assert not (tmp_path / 'transcript.json').exists()
-
-
-@pytest.mark.usefixtures('require_ffmpeg')
-def test_torch_aligner_cli_without_timestamps_falls_back_and_writes_nothing(
-    tmp_path: Path, fake_packages: Path
-):
-    proc = run_voice_clone(
-        tmp_path, fake_packages, backend='qwen3tts', env={'FAKE_ALIGNER_ITEMS': 'empty'}
-    )
-
-    assert_direct_align_failure(proc, 'no timestamps')
-    assert not (tmp_path / 'transcript.json').exists()
-
-
-# --- voice-clone.py: mlx-audio aligner ------------------------------------------
-
-
-@pytest.mark.usefixtures('require_ffmpeg')
-def test_mlx_aligner_cli_writes_the_transcript_schema(tmp_path: Path, fake_packages: Path):
-    proc = run_voice_clone(tmp_path, fake_packages, backend='mlx', text=MLX_TEXT)
-
-    assert proc.returncode == 0, proc.stderr
-    assert parse_stdout(proc)['transcript_method'] == 'direct_align'
-    expected = [
-        {**sentence, 'text': text}
-        for sentence, text in zip(EXPECTED, ['你好', '再见'])
-    ]
     assert read_json(tmp_path / 'transcript.json') == expected
+
+
+@pytest.mark.usefixtures('require_ffmpeg')
+@pytest.mark.parametrize('backend, text, failure, message', [
+    pytest.param('qwen3tts', TEXT, 'unavailable', 'unavailable', id='torch-unavailable'),
+    pytest.param('qwen3tts', TEXT, 'empty', 'no timestamps', id='torch-empty'),
+    pytest.param('mlx', MLX_TEXT, 'empty', 'no sentences or no words', id='mlx-empty'),
+    pytest.param('mlx', '...', None, 'no sentences or no words', id='mlx-no-sentences'),
+])
+def test_direct_aligner_failure_falls_back_and_writes_nothing(
+    tmp_path: Path, fake_packages: Path, backend, text, failure, message,
+):
+    if failure == 'unavailable':
+        (fake_packages / 'qwen_asr' / '__init__.py').write_text(
+            "raise ImportError('qwen_asr deliberately unavailable')\n", encoding='utf-8'
+        )
+    env = {'FAKE_ALIGNER_ITEMS': 'empty'} if failure == 'empty' else {}
+    proc = run_voice_clone(tmp_path, fake_packages, backend=backend, text=text, env=env)
+
+    assert_direct_align_failure(proc, message)
+    assert not (tmp_path / 'transcript.json').exists()
 
 
 @pytest.mark.usefixtures('require_ffmpeg')
@@ -298,28 +283,3 @@ def test_mlx_aligner_cli_rescales_timestamps_when_the_mp3_was_retimed(
     assert proc.returncode == 0, proc.stderr
     transcript = read_json(tmp_path / 'transcript.json')
     assert [(s['begin'], s['end']) for s in transcript] == [(0, 250), (375, 750)]
-
-
-@pytest.mark.usefixtures('require_ffmpeg')
-def test_mlx_aligner_cli_failure_falls_back_and_writes_nothing(
-    tmp_path: Path, fake_packages: Path
-):
-    proc = run_voice_clone(
-        tmp_path, fake_packages, backend='mlx', text=MLX_TEXT,
-        env={'FAKE_ALIGNER_ITEMS': 'empty'},
-    )
-
-    assert_direct_align_failure(proc, 'no sentences or no words')
-    assert not (tmp_path / 'transcript.json').exists()
-
-
-@pytest.mark.usefixtures('require_ffmpeg')
-def test_mlx_aligner_cli_with_words_but_no_sentences_falls_back(
-    tmp_path: Path, fake_packages: Path
-):
-    # Pure punctuation produces words from the fake model but no grouped
-    # sentences. This must be an alignment failure, not a one-sentence fallback.
-    proc = run_voice_clone(tmp_path, fake_packages, backend='mlx', text='...')
-
-    assert_direct_align_failure(proc, 'no sentences or no words')
-    assert not (tmp_path / 'transcript.json').exists()

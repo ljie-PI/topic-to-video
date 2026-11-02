@@ -192,7 +192,6 @@ def test_every_executable_script_is_documented_at_its_point_of_use():
     documented = {name for name in expected if any(name in text for text in docs)}
 
     assert documented == expected
-    assert 'make-narration.py' in documented
     # And the entry itself does not grow the duplicate table back.
     assert '| `prepare-handoff.py` |' not in doc_text('SKILL.md')
     assert '| `voice-subtitles.py` |' not in doc_text('SKILL.md')

@@ -6,18 +6,15 @@ import pytest
 import fake_backend
 
 
-def test_duration_follows_a_7_5_characters_per_second_pace_with_a_one_second_floor():
-    assert fake_backend.synthetic_duration_s('你好') == 1.0  # floor
-    assert fake_backend.synthetic_duration_s('大' * 15) == pytest.approx(2.0)
-    assert fake_backend.synthetic_duration_s('大' * 75) == pytest.approx(10.0)
-
-
-def test_whitespace_does_not_count_towards_the_duration():
-    assert fake_backend.synthetic_duration_s(' 大 \n' * 15) == pytest.approx(2.0)
-
-
-def test_punctuation_counts_towards_the_duration():
-    assert fake_backend.synthetic_duration_s('大，' * 15) == pytest.approx(4.0)
+@pytest.mark.parametrize('text, duration', [
+    pytest.param('你好', 1.0, id='one-second-floor'),
+    pytest.param('大' * 15, 2.0, id='two-seconds'),
+    pytest.param('大' * 75, 10.0, id='ten-seconds'),
+    pytest.param(' 大 \n' * 15, 2.0, id='whitespace'),
+    pytest.param('大，' * 15, 4.0, id='punctuation'),
+])
+def test_duration_uses_non_whitespace_characters_with_a_one_second_floor(text, duration):
+    assert fake_backend.synthetic_duration_s(text) == pytest.approx(duration)
 
 
 def test_uniform_transcript_spreads_one_word_per_non_whitespace_character():

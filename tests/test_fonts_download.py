@@ -93,28 +93,24 @@ def test_designs_with_the_same_font_source_share_the_same_pool_files():
         assert all(r == refs[0] for r in refs)
 
 
-def test_install_copies_vendored_fonts_without_network(tmp_path: Path):
-    proc, result = run(str(tmp_path / 'fonts'), '--theme', 'modules/designs/github', env=NO_NETWORK)
+@pytest.mark.parametrize('theme, design', [
+    ('default', 'default'),
+    ('modules/designs/github', 'github'),
+    ('producthunt', 'producthunt'),
+])
+def test_install_copies_only_the_designs_vendored_fonts_without_network(tmp_path: Path, theme, design):
+    proc, result = run(str(tmp_path / 'fonts'), '--theme', theme, env=NO_NETWORK)
     assert proc.returncode == 0, proc.stderr
     assert result['success'] is True and result['mode'] == 'install'
-    css = (tmp_path / 'fonts' / 'github-fonts.css').read_text()
-    assert css == vendored_css('github')
+    css_filename = load_fonts(design)['css_filename']
+    css = (tmp_path / 'fonts' / css_filename).read_text()
+    assert css == vendored_css(design)
     refs = css_references(css)
     for ref in refs:
         assert (tmp_path / 'fonts' / ref).read_bytes() == (POOL / ref).read_bytes()
     installed = sorted(p.name for p in (tmp_path / 'fonts').iterdir())
-    assert installed == sorted(['github-fonts.css', *refs])
+    assert installed == sorted([css_filename, *refs])
     assert len(result['files']) == len(installed)
-
-
-def test_install_copies_only_the_files_the_design_references(tmp_path: Path):
-    github = set(css_references(vendored_css('github')))
-    default = set(css_references(vendored_css('default')))
-    assert github != default  # the pool holds both; each install takes just its own
-
-    run(str(tmp_path), '--theme', 'default', env=NO_NETWORK)
-
-    assert {p.name for p in tmp_path.glob('*.woff2')} == default
 
 
 def test_a_bare_positional_style_is_rejected(tmp_path: Path):
@@ -126,9 +122,11 @@ def test_a_bare_positional_style_is_rejected(tmp_path: Path):
     assert not list(tmp_path.glob('*.css'))
 
 
-def test_theme_is_required(tmp_path: Path):
-    proc, result = run(str(tmp_path), env=NO_NETWORK)
+@pytest.mark.parametrize('extra', [(), ('--refresh',)], ids=['install', 'refresh'])
+def test_theme_is_required(tmp_path: Path, extra):
+    proc, result = run(*extra, env=NO_NETWORK, cwd=tmp_path)
     assert proc.returncode == 2
+    assert result['success'] is False
     assert '--theme is required' in result['error']
 
 
@@ -197,11 +195,6 @@ def test_install_rejects_references_that_are_not_bare_pool_names(tmp_path: Path,
     assert proc.returncode == 1 and result['success'] is False
     assert 'bare file name' in result['error']
     assert not (tmp_path / 'out').exists()
-
-
-def test_refresh_requires_a_theme():
-    proc, result = run('--refresh')
-    assert proc.returncode == 2 and result['success'] is False
 
 
 @pytest.mark.parametrize('design', ['default', 'github', 'producthunt'])

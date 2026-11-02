@@ -6,59 +6,38 @@ hand from that rule.
 """
 from __future__ import annotations
 
+import pytest
+
 import script_text
 
 
-def test_paragraph_spans_of_two_paragraphs():
-    # 'a\nb' = 0..3, '\n' separator line at 4, 'c' = 5.. ; each span ends just
-    # past the newline of its last line.
-    assert script_text.paragraph_spans('a\nb\n\nc\n') == [(0, 4), (5, 7)]
+@pytest.mark.parametrize('text, expected', [
+    pytest.param('a\nb\n\nc\n', [(0, 4), (5, 7)], id='two-paragraphs'),
+    pytest.param('\n\nab\n\n\n', [(2, 5)], id='edge-blank-lines'),
+    pytest.param('a\n \t\n　\nb', [(0, 2), (7, 9)], id='whitespace-separators'),
+    pytest.param('a\n\n\n\nb\n', [(0, 2), (5, 7)], id='multiple-separators'),
+    pytest.param('只有一段\n第二行', [(0, 9)], id='no-final-newline'),
+    pytest.param('', [], id='empty'),
+    pytest.param('\n \n', [], id='blank'),
+])
+def test_paragraph_spans(text, expected):
+    assert script_text.paragraph_spans(text) == expected
 
 
-def test_paragraph_spans_ignore_leading_and_trailing_blank_lines():
-    assert script_text.paragraph_spans('\n\nab\n\n\n') == [(2, 5)]
+@pytest.mark.parametrize('text, expected', [
+    pytest.param('第一行\n第二行\n\n\n第三段  \n', ['第一行\n第二行', '第三段'], id='joined-lines'),
+    pytest.param('　　开头缩进\n\nb', ['　　开头缩进', 'b'], id='leading-indentation'),
+    pytest.param('', [], id='empty'),
+])
+def test_paragraphs(text, expected):
+    assert script_text.paragraphs(text) == expected
 
 
-def test_paragraph_spans_treat_space_only_lines_as_blank():
-    assert script_text.paragraph_spans('a\n \t\n　\nb') == [(0, 2), (7, 9)]
-
-
-def test_paragraph_spans_collapse_multiple_blank_lines():
-    assert script_text.paragraph_spans('a\n\n\n\nb\n') == [(0, 2), (5, 7)]
-
-
-def test_paragraph_spans_single_paragraph():
-    # The last line has no newline; its span still counts one separator
-    # character, so the end is one past len(text) (8).
-    assert script_text.paragraph_spans('只有一段\n第二行') == [(0, 9)]
-
-
-def test_paragraph_spans_of_empty_and_blank_text():
-    assert script_text.paragraph_spans('') == []
-    assert script_text.paragraph_spans('\n \n') == []
-
-
-def test_paragraphs_join_lines_and_drop_trailing_whitespace():
-    assert script_text.paragraphs('第一行\n第二行\n\n\n第三段  \n') == ['第一行\n第二行', '第三段']
-
-
-def test_paragraphs_keep_leading_indentation():
-    assert script_text.paragraphs('　　开头缩进\n\nb') == ['　　开头缩进', 'b']
-
-
-def test_paragraphs_of_empty_text():
-    assert script_text.paragraphs('') == []
-
-
-def test_count_chars_ignores_every_kind_of_whitespace():
-    # ASCII space, tab, newline, carriage return and the full-width space U+3000.
-    assert script_text.count_chars('一 二\t三\n四\r五　六') == 6
-
-
-def test_count_chars_counts_punctuation_and_latin():
-    assert script_text.count_chars('Hi, 你好。') == 6
-
-
-def test_count_chars_of_empty_text():
-    assert script_text.count_chars('') == 0
-    assert script_text.count_chars(' \n　') == 0
+@pytest.mark.parametrize('text, expected', [
+    pytest.param('一 二\t三\n四\r五　六', 6, id='whitespace'),
+    pytest.param('Hi, 你好。', 6, id='punctuation-and-latin'),
+    pytest.param('', 0, id='empty'),
+    pytest.param(' \n　', 0, id='blank'),
+])
+def test_count_chars(text, expected):
+    assert script_text.count_chars(text) == expected

@@ -27,6 +27,10 @@ from cli_helpers import parse_stdout, run_cli as run_script
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VOICE_CLONE = REPO_ROOT / 'scripts' / 'voice-clone.py'
 TRANSCRIBE = REPO_ROOT / 'scripts' / 'transcribe.py'
+BACKENDS = [
+    pytest.param(VOICE_CLONE, 'TTS', 'qwen3tts', id='voice-clone'),
+    pytest.param(TRANSCRIBE, 'ASR', 'qwen3', id='transcribe'),
+]
 
 # Backend-affecting env vars that must not leak from the host into a test run.
 _ENV_BLACKLIST = (
@@ -69,29 +73,32 @@ def test_resolve_auto_apple_silicon_picks_mlx():
     assert result['backend_source'] == 'auto'
 
 
-def test_resolve_auto_cuda_picks_qwen3tts():
+@pytest.mark.parametrize('script, prefix, backend', BACKENDS)
+def test_resolve_auto_cuda_picks_the_gpu_backend(script, prefix, backend):
     proc = run_cli(
-        VOICE_CLONE,
+        script,
         '--resolve-backend',
         env={
-            'TTS_DETECT_PLATFORM': 'linux',
-            'TTS_DETECT_MACHINE': 'x86_64',
-            'TTS_DETECT_CUDA': '1',
+            f'{prefix}_DETECT_PLATFORM': 'linux',
+            f'{prefix}_DETECT_MACHINE': 'x86_64',
+            f'{prefix}_DETECT_CUDA': '1',
         },
     )
     assert proc.returncode == 0, proc.stderr
     result = parse_stdout(proc)
-    assert result['backend'] == 'qwen3tts'
+    assert result['success'] is True
+    assert (result['backend'], result['backend_source']) == (backend, 'auto')
 
 
-def test_resolve_auto_dashscope_key_picks_dashscope():
+@pytest.mark.parametrize('script, prefix, backend', BACKENDS)
+def test_resolve_auto_dashscope_key_picks_dashscope(script, prefix, backend):
     proc = run_cli(
-        VOICE_CLONE,
+        script,
         '--resolve-backend',
         env={
-            'TTS_DETECT_PLATFORM': 'linux',
-            'TTS_DETECT_MACHINE': 'x86_64',
-            'TTS_DETECT_CUDA': '0',
+            f'{prefix}_DETECT_PLATFORM': 'linux',
+            f'{prefix}_DETECT_MACHINE': 'x86_64',
+            f'{prefix}_DETECT_CUDA': '0',
             'DASHSCOPE_API_KEY': 'sk-test',
         },
     )
@@ -100,22 +107,23 @@ def test_resolve_auto_dashscope_key_picks_dashscope():
     assert result['backend'] == 'dashscope'
 
 
-def test_resolve_auto_nothing_available_exits_1_with_missing_list():
+@pytest.mark.parametrize('script, prefix, backend', BACKENDS)
+def test_resolve_auto_nothing_available_reports_missing_backends_without_picking_fake(script, prefix, backend):
     proc = run_cli(
-        VOICE_CLONE,
+        script,
         '--resolve-backend',
         env={
-            'TTS_DETECT_PLATFORM': 'linux',
-            'TTS_DETECT_MACHINE': 'x86_64',
-            'TTS_DETECT_CUDA': '0',
+            f'{prefix}_DETECT_PLATFORM': 'linux',
+            f'{prefix}_DETECT_MACHINE': 'x86_64',
+            f'{prefix}_DETECT_CUDA': '0',
         },
     )
     assert proc.returncode == 1
     result = parse_stdout(proc)
     assert result['success'] is False
-    assert 'missing' in result
     assert any('cuda' in item.lower() or 'gpu' in item.lower() for item in result['missing'])
     assert any('dashscope' in item.lower() for item in result['missing'])
+    assert not any('fake' in item.lower() for item in result['missing'])
 
 
 def test_resolve_auto_apple_silicon_without_mlx_audio_falls_through():
@@ -136,17 +144,19 @@ def test_resolve_auto_apple_silicon_without_mlx_audio_falls_through():
     assert any('mlx' in item.lower() for item in result['missing'])
 
 
-def test_resolve_explicit_backend_wins_over_auto():
+@pytest.mark.parametrize('script, prefix, backend', BACKENDS)
+def test_resolve_explicit_backend_wins_over_environment_and_auto(script, prefix, backend):
     proc = run_cli(
-        VOICE_CLONE,
+        script,
         '--backend',
         'dashscope',
         '--resolve-backend',
         env={
-            'TTS_DETECT_PLATFORM': 'darwin',
-            'TTS_DETECT_MACHINE': 'arm64',
-            'TTS_DETECT_CUDA': '1',
-            'TTS_DETECT_MLX_AUDIO': '1',
+            f'{prefix}_BACKEND': backend,
+            f'{prefix}_DETECT_PLATFORM': 'darwin',
+            f'{prefix}_DETECT_MACHINE': 'arm64',
+            f'{prefix}_DETECT_CUDA': '1',
+            f'{prefix}_DETECT_MLX_AUDIO': '1',
         },
     )
     assert proc.returncode == 0, proc.stderr
@@ -155,68 +165,35 @@ def test_resolve_explicit_backend_wins_over_auto():
     assert result['backend_source'] == 'cli'
 
 
-def test_resolve_tts_backend_env_respected():
+@pytest.mark.parametrize('script, prefix, backend', BACKENDS)
+def test_resolve_backend_env_respected(script, prefix, backend):
     proc = run_cli(
-        VOICE_CLONE,
+        script,
         '--resolve-backend',
         env={
-            'TTS_BACKEND': 'qwen3tts',
-            'TTS_DETECT_PLATFORM': 'darwin',
-            'TTS_DETECT_MACHINE': 'arm64',
-            'TTS_DETECT_CUDA': '0',
-            'TTS_DETECT_MLX_AUDIO': '1',
-        },
-    )
-    assert proc.returncode == 0, proc.stderr
-    result = parse_stdout(proc)
-    assert result['backend'] == 'qwen3tts'
-    assert result['backend_source'] == 'env'
-
-
-def test_unknown_backend_env_exits_2():
-    proc = run_cli(VOICE_CLONE, '--resolve-backend', env={'TTS_BACKEND': 'bogus'})
-    assert proc.returncode == 2
-    result = parse_stdout(proc)
-    assert result['success'] is False
-
-
-def test_unknown_backend_cli_exits_2():
-    proc = run_cli(VOICE_CLONE, '--backend', 'bogus', '--resolve-backend')
-    assert proc.returncode == 2
-    result = parse_stdout(proc)
-    assert result['success'] is False
-
-
-# --- transcribe.py --resolve-backend ------------------------------------------
-
-
-def test_transcribe_resolve_auto_cuda_picks_qwen3():
-    proc = run_cli(
-        TRANSCRIBE,
-        '--resolve-backend',
-        env={'ASR_DETECT_PLATFORM': 'linux', 'ASR_DETECT_MACHINE': 'x86_64', 'ASR_DETECT_CUDA': '1'},
-    )
-    assert proc.returncode == 0, proc.stderr
-    result = parse_stdout(proc)
-    assert result['success'] is True
-    assert result['backend'] == 'qwen3'
-    assert result['backend_source'] == 'auto'
-
-
-def test_transcribe_resolve_auto_dashscope_key_picks_dashscope():
-    proc = run_cli(
-        TRANSCRIBE,
-        '--resolve-backend',
-        env={
-            'ASR_DETECT_PLATFORM': 'linux',
-            'ASR_DETECT_MACHINE': 'x86_64',
-            'ASR_DETECT_CUDA': '0',
+            f'{prefix}_BACKEND': backend,
+            f'{prefix}_DETECT_PLATFORM': 'darwin',
+            f'{prefix}_DETECT_MACHINE': 'arm64',
+            f'{prefix}_DETECT_CUDA': '0',
+            f'{prefix}_DETECT_MLX_AUDIO': '1',
             'DASHSCOPE_API_KEY': 'sk-test',
         },
     )
     assert proc.returncode == 0, proc.stderr
     result = parse_stdout(proc)
-    assert result['backend'] == 'dashscope'
+    assert result['backend'] == backend
+    assert result['backend_source'] == 'env'
+
+
+@pytest.mark.parametrize('script, prefix, backend', BACKENDS)
+@pytest.mark.parametrize('source', ['cli', 'env'])
+def test_unknown_backend_exits_2(script, prefix, backend, source):
+    args = ('--backend', 'bogus') if source == 'cli' else ()
+    env = {f'{prefix}_BACKEND': 'bogus'} if source == 'env' else {}
+    proc = run_cli(script, *args, '--resolve-backend', env=env)
+    assert proc.returncode == 2
+    result = parse_stdout(proc)
+    assert result['success'] is False
 
 
 def test_transcribe_resolve_apple_silicon_without_asr_is_a_plain_unavailable_error():
@@ -247,64 +224,6 @@ def test_transcribe_resolve_apple_silicon_without_asr_is_a_plain_unavailable_err
     assert parse_stdout(run)['error'] == result['error']
 
 
-def test_transcribe_resolve_nothing_available_exits_1():
-    proc = run_cli(
-        TRANSCRIBE,
-        '--resolve-backend',
-        env={'ASR_DETECT_PLATFORM': 'linux', 'ASR_DETECT_MACHINE': 'x86_64', 'ASR_DETECT_CUDA': '0'},
-    )
-    assert proc.returncode == 1
-    result = parse_stdout(proc)
-    assert result['success'] is False
-    assert 'missing' in result
-
-
-def test_transcribe_resolve_explicit_backend_wins_over_auto():
-    proc = run_cli(
-        TRANSCRIBE,
-        '--backend',
-        'dashscope',
-        '--resolve-backend',
-        env={'ASR_DETECT_PLATFORM': 'linux', 'ASR_DETECT_MACHINE': 'x86_64', 'ASR_DETECT_CUDA': '1'},
-    )
-    assert proc.returncode == 0, proc.stderr
-    result = parse_stdout(proc)
-    assert result['backend'] == 'dashscope'
-    assert result['backend_source'] == 'cli'
-
-
-def test_transcribe_resolve_asr_backend_env_respected():
-    proc = run_cli(
-        TRANSCRIBE,
-        '--resolve-backend',
-        env={
-            'ASR_BACKEND': 'qwen3',
-            'ASR_DETECT_PLATFORM': 'linux',
-            'ASR_DETECT_MACHINE': 'x86_64',
-            'ASR_DETECT_CUDA': '0',
-            'DASHSCOPE_API_KEY': 'sk-test',
-        },
-    )
-    assert proc.returncode == 0, proc.stderr
-    result = parse_stdout(proc)
-    assert result['backend'] == 'qwen3'
-    assert result['backend_source'] == 'env'
-
-
-def test_transcribe_unknown_backend_env_exits_2():
-    proc = run_cli(TRANSCRIBE, '--resolve-backend', env={'ASR_BACKEND': 'bogus'})
-    assert proc.returncode == 2
-    result = parse_stdout(proc)
-    assert result['success'] is False
-
-
-def test_transcribe_unknown_backend_cli_exits_2():
-    proc = run_cli(TRANSCRIBE, '--backend', 'bogus', '--resolve-backend')
-    assert proc.returncode == 2
-    result = parse_stdout(proc)
-    assert result['success'] is False
-
-
 # --- the test-only fake backends ------------------------------------------------
 
 _FAKE_CASES = [
@@ -324,23 +243,11 @@ _FAKE_CASES = [
 
 
 @pytest.mark.parametrize('script, env_var, probes', _FAKE_CASES)
-def test_fake_backend_is_selectable_by_flag_and_by_environment(script, env_var, probes):
-    by_flag = run_cli(script, '--backend', 'fake', '--resolve-backend', env=probes)
-    assert by_flag.returncode == 0, by_flag.stderr
-    assert parse_stdout(by_flag)['backend'] == 'fake'
-    assert parse_stdout(by_flag)['backend_source'] == 'cli'
-
-    by_env = run_cli(script, '--resolve-backend', env={**probes, env_var: 'fake'})
-    assert by_env.returncode == 0, by_env.stderr
-    assert parse_stdout(by_env)['backend'] == 'fake'
-    assert parse_stdout(by_env)['backend_source'] == 'env'
-
-
-@pytest.mark.parametrize('script, env_var, probes', _FAKE_CASES)
-def test_auto_never_picks_fake(script, env_var, probes):
-    # Nothing real is usable here: auto must fail rather than fall back to fake.
-    proc = run_cli(script, '--resolve-backend', env=probes)
-    assert proc.returncode == 1
+@pytest.mark.parametrize('source', ['cli', 'env'])
+def test_fake_backend_is_selectable_by_flag_and_by_environment(script, env_var, probes, source):
+    args = ('--backend', 'fake') if source == 'cli' else ()
+    env = {**probes, env_var: 'fake'} if source == 'env' else probes
+    proc = run_cli(script, *args, '--resolve-backend', env=env)
+    assert proc.returncode == 0, proc.stderr
     result = parse_stdout(proc)
-    assert result['success'] is False
-    assert not any('fake' in item.lower() for item in result['missing'])
+    assert (result['backend'], result['backend_source']) == ('fake', source)

@@ -63,6 +63,7 @@ def test_recorded_snapshots_cover_three_findings_without_chrome(tmp_path: Path):
         assert set(finding) == {'scene_id', 'check', 'issue', 'time_s', 'frame'}
         assert finding['issue']
         assert finding['time_s'] == {'outside': 1.0, 'reserved': 2.0, 'overflow': 3.0}[finding['scene_id']]
+        assert isinstance(finding['time_s'], float)
         assert finding['frame'] is None
 
 

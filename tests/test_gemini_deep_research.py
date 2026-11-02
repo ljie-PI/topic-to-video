@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'gemini-deep-research.py'
 
@@ -48,24 +50,18 @@ def test_self_check_requires_profile_dir(tmp_path: Path):
     assert '--profile-dir' in result['error']
 
 
-def test_resume_with_missing_state_file_returns_json_error_without_chrome(tmp_path: Path):
-    proc = run_resume(tmp_path)
-
-    assert proc.returncode == 1, proc.stderr
-    result = json.loads(proc.stdout)
-    assert result['success'] is False
-    assert 'state' in result['error'].lower()
-    assert not (tmp_path / 'chrome_profile').exists()
-
-
-def test_resume_without_session_url_returns_json_error_without_chrome(tmp_path: Path):
-    state_file = tmp_path / 'gemini_deep_research_state.json'
-    state_file.write_text('{"state_file_version": 1}', encoding='utf-8')
+@pytest.mark.parametrize('state, error', [
+    pytest.param(None, 'state', id='missing-state'),
+    pytest.param('{"state_file_version": 1}', 'session_url', id='missing-session-url'),
+])
+def test_invalid_resume_state_returns_json_error_without_chrome(tmp_path: Path, state, error):
+    if state is not None:
+        (tmp_path / 'gemini_deep_research_state.json').write_text(state, encoding='utf-8')
 
     proc = run_resume(tmp_path)
 
     assert proc.returncode == 1, proc.stderr
     result = json.loads(proc.stdout)
     assert result['success'] is False
-    assert 'session_url' in result['error']
-    assert not (tmp_path / 'chrome_profile').exists()
+    assert error in result['error'].lower()
+    assert not (tmp_path / 'profile').exists()
