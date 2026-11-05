@@ -430,6 +430,28 @@ class TestHandoffContract:
 
 
 class TestCompositionHandoff:
+    def test_tool_only_inputs_are_not_agent_reading_inputs(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'composition')
+        result = prepare(ws, 'composition')
+        text = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
+        sections = handoff_sections(text)
+        agent_inputs, tool_inputs = sections['Inputs'].split('### 仅供工具读取', 1)
+
+        assert '### Agent 阅读与画面资源' in agent_inputs
+        for relative in ('script.txt', 'scene-plan.json', 'transcribe/timeline.json'):
+            assert str(ws / relative) in agent_inputs
+        for relative in ('transcribe/transcript.json', 'narration.txt', 'narration-offsets.json'):
+            path = str(ws / relative)
+            assert path not in agent_inputs
+            assert path in tool_inputs
+            assert path in sections['Outputs']  # existing tool commands still receive the files
+        assert '正常流程不阅读或复述其全文' in tool_inputs
+        assert '生成后读取这份结果' in sections['Outputs']
+        assert result['dispatch_prompt'] == f'读取 {ws}/composition-handoff.md 并按它执行；完成后报告产物路径。'
+        base = (ws / 'references/delegation/composition/base-instructions.md').read_text(encoding='utf-8')
+        assert '标为「仅供工具读取」' in base
+        assert '先读工作区里的输入（handoff 的 Inputs 一节列出的文件）' not in base
+
     def test_commands_use_the_workspace_copies_of_layout_and_design(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition', design='default', layout='stage')
         prepare(ws, 'composition')
@@ -463,13 +485,23 @@ class TestCompositionHandoff:
         assert 'check-composition.py' in checked  # the positional-first command is covered
         assert 'make-narration.py' in checked
 
-    def test_inputs_section_lists_the_catalog_only_when_materials_are_fetched(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'composition', fetch_materials=False)
+    @pytest.mark.parametrize('input_mode', ['standard', 'paper'])
+    def test_inputs_section_lists_the_catalog_only_when_materials_are_fetched(
+        self, tmp_path: Path, input_mode: str
+    ):
+        ws = make_workspace(
+            tmp_path, 'composition', input_mode=input_mode, fetch_materials=False
+        )
+        if input_mode == 'paper':
+            write(ws / 'material-catalog.json', '{"entries": []}')
         prepare(ws, 'composition')
 
         inputs = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))['Inputs']
 
-        assert '- material-catalog.json：无（' in inputs
+        if input_mode == 'paper':
+            assert str(ws / 'material-catalog.json') in inputs
+        else:
+            assert '- material-catalog.json：无（' in inputs
         assert f'design github、layout presenter、template 无（不使用模板）、orientation landscape' in inputs
 
     @pytest.mark.parametrize('template', ['github', None], ids=['selected-template', 'no-template'])

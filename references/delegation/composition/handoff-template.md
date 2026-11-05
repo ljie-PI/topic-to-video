@@ -13,7 +13,7 @@
 | `{{skill_root}}` | skill 根目录的绝对路径 |
 | `{{coding_agent}}` / `{{coding_model_instruction}}` | 按 `inputs.json.delegation.composition` 与全局 `coding_agent` 解析的有效 agent / model；未指定 model 时模型说明为空 |
 | `{{design}}` / `{{layout}}` / `{{template}}` / `{{orientation}}` | `inputs.json` 的对应字段；`template` 未选择时写“未选择（由本阶段决定）”，null 时写“无（不使用模板）” |
-| `{{material_catalog}}` | `fetch_materials` 为真：catalog 的路径；否则“无（无素材，画面用纯排版）” |
+| `{{material_catalog}}` | catalog 适用时（联网抓素材，或论文模式）：catalog 的路径；否则“无（无素材，画面用纯排版）” |
 | `{{required_references}}` | 按叠加顺序编号：基础指令 → `modules.md` → design 文档与 `<design>.json` 机器契约 → layout 的 json 与文档 → 模板目录（`templates.md`，供本阶段选模板）→ 已选的模板文档与 `supported_layouts` 声明（未选时省略）→ pattern / 组件目录（固定一句，按 storyboard 需要自行阅读）。全部指向工作区副本 |
 | `{{additional_instructions}}` | `inputs.json` 的 `composition_requests` 逐条列出；没有写 `None` |
 | `{{transcript_q}}` / `{{narration_q}}` / `{{offsets_q}}` / `{{script_txt_q}}` | 确定性字幕生成的四个上游 |
@@ -32,10 +32,10 @@
 
 ## Inputs
 
+### Agent 阅读与画面资源
+
 - 工作区：{{ws}}/
 - {{ws}}/voice_clone/narration.mp3：生成的配音（唯一音频来源，不重生成 TTS）
-- {{transcript_q}}：本轮音频的 fresh transcript（词级时间戳；字幕唯一的时间来源）
-- {{narration_q}} + {{offsets_q}}：朗读稿与逐字映射表（把时间还原到显示稿）
 - {{timeline_q}}：Phase 7 的段落与 cue 时间轴（scene 切分与 cue 锚点的依据）；本阶段不修改它
 - material-catalog.json：{{material_catalog}}
 - 素材 ref：图片 / 视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>`；按 slug 定位 entry 后，视频 clip 解析到该 entry 的 `selected_clips[].clip_path`（相对工作区根），不用视频的 `local_path`
@@ -44,11 +44,18 @@
 - {{ws}}/inputs.json：design {{design}}、layout {{layout}}、template {{template}}、orientation {{orientation}}
 - 字体目录：{{ws}}/composition/assets/fonts/（已按所选 design 预置，只用它）
 
+### 仅供工具读取
+
+- {{transcript_q}}：本轮音频的 fresh transcript（词级时间戳；字幕唯一的时间来源）
+- {{narration_q}} + {{offsets_q}}：朗读稿与逐字映射表（把时间还原到显示稿）
+
+这些文件只作为下面字幕 / cue 对齐命令的参数；正常流程不阅读或复述其全文，也不拿它们重新理解或改写旁白。执行命令后读取生成的字幕单元与 cue 时间；仅在工具报错且必须诊断时读取相关句子或时间窗口，不重复加载全部文本。
+
 ## Outputs
 
 写到工作区（{{ws}}/）：
 
-- {{subtitle_units_q}}：最终字幕单元。**在本阶段按选定 layout 生成**（下面第一条命令），之后逐单元原样上屏；不要手改文本或边界
+- {{subtitle_units_q}}：最终字幕单元。**在本阶段按选定 layout 生成**（下面第一条命令），生成后读取这份结果并逐单元原样上屏；不要手改文本或边界
 - {{ws}}/composition/storyboard.md：storyboard，开头是「组件使用表」，每个 scene 写明 intent、所用的 content 区域、素材与 pattern 选择，以及选定的模板与理由；偏离场景规划处写明理由
 - {{ws}}/composition/index.html + {{ws}}/composition/compositions/：HyperFrames 工程与子合成
 - {{ws}}/composition/check-composition.json：check-composition 的报告（下面命令的 `--output` 写出它；最后一次运行的 verdict 必须是 pass）

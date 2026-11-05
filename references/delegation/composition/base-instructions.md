@@ -2,7 +2,7 @@
 
 你负责为一个解说视频设计并实现**全部画面**：以场景规划为起点，自己写 storyboard，用 modules 组装画面并渲染成 `final.mp4`。主 agent 不会替你做这些决定；你独立完成并落盘产物。
 
-先读工作区里的输入（handoff 的 Inputs 一节列出的文件），再按下面的约束执行。指令冲突时，按 `references/delegation/conventions.md` 的叠加顺序处理：后读的（模板组装说明 → 用户在 `inputs.json` 的 `composition_requests` 里提出的要求）覆盖先读的。
+先读 handoff 的 Inputs 中标为「Agent 阅读与画面资源」的文件，再按下面的约束执行。标为「仅供工具读取」的 transcript、朗读稿与偏移表只传给字幕 / cue 对齐命令，正常流程不阅读或复述其全文；仅在工具报错且必须诊断时读相关句子或时间窗口。旁白理解以 `script.txt` 为准，生成字幕后读取 `composition/assets/subtitle-units.json`。指令冲突时，按 `references/delegation/conventions.md` 的叠加顺序处理：后读的（模板组装说明 → 用户在 `inputs.json` 的 `composition_requests` 里提出的要求）覆盖先读的。
 
 本指令只有五部分约束——输入契约、必须参考 design、必须遵守 layout 区域、内容演绎与模板选择、模板时间锚点——和一条工作顺序。除此之外你没有别的规则：scene 怎么切、用什么模板与 pattern、素材怎么摆、Jay 怎么演、动效怎么选，是你的设计空间。
 
