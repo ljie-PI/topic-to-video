@@ -27,7 +27,7 @@
 
 - 工作区：{{ws}}/
 - harvest_page/manifest.json：{{ws}}/harvest_page/manifest.json（素材清单；按其路径读取实际图片、视频、字幕、页面摘录与论文 metadata）
-- research.md：{{ws}}/research.md（调研结果与证据）
+- research-brief.md：{{ws}}/research-brief.md（调研结果与证据）
 - vision_analyze/topic-context.txt：{{ws}}/vision_analyze/topic-context.txt（主 agent 已写好的话题 context 摘要）
 - inputs.json：{{ws}}/inputs.json（用户来源输入、目标时长、语言、朝向与 agent / model 要求；用户素材原话见 Additional Instructions）
 

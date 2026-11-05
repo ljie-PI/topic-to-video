@@ -6,7 +6,7 @@
 
 ## 输入与执行角色
 
-先读 handoff 中的 `inputs.json`（用户来源输入与阶段级 agent / model 要求）、`research.md`（调研结果）、`vision_analyze/topic-context.txt`（用户输入、调研结果和叙事角度的 summary），以及 Additional Instructions 中的 `catalog-instructions.md`（用户素材要求，如有）。再按 manifest 读取实际图片、视频、字幕、页面摘录与论文 metadata。
+先读 handoff 中的 `inputs.json`（用户来源输入与阶段级 agent / model 要求）、`research-brief.md`（调研结果）、`vision_analyze/topic-context.txt`（用户输入、调研结果和叙事角度的 summary），以及 Additional Instructions 中的 `catalog-instructions.md`（用户素材要求，如有）。再按 manifest 读取实际图片、视频、字幕、页面摘录与论文 metadata。
 
 **先判断能不能用：** 只有本地文件真实存在的媒体才能进入 catalog。视频带 `download_required: true`、下载失败、或 `local_path` 缺失 / 文件不存在时，跳过这个视频（不抽帧、不选片段、不写进 catalog），同一 entry 里已成功的图片 / 视频照常处理。来源未获取（地区限制、需登录、已下线）与“应该有的本地文件丢了”不同：后者是工作区损坏，按恢复流程处理，不能用跳过来掩盖。
 

@@ -29,7 +29,7 @@
 ## Inputs
 
 - 工作区：{{ws}}/
-- research.md：{{ws}}/research.md
+- research-brief.md：{{ws}}/research-brief.md
 - material-catalog.json：{{material_catalog}}
 - inputs.json：{{ws}}/inputs.json（目标时长 {{duration}}、语言 {{language}}、input_mode {{input_mode}}）
 

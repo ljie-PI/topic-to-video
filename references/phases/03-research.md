@@ -7,31 +7,29 @@
 
 ## 输出
 
-- `research.md`（工作区根目录；综合用户来源、Gemini Deep Research、补充 web search 以及论文模式的解析结果，核实后落盘保存；不是某个工具的原始报告，也不要求压缩成简报，不能只放在 scratchpad）；
+- `research-brief.md`（工作区根目录，落盘保存，不能只放在 scratchpad）；
 - 论文模式下可选：`harvest_page/related-<short-name>/`（解析出的相关论文，最多 5 篇，论文 entry 已写入 `harvest_page/manifest.json`）。
 
 ## 完成判据
 
-- `research.md` 存在且非空，并且含下面四个小节（标题按模板写）：`## Key facts`、`## Quotes`、`## Numbers`、`## Source URLs`；`## Open questions / contradictions` 可选；
+- `research-brief.md` 存在且非空，并且含下面四个小节（标题按模板写）：`## Key facts`、`## Quotes`、`## Numbers`、`## Source URLs`；`## Open questions / contradictions` 可选；
 - 小节里的内容是否可信由执行后自检判断，脚本只保证下游能按小节取；
-- 校验合格后默认自动继续；只有 `inputs.json` 的 `approval_gates` 包含 `research-brief` 时，才先把 `research.md` 给用户过目并确认。
-
-`research-brief` 仅保留为兼容已有 `inputs.json` 的审批 gate 标识，审批对象已是 `research.md`。旧工作区只有 `research-brief.md` 时，先保留内容迁移到 `research.md`；两份文件同时存在时不要覆盖新文件。然后运行 `pipeline-status`，按新的产物 / 上游指纹处理 stale 或重新确认，不手改 `.pipeline/`，也不静默沿用旧路径的审批。
+- 校验合格后默认自动继续；只有 `inputs.json` 的 `approval_gates` 包含 `research-brief` 时，才先把 brief 给用户过目并确认。
 
 ## 执行后自检
 
-`pipeline-status` 只检查调研结果存在、各必需小节都在；小节是固定的 Markdown 标题，不是确定性事实字段，内容与证据由 agent 核实。下面这几项要自己判断：
+`pipeline-status` 只检查简报存在、各必需小节都在。下面这几项要自己判断：
 
 - 要用的每个关键事实、数字、日期和引文都能指到具体出处，不是从记忆里补的。
 - 没核实的点已经删掉，或在 `Open questions / contradictions` 里写清楚，不会当成事实写进旁白。
 - 用这些材料能就用户关心的几个问题讲成一段连贯的话；讲不成就是材料不够，继续搜或找用户缩小范围，不要硬写。
 - **Source URLs** 里的页面能用来找画面（官方站、文档、仓库、演示视频），不是聚合页；社交页面只取与主题相关的帖子 / 时间线，不整页凑数。
 
-内容确实不够或讲不通时，改调研结果并重跑状态脚本；需要时补搜（在上面的额度内）。用户说这稿不行、但又没说改什么时先问清；确认要重写而暂无文件变化时，按 `references/pipeline-control.md` 用 `--redo 3-research` 登记，改完再 `--finish`。
+内容确实不够或讲不通时，改简报并重跑状态脚本；需要时补搜（在上面的额度内）。用户说这稿不行、但又没说改什么时先问清；确认要重写而暂无文件变化时，按 `references/pipeline-control.md` 用 `--redo 3-research` 登记，改完再 `--finish`。
 
 ## 下一步
 
-Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = false` 时，论文模式进 Phase 5（仅论文素材），其余进 Phase 6（脚本与场景规划）。`research.md` 里的 **Source URLs** 一节是交给 Phase 4 的显式接口。
+Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = false` 时，论文模式进 Phase 5（仅论文素材），其余进 Phase 6（脚本与场景规划）。brief 里的 **Source URLs** 一节是交给 Phase 4 的显式接口。
 
 ## 护栏
 
@@ -83,9 +81,9 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
    ```
    - 最多解析 5 篇。用户说"只看主论文"或没识别出明显相关工作，则跳过。
    - 这一步不受 `fetch_materials` 影响：相关论文的 figure / table 同样写进 manifest，供 Phase 5 使用。
-   - 读相关论文解析出的 markdown（`harvest_page/related-<short-name>/metadata.json` 的 `paper_metadata.full_markdown_path`，相对 `harvest_page/`），把结论（它的方法 / 结果与主论文的关系）写进 `research.md`。
+   - 读相关论文解析出的 markdown（`harvest_page/related-<short-name>/metadata.json` 的 `paper_metadata.full_markdown_path`，相对 `harvest_page/`），把结论（它的方法 / 结果与主论文的关系）写进 `research-brief.md`。
 5. **找空缺。** 不论 Gemini 跑没跑成功，先列出这段视频要讲的几个核心问题，再标出每处缺什么：定义、关键数字、原始出处，还是某个结论有冲突。写不成一句话的“核心问题”说明还没想清楚，先问用户或继续看材料。
-6. **按缺口搜索。** 每次只为最影响讲解的一个缺口搜一次：先说清这次要解决什么，再写关键词。读完结果做三件事——打开重要出处核实（搜索摘要不能当证据）、把已确认的事实补进调研草稿、据此删掉没依据的结论或标为“据报道”。然后看还有没有影响讲解的缺口，有明确目标才继续。关键词可以按结果改写：换概念的别名、直接找原始来源、限定年份或机构、找图示或演示视频。示例：
+6. **按缺口搜索。** 每次只为最影响讲解的一个缺口搜一次：先说清这次要解决什么，再写关键词。读完结果做三件事——打开重要出处核实（搜索摘要不能当证据）、把已确认的事实补进简报草稿、据此删掉没依据的结论或标为“据报道”。然后看还有没有影响讲解的缺口，有明确目标才继续。关键词可以按结果改写：换概念的别名、直接找原始来源、限定年份或机构、找图示或演示视频。示例：
    - "Claude Code MCP launch date" → 确认发布日期
    - "Boris Cherny Anthropic interview Sequoia" → 核实姓名与引文
    - "GPU vs CPU AI training memory bandwidth" → 技术数字
@@ -94,10 +92,10 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
 
    - **资料够了：** 要讲的核心问题已有足够信息，能组织成连贯的讲解；要用的数字、日期、人名和引文都能指到出处；有争议的结论已有对照说明。三项都满足就停，用了两次也是正常。
    - **没进展：** 连续两轮换了关键词或来源，仍只得到重复、无关或不能核实的信息，就停。能舍弃的枝节舍弃；缺的正好是用户要听的核心内容时，说明缺什么，请用户补材料或确认缩小范围——不能宣布调研合格。
-   - **到上限：** 一次制作里 agent 主动搜索合计最多 8 次（调研与素材补搜共用这份次数），用满就停，未解决的问题写进调研结果。不要为了凑次数或凑来源数量继续搜。
+   - **到上限：** 一次制作里 agent 主动搜索合计最多 8 次（调研与素材补搜共用这份次数），用满就停，未解决的问题写进简报。不要为了凑次数或凑来源数量继续搜。
 
    计数：一次搜索查询并读完结果算一次；一批发出多个查询时每个分别计。打开来源核实不算；Gemini 自己的搜索不纳入。续跑沿用已用次数，不因换对话而重置。查过什么、为什么停，简单记在工作区的 `search-notes.md` 即可（不是阶段产物，不参与状态判断）。
-7. **综合、核实调研结果，落盘为 `research.md`。** 不把完整 Gemini 报告另当最终产物；无论 Gemini 成功、失败或未运行，都在这个路径写出综合结果。格式：
+7. **合成研究 brief，落盘为 `research-brief.md`。** 格式：
    ```
    ## Key facts (verified)
    - [fact, source]
@@ -125,7 +123,7 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
    需要登录才能看全的页面不必提前排除：那是 Phase 4 用共享 profile 登录态去试的事，掉头返回会丢掉整条来源。
 
    数量按需要来：按相关性和来源质量挑，能盖住主要视觉来源就够；不为凑数添无关页面，也不要求每个讲解点都有对应页面。
-8. **跑状态脚本，默认自动继续。** 只有 `next_phase.reason` 为 `awaiting_approval` 且 `gate` 为 `research-brief` 时，把 `research.md` 给用户看，明确确认后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve research-brief`。未确认前不要自己批准或进入下游；用户明确授权后续全自动时，把 `inputs.json` 的 `approval_gates` 改为 `[]` 再跑状态脚本，不用 `--approve` 代替。未启用此 gate 时，不额外找用户审稿。
+8. **跑状态脚本，默认自动继续。** 只有 `next_phase.reason` 为 `awaiting_approval` 且 `gate` 为 `research-brief` 时，把 `research-brief.md` 给用户看，明确确认后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve research-brief`。未确认前不要自己批准或进入下游；用户明确授权后续全自动时，把 `inputs.json` 的 `approval_gates` 改为 `[]` 再跑状态脚本，不用 `--approve` 代替。未启用此 gate 时，不额外找用户审稿。
 
 **仅在以下情况跳过研究：**
 - 用户明确说"skip research, use this exact text" 且提供了完整内容
@@ -151,4 +149,4 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
 7. 最重要相关论文的 arXiv URL（供本 phase 解析相关论文）"
 ```
 
-论文自身的 markdown 是**主要**内容来源。Deep Research 提供上下文——背景、影响、相关工作对比。调研的其余部分（解析相关论文、用 `web_search` 补漏、合成 `research.md`）按上面的常规流程进行。
+论文自身的 markdown 是**主要**内容来源。Deep Research 提供上下文——背景、影响、相关工作对比。调研的其余部分（解析相关论文、用 `web_search` 补漏、合成 `research-brief.md`）按上面的常规流程进行。

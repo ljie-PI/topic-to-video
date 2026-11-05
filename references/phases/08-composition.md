@@ -4,7 +4,7 @@
 
 ### 主 agent 准备时参考
 
-- `research.md`（8.0 选择 layout 时参考，不作为 composition agent 的重复阅读输入）；
+- `research-brief.md`（8.0 选择 layout 时参考，不作为 composition agent 的重复阅读输入）；
 - `inputs.json`（画面设计读 `design` / `orientation` / `composition_requests`，准备 handoff 还校验 `duration` / `language` / `input_mode` / `fetch_materials` / `coding_agent` 与可选 `delegation`；本阶段写入 `layout` 与 `template`）。
 
 ### Composition agent 阅读与使用
@@ -79,7 +79,7 @@ Phase 9（检查与混音）：渲染后 QA（`check-render.py` 确定性检查 
 
 #### 8.0 — 选 layout
 
-layout 在这一步定，之后才准备 handoff。读 `research.md`、`script.txt`、`scene-plan.json` 和 `inputs.json` 的 `orientation` / `design` / `composition_requests` 决定：
+layout 在这一步定，之后才准备 handoff。读 `research-brief.md`、`script.txt`、`scene-plan.json` 和 `inputs.json` 的 `orientation` / `design` / `composition_requests` 决定：
 
 - **`orientation` 和 `design` 是已经确定的事实**，本阶段不改它们。
 - **按 `orientation` 选 layout**：横屏用 `presenter`（用户明确要求主持人、有人讲解或 Jay）或 `stage`（其他横屏）；竖屏用 `portrait`（9:16）或 `portrait-3x4`（3:4）。只用 `modules/layouts/` 里注册的 layout；三个朝向的画布尺寸互不代替。

@@ -45,7 +45,7 @@ def run(script: str, *args):
 def test_crlf_producer_voice_and_composition_subtitles_chain(tmp_path: Path):
     ws = voice_fixtures.make_workspace(tmp_path)
     (ws / 'script.txt').write_bytes(voice_fixtures.SCRIPT_TEXT.replace('\n', '\r\n').encode('utf-8'))
-    (ws / 'research.md').write_text(status_fixtures.RESEARCH, encoding='utf-8')
+    (ws / 'research-brief.md').write_text(status_fixtures.RESEARCH_BRIEF, encoding='utf-8')
     made, _ = run('make-narration.py', '--script', ws / 'script.txt',
                   '--lexicon', ws / 'tts-lexicon.json', '--output-dir', ws)
     assert made.returncode == 0

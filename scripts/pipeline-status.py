@@ -170,12 +170,11 @@ APPROVALS_VERSION = 1
 REDOS_PATH = '.pipeline/redos.json'
 REDOS_VERSION = 1
 GATES: dict[str, dict[str, Any]] = {
-    # Stable approval identifier for existing inputs.json; the product is research.md.
     'research-brief': {
         'phase': '3-research',
-        'products': ['research.md'],
+        'products': ['research-brief.md'],
         'instruction': (
-            '把 research.md 给用户过目；用户确认后运行 '
+            '把 research-brief.md 给用户过目；用户确认后运行 '
             '`python3 scripts/pipeline-status.py <ws> --approve research-brief`'
         ),
     },
@@ -195,8 +194,8 @@ ABSENT = 'absent'
 # 上游键 "inputs.json#<field>" 指 inputs.json 的某个字段。
 INPUTS_FIELD_PREFIX = 'inputs.json#'
 
-# Phase 3 调研结果必需的小节（标题按 Phase 3 文档的模板）；Open questions 可选。
-RESEARCH_SECTIONS = ('Key facts', 'Quotes', 'Numbers', 'Source URLs')
+# Phase 3 的简报必需的小节（标题按 Phase 3 文档的模板）；Open questions 可选。
+RESEARCH_BRIEF_SECTIONS = ('Key facts', 'Quotes', 'Numbers', 'Source URLs')
 
 # Phase 6 的长度规则：展示稿的非空白字符数必须在
 # duration x 60 s x 7 字/秒 的 +-15% 之内。这是写稿预算，不是 TTS 语速参数：
@@ -366,8 +365,8 @@ def check_script_text(ws: Path, relpath: str) -> CheckResult:
     return OK
 
 
-def check_research(ws: Path, relpath: str) -> CheckResult:
-    """research.md：非空，且含把调研交给下游的四个小节。
+def check_research_brief(ws: Path, relpath: str) -> CheckResult:
+    """research-brief.md：非空，且含把调研交给下游的四个小节。
 
     小节标题按 Phase 3 的模板写（## Key facts / ## Quotes / ## Numbers /
     ## Source URLs）。小节内容是否可信由 agent 自检，这里只保证下游能按小节取。
@@ -381,7 +380,7 @@ def check_research(ws: Path, relpath: str) -> CheckResult:
     ]
     missing = [
         name
-        for name in RESEARCH_SECTIONS
+        for name in RESEARCH_BRIEF_SECTIONS
         if not any(heading.startswith(name) for heading in headings)
     ]
     if missing:
@@ -1319,14 +1318,14 @@ PHASES: list[dict[str, Any]] = [
             'inputs.json#language',
             'harvest_page/main-paper/metadata.json',  # 可选：仅 paper 模式
         ],
-        'products': {'research.md': check_research},
+        'products': {'research-brief.md': check_research_brief},
     },
     {
         'id': '4-material-harvest',
         'title': '素材抓取（可选）',
         'doc': 'references/phases/04-material-harvest.md',
         'applies': 'fetch',
-        'upstream': ['research.md'],
+        'upstream': ['research-brief.md'],
         'products': {'harvest_page/manifest.json': check_harvest_manifest},
     },
     {
@@ -1336,7 +1335,7 @@ PHASES: list[dict[str, Any]] = [
         'applies': 'fetch_or_paper',
         'upstream': [
             'harvest_page/manifest.json',
-            'research.md',
+            'research-brief.md',
             'catalog-instructions.md',  # 可选：用户的素材理解 / 筛选要求
         ],
         'products': {'material-catalog.json': check_material_catalog},
@@ -1348,7 +1347,7 @@ PHASES: list[dict[str, Any]] = [
         'applies': 'always',
         'gate': 'script',
         'upstream': [
-            'research.md',
+            'research-brief.md',
             'material-catalog.json',  # 可选：fetch_materials 为 false 时不存在
             'inputs.json#duration',
             'inputs.json#language',

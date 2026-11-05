@@ -275,7 +275,7 @@ def catalog_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool = False) -> 
         },
         inputs=[
             ws / 'harvest_page' / 'manifest.json',
-            ws / 'research.md',
+            ws / 'research-brief.md',
             ws / 'vision_analyze' / 'topic-context.txt',
             ws / 'inputs.json',
         ],
@@ -294,7 +294,7 @@ def script_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool = False) -> P
             'required_references': numbered([text for text, _ in references]),
             'additional_instructions': request_list(inputs, 'script'),
         },
-        inputs=[ws / 'inputs.json', ws / 'research.md'],
+        inputs=[ws / 'inputs.json', ws / 'research-brief.md'],
         references=[delegation / 'conventions.md', *(path for _, paths in references for path in paths)],
         sources=[SKILL_ROOT / DELEGATION / 'conventions.md', SKILL_ROOT / DELEGATION / 'script'],
     )
