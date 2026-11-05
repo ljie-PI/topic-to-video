@@ -31,7 +31,8 @@ def test_only_the_visual_step_reads_the_visual_fields():
     for step in ('catalog', 'script'):
         assert not {'source', 'design', 'layout', 'orientation', 'template'} & set(
             video_contract.STEP_INPUTS_FIELDS[step])
-    assert {'design', 'layout', 'orientation'} <= set(video_contract.STEP_INPUTS_FIELDS['composition'])
+    assert {'design', 'orientation'} <= set(video_contract.STEP_INPUTS_FIELDS['composition'])
+    assert 'layout' not in video_contract.STEP_INPUTS_FIELDS['composition']
     assert 'duration' not in video_contract.STEP_INPUTS_FIELDS['catalog']
 
 

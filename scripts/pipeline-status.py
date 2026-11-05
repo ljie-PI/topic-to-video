@@ -12,10 +12,9 @@ inputs.json 的 duration、scene-plan 段落对照 script.txt 的段落、scene-
 script.txt 与 narration.txt。
 
 阶段的分工也在这里体现：Phase 7 只产出音频、fresh transcript 与时间轴（不读
-layout）；最终字幕是 Phase 8 的产物（`composition/assets/subtitle-units.json`，
-按选定 layout 生成），Phase 8 还额外要求输入的视觉配置可用（layout 在当前库
-里、画布等于朝向尺寸、模板声明支持该 layout），并且保存下来的 check-composition
-报告结论为 pass。
+layout）；最终字幕是 Phase 8 的产物（`composition/assets/subtitle-units.json`），
+按 `composition/scenes.json` 的实际视觉 layouts 生成；旧工程保留 inputs.layout 入口。
+Phase 8 校验精确画布、逐 scene 模板兼容和报告内容指纹，Phase 7 不依赖视觉配置。
 
 过期检测：{workspace}/.pipeline/stamps.json（只由本脚本写入）为每个已完成阶段
 记录它所依据的上游文件与 inputs.json 字段的 sha256 指纹，以及它自己产物的指纹。
@@ -104,9 +103,13 @@ from typing import Any, Callable
 import cli
 import clip_paths
 import harvest_manifest
+import media
 import script_text
 import video_contract
-from composition_hash import composition_source_relpaths, composition_sources_fingerprint, visible_files
+from composition_hash import (
+    composition_source_relpaths, composition_sources_fingerprint, visible_files,
+    visual_contract_fingerprint,
+)
 from harvest_manifest import _stage_json as stage_json, stored_path_problem
 from delegation_config import validate_delegation
 
@@ -831,6 +834,54 @@ def check_inputs_product(ws: Path, relpath: str) -> CheckResult:
     return result
 
 
+def load_workspace_visual_scenes(ws: Path) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """当前视觉声明；不存在时返回 (None, None)，非法时返回具体原因。"""
+    path = ws / video_contract.VISUAL_SCENES_PATH
+    if not path.is_file():
+        return None, None
+    _, inputs = load_inputs(ws)
+    if inputs is None:
+        return None, 'inputs.json is unavailable for scene canvas validation'
+    try:
+        duration_s = media.probe_duration(ws / 'voice_clone' / 'narration.mp3')
+        scenes = video_contract.load_visual_scenes(
+            path, SKILL_ROOT, inputs.get('orientation'), duration_s, ws=ws,
+        )
+    except (ValueError, OSError, media.MediaToolMissing, media.MediaProbeError) as exc:
+        return None, str(exc)
+    return scenes, None
+
+
+def declared_visual_layouts(ws: Path, visual_scenes: list[dict[str, Any]] | None) -> list[str]:
+    """scenes.json 声明的合法 layout 名；即使时间覆盖尚未通过，也供模板与指纹读取。"""
+    if visual_scenes is not None:
+        return sorted({scene['layout'] for scene in visual_scenes})
+    _, data = read_json_product(ws, video_contract.VISUAL_SCENES_PATH)
+    if not isinstance(data, dict) or not isinstance(data.get('scenes'), list):
+        return []
+    return sorted({
+        scene['layout']
+        for scene in data['scenes']
+        if isinstance(scene, dict)
+        and isinstance(scene.get('layout'), str)
+        and video_contract.layout_contract_problem(SKILL_ROOT, scene['layout']) is None
+    })
+
+
+def check_visual_scenes_product(ws: Path, relpath: str) -> CheckResult:
+    """新视觉声明存在时严格校验；旧单 layout 工程不要求补写它。"""
+    path = ws / relpath
+    if not path.exists():
+        _, inputs = load_inputs(ws)
+        if inputs is not None and inputs.get('layout') is not None:
+            return OK
+        return CheckResult(STATUS_MISSING, 'visual scene declaration is required before Phase 8 can complete')
+    if not path.is_file():
+        return CheckResult(STATUS_CORRUPT, 'visual scene declaration is not a file')
+    _, problem = load_workspace_visual_scenes(ws)
+    return CheckResult(STATUS_CORRUPT, problem) if problem else OK
+
+
 def check_visual_inputs(ws: Path) -> dict[str, CheckResult]:
     """Phase 8 的输入前置条件：视觉配置由本阶段决定，所以校验也留在本阶段。
 
@@ -846,15 +897,18 @@ def check_visual_inputs(ws: Path) -> dict[str, CheckResult]:
     def record(field: str, detail: str) -> None:
         problems[f'{INPUTS_FIELD_PREFIX}{field}'] = CheckResult(STATUS_CORRUPT, detail)
 
+    visual_scenes, _ = load_workspace_visual_scenes(ws)
+    uses_visual_scenes = (ws / video_contract.VISUAL_SCENES_PATH).exists()
     layout = inputs.get('layout')
-    problem = video_contract.layout_contract_problem(SKILL_ROOT, layout)
-    if problem:
-        record('layout', problem)
-    else:
-        path = video_contract.effective_resource(SKILL_ROOT, ws, f'modules/layouts/{layout}.json', refresh=False)
-        problem = video_contract.layout_file_problem(path, inputs.get('orientation'), str(layout))
+    if not uses_visual_scenes and 'layout' in inputs:
+        problem = video_contract.layout_contract_problem(SKILL_ROOT, layout)
         if problem:
             record('layout', problem)
+        else:
+            path = video_contract.effective_resource(SKILL_ROOT, ws, f'modules/layouts/{layout}.json', refresh=False)
+            problem = video_contract.layout_file_problem(path, inputs.get('orientation'), str(layout))
+            if problem:
+                record('layout', problem)
     template = inputs.get('template')
     if 'template' not in inputs:
         # template 缺省表示“还没选”：模板选择归 composition agent，它必须在
@@ -876,12 +930,20 @@ def check_visual_inputs(ws: Path) -> dict[str, CheckResult]:
                     f'template {template!r} has no supported_layouts declaration in '
                     f'modules/templates/{template}/{template}.json',
                 )
-            elif layout not in supported:
-                record(
-                    'template',
-                    f'template {template!r} supports layouts {", ".join(supported)}, not {layout!r}: '
-                    'choose a compatible layout or write template: null',
-                )
+            else:
+                if uses_visual_scenes:
+                    used_layouts = declared_visual_layouts(ws, visual_scenes)
+                elif 'layout' in inputs:
+                    used_layouts = [layout]
+                else:
+                    used_layouts = []
+                incompatible = [name for name in used_layouts if name not in supported]
+                if incompatible:
+                    record(
+                        'template',
+                        f'template {template!r} supports layouts {", ".join(supported)}, not '
+                        f'{", ".join(map(str, incompatible))}: choose compatible scene layouts or write template: null',
+                    )
     return problems
 
 
@@ -1173,7 +1235,12 @@ def composition_source_paths(ws: Path, *, include_storyboard: bool = True) -> li
     编辑它会强制重新渲染，而不是重新检查。
     """
     composition_dir = ws / 'composition'
-    paths = [composition_dir / relpath for relpath in composition_source_relpaths(composition_dir)]
+    paths = [
+        composition_dir / relpath for relpath in composition_source_relpaths(composition_dir)
+        if relpath != 'scenes.json'
+    ]
+    # scenes.json 由内容指纹和 Phase 8 stamp 证明新鲜度；相同字节复制不能仅因
+    # mtime 改变而要求重渲染。有效外部 layout 同理由 visual_contract_sha256 绑定。
     storyboard = composition_dir / 'storyboard.md'
     if include_storyboard and storyboard.is_file():
         paths.append(storyboard)
@@ -1212,9 +1279,33 @@ def check_composition_report(ws: Path, relpath: str) -> CheckResult:
     if recorded != composition_sources_fingerprint(ws / 'composition'):
         return CheckResult(
             STATUS_CORRUPT,
-            'sources_sha256 does not match the current composition (index.html / compositions/ / assets/): '
+            'sources_sha256 does not match the current composition (index.html / scenes.json / compositions/ / assets/): '
             'the composition changed after check-composition last ran, re-run it and save the report',
         )
+    visual_scenes, visual_problem = load_workspace_visual_scenes(ws)
+    if visual_problem:
+        return CheckResult(STATUS_CORRUPT, visual_problem)
+    if visual_scenes is not None:
+        expected_visual = visual_contract_fingerprint(
+            ws / video_contract.VISUAL_SCENES_PATH,
+            [scene['layout_path'] for scene in visual_scenes],
+        )
+        if data.get('visual_contract_sha256') != expected_visual:
+            return CheckResult(
+                STATUS_CORRUPT,
+                'visual_contract_sha256 does not match scenes.json and its effective layouts: '
+                're-run check-composition with --scenes',
+            )
+        expected_coverage = [(scene['scene_id'], scene['layout']) for scene in visual_scenes]
+        actual_coverage = [
+            (scene.get('scene_id'), scene.get('layout'))
+            for scene in data.get('scenes_checked', []) if isinstance(scene, dict)
+        ]
+        if actual_coverage != expected_coverage:
+            return CheckResult(
+                STATUS_CORRUPT,
+                'scenes_checked does not cover the current visual scenes and layouts: re-run check-composition',
+            )
     render = ws / COMPOSITION_RENDER
     newest = newest_composition_source(ws)
     if render.is_file() and newest is not None and newest.stat().st_mtime_ns > render.stat().st_mtime_ns:
@@ -1403,6 +1494,7 @@ PHASES: list[dict[str, Any]] = [
             f'inputs.json#{COMPOSITION_REQUESTS_FIELD}',  # 可选
         ],
         'products': {
+            'composition/scenes.json': check_visual_scenes_product,
             'composition/assets/subtitle-units.json': check_subtitle_units,
             'composition/storyboard.md': check_text_product,
             'composition/index.html': check_file_product,
@@ -1557,15 +1649,33 @@ class Fingerprinter:
             # 与 handoff 的副本策略相同。复制相同字节不算变更；真正改变有效的
             # 机器契约才会使 Phase 8 stale，Phase 7 从不依赖这些资源。
             design, layout, template = (self._inputs.get(name) for name in ('design', 'layout', 'template'))
-            paths = [f'modules/designs/{design}/{design}.json', f'modules/layouts/{layout}.json']
+            declaration = self.ws / video_contract.VISUAL_SCENES_PATH
+            visual_scenes, _ = load_workspace_visual_scenes(self.ws) if declaration.is_file() else (None, None)
+            if declaration.is_file():
+                result.pop('inputs.json#layout', None)
+                result[video_contract.VISUAL_SCENES_PATH] = self.file(video_contract.VISUAL_SCENES_PATH)
+                layout_paths = [
+                    f'{video_contract.LAYOUTS_PATH}/{name}.json'
+                    for name in declared_visual_layouts(self.ws, visual_scenes)
+                ]
+            elif 'layout' in self._inputs:
+                layout_paths = [f'modules/layouts/{layout}.json']
+            else:
+                result.pop('inputs.json#layout', None)
+                layout_paths = []
+            paths = [f'modules/designs/{design}/{design}.json', *layout_paths]
             if template is not None:
                 paths.append(f'modules/templates/{template}/{template}.json')
-            for relpath in paths:
+            for relpath in dict.fromkeys(paths):
                 path = video_contract.effective_resource(SKILL_ROOT, self.ws, relpath, refresh=False)
                 try:
                     result[relpath] = file_sha256(path) if path.is_file() else ABSENT
                 except OSError:
                     result[relpath] = ABSENT
+        elif phase['id'] == '9-check-mix' and (self.ws / video_contract.VISUAL_SCENES_PATH).is_file():
+            # QA 的 scene_id 与抽帧窗口依赖视觉声明；即使渲染字节相同，也不能沿用
+            # 另一套 scene 划分下的 pass 报告。
+            result[video_contract.VISUAL_SCENES_PATH] = self.file(video_contract.VISUAL_SCENES_PATH)
         return result
 
     def products(self, phase: dict[str, Any]) -> dict[str, str]:
@@ -1575,6 +1685,12 @@ class Fingerprinter:
             relpath: self.file(relpath)
             for relpath in phase['products']
             if not (self.ws / relpath).is_dir()
+            and not (
+                phase['id'] == '8-composition'
+                and relpath == video_contract.VISUAL_SCENES_PATH
+                and not (self.ws / relpath).exists()
+                and self._inputs.get('layout') is not None
+            )
         }
 
 

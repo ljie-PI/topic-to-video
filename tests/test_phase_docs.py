@@ -524,15 +524,30 @@ def test_template_is_chosen_by_the_composition_agent():
     # Phase 6 不读模板、不依赖它。
     assert '模板不在本阶段输入里' in phase_6
     assert 'narration.md' not in phase_6
-    # Phase 8 只准备 layout，模板由被委派的 agent 自己选并写回。
-    assert text_index(phase_8, '#### 8.0 — 选 layout') < text_index(
+    # Phase 8 主 agent 只确认全片约束；视觉 scenes / layouts 与模板由被委派 agent 决定。
+    assert text_index(phase_8, '#### 8.0 — 确认全片约束与派发前置条件') < text_index(
         phase_8, '#### 8.1 — 物化与字体'
     )
     assert '模板不在这一步决定' in phase_8
-    assert '约束优先于模板' in phase_8
-    assert 'template` 缺省时 handoff 写“未选择（由本阶段决定）”，并仍给出模板目录；为 null 时写“无（不使用模板）”' in phase_8
+    assert '视觉 scenes 与 layout 不在这一步决定' in phase_8
+    assert '允许 `layout` 与 `template` 缺省' in phase_8
+    assert 'composition/scenes.json` 尚不存在' in phase_8
     assert '不命中就不用' in composition
     assert '把 `template` 字段写回 `inputs.json`' in composition
+    assert '每一个 layout' in composition
+
+
+def test_phase_8_visual_scenes_are_outputs_not_handoff_preconditions():
+    phase_8 = doc_text('references/phases/08-composition.md')
+    outputs = phase_8.split('## 输出', 1)[1].split('## 完成判据', 1)[0]
+    criteria = phase_8.split('## 完成判据', 1)[1].split('## 执行后自检', 1)[0]
+
+    assert 'composition/scenes.json' in outputs
+    assert '{version: 1, scenes: [{scene_id, begin_s, end_s, layout}]}' in outputs
+    assert 'composition/scenes.json' in criteria
+    assert '每一个 layout' in criteria
+    assert '不要求 `inputs.json.layout` 或 `composition/scenes.json` 已存在' in phase_8
+    assert 'align-narration.py --mode subtitles --scenes ... --narration-audio ...' in phase_8
 
 
 def test_paper_key_figures_are_declared_and_checked_end_to_end():
@@ -559,25 +574,18 @@ def text_index(text: str, needle: str) -> int:
 
 
 def test_phase_1_says_nothing_about_layout():
-    """layout 是 Phase 8 的画面决定：Phase 1 不选、不指引、也不解释归属。"""
+    """Scene layouts belong to Phase 8; Phase 1 fixes only the global canvas."""
     phase_1 = doc_text('references/phases/01-gather-inputs.md')
 
     assert 'layout' not in phase_1
-    # presenter / stage 只在 layout 语境里出现。
     assert 'presenter' not in phase_1
     assert 'stage' not in phase_1
-
-    # 朝向仍然由本阶段确定。
     assert '`orientation`' in phase_1
 
-    # 画面决定归 Phase 8。
     phase_8 = doc_text('references/phases/08-composition.md')
-    assert '按 `orientation` 选 layout' in phase_8
-    assert 'presenter' in phase_8 and 'stage' in phase_8
-
-    presenter = doc_text('modules/layouts/presenter.md')
-    assert '带主持人的通用横屏布局' in presenter
-    assert '用不用模板都可以选它' in presenter
+    assert '主 agent 不选择视觉 scene 或 layout' in phase_8
+    assert 'modules/layouts/layouts.md' in phase_8
+    assert 'composition/scenes.json' in phase_8
 
 
 def test_jay_generic_performance_and_github_specific_overlay():
@@ -626,9 +634,10 @@ def test_jay_generic_performance_and_github_specific_overlay():
 
 def test_composition_requires_jay_for_presenter():
     composition = doc_text('references/delegation/composition/base-instructions.md')
-    layout_rules = composition.split('## 三、必须遵守 layout 区域')[1].split('## 工作顺序')[0]
+    layout_rules = composition.split('## 三、必须遵守各 scene 的 layout 区域')[1].split('## 工作顺序')[0]
 
     assert 'layout 有人物区（presenter）时必须挂 `jay`' in layout_rules
+    assert '没有人物区的 scene 不强制显示 Jay' in layout_rules
     assert '`VIDEO.jay` 按 `jay.md` 的通用演法编排' in layout_rules
     assert '有模板时再叠加模板的演法' in layout_rules
     assert 'node modules/components/jay/make-envelope.mjs voice_clone/narration.mp3' in layout_rules

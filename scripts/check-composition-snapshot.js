@@ -72,6 +72,19 @@ async ({ checks }) => {
     return (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
   }
 
+  function textLineCount(el, fontSize) {
+    if (!hasOwnText(el)) return 1;
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const tops = Array.from(range.getClientRects())
+        .filter((rect) => rect.width > 0 && rect.height > 0)
+        .map((rect) => Math.round(rect.top));
+      if (tops.length) return new Set(tops).size;
+    } catch (_) {}
+    return Math.max(1, Math.ceil(el.scrollHeight / Math.max(1, fontSize * 1.15) - 0.05));
+  }
+
   function hasVisibleSurface(el) {
     const style = getComputedStyle(el);
     return (
@@ -124,9 +137,13 @@ async ({ checks }) => {
         ownText: hasOwnText(el),
         text: textContent(el),
         fontSize: parseFloat(style.fontSize || '0') || 0,
-        isCaption: /subtitle|caption|closed-caption/.test(labelOf(el)),
+        isCaption: /subtitle|caption|closed-caption/.test(labelOf(el)) || Boolean(el.closest(
+          '[data-composition-id="caption-bar"], [data-track-kind="captions"]'
+        )),
         isUiText: Boolean(el.closest('[data-text-role="ui"]')),
         isSceneRoot,
+        sceneId: el.closest('[data-scene-id]')?.getAttribute('data-scene-id') || null,
+        lineCount: textLineCount(el, parseFloat(style.fontSize || '0')),
         layoutIgnore,
         surface: hasVisibleSurface(el),
         media,
@@ -141,11 +158,19 @@ async ({ checks }) => {
     const captionTexts = elements
       .filter((el) => el.isCaption && el.ownText && el.text)
       .map((el) => el.text);
+    const captionDetails = elements
+      .filter((el) => el.isCaption && el.ownText && el.text)
+      .map((el) => ({ text: el.text, fontSize: el.fontSize, lineCount: el.lineCount, rect: el.rect }));
+    const jayStage = document.querySelector('#jay-stage');
+    const jayHost = document.querySelector('#jay, [data-composition-id="jay"]');
+    const jayVisible = Boolean(jayStage ? visible(jayStage) : (jayHost && visible(jayHost)));
     return {
       time,
       fontsStatus: document.fonts ? document.fonts.status : 'loaded',
+      jayVisible,
       elements,
       captionTexts,
+      captionDetails,
     };
   }
 
