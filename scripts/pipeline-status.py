@@ -852,6 +852,22 @@ def load_workspace_visual_scenes(ws: Path) -> tuple[list[dict[str, Any]] | None,
     return scenes, None
 
 
+def declared_visual_layouts(ws: Path, visual_scenes: list[dict[str, Any]] | None) -> list[str]:
+    """scenes.json 声明的合法 layout 名；即使时间覆盖尚未通过，也供模板与指纹读取。"""
+    if visual_scenes is not None:
+        return sorted({scene['layout'] for scene in visual_scenes})
+    _, data = read_json_product(ws, video_contract.VISUAL_SCENES_PATH)
+    if not isinstance(data, dict) or not isinstance(data.get('scenes'), list):
+        return []
+    return sorted({
+        scene['layout']
+        for scene in data['scenes']
+        if isinstance(scene, dict)
+        and isinstance(scene.get('layout'), str)
+        and video_contract.layout_contract_problem(SKILL_ROOT, scene['layout']) is None
+    })
+
+
 def check_visual_scenes_product(ws: Path, relpath: str) -> CheckResult:
     """新视觉声明存在时严格校验；旧单 layout 工程不要求补写它。"""
     path = ws / relpath
@@ -915,10 +931,12 @@ def check_visual_inputs(ws: Path) -> dict[str, CheckResult]:
                     f'modules/templates/{template}/{template}.json',
                 )
             else:
-                used_layouts = (
-                    sorted({scene['layout'] for scene in visual_scenes})
-                    if visual_scenes is not None else [layout]
-                )
+                if uses_visual_scenes:
+                    used_layouts = declared_visual_layouts(ws, visual_scenes)
+                elif 'layout' in inputs:
+                    used_layouts = [layout]
+                else:
+                    used_layouts = []
                 incompatible = [name for name in used_layouts if name not in supported]
                 if incompatible:
                     record(
@@ -1636,9 +1654,15 @@ class Fingerprinter:
             if declaration.is_file():
                 result.pop('inputs.json#layout', None)
                 result[video_contract.VISUAL_SCENES_PATH] = self.file(video_contract.VISUAL_SCENES_PATH)
-                layout_paths = video_contract.visual_layout_relpaths(visual_scenes or [])
-            else:
+                layout_paths = [
+                    f'{video_contract.LAYOUTS_PATH}/{name}.json'
+                    for name in declared_visual_layouts(self.ws, visual_scenes)
+                ]
+            elif 'layout' in self._inputs:
                 layout_paths = [f'modules/layouts/{layout}.json']
+            else:
+                result.pop('inputs.json#layout', None)
+                layout_paths = []
             paths = [f'modules/designs/{design}/{design}.json', *layout_paths]
             if template is not None:
                 paths.append(f'modules/templates/{template}/{template}.json')

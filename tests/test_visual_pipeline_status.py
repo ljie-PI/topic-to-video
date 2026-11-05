@@ -167,12 +167,31 @@ def test_no_visual_declaration_or_legacy_layout_is_missing_phase_8_product(tmp_p
     complete_all(tmp_path)
     inputs = json.loads((tmp_path / 'inputs.json').read_text(encoding='utf-8'))
     inputs.pop('layout')
+    inputs['template'] = 'github'
     write_json(tmp_path / 'inputs.json', inputs)
 
     result = parse_result(run_cli(str(tmp_path)))
 
     assert result['next_phase']['id'] == '8-composition'
     assert video_contract.VISUAL_SCENES_PATH in result['missing_products']
+    assert 'inputs.json#template' not in result['next_phase']['problems']
+
+
+def test_corrupt_visual_declaration_with_compatible_layouts_does_not_blame_template(tmp_path: Path):
+    make_visual_workspace(tmp_path, layouts=('presenter', 'presenter'))
+    inputs = json.loads((tmp_path / 'inputs.json').read_text(encoding='utf-8'))
+    inputs['template'] = 'github'
+    write_json(tmp_path / 'inputs.json', inputs)
+    path = tmp_path / video_contract.VISUAL_SCENES_PATH
+    data = json.loads(path.read_text(encoding='utf-8'))
+    data['scenes'][1]['end_s'] = 0.5  # Coverage error, but declared layouts are all presenter.
+    write_json(path, data)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '8-composition'
+    assert video_contract.VISUAL_SCENES_PATH in result['corrupt_products']
+    assert 'inputs.json#template' not in result['next_phase']['problems']
 
 
 def test_phase_9_rechecks_visual_scene_identity_after_phase_8_is_restamped(tmp_path: Path):

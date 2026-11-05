@@ -91,6 +91,28 @@ def test_long_earlier_scene_can_own_coverage_after_a_shorter_overlap(tmp_path: P
     assert [s['scene_id'] for s in video_contract.active_visual_scenes(scenes, 20)] == ['long']
 
 
+def test_tolerance_within_endpoints_are_accepted_and_snapped_to_full_duration(tmp_path: Path):
+    path = tmp_path / 'scenes.json'
+    path.write_text(json.dumps(declaration(
+        scene('intro', 0.02, 10, 'presenter'),
+        scene('demo', 10, 27.2, 'stage'),
+    )), encoding='utf-8')
+
+    assert video_contract.visual_scenes_problem(
+        json.loads(path.read_text(encoding='utf-8')), ROOT, 'landscape', 27.224,
+    ) is None
+    scenes = video_contract.load_visual_scenes(path, ROOT, 'landscape', 27.224)
+    segments = video_contract.caption_layout_segments(scenes)
+    assert [(s['scene_id'], s['begin_s'], s['end_s']) for s in segments] == [
+        ('intro', 0.0, 10.0), ('demo', 10.0, 27.224),
+    ]
+
+
+def test_scene_starting_at_or_beyond_duration_within_tolerance_is_rejected():
+    detail = problem(declaration(scene('a', 0, 20), scene('tail', 20.0, 20.03)))
+    assert detail is not None and 'starts at 20.0' in detail
+
+
 def test_active_visual_scenes_include_both_sides_of_a_transition(tmp_path: Path):
     path = tmp_path / 'scenes.json'
     path.write_text(json.dumps(declaration(

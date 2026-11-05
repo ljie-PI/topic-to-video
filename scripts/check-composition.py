@@ -406,13 +406,23 @@ def normalize_text(text: str) -> str:
     return re.sub(r'\s+', '', text)
 
 
-def active_subtitle_unit(units: List[Dict[str, Any]], time_s: float) -> Optional[Dict[str, Any]]:
-    active = [
+def active_subtitle_unit(
+    units: List[Dict[str, Any]], time_s: float, *, tolerance_s: float = 0.05,
+) -> Optional[Dict[str, Any]]:
+    exact = [
         unit for unit in units
-        if unit['begin_s'] - 0.05 <= time_s <= unit['end_s'] + 0.05
+        if unit['begin_s'] <= time_s < unit['end_s']
     ]
-    # 相邻单元共享边界时，后开始的单元与渲染器的半开区间一致。
-    return max(active, key=lambda unit: unit['begin_s']) if active else None
+    if exact:
+        # 优先匹配严格包含当前时刻的单元；重叠时取后开始的单元，与渲染器半开区间一致。
+        return max(exact, key=lambda unit: unit['begin_s'])
+    if tolerance_s <= 0:
+        return None
+    near = [
+        unit for unit in units
+        if unit['begin_s'] - tolerance_s <= time_s <= unit['end_s'] + tolerance_s
+    ]
+    return max(near, key=lambda unit: unit['begin_s']) if near else None
 
 
 class RegionIndex:
@@ -552,7 +562,8 @@ def check_caption(
     subtitle_units: List[Dict[str, Any]],
     caption_layout: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
-    unit = active_subtitle_unit(subtitle_units, snapshot['time'])
+    tolerance_s = 0.0 if caption_layout is not None else 0.05
+    unit = active_subtitle_unit(subtitle_units, snapshot['time'], tolerance_s=tolerance_s)
     details = snapshot.get('captionDetails') or []
     issues: List[str] = []
     if unit is None:

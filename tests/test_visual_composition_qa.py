@@ -143,6 +143,22 @@ def test_scene_mount_must_exist_at_each_start_middle_and_end_snapshot(tmp_path: 
     assert [f['time_s'] for f in missing] == [0.2, 4.8]
 
 
+def test_adjacent_subtitle_units_and_scene_mode_exact_bounds_do_not_false_positive(tmp_path: Path):
+    before_switch = snapshot('a', 4.98, caption_font=36)
+    after_unit_end = snapshot('b', 5.1)
+    ws, snapshots = workspace(tmp_path, [before_switch, after_unit_end])
+    units = tmp_path / 'units.json'
+    write_json(units, {'units': [
+        {'text': '字幕', 'begin_s': 0.0, 'end_s': 5.0},
+        {'text': '下一句', 'begin_s': 5.0, 'end_s': 5.06},
+    ]})
+
+    proc, result = run(ws, snapshots, '--subtitle-units', str(units))
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert [f for f in result['findings'] if f['check'] == 'caption_mismatch'] == []
+
+
 def test_short_scene_sampling_stays_inside_its_range():
     spec = importlib.util.spec_from_file_location('check_composition', SCRIPT)
     module = importlib.util.module_from_spec(spec)
