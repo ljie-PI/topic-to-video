@@ -35,8 +35,8 @@ INPUTS = {
     'qa_level': 'standard',
 }
 
-RESEARCH_BRIEF = (
-    '# research brief\n\n'
+RESEARCH = (
+    '# research\n\n'
     '## Key facts (verified)\n'
     '- fact [source]\n\n'
     '## Quotes (verbatim if possible)\n'
@@ -265,7 +265,7 @@ def complete_through_research(ws: Path, *, approved: bool = True, **inputs_overr
     complete_through_inputs(ws, **inputs_overrides)
     if inputs_overrides.get('input_mode') == 'paper':
         write_paper_metadata(ws)
-    write_text(ws / 'research-brief.md', RESEARCH_BRIEF)
+    write_text(ws / 'research.md', RESEARCH)
     if approved and 'research-brief' in inputs_overrides.get('approval_gates', []):
         approve(ws, 'research-brief')
 
@@ -1292,7 +1292,7 @@ def test_missing_final_mp4_falls_back_to_phase_8(tmp_path: Path):
 
 def test_truncated_json_falls_back(tmp_path: Path):
     complete_through_research(tmp_path)
-    write_text(tmp_path / 'research-brief.md', RESEARCH_BRIEF)
+    write_text(tmp_path / 'research.md', RESEARCH)
     write_text(tmp_path / 'harvest_page' / 'manifest.json', '{"entries": [')  # 截断 JSON
     proc = run_cli(str(tmp_path))
     assert proc.returncode == 0
@@ -1626,13 +1626,13 @@ def test_unreadable_inputs_still_list_fetch_and_catalog_as_applicable(tmp_path: 
 
 
 def test_unreadable_file_is_corrupt_not_missing(tmp_path: Path):
-    # research-brief.md 存在但是只有空白 → corrupt（存在但不合格）
+    # research.md 存在但是只有空白 → corrupt（存在但不合格）
     complete_through_inputs(tmp_path)
-    write_text(tmp_path / 'research-brief.md', '   \n')
+    write_text(tmp_path / 'research.md', '   \n')
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
     assert result['next_phase']['id'] == '3-research'
-    assert 'research-brief.md' in result['corrupt_products']
+    assert 'research.md' in result['corrupt_products']
 
 
 # --- phase statuses: everything after the first unfinished phase is pending -------
@@ -1656,7 +1656,7 @@ def statuses(result: dict) -> dict[str, str]:
 
 def test_phases_after_a_missing_product_are_pending_not_completed(tmp_path: Path):
     complete_all(tmp_path)
-    (tmp_path / 'research-brief.md').unlink()
+    (tmp_path / 'research.md').unlink()
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase']['id'] == '3-research'
     assert result['next_phase']['reason'] == 'missing'
@@ -1676,16 +1676,16 @@ def test_phases_after_a_missing_product_are_pending_not_completed(tmp_path: Path
 def test_pending_phases_are_not_checked(tmp_path: Path):
     # Phase 7's transcript is broken too, but Phase 3 comes first: it is not even looked at.
     complete_all(tmp_path)
-    (tmp_path / 'research-brief.md').unlink()
+    (tmp_path / 'research.md').unlink()
     write_text(tmp_path / 'transcribe' / 'transcript.json', 'not json')
     result = parse_result(run_cli(str(tmp_path)))
-    assert result['missing_products'] == ['research-brief.md']
+    assert result['missing_products'] == ['research.md']
     assert result['corrupt_products'] == []
 
 
 def test_a_corrupt_product_makes_the_phase_corrupt_and_the_rest_pending(tmp_path: Path):
     complete_all(tmp_path)
-    write_text(tmp_path / 'research-brief.md', '   \n')
+    write_text(tmp_path / 'research.md', '   \n')
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase']['reason'] == 'corrupt'
     assert statuses(result)['3-research'] == 'corrupt'
@@ -1747,7 +1747,7 @@ def test_stamp_records_upstream_and_product_fingerprints(tmp_path: Path):
 
     script = phases['6-script-scene-plan']
     assert script['products']['script.txt'] == sha256_of(SCRIPT_TXT)
-    assert script['upstream']['research-brief.md'] == sha256_of(RESEARCH_BRIEF)
+    assert script['upstream']['research.md'] == sha256_of(RESEARCH)
     assert script['upstream']['inputs.json#duration'] == field_sha256(5.0)  # "5min" normalizes to 5
     assert script['upstream']['material-catalog.json'] == sha256_of((tmp_path / 'material-catalog.json').read_bytes())
     assert script['upstream']['inputs.json#narration_requests'] == field_sha256([])  # 缺省与 [] 等价
@@ -1789,10 +1789,10 @@ UPSTREAM_KEYS = {
         'inputs.json#source', 'inputs.json#input_mode', 'inputs.json#language',
         'harvest_page/main-paper/metadata.json',
     ],
-    '4-material-harvest': ['research-brief.md'],
-    '5-material-catalog': ['harvest_page/manifest.json', 'research-brief.md', 'catalog-instructions.md'],
+    '4-material-harvest': ['research.md'],
+    '5-material-catalog': ['harvest_page/manifest.json', 'research.md', 'catalog-instructions.md'],
     '6-script-scene-plan': [
-        'research-brief.md', 'material-catalog.json', 'inputs.json#duration', 'inputs.json#language',
+        'research.md', 'material-catalog.json', 'inputs.json#duration', 'inputs.json#language',
         'inputs.json#input_mode', 'inputs.json#narration_requests',
     ],
     '7-voice-subtitles': [
@@ -1824,7 +1824,7 @@ def test_paper_parse_stamp_upstream_and_its_metadata_as_upstream_of_research(tmp
     }
     write_json(tmp_path / 'harvest_page' / 'main-paper' / 'metadata.json', metadata)
     write_json(tmp_path / 'harvest_page' / 'manifest.json', {'version': 2, 'entries': [PAPER_ENTRY]})
-    write_text(tmp_path / 'research-brief.md', RESEARCH_BRIEF)
+    write_text(tmp_path / 'research.md', RESEARCH)
     approve(tmp_path, 'research-brief')
     result = parse_result(run_cli(str(tmp_path)))
     assert result['completed_phases'] == ['1-gather-inputs', '2-paper-parse', '3-research']
@@ -1860,7 +1860,7 @@ def test_directory_products_are_not_fingerprinted(tmp_path: Path):
 
 def test_phases_that_are_not_completed_get_no_stamp(tmp_path: Path):
     complete_all(tmp_path)
-    (tmp_path / 'research-brief.md').unlink()
+    (tmp_path / 'research.md').unlink()
     assert not (tmp_path / '.pipeline' / 'stamps.json').exists()  # fixtures no longer stamp via approvals
     parse_result(run_cli(str(tmp_path)))
     assert list(read_stamps(tmp_path)['phases']) == ['1-gather-inputs']
@@ -2140,8 +2140,8 @@ def test_old_catalog_stamp_without_instruction_dependency_is_stale(tmp_path: Pat
 
 def test_reapproving_an_edited_product_stales_the_next_phase(tmp_path: Path):
     settle(tmp_path, approval_gates=['research-brief'])
-    edited = RESEARCH_BRIEF + '- one more fact [source]\n'
-    write_text(tmp_path / 'research-brief.md', edited)
+    edited = RESEARCH + '- one more fact [source]\n'
+    write_text(tmp_path / 'research.md', edited)
     waiting = parse_result(run_cli(str(tmp_path)))
     assert waiting['next_phase']['reason'] == 'awaiting_approval'
 
@@ -2150,11 +2150,11 @@ def test_reapproving_an_edited_product_stales_the_next_phase(tmp_path: Path):
     assert statuses(result)['3-research'] == 'completed'
     assert result['next_phase']['id'] == '4-material-harvest'
     assert result['next_phase']['reason'] == 'stale'
-    assert result['next_phase']['changed_upstream'] == ['research-brief.md']
+    assert result['next_phase']['changed_upstream'] == ['research.md']
     # The stamp now describes the edited file, so the edit is not reported again as a product change.
     phases = read_stamps(tmp_path)['phases']
-    assert phases['3-research']['products']['research-brief.md'] == sha256_of(edited)
-    assert phases['4-material-harvest']['upstream']['research-brief.md'] == sha256_of(RESEARCH_BRIEF)
+    assert phases['3-research']['products']['research.md'] == sha256_of(edited)
+    assert phases['4-material-harvest']['upstream']['research.md'] == sha256_of(RESEARCH)
 
 
 def test_regenerating_a_phase_after_its_upstream_changed_makes_it_completed_again(tmp_path: Path):
@@ -2234,7 +2234,7 @@ def test_redoing_phase_6_with_new_content_makes_phase_7_stale(tmp_path: Path):
 
 def test_changed_upstream_of_a_pending_phase_is_not_looked_at(tmp_path: Path):
     settle(tmp_path)
-    (tmp_path / 'research-brief.md').unlink()
+    (tmp_path / 'research.md').unlink()
     write_json(tmp_path / 'inputs.json', {**INPUTS, 'qa_level': 'strict'})
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase']['id'] == '3-research'
@@ -2760,13 +2760,46 @@ def test_requested_research_waits_for_approval_and_later_phases_are_pending(tmp_
         'reason': 'awaiting_approval',
         'gate': 'research-brief',
         'instruction': (
-            '把 research-brief.md 给用户过目；用户确认后运行 '
+            '把 research.md 给用户过目；用户确认后运行 '
             '`python3 scripts/pipeline-status.py <ws> --approve research-brief`'
         ),
         'problems': {},
     }
     assert statuses(result)['3-research'] == 'awaiting_approval'
     assert result['pending_phases'] == PHASE_IDS[3:]
+
+
+def test_legacy_research_filename_is_missing_until_migrated(tmp_path: Path):
+    complete_through_research(tmp_path, approved=False, approval_gates=['research-brief'])
+    (tmp_path / 'research.md').rename(tmp_path / 'research-brief.md')
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '3-research'
+    assert result['next_phase']['reason'] == 'missing'
+    assert result['missing_products'] == ['research.md']
+    assert (tmp_path / 'research-brief.md').read_text(encoding='utf-8') == RESEARCH
+
+
+def test_legacy_research_approval_does_not_approve_the_renamed_product(tmp_path: Path):
+    complete_through_research(tmp_path, approved=False, approval_gates=['research-brief'])
+    write_json(tmp_path / '.pipeline/approvals.json', {
+        'version': 1,
+        'gates': {'research-brief': {
+            'approved_at': '2026-01-01T00:00:00Z',
+            'products': {'research-brief.md': sha256_of(RESEARCH)},
+        }},
+    })
+
+    waiting = parse_result(run_cli(str(tmp_path)))
+
+    assert waiting['next_phase']['reason'] == 'awaiting_approval'
+    assert waiting['next_phase']['gate'] == 'research-brief'
+    result = approve(tmp_path, 'research-brief')
+    assert '3-research' in result['completed_phases']
+    assert read_approvals(tmp_path)['gates']['research-brief']['products'] == {
+        'research.md': sha256_of(RESEARCH),
+    }
 
 
 def test_approving_research_records_product_hash_and_completes_the_gate(tmp_path: Path):
@@ -2782,15 +2815,15 @@ def test_approving_research_records_product_hash_and_completes_the_gate(tmp_path
     approval = approvals['gates']['research-brief']
     assert set(approval) == {'approved_at', 'products'}
     datetime.fromisoformat(approval['approved_at'])
-    assert approval['products'] == {'research-brief.md': sha256_of(RESEARCH_BRIEF)}
+    assert approval['products'] == {'research.md': sha256_of(RESEARCH)}
     # Approval is durable, not a one-shot transition in this invocation.
     assert parse_result(run_cli(str(tmp_path)))['next_phase']['id'] == '4-material-harvest'
 
 
-def test_changing_an_approved_research_brief_requires_confirmation_again(tmp_path: Path):
+def test_changing_an_approved_research_requires_confirmation_again(tmp_path: Path):
     complete_through_research(tmp_path, approved=False, approval_gates=['research-brief'])
     approve(tmp_path, 'research-brief')
-    write_text(tmp_path / 'research-brief.md', RESEARCH_BRIEF + '- another verified fact [source]\n')
+    write_text(tmp_path / 'research.md', RESEARCH + '- another verified fact [source]\n')
 
     result = parse_result(run_cli(str(tmp_path)))
 
@@ -2845,7 +2878,7 @@ def test_changing_script_gate_products_after_approval_returns_to_the_gate(tmp_pa
 
 def test_approve_rejects_products_that_do_not_pass_with_exit_2(tmp_path: Path):
     complete_through_research(tmp_path, approved=False)
-    write_text(tmp_path / 'research-brief.md', '  \n')
+    write_text(tmp_path / 'research.md', '  \n')
 
     proc = run_cli(str(tmp_path), '--approve', 'research-brief')
 
@@ -2853,7 +2886,7 @@ def test_approve_rejects_products_that_do_not_pass_with_exit_2(tmp_path: Path):
     result = parse_result(proc)
     assert result['success'] is False
     assert 'research-brief' in result['error']
-    assert result['problems']['research-brief.md']
+    assert result['problems']['research.md']
     assert not (tmp_path / '.pipeline' / 'approvals.json').exists()
 
 
@@ -2966,10 +2999,10 @@ def test_disabling_unapproved_review_resumes_without_manufacturing_approval(tmp_
 
 def test_corrupt_products_take_precedence_over_requested_approval(tmp_path: Path):
     complete_through_research(tmp_path, approved=False, approval_gates=['research-brief'])
-    write_text(tmp_path / 'research-brief.md', '   \n')
+    write_text(tmp_path / 'research.md', '   \n')
     assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'corrupt'
 
-    write_text(tmp_path / 'research-brief.md', RESEARCH_BRIEF)
+    write_text(tmp_path / 'research.md', RESEARCH)
     assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'awaiting_approval'
 
 
@@ -3262,18 +3295,18 @@ def test_an_unusable_redo_file_fails_the_run_instead_of_dropping_the_request(
 
 
 @pytest.mark.parametrize('section', ['## Key facts', '## Quotes', '## Numbers', '## Source URLs'])
-def test_research_brief_must_carry_the_sections_downstream_reads(tmp_path: Path, section: str):
+def test_research_must_carry_the_sections_downstream_reads(tmp_path: Path, section: str):
     complete_through_inputs(tmp_path, fetch_materials=False)
     without = '\n'.join(
-        line for line in RESEARCH_BRIEF.splitlines() if not line.startswith(section)
+        line for line in RESEARCH.splitlines() if not line.startswith(section)
     )
-    write_text(tmp_path / 'research-brief.md', without + '\n')
+    write_text(tmp_path / 'research.md', without + '\n')
 
     result = parse_result(run_cli(str(tmp_path)))
 
     assert result['next_phase']['id'] == '3-research'
     assert result['next_phase']['reason'] == 'corrupt'
-    assert f'## {section.lstrip("# ")}' in result['next_phase']['problems']['research-brief.md']
+    assert f'## {section.lstrip("# ")}' in result['next_phase']['problems']['research.md']
 
 
 # --- 模板在 Phase 8 定、要求按阶段分开记 ------------------------------------------

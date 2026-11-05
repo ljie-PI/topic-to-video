@@ -4,7 +4,7 @@
 
 ## 输入
 
-- Phase 3 的 `research-brief.md`；
+- Phase 3 的 `research.md`；
 - Phase 5 的 `material-catalog.json`（标准模式且 `fetch_materials = false` 时没有 catalog，按“无素材”路径写纯旁白；论文模式总有 catalog，其中 `required_material_refs` 标出必须用上的关键图）；
 - `inputs.json`（目标时长、语言、input_mode、`narration_requests`）。
 
@@ -31,7 +31,7 @@
 
 `pipeline-status` 会判定字数、段落覆盖、素材引用、朗读稿与显示稿的一致性（见上）。这些通过后，script agent 自己（主 agent 验收时再核一次）判断：
 
-- 每个事实、数字、人名、日期都能在 `research-brief.md` 里找到；找不到的删掉或回报上游不足；写“据报道”也必须能给出出处。
+- 每个事实、数字、人名、日期都能在 `research.md` 里找到；找不到的删掉或回报上游不足；写“据报道”也必须能给出出处。
 - 开头三句内有具体钩子（见基础指令的「开场钩子」），事实全部可追溯；第一句就给异常、困境或取舍，不是自我介绍或空泛预告。
 - 叙事是否连贯：各部分是不是一个意思、段落之间有没有断裂或重复；第一个主体部分就开始回答开头的问题。
 - 场景计划的 `intent` 与对应段落是否对得上；`content_plan` 是否说清了用哪些内容、按什么顺序和方式讲，而不是把 `intent` 再说一遍；引用的素材是不是真的能讲这段内容。

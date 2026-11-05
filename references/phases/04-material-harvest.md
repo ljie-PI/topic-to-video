@@ -2,7 +2,7 @@
 
 ## 输入
 
-- `research-brief.md` 的 **Source URLs** 一节（研究阶段已按可抓取页面类型预筛）；
+- `research.md` 的 **Source URLs** 一节（研究阶段已按可抓取页面类型预筛）；
 - 用户提供的 URL；
 - `gemini_deep_research_sources.json`（存在时）；
 - `inputs.json` 的 `material_search_requests`（可选）。

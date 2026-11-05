@@ -44,6 +44,26 @@ def test_every_product_checked_by_pipeline_status_is_named_in_the_phase_doc_outp
     assert not missing, f'{phase["doc"]} "## 输出" does not name: {missing}'
 
 
+def test_research_generation_and_consumers_use_the_renamed_product():
+    research = doc_text('references/phases/03-research.md')
+    assert '`research.md`' in output_section(REPO_ROOT / 'references/phases/03-research.md')
+    assert '综合、核实调研结果，落盘为 `research.md`' in research
+    assert '无论 Gemini 成功、失败或未运行' in research
+    for relative in (
+        'references/phases/04-material-harvest.md',
+        'references/phases/05-material-catalog.md',
+        'references/phases/06-script-scene-plan.md',
+        'references/phases/08-composition.md',
+        'references/delegation/catalog/handoff-template.md',
+        'references/delegation/script/handoff-template.md',
+        'scripts/prepare-handoff.py',
+        'scripts/pipeline-status.py',
+    ):
+        text = doc_text(relative)
+        assert 'research.md' in text
+        assert 'research-brief.md' not in text
+
+
 def test_review_policy_is_opt_in_and_consistent_across_skill_and_phase_docs():
     skill = doc_text('SKILL.md')
     phase1 = doc_text('references/phases/01-gather-inputs.md')
@@ -266,8 +286,8 @@ def test_paper_mode_instructions_live_in_the_phase_or_package_that_uses_them():
     related_at = research.index('4. **解析相关论文（可选，仅论文模式）。**')
     gaps_at = research.index('5. **找空缺。**')
     search_at = research.index('6. **按缺口搜索。**')
-    brief_at = research.index('7. **合成研究 brief')
-    assert deep_research_at < related_at < gaps_at < search_at < brief_at
+    synthesis_at = research.index('7. **综合、核实调研结果')
+    assert deep_research_at < related_at < gaps_at < search_at < synthesis_at
     related_section = research[related_at:gaps_at]
     assert '--slug "related-' in related_section
     assert 'parse-pdf.py' in related_section

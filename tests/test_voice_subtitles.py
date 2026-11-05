@@ -102,8 +102,8 @@ def make_workspace(tmp_path: Path, *, scene_plan: bool = True) -> Path:
 @pytest.mark.usefixtures('require_ffmpeg')
 def test_full_command_writes_all_products_and_pipeline_completes_phase_7(tmp_path: Path):
     ws = make_workspace(tmp_path)
-    (ws / 'research-brief.md').write_text(
-        '# research brief\n\n'
+    (ws / 'research.md').write_text(
+        '# research\n\n'
         '## Key facts (verified)\n- fact [source]\n\n'
         '## Quotes (verbatim if possible)\n- "quote" — Person, [source]\n\n'
         '## Numbers / dates\n- 1, unit, [source]\n\n'

@@ -4,7 +4,7 @@
 
 - `harvest_page/manifest.json`（Phase 4 产出且已做过尺寸 / 清晰度筛选；论文 entry 由 Phase 2 / Phase 3 写入）；
 - `inputs.json`（用户来源输入、目标时长、语言、朝向，以及全局 / 阶段级 agent 与 model 要求）；
-- `research-brief.md`（调研结果与证据）；
+- `research.md`（调研结果与证据）；
 - `vision_analyze/topic-context.txt`（从用户输入和调研结果提炼的 summary，含叙事角度）；
 - `catalog-instructions.md`（用户对素材理解 / 筛选的原话与额外要求，如有）；
 - `fetch_materials = false` 时 Phase 4 跳过：标准模式下本 phase 也一起跳过；论文模式（`input_mode = "paper"`）下本 phase 照常进行，走委派包基础指令里的「仅论文素材」路径。

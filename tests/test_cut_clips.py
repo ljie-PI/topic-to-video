@@ -340,8 +340,8 @@ def complete_pipeline_prerequisites(ws: Path) -> None:
         'coding_agent': 'pi-coding-agent',
         'fetch_materials': True,
     }), encoding='utf-8')
-    (ws / 'research-brief.md').write_text(
-        '# research brief\n\n'
+    (ws / 'research.md').write_text(
+        '# research\n\n'
         '## Key facts (verified)\n- fact [source]\n\n'
         '## Quotes (verbatim if possible)\n- "quote" — Person, [source]\n\n'
         '## Numbers / dates\n- 1, unit, [source]\n\n'

@@ -46,7 +46,7 @@ def make_workspace(tmp_path: Path, step: str = 'script', **overrides) -> Path:
     ws = (tmp_path / 'ws' / 'demo-topic').resolve()
     inputs = {**INPUTS, **overrides}
     write(ws / 'inputs.json', json.dumps(inputs, ensure_ascii=False))
-    write(ws / 'research-brief.md', '# brief\n')
+    write(ws / 'research.md', '# research\n')
     if inputs['fetch_materials'] and step != 'catalog':
         write(ws / 'material-catalog.json', '{"entries": []}')
     if step == 'catalog':
@@ -230,13 +230,13 @@ class TestHandoffContent:
         assert '`<slug>/<id>`' in outputs
         assert '`<slug>/<video_id>:<start>-<end>`' in outputs
 
-    def test_research_brief_is_a_required_path_and_the_catalog_follows_fetch_materials(self, tmp_path: Path):
+    def test_research_is_a_required_path_and_the_catalog_follows_fetch_materials(self, tmp_path: Path):
         ws = make_workspace(tmp_path, fetch_materials=False)
         prepare(ws, 'script')
 
         inputs = handoff_sections((ws / 'script-handoff.md').read_text(encoding='utf-8'))['Inputs']
 
-        assert f'- research-brief.md：{ws}/research-brief.md' in inputs
+        assert f'- research.md：{ws}/research.md' in inputs
         assert '无（fetch_materials = false' in inputs
         assert 'material-catalog.json）' not in inputs
 
@@ -344,7 +344,7 @@ class TestCatalogHandoff:
         inputs = sections['Inputs']
         for relative in (
             'harvest_page/manifest.json',
-            'research-brief.md',
+            'research.md',
             'vision_analyze/topic-context.txt',
             'inputs.json',
         ):
@@ -430,6 +430,28 @@ class TestHandoffContract:
 
 
 class TestCompositionHandoff:
+    def test_tool_only_inputs_are_not_agent_reading_inputs(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'composition')
+        result = prepare(ws, 'composition')
+        text = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
+        sections = handoff_sections(text)
+        agent_inputs, tool_inputs = sections['Inputs'].split('### 仅供工具读取', 1)
+
+        assert '### Agent 阅读与画面资源' in agent_inputs
+        for relative in ('script.txt', 'scene-plan.json', 'transcribe/timeline.json'):
+            assert str(ws / relative) in agent_inputs
+        for relative in ('transcribe/transcript.json', 'narration.txt', 'narration-offsets.json'):
+            path = str(ws / relative)
+            assert path not in agent_inputs
+            assert path in tool_inputs
+            assert path in sections['Outputs']  # existing tool commands still receive the files
+        assert '正常流程不阅读或复述其全文' in tool_inputs
+        assert '生成后读取这份结果' in sections['Outputs']
+        assert result['dispatch_prompt'] == f'读取 {ws}/composition-handoff.md 并按它执行；完成后报告产物路径。'
+        base = (ws / 'references/delegation/composition/base-instructions.md').read_text(encoding='utf-8')
+        assert '标为「仅供工具读取」' in base
+        assert '先读工作区里的输入（handoff 的 Inputs 一节列出的文件）' not in base
+
     def test_commands_use_the_workspace_copies_of_layout_and_design(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition', design='default', layout='stage')
         prepare(ws, 'composition')
@@ -628,6 +650,20 @@ class TestFonts:
 
 
 class TestFailures:
+    @pytest.mark.parametrize('step', ['catalog', 'script'])
+    def test_legacy_research_filename_does_not_satisfy_the_new_input(self, tmp_path: Path, step: str):
+        ws = make_workspace(tmp_path, step)
+        legacy = ws / 'research-brief.md'
+        (ws / 'research.md').rename(legacy)
+
+        proc, result = run_cli(str(ws), step)
+
+        assert proc.returncode == 1
+        assert str(ws / 'research.md') in result['error']
+        assert legacy.read_text(encoding='utf-8') == '# research\n'
+        assert not (ws / f'{step}-handoff.md').exists()
+        assert not (ws / 'references').exists()
+
     def test_unknown_step_is_a_bad_argument(self, tmp_path: Path):
         ws = make_workspace(tmp_path)
 
@@ -713,14 +749,14 @@ class TestFailures:
         assert proc.returncode == 1
         assert field in result['error']
 
-    def test_the_script_step_requires_the_research_brief(self, tmp_path: Path):
+    def test_the_script_step_requires_the_research(self, tmp_path: Path):
         ws = make_workspace(tmp_path)
-        (ws / 'research-brief.md').unlink()
+        (ws / 'research.md').unlink()
 
         proc, result = run_cli(str(ws), 'script')
 
         assert proc.returncode == 1
-        assert str(ws / 'research-brief.md') in result['error']
+        assert str(ws / 'research.md') in result['error']
 
     def test_a_catalog_is_required_only_when_materials_are_fetched(self, tmp_path: Path):
         ws = make_workspace(tmp_path)
@@ -913,7 +949,7 @@ class TestReviewRoundFixes:
         spaced = (tmp_path / 'AI Agents 2026').resolve()
         ws = (spaced / 'ws' / 'demo-topic').resolve()
         write(ws / 'inputs.json', json.dumps(INPUTS, ensure_ascii=False))
-        write(ws / 'research-brief.md', '# brief\n')
+        write(ws / 'research.md', '# research\n')
         write(ws / 'material-catalog.json', '{"entries": []}')
         write(ws / 'script.txt', '甲\n\n乙\n')
         write(ws / 'scene-plan.json', '[]')

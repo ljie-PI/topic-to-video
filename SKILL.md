@@ -28,9 +28,11 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 | 用户怎么说 | `approval_gates` | 在哪停下来 |
 | --- | --- | --- |
 | 没提审稿 | `[]` | 不停 |
-| “先让我看调研 / 事实来源” | `["research-brief"]` | 调研简报写好后 |
+| “先让我看调研 / 事实来源” | `["research-brief"]` | `research.md` 调研结果写好后 |
 | “先让我看旁白 / 场景规划” | `["script"]` | 旁白与场景计划写好后 |
 | “中途让我审稿” | `["research-brief", "script"]` | 上面两处都停 |
+
+调研产物统一命名为 `research.md`；`research-brief` 是为兼容已有输入保留的审批标识，不是文件名。
 
 - `next_phase.reason == "awaiting_approval"` 只会出现在已启用的 gate。按 `instruction` 展示内容并找用户确认：有询问工具就使用它，否则在对话中提问并结束本轮；sub-agent 报给主 agent，由主 agent 找用户确认。未明确确认前不得执行 `--approve` 或进入下游。
 - 用户只确认当前稿件时，执行 `--approve <gate>`，保留其他审稿要求；用户明确授权“后面全自动 / 不用再审”时，把 `approval_gates` 改为 `[]`，再跑状态脚本。不要用批量 `--approve` 冒充全自动授权，也不要把普通“继续”擅自理解成取消后续审稿。
