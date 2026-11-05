@@ -146,6 +146,18 @@ def test_strict_adds_entrance_and_cut_point_frames(workspace: Path):
     assert all('->' in f['scene_id'] for f in cut_frames)
 
 
+def test_legacy_strict_keeps_narrative_gap_cut_midpoint(workspace: Path):
+    write_json(workspace / 'inputs.json', {'qa_level': 'strict'})
+    write_json(workspace / 'timeline.json', {'scenes': [
+        {'scene_id': 'a', 'begin_s': 0, 'end_s': 2},
+        {'scene_id': 'b', 'begin_s': 4, 'end_s': 6},
+    ]})
+
+    result = parse_result(run_sheet(workspace, 'qa_gap'))
+    cuts = {f['kind']: f['time_s'] for f in result['frames'] if f['kind'].startswith('cut_')}
+    assert cuts == {'cut_before': 2.6, 'cut_mid': 3.0, 'cut_after': 3.4}
+
+
 def test_contact_sheet_uses_high_quality_jpeg(workspace: Path):
     from PIL import Image
 

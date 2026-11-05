@@ -23,6 +23,7 @@ designs/
   github/github.md, github.json, textures/   主题：纸本（冷灰棉纸 + 低饱和 GitHub 色）；paper.jpg、slate.jpg
   producthunt/producthunt.md, producthunt.json, textures/   主题：亚麻纸（粉调亚麻纸 + 低饱和墨蓝与陶土橙）；paper.jpg
 layouts/
+  layouts.md                              布局目录：逐视觉 scene 选择 layout；全片 canvas 固定、regions / caption 随 scene 变化
   presenter.md, presenter.json            布局：讲解模式（人物右下角主持，主 / 副展示区，上下界面条）
   stage.md, stage.json                    布局：舞台模式（1920×1080，无主持人，主展示区贯穿，全局字幕区）
   portrait.md, portrait.json, portrait-3x4.json   布局：竖屏（1080×1920 与 1080×1440，一文档两画布，各一份区域定义 JSON）
@@ -56,7 +57,7 @@ examples/
 |---|---|
 | 做一类已有模板的视频（如 GitHub 热榜） | `templates/<类型>/<类型>.md`，再看它用到的场景和组件文档 |
 | 选外观 / 新建主题 | `designs/designs.md`，再看具体主题的 `<主题>.md` + `<主题>.json`（机器可读 token、字号与字体契约） |
-| 安排版面、确定区域坐标 | `layouts/<布局>.md` + 同名的 `.json`（机器可读区域定义，字幕脚本读它的 `caption` 段） |
+| 安排版面、逐视觉 scene 选布局、确定区域坐标 | `layouts/layouts.md` → 每个所用 `layouts/<布局>.md` + 对应 `.json`（机器可读区域定义，字幕脚本读它的 `caption` 段） |
 | 挂某个组件、写它的数据 | `components/<组件>/<组件>.md` |
 | 设计某个 scene 的画面（选形态、摆位置、配动效） | `patterns/<类>/<pattern>.md`，动效问题再看 `motion.md` |
 | 让人物做动作、配嘴型 | `components/jay/jay.md`；每个动作的样子见 `examples/jay-actions/`（示例只在 skill 仓库，工作区副本里没有） |
@@ -111,13 +112,17 @@ examples/
 window.VIDEO = {
   tabs:     [{ label, at }],                                         // nav-bar
   captions: [{ start, end, text }],                                  // caption-bar
+  captionSegments: [{ scene_id, begin_s, end_s, layout, caption_rect, caption }], // 可选：scene 字幕布局
   cuts:     [{ at, label, title, emphasis, meta: [{ dot, strong, text }] }],   // tile-wipe
-  jay:      { acts, thoughts, typing, glances, envelopeFps, envelope },        // jay
+  jay:      { acts, thoughts, typing, glances, envelopeFps, envelope,
+              placements: [{ begin_s, end_s, visible, x, y, size }] },          // jay；placements 可选
   trending: { title, date, range, repos: [{ rank, owner, repo, desc, stars, readme, cue }] },  // github 模板的 trending-overview
 };
 ```
 
 每个组件和场景都有一个 `data` 参数，可以改成读别的键名。
+
+视觉 scene 的常驻组件数据不从零编写：`subtitle-units.json` 的 `units[]` 以 `begin_s → start`、`end_s → end`、`text → text` 映射为 `captions[]`，`caption_segments[]` 原样映射为 `captionSegments[]`；`scenes.json` 的每个 scene 以原起止时间映射为 `jay.placements[]`，仅 `presenter` 为 `visible: true`，位置取 presenter 的 `person` 区域。完整映射见 `layouts/layouts.md` 和两个组件文档。
 
 ## 时间约定
 

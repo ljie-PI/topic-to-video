@@ -6,7 +6,7 @@
 
   --mode timing     只生成时间轴（paragraphs / scenes / cues）。不读 layout，
                     不要求字幕宽度 / 字号 / 行数，不产生字幕单元。
-  --mode subtitles  只按最终 layout 的字幕规格切分字幕单元，写到指定路径。
+  --mode subtitles  按最终 layout 或视觉 scenes 的字幕规格切分字幕单元，写到指定路径。
                     不覆写 Phase 7 的时间轴。
 
 两个模式读同一份显示稿、朗读稿、偏移表和 fresh transcript，所以能在不改音频、
@@ -30,6 +30,10 @@
                  caption 规格取自其 `caption` 对象
                  （{width_px, font_size_px, max_lines}）。
                  --layout 与那三个显式参数二者必居其一。
+  --scenes       Phase 8 composition/scenes.json（仅 subtitles）：按最终视觉 scene
+                 的有效 layout 计算字幕预算；与 --layout / 显式参数互斥。
+  --narration-audio
+                 视觉 scenes 的实际配音文件，用于校验全片覆盖（含尾部静音）。
   --scene-plan   可选的场景规划 JSON；scene 带 `cues` 时，它们的秒数会写进
                  timeline.json。`scene_id` / `paragraphs` / `cues` 是全部被读取的
                  字段，所以 composition 自己的 cue 声明也能直接传给这个参数。已
@@ -61,6 +65,7 @@
   subtitle-units.json : {"version": 1, "units": [...], "summary": {...}}
     每个单元：{index, text, begin_ms, end_ms, begin_s, end_s, fallback,
     paragraph} —— 其中 text / begin_s / end_s 字段保持既有的下游字幕单元契约。
+    视觉 scenes 模式另含 caption_segments，供组件与 QA 消费同一组派生边界。
   timeline.json : {"version": 1, "total_s", "paragraphs": [{index, begin_s,
     end_s}]}；带 --scene-plan 时还会加上 "scenes" 列表 [{scene_id, begin_s,
     end_s}]（场景边界由各 scene 覆盖的段落推导），以及 "cues" 列表
@@ -89,6 +94,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import cli
+import media
 import video_contract
 from script_text import paragraph_spans
 
@@ -186,8 +192,18 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help='Optional scene plan JSON with per-scene cues; enables their seconds in timeline.json.',
     )
+    parser.add_argument(
+        '--scenes',
+        default=None,
+        help='Phase 8 composition/scenes.json; applies each visual scene layout to subtitles.',
+    )
+    parser.add_argument(
+        '--narration-audio',
+        default=None,
+        help='Narration media used for visual-scene coverage (default: <workspace>/voice_clone/narration.mp3).',
+    )
     args = parser.parse_args()
-    caption_given = [args.width, args.font_size, args.max_lines, args.layout]
+    caption_given = [args.width, args.font_size, args.max_lines, args.layout, args.scenes]
     explicit = [args.width, args.font_size, args.max_lines]
     if any(value is not None and value <= 0 for value in explicit[:2]) or (
         args.max_lines is not None and args.max_lines < 1
@@ -203,9 +219,16 @@ def parse_args() -> argparse.Namespace:
             )
         if args.units_output is not None:
             parser.error('--mode timing writes the timeline only; drop --units-output')
+        if args.narration_audio is not None:
+            parser.error('--narration-audio belongs to --mode subtitles --scenes')
     else:
-        if args.layout is None and any(value is None for value in explicit):
-            parser.error('--mode subtitles needs a caption spec: pass --layout <path.json> or all of --width/--font-size/--max-lines')
+        if args.scenes is not None:
+            if args.layout is not None or any(value is not None for value in explicit):
+                parser.error('--scenes is mutually exclusive with --layout/--width/--font-size/--max-lines')
+        elif args.layout is None and any(value is None for value in explicit):
+            parser.error('--mode subtitles needs a caption spec: pass --scenes, --layout <path.json> or all of --width/--font-size/--max-lines')
+        if args.scenes is None and args.narration_audio is not None:
+            parser.error('--narration-audio requires --scenes')
         if args.timeline_output is not None:
             parser.error(
                 '--mode subtitles writes subtitle units only; the timeline belongs to --mode timing'
@@ -627,12 +650,22 @@ def find_cut(current: list[Atom], overflow: Atom) -> int | None:
     return None
 
 
-def rebalance(segments: list[list[Atom]], cap: float) -> list[list[Atom]]:
+def atoms_budget(cap: float | Callable[[int, int], float], atoms: list[Atom]) -> float:
+    """一组 atoms 在整个实际显示期间必须共同满足的最小字幕预算。"""
+    if not callable(cap):
+        return cap
+    bounds = unit_bounds(atoms)
+    return cap(*bounds) if bounds is not None else 0.0
+
+
+def rebalance(
+    segments: list[list[Atom]], cap: float | Callable[[int, int], float]
+) -> list[list[Atom]]:
     """通过重新切开最后两段，修正过短的尾部片段。"""
     if len(segments) < 2:
         return segments
     last_width = atoms_width(segments[-1])
-    if last_width >= max(2.0, 0.2 * cap):
+    if last_width >= max(2.0, 0.2 * atoms_budget(cap, segments[-1])):
         return segments
     combined = segments[-2] + segments[-1]
     cuts = [
@@ -647,21 +680,37 @@ def rebalance(segments: list[list[Atom]], cap: float) -> list[list[Atom]]:
     head, tail = combined[:best + 1], combined[best + 1:]
     if not tail or atoms_width(tail) <= last_width + 0.01:
         return segments  # 没有改善
+    if callable(cap) and (
+        atoms_width(head) > atoms_budget(cap, head) or atoms_width(tail) > atoms_budget(cap, tail)
+    ):
+        return segments  # 仅动态 scene 模式追加硬预算保护；旧入口保持原行为
     return segments[:-2] + [head, tail]
 
 
-def split_sentence(sentence: list[Atom], cap: float, warnings: list[str]) -> list[list[Atom]]:
-    if atoms_width(sentence) <= cap or len(sentence) < 2:
+def split_sentence(
+    sentence: list[Atom],
+    cap: float | Callable[[int, int], float],
+    warnings: list[str],
+    *,
+    strict_tokens: bool = False,
+) -> list[list[Atom]]:
+    if atoms_width(sentence) <= atoms_budget(cap, sentence) or len(sentence) < 2:
         return [sentence]
     segments: list[list[Atom]] = []
     current: list[Atom] = []
     current_width = 0.0
     for atom in sentence:
         width = char_width(atom.text)
-        if current and current_width + width > cap:
+        while current and current_width + width > atoms_budget(cap, [*current, atom]):
             cut = find_cut(current, atom)
             if cut is None:
-                cut = len(current) - 1  # 单个 token 比上限还宽
+                token = ''.join(item.text for item in current) + atom.text
+                if strict_tokens:
+                    raise ValueError(
+                        f'caption budget cannot fit token without breaking it: {token[:80]!r}; '
+                        'choose a wider caption layout or larger font budget'
+                    )
+                cut = len(current) - 1  # 旧单 layout 入口保留原诊断与兜底
                 warnings.append(f'segment exceeds width cap; broke inside a token: {current[0].text[:20]}')
             segments.append(current[:cut + 1])
             current = current[cut + 1:]
@@ -691,11 +740,16 @@ def split_into_sentences(atoms: list[Atom]) -> list[list[Atom]]:
 
 
 def merge_short_units(
-    units: list[list[Atom]], cap: float, warnings: list[str]
+    units: list[list[Atom]],
+    cap: float | Callable[[int, int], float],
+    warnings: list[str],
+    *,
+    respect_budget: bool = False,
 ) -> tuple[list[list[Atom]], int]:
     """把短于 MIN_UNIT_MS 的单元并入相邻单元（优先并入前一个）。
 
-    合并后的单元可能超出宽度上限；这比一条闪不到 MIN_UNIT_MS 的字幕更可取。
+    旧单 layout 入口保留“最短显示时长优先”的历史兼容行为。视觉 scene 模式中
+    布局预算是硬约束：若合并会超预算，就保留较短的单元并给出诊断。
     """
     merged_count = 0
     changed = True
@@ -705,11 +759,17 @@ def merge_short_units(
         while index < len(units):
             atoms = units[index]
             if atoms and atoms[-1].end_ms - atoms[0].begin_ms < MIN_UNIT_MS and len(units) > 1:
-                if index > 0:
-                    units[index - 1:index + 1] = [units[index - 1] + atoms]
-                    index -= 1
-                else:
-                    units[index:index + 2] = [atoms + units[index + 1]]
+                target = index - 1 if index > 0 else index + 1
+                candidate = units[target] + atoms if index > 0 else atoms + units[target]
+                if respect_budget and atoms_width(candidate) > atoms_budget(cap, candidate):
+                    warnings.append(
+                        f'short subtitle unit was not merged because it would exceed the scene caption budget: '
+                        f'{unit_text(atoms)[:40]!r}'
+                    )
+                    index += 1
+                    continue
+                units[min(index, target):max(index, target) + 1] = [candidate]
+                index = min(index, target)
                 merged_count += 1
                 changed = True
             index += 1
@@ -841,8 +901,10 @@ def paragraphs_in_order(
 
 def build_units(
     atoms_by_paragraph: dict[int, list[Atom]],
-    cap: float,
+    cap: float | Callable[[int, int], float],
     warnings: list[str],
+    *,
+    scene_budgets: bool = False,
 ) -> tuple[list[dict[str, Any]], int, int]:
     """把 atoms 切成字幕单元；返回 (units, fallback_units, merged_units)。"""
     units: list[dict[str, Any]] = []
@@ -852,10 +914,15 @@ def build_units(
     for paragraph, paragraph_atoms in paragraphs_in_order(atoms_by_paragraph):
         segments: list[list[Atom]] = []
         for sentence in split_into_sentences(paragraph_atoms):
-            segments.extend(split_sentence(sentence, cap, warnings))
-        segments, merged = merge_short_units(segments, cap, warnings)
+            segments.extend(split_sentence(sentence, cap, warnings, strict_tokens=scene_budgets))
+        segments, merged = merge_short_units(segments, cap, warnings, respect_budget=scene_budgets)
         merged_total += merged
         for segment in segments:
+            if scene_budgets and atoms_width(segment) > atoms_budget(cap, segment):
+                raise ValueError(
+                    f'caption segment exceeds its visual-scene budget after split/merge: '
+                    f'{unit_text(segment)[:80]!r}'
+                )
             text = unit_text(segment)
             if not text:
                 continue
@@ -932,6 +999,72 @@ def scene_clock(
     )
 
 
+def load_scene_caption_segments(args: argparse.Namespace) -> list[dict[str, Any]]:
+    """读取 Phase 8 视觉声明，并派生字幕工具与组件共用的有效布局区间。"""
+    transcript_path = Path(args.transcript).resolve()
+    ws = transcript_path.parent.parent
+    audio_path = Path(args.narration_audio).resolve() if args.narration_audio else ws / 'voice_clone' / 'narration.mp3'
+    duration_s = media.probe_duration(audio_path)
+    try:
+        inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f'cannot read {ws / "inputs.json"} for scene canvas validation: {exc}') from exc
+    if not isinstance(inputs, dict):
+        raise ValueError(f'{ws / "inputs.json"} root must be an object')
+    scenes = video_contract.load_visual_scenes(
+        Path(args.scenes).resolve(), Path(__file__).resolve().parent.parent,
+        inputs.get('orientation'), duration_s, ws=ws,
+    )
+    segments = video_contract.caption_layout_segments(scenes)
+    for segment in segments:
+        caption = segment['layout_data']['caption']
+        log(
+            f'caption scene={segment["scene_id"]} [{segment["begin_s"]}, {segment["end_s"]}) '
+            f'layout={segment["layout"]} width={caption["width_px"]} '
+            f'font_size={caption["font_size_px"]} max_lines={caption["max_lines"]}'
+        )
+    return segments
+
+
+def caption_budget(segments: list[dict[str, Any]]) -> Callable[[int, int], float]:
+    """整个显示区间触及的所有 scene 中，取最严格的字幕预算。"""
+    def between(begin_ms: int, end_ms: int) -> float:
+        begin_s, end_s = begin_ms / 1000, end_ms / 1000
+        if end_s <= begin_s:
+            end_s = begin_s + 0.001
+        active = [
+            item for item in segments
+            if item['begin_s'] < end_s and item['end_s'] > begin_s
+        ]
+        if not active:
+            raise ValueError(
+                f'subtitle timing [{begin_s}, {end_s}) is not covered by visual scenes'
+            )
+        return min(
+            int(item['layout_data']['caption']['width_px'] / item['layout_data']['caption']['font_size_px'])
+            * item['layout_data']['caption']['max_lines']
+            for item in active
+        )
+    return between
+
+
+def public_caption_segments(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """写入字幕产物的派生显示契约；不让 agent 手算视觉边界。"""
+    result = []
+    for segment in segments:
+        layout = segment['layout_data']
+        caption_region = next(
+            (region for region in layout['regions'] if isinstance(region, dict) and region.get('id') == 'caption-text'),
+            None,
+        )
+        result.append({
+            'scene_id': segment['scene_id'], 'begin_s': segment['begin_s'], 'end_s': segment['end_s'],
+            'layout': segment['layout'], 'caption': dict(layout['caption']),
+            'caption_rect': dict(caption_region['rect']) if isinstance(caption_region, dict) and isinstance(caption_region.get('rect'), dict) else None,
+        })
+    return result
+
+
 def aligned_atoms(args: argparse.Namespace, warnings: list[str]) -> tuple[dict[int, list[Atom]], int]:
     """两个 mode 共用的前半部分：读输入、校验偏移表、把时间映射到显示稿。"""
     narration_text = read_text(args.narration)
@@ -977,14 +1110,25 @@ def align(args: argparse.Namespace) -> dict[str, Any]:
             },
         }
 
-    caption_width, caption_font_size, caption_max_lines = load_caption_spec(args)
-    cap = int(caption_width / caption_font_size) * caption_max_lines
-    log(f'cap={cap}')
-    units, fallback_units, merged_total = build_units(atoms_by_paragraph, cap, warnings)
+    segments = load_scene_caption_segments(args) if args.scenes is not None else None
+    if segments is not None:
+        cap: float | Callable[[int, int], float] = caption_budget(segments)
+    else:
+        caption_width, caption_font_size, caption_max_lines = load_caption_spec(args)
+        cap = int(caption_width / caption_font_size) * caption_max_lines
+        log(f'cap={cap}')
+    units, fallback_units, merged_total = build_units(
+        atoms_by_paragraph, cap, warnings, scene_budgets=segments is not None,
+    )
     if not units:
         raise ValueError('alignment produced no subtitle units')
     return {
-        'units': {'version': 1, 'units': units, 'summary': {}},
+        'units': {
+            'version': 1,
+            'units': units,
+            'summary': {},
+            **({'caption_segments': public_caption_segments(segments)} if segments is not None else {}),
+        },
         'summary': {
             'unit_count': len(units),
             'fallback_units': fallback_units,

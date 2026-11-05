@@ -35,7 +35,7 @@ STEP_INPUTS_FIELDS: dict[str, tuple[str, ...]] = {
     'catalog': ('coding_agent', 'input_mode', 'fetch_materials'),
     'script': ('coding_agent', 'duration', 'language', 'input_mode', 'fetch_materials'),
     'composition': ('coding_agent', 'duration', 'language', 'input_mode', 'fetch_materials',
-                    'design', 'layout', 'orientation'),
+                    'design', 'orientation'),
 }
 
 # 用户在对话里提出的长期要求，按阶段分开保存；catalog 没有要求列表。
@@ -408,3 +408,181 @@ def layout_file_problem(path: Path, orientation: Any, layout: str) -> str | None
     if width <= 0 or font_size <= 0 or max_lines < 1:
         return f'layout {layout!r} caption width_px / font_size_px must be positive and max_lines >= 1'
     return canvas_problem(data.get('canvas'), orientation, layout)
+
+
+# --- composition/scenes.json --------------------------------------------------
+#
+# Phase 8 的最终视觉场景。它与 Phase 6 的叙事 scene-plan 和 Phase 7 的可选
+# timeline.scenes 都是不同的东西：后者只提供语音时间锚点，前者决定字幕预算和
+# 布局 QA。视觉场景可在转场时重叠，但字幕布局在任一时刻都必须唯一。
+
+VISUAL_SCENES_VERSION = 1
+VISUAL_SCENES_PATH = 'composition/scenes.json'
+VISUAL_DURATION_TOLERANCE_S = 0.05
+
+
+def _finite_seconds(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    seconds = float(value)
+    return seconds if math.isfinite(seconds) and seconds >= 0 else None
+
+
+def visual_scenes_problem(
+    data: Any,
+    skill_root: Path,
+    orientation: Any,
+    duration_s: Any,
+    *,
+    ws: Path | None = None,
+    refresh: bool = False,
+) -> str | None:
+    """视觉场景声明不可用的原因，或 None。
+
+    所有布局都按调用方实际会使用的有效副本校验。除了结构错误，这里还验证整个
+    音频时长的视觉覆盖，以及转场重叠期间字幕布局是否仍然唯一。
+    """
+    duration = _finite_seconds(duration_s)
+    if duration is None or duration <= 0:
+        return f'actual narration duration must be a positive finite number, got {duration_s!r}'
+    if not isinstance(data, dict):
+        return 'JSON root is not an object'
+    if set(data) != {'version', 'scenes'}:
+        return 'root must contain exactly version and scenes'
+    if data.get('version') != VISUAL_SCENES_VERSION:
+        return f'version must be {VISUAL_SCENES_VERSION}, got {data.get("version")!r}'
+    raw_scenes = data.get('scenes')
+    if not isinstance(raw_scenes, list) or not raw_scenes:
+        return 'scenes must be a non-empty list'
+    scenes: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, raw in enumerate(raw_scenes):
+        if not isinstance(raw, dict):
+            return f'scene {index} is not an object'
+        if set(raw) != {'scene_id', 'begin_s', 'end_s', 'layout'}:
+            return f'scene {index} must contain exactly scene_id, begin_s, end_s and layout'
+        scene_id = raw.get('scene_id')
+        if not isinstance(scene_id, str) or not scene_id.strip():
+            return f'scene {index} scene_id must be a non-empty string'
+        if scene_id in seen:
+            return f'duplicate scene_id {scene_id!r}'
+        seen.add(scene_id)
+        begin, end = _finite_seconds(raw.get('begin_s')), _finite_seconds(raw.get('end_s'))
+        if begin is None or end is None or end <= begin:
+            return f'scene {scene_id!r} must have finite 0 <= begin_s < end_s'
+        if end > duration + VISUAL_DURATION_TOLERANCE_S:
+            return f'scene {scene_id!r} ends at {end}, beyond narration duration {duration}'
+        layout = raw.get('layout')
+        problem = layout_contract_problem(skill_root, layout)
+        if problem:
+            return f'scene {scene_id!r}: {problem}'
+        relpath = f'{LAYOUTS_PATH}/{layout}.json'
+        path = effective_resource(skill_root, ws, relpath, refresh=refresh) if ws is not None else skill_root / relpath
+        problem = layout_file_problem(path, orientation, str(layout))
+        if problem:
+            return f'scene {scene_id!r}: {problem}'
+        try:
+            layout_data = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            return f'scene {scene_id!r}: cannot load layout: {exc}'
+        scenes.append({
+            'scene_id': scene_id, 'begin_s': begin, 'end_s': min(end, duration),
+            'layout': layout, 'layout_path': path, 'layout_data': layout_data,
+        })
+    scenes.sort(key=lambda scene: (scene['begin_s'], scene['end_s'], scene['scene_id']))
+    if abs(scenes[0]['begin_s']) > VISUAL_DURATION_TOLERANCE_S:
+        return f'visual scenes must start at 0, got {scenes[0]["begin_s"]}'
+    final_end = max(scene['end_s'] for scene in scenes)
+    if abs(final_end - duration) > VISUAL_DURATION_TOLERANCE_S:
+        return f'visual scenes must cover narration duration {duration}, last end is {final_end}'
+
+    # 在每个原子区间的内部采样。后开始的 scene 接管字幕；同起点不同 layout
+    # 无法确定优先级，显式拒绝而不是依赖 JSON 顺序。
+    boundaries = sorted({0.0, duration, *(s['begin_s'] for s in scenes), *(s['end_s'] for s in scenes)})
+    for begin, end in zip(boundaries, boundaries[1:]):
+        if end - begin <= 1e-9:
+            continue
+        midpoint = (begin + end) / 2
+        active = [s for s in scenes if s['begin_s'] <= midpoint < s['end_s']]
+        if not active:
+            return f'visual scenes leave [{begin}, {end}) uncovered'
+        latest_begin = max(s['begin_s'] for s in active)
+        selected = [s for s in active if s['begin_s'] == latest_begin]
+        layouts = {s['layout'] for s in selected}
+        if len(layouts) != 1:
+            return f'ambiguous caption layout at {midpoint}: scenes {", ".join(s["scene_id"] for s in selected)}'
+    return None
+
+
+def load_visual_scenes(
+    path: Path,
+    skill_root: Path,
+    orientation: Any,
+    duration_s: Any,
+    *,
+    ws: Path | None = None,
+) -> list[dict[str, Any]]:
+    """读取并严格校验视觉 scenes；返回带有效 layout 数据的有序场景。"""
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f'visual scenes {path} cannot be read: {exc}') from exc
+    problem = visual_scenes_problem(data, skill_root, orientation, duration_s, ws=ws)
+    if problem:
+        raise ValueError(f'visual scenes {path}: {problem}')
+    scenes: list[dict[str, Any]] = []
+    for raw in data['scenes']:
+        layout = raw['layout']
+        relpath = f'{LAYOUTS_PATH}/{layout}.json'
+        layout_path = effective_resource(skill_root, ws, relpath, refresh=False) if ws is not None else skill_root / relpath
+        scenes.append({
+            'scene_id': raw['scene_id'],
+            'begin_s': float(raw['begin_s']),
+            'end_s': min(float(raw['end_s']), float(duration_s)),
+            'layout': layout,
+            'layout_path': layout_path,
+            'layout_data': json.loads(layout_path.read_text(encoding='utf-8')),
+        })
+    return sorted(scenes, key=lambda scene: (scene['begin_s'], scene['end_s'], scene['scene_id']))
+
+
+def caption_layout_segments(scenes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """把视觉 scenes 投影成无歧义的有效字幕布局区间。
+
+    输入必须已经由 load_visual_scenes 校验。相邻原子区间保持分开，以保留场景来源；
+    字幕生成可以对这些区间取约束，QA 也能据此确定边界前后的有效布局。
+    """
+    boundaries = sorted({value for scene in scenes for value in (scene['begin_s'], scene['end_s'])})
+    segments: list[dict[str, Any]] = []
+    for begin, end in zip(boundaries, boundaries[1:]):
+        if end - begin <= 1e-9:
+            continue
+        midpoint = (begin + end) / 2
+        active = [s for s in scenes if s['begin_s'] <= midpoint < s['end_s']]
+        if not active:
+            continue
+        selected = max(active, key=lambda scene: scene['begin_s'])
+        if segments and segments[-1]['scene_id'] == selected['scene_id'] and segments[-1]['end_s'] == begin:
+            segments[-1]['end_s'] = end
+        else:
+            segments.append({
+                'scene_id': selected['scene_id'], 'begin_s': begin, 'end_s': end,
+                'layout': selected['layout'], 'layout_path': selected['layout_path'],
+                'layout_data': selected['layout_data'],
+            })
+    return segments
+
+
+def active_visual_scenes(scenes: list[dict[str, Any]], time_s: float) -> list[dict[str, Any]]:
+    """转场时可能同时可见的视觉 scenes；末尾允许闭区间采样。"""
+    final_end = max(scene['end_s'] for scene in scenes)
+    return [
+        scene for scene in scenes
+        if scene['begin_s'] <= time_s < scene['end_s']
+        or (time_s == final_end and scene['end_s'] == final_end)
+    ]
+
+
+def visual_layout_relpaths(scenes: list[dict[str, Any]]) -> list[str]:
+    """实际使用的有效 layout 机器契约；未使用布局不参与失效。"""
+    return sorted({f'{LAYOUTS_PATH}/{scene["layout"]}.json' for scene in scenes})

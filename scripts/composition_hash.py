@@ -5,7 +5,7 @@ check-composition.py（把源文件指纹写进报告）与 pipeline-status.py�
 中比对这份指纹）必须对“哪些文件决定渲染出的 DOM”有完全一致的判断，因此规则只
 在这里写一份。
 
-可检查源文件是 index.html 加上 compositions/ 与 assets/ 下所有可见文件，但
+可检查源文件是 index.html、存在的 scenes.json，加上 compositions/ 与 assets/ 下所有可见文件，但
 assets/fonts/ 除外：字体是从 resources/fonts/ 原样字节复制而来，重新复制它们
 （每次 prepare 都会跑 fonts-download.sh）不应让已保存的检查报告失效。
 """
@@ -35,6 +35,9 @@ def composition_source_relpaths(composition_dir: Path) -> list[str]:
     index = composition_dir / 'index.html'
     if index.is_file():
         paths.append(index)
+    scenes = composition_dir / 'scenes.json'
+    if scenes.is_file():
+        paths.append(scenes)
     for name in SOURCE_DIRS:
         subdir = composition_dir / name
         if subdir.is_dir():
@@ -70,3 +73,21 @@ def fingerprint_relpaths(root: Path, relpaths: list[str]) -> str:
 def composition_sources_fingerprint(composition_dir: Path) -> str:
     """嵌入 check-composition 报告中的源文件指纹。"""
     return fingerprint_relpaths(composition_dir, composition_source_relpaths(composition_dir))
+
+
+def visual_contract_fingerprint(declaration: Path, layout_paths: list[Path]) -> str:
+    """视觉声明和实际使用的有效 layout 字节。
+
+    使用稳定逻辑名而不是绝对路径：库文件与相同字节的工作区副本是同一个有效契约，
+    复制位置变化不能制造一次内容变更。
+    """
+    digest = hashlib.sha256()
+    paths = sorted(set(layout_paths), key=lambda path: path.name)
+    items = [('composition/scenes.json', declaration)]
+    items.extend((f'modules/layouts/{path.name}', path) for path in paths)
+    for logical, path in items:
+        digest.update(logical.encode('utf-8'))
+        digest.update(b'\0')
+        digest.update(path.read_bytes() if path.is_file() else b'<absent>')
+        digest.update(b'\n')
+    return digest.hexdigest()

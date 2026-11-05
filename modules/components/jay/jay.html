@@ -108,6 +108,7 @@
 
       let DUR = num(host && host.getAttribute("data-duration"), 60);
       let ENV = [], ENV_FPS = 30, ACTS = [], THOUGHTS = [], TYPING = [], GLANCES = [], SEED = 20261018;
+      let PLACEMENTS = [];
       // glance targets: L left, R right, U up, D down at the laptop
       // eyes (ex, ey) travel up to ~12 units inside the eye; turn and pitch move the face; hx/hy move the head;
       // lid lowers the eyelids (looking down), brow lifts the brows (looking up)
@@ -127,6 +128,7 @@
         THOUGHTS = (S.thoughts || []).slice().sort((p, q) => p[0] - q[0]);
         TYPING = S.typing || [];
         GLANCES = S.glances || [];
+        PLACEMENTS = (S.placements || []).slice().sort((p, q) => p.begin_s - q.begin_s);
         if (S.seed) SEED = S.seed;
       }
 
@@ -956,6 +958,15 @@
 
       function renderAt(t) {
         t = clamp(t, 0, DUR);
+        if (PLACEMENTS.length) {
+          const placement = PLACEMENTS.filter((p) => t >= p.begin_s && t < p.end_s).pop();
+          stage.style.display = placement && placement.visible !== false ? "" : "none";
+          if (placement && placement.visible !== false) {
+            if (placement.x != null) stage.style.left = num(placement.x, 1294) + "px";
+            if (placement.y != null) stage.style.top = num(placement.y, 642) + "px";
+            if (placement.size != null) stage.style.width = stage.style.height = num(placement.size, 420) + "px";
+          }
+        }
         P = sample(t);
         const { r } = gfx;
         breath = Math.sin(t * Math.PI * 2 / 4.2);
