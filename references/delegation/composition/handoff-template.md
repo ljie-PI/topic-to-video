@@ -13,7 +13,7 @@
 | `{{skill_root}}` | skill 根目录的绝对路径 |
 | `{{coding_agent}}` / `{{coding_model_instruction}}` | 按 `inputs.json.delegation.composition` 与全局 `coding_agent` 解析的有效 agent / model；未指定 model 时模型说明为空 |
 | `{{design}}` / `{{layout}}` / `{{template}}` / `{{orientation}}` | `inputs.json` 的对应字段；`template` 未选择时写“未选择（由本阶段决定）”，null 时写“无（不使用模板）” |
-| `{{material_catalog}}` | `fetch_materials` 为真：catalog 的路径；否则“无（无素材，画面用纯排版）” |
+| `{{material_catalog}}` | catalog 适用时（联网抓素材，或论文模式）：catalog 的路径；否则“无（无素材，画面用纯排版）” |
 | `{{required_references}}` | 按叠加顺序编号：基础指令 → `modules.md` → design 文档与 `<design>.json` 机器契约 → layout 的 json 与文档 → 模板目录（`templates.md`，供本阶段选模板）→ 已选的模板文档与 `supported_layouts` 声明（未选时省略）→ pattern / 组件目录（固定一句，按 storyboard 需要自行阅读）。全部指向工作区副本 |
 | `{{additional_instructions}}` | `inputs.json` 的 `composition_requests` 逐条列出；没有写 `None` |
 | `{{transcript_q}}` / `{{narration_q}}` / `{{offsets_q}}` / `{{script_txt_q}}` | 确定性字幕生成的四个上游 |

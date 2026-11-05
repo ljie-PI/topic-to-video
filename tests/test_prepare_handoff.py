@@ -463,13 +463,23 @@ class TestCompositionHandoff:
         assert 'check-composition.py' in checked  # the positional-first command is covered
         assert 'make-narration.py' in checked
 
-    def test_inputs_section_lists_the_catalog_only_when_materials_are_fetched(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'composition', fetch_materials=False)
+    @pytest.mark.parametrize('input_mode', ['standard', 'paper'])
+    def test_inputs_section_lists_the_catalog_only_when_materials_are_fetched(
+        self, tmp_path: Path, input_mode: str
+    ):
+        ws = make_workspace(
+            tmp_path, 'composition', input_mode=input_mode, fetch_materials=False
+        )
+        if input_mode == 'paper':
+            write(ws / 'material-catalog.json', '{"entries": []}')
         prepare(ws, 'composition')
 
         inputs = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))['Inputs']
 
-        assert '- material-catalog.json：无（' in inputs
+        if input_mode == 'paper':
+            assert str(ws / 'material-catalog.json') in inputs
+        else:
+            assert '- material-catalog.json：无（' in inputs
         assert f'design github、layout presenter、template 无（不使用模板）、orientation landscape' in inputs
 
     @pytest.mark.parametrize('template', ['github', None], ids=['selected-template', 'no-template'])

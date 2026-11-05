@@ -3,13 +3,18 @@
 ## 输入
 
 - Phase 7 的 `voice_clone/narration.mp3`；
-- `transcribe/transcript.json`（本轮 fresh transcript）、`narration.txt` 与 `narration-offsets.json`：本阶段自己跑字幕时要用；
-- `transcribe/timeline.json`（段落与 cue 时间；本阶段不改它）；
-- `material-catalog.json` 与 `clips/`（Phase 5 切好的无音轨片段；标准模式且 `fetch_materials = false` 时都无；论文模式下的 `required_material_refs` 列出必用图表）；
-- `scene-plan.json`（叙事层场景规划，每个 scene 的 `intent` / `content_plan` 说明讲什么、怎样展开；仅作参考）；
-- `script.txt`；
-- `inputs.json`（本阶段写入 `layout` 与 `template`；读 `design` / `orientation` / `composition_requests`）；
+- `transcribe/transcript.json`（本轮 fresh transcript；非空句子列表，每句含 `begin` / `end` / `text` / `words`，时间为整数毫秒；schema 见 Phase 7）；
+- `narration.txt` 与 `narration-offsets.json`：本阶段自己跑字幕时要用；前者是 TTS 朗读稿，后者是逐字符映射回显示稿的偏移表（`version: 1`，含两个长度、两个内容哈希与 `segments`；schema 见 `scripts/make-narration.py`）；
+- `transcribe/timeline.json`（含 `total_s` / `paragraphs`，以及可选 `scenes` / `cues` 的段落与 cue 时间；本阶段不改它）；
+- `material-catalog.json`（catalog 适用时使用；JSON 对象，含 `entries` 与论文模式下的 `required_material_refs`；schema 见 `references/delegation/catalog/base-instructions.md`）；
+- `clips/`（`material-catalog.json` 中视频 `selected_clips[].clip_path` 引用的无音轨片段；相对工作区根目录；标准模式且 `fetch_materials = false` 时不使用，论文无视频素材时可以不创建）；
+- `scene-plan.json`（非空 JSON 列表；每个 scene 含 `scene_id`、1 起的段落号 `paragraphs`、非空 `intent` / `content_plan`，以及可选 `facts` / `cues` / `material_candidates`；仅作参考）；
+- `script.txt`（显示稿，字幕与屏幕文字的文本来源，不能改）；
+- `research-brief.md`（8.0 主 agent 选择 layout 时参考）；
+- `inputs.json`（本阶段写入 `layout` 与 `template`；画面设计读 `design` / `orientation` / `composition_requests`，准备 handoff 还校验 `input_mode` / `fetch_materials` / `coding_agent` / `delegation.composition`）；
 - `prepare-handoff.py` 生成的 `composition-handoff.md`，以及它物化到工作区的委派包、modules 副本和预置字体。
+
+素材路径的 base 不同：图片通过 `local_path` 解析，路径相对工作区的 `harvest_page/`；视频只使用 `selected_clips[].clip_path`，路径相对工作区根目录，不使用原视频的 `local_path`。
 
 **模板与 layout 都是本阶段才确定的**（见 8.0）：它们不在上游阶段里，也不会让旁白或配音阶段重做。
 
