@@ -9,8 +9,6 @@ from pathlib import Path
 
 import pytest
 
-from composition_hash import visual_contract_fingerprint
-
 pytestmark = pytest.mark.usefixtures('require_ffmpeg')
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / 'scripts/check-composition.py'
@@ -99,11 +97,6 @@ def test_same_element_is_checked_against_each_actual_scene_layout(tmp_path: Path
         ('b', 'outside_content_regions'), ('b', 'reserved_region_intrusion'),
     }
     assert [s['layout'] for s in result['scenes_checked']] == ['stage', 'presenter']
-    assert result['visual_contract_sha256'] == visual_contract_fingerprint(
-        ws / 'composition/scenes.json', [
-            ROOT / 'modules/layouts/presenter.json', ROOT / 'modules/layouts/stage.json',
-        ],
-    )
 
 
 def test_active_scene_caption_font_and_lines_are_checked(tmp_path: Path):

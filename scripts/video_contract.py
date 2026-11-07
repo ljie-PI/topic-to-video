@@ -9,7 +9,6 @@
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import re
@@ -50,7 +49,6 @@ STEP_REQUESTS_FIELD: dict[str, str | None] = {
 
 # qa_level 可选：缺省表示 standard 档，给出时必须是枚举值之一。
 QA_LEVELS = ('quick', 'standard', 'strict')
-QA_LEVEL_DEFAULT = 'standard'
 
 # 规范朝向 → 画布像素尺寸。一个朝向只有一个尺寸，因此布局、渲染检查与字幕
 # 规格不会对同一份项目给出互相矛盾的画布。3:4 是竖屏默认，9:16 仅用户在明确
@@ -59,14 +57,6 @@ ORIENTATION_CANVAS: dict[str, tuple[int, int]] = {
     'landscape': (1920, 1080),
     'portrait': (1080, 1920),
     'portrait-3:4': (1080, 1440),
-}
-
-# 缺省值与显式空值等价的可选字段：缺省要求列表与 [] 表达同一件事，
-# 因此它们也必须得到同一个指纹。
-INPUTS_FIELD_DEFAULTS: dict[str, Any] = {
-    'qa_level': QA_LEVEL_DEFAULT,
-    NARRATION_REQUESTS_FIELD: [],
-    COMPOSITION_REQUESTS_FIELD: [],
 }
 
 
@@ -326,22 +316,16 @@ NARRATION_OFFSETS_VERSION = 1
 # make-narration 记录的字数，以及各自统计的文件。
 OFFSETS_LENGTH_SOURCES = (('script_length', 'script.txt'), ('narration_length', 'narration.txt'))
 
-# 内容哈希：缺了它们就只能比字数，而等长编辑看不出文字已经变了。
-OFFSETS_HASH_SOURCES = (('script_sha256', 'script.txt'), ('narration_sha256', 'narration.txt'))
-
-
-def text_sha256(text: str) -> str:
-    return hashlib.sha256(text.encode('utf-8')).hexdigest()
-
 
 def offsets_problem(
     data: Any, *, script_path: Path | None = None, narration_path: Path | None = None,
 ) -> str | None:
     """偏移表不符合当前契约的原因，或 None。
 
-    版本、两个字数与两个内容哈希都是必需的。给出源文件时，字数按文本模式统计
-    （与 make-narration 的字符映射一致），哈希按文件原始字节比对，不能把 CRLF
-    转成 LF 再算。pipeline-status 与 align-narration 共用这套规则。
+    版本与两个字数都是必需的。给出源文件时，字数按文本模式统计
+    （与 make-narration 的字符映射一致）。pipeline-status 与 align-narration
+    共用这套规则。等长编辑不再由内容哈希识别：上游改动后的影响由主 agent
+    按已知修改范围显式登记重做。
     """
     if not isinstance(data, dict):
         return 'JSON root is not an object'
@@ -366,19 +350,6 @@ def offsets_problem(
             return (
                 f'{field} is {recorded} but {source} has {len(text)} characters: {source} and this '
                 'offset table no longer belong together, re-run scripts/make-narration.py'
-            )
-    for field, source in OFFSETS_HASH_SOURCES:
-        recorded = data.get(field)
-        if not isinstance(recorded, str) or not recorded:
-            return (
-                f'{field} is required and must be a non-empty string, got {recorded!r} '
-                '(re-run scripts/make-narration.py)'
-            )
-        path = paths[source]
-        if path is not None and hashlib.sha256(path.read_bytes()).hexdigest() != recorded:
-            return (
-                f'{field} does not match {source}: {source} was edited without re-running '
-                'scripts/make-narration.py'
             )
     return None
 
@@ -597,8 +568,3 @@ def active_visual_scenes(scenes: list[dict[str, Any]], time_s: float) -> list[di
         if scene['begin_s'] <= time_s < scene['end_s']
         or (time_s == final_end and scene['end_s'] == final_end)
     ]
-
-
-def visual_layout_relpaths(scenes: list[dict[str, Any]]) -> list[str]:
-    """实际使用的有效 layout 机器契约；未使用布局不参与失效。"""
-    return sorted({f'{LAYOUTS_PATH}/{scene["layout"]}.json' for scene in scenes})

@@ -68,9 +68,9 @@ def test_crlf_producer_voice_and_composition_subtitles_chain(tmp_path: Path):
     assert subtitles.returncode == 0, subtitles.stderr + subtitles.stdout
     assert (ws / 'transcribe/timeline.json').read_bytes() == timeline_before
     assert json.loads((ws / 'composition/assets/subtitle-units.json').read_text())['units']
-    # Equal-length edits remain detectable: this is newline support, not a hash exemption.
+    # 等长编辑不再由内容哈希识别：偏移表仍按字数校验通过。
     (ws / 'script.txt').write_bytes((ws / 'script.txt').read_bytes().replace('甲'.encode(), '丙'.encode(), 1))
-    assert 'script_sha256' in status.check_narration_offsets(ws, 'narration-offsets.json').detail
+    assert status.check_narration_offsets(ws, 'narration-offsets.json').ok
 
 
 @pytest.mark.parametrize('version', [None, 1, 3])
@@ -157,7 +157,7 @@ def test_handoff_accepts_only_its_declared_step_inputs(tmp_path: Path, step: str
     assert result['success']
 
 
-def test_layout_copy_change_only_invalidates_phase_8(tmp_path: Path):
+def test_layout_copy_change_invalidates_nothing_until_an_explicit_redo(tmp_path: Path):
     path = tmp_path / 'modules/layouts/stage.json'
     path.parent.mkdir(parents=True)
     shutil.copyfile(ROOT / 'modules/layouts/stage.json', path)
@@ -168,26 +168,22 @@ def test_layout_copy_change_only_invalidates_phase_8(tmp_path: Path):
     data['caption']['width_px'] = 500
     status_fixtures.write_json(path, data)
     _, result = run('pipeline-status.py', tmp_path)
-    assert result['next_phase']['id'] == '8-composition'
-    assert result['next_phase']['reason'] == 'stale'
-    assert 'modules/layouts/stage.json' in result['next_phase']['changed_upstream']
+    # 没有内容新鲜度追踪：layout 副本改动不自动判 Phase 8 过期。
+    assert result['next_phase'] is None
+    assert '8-composition' in result['completed_phases']
     assert '7-voice-subtitles' in result['completed_phases']
     assert all((tmp_path / name).read_bytes() == contents for name, contents in phase_7.items())
 
 
 @pytest.mark.parametrize('paper', [False, True])
-def test_catalog_dependency_follows_current_material_policy(tmp_path: Path, paper: bool):
+def test_catalog_content_changes_do_not_invalidate_any_phase(tmp_path: Path, paper: bool):
     status_fixtures.settle(tmp_path, fetch_materials=False, input_mode='paper' if paper else 'standard')
     path = tmp_path / 'material-catalog.json'
     catalog = json.loads(path.read_text())
     catalog['notes'] = 'only catalog changed'
     status_fixtures.write_json(path, catalog)
     _, result = run('pipeline-status.py', tmp_path)
-    if paper:
-        assert result['next_phase']['id'] == '6-script-scene-plan'
-        assert 'material-catalog.json' in result['next_phase']['changed_upstream']
-    else:
-        assert result['next_phase'] is None
+    assert result['next_phase'] is None
 
 
 @pytest.mark.parametrize('orientation, width, height, matches', [
@@ -229,7 +225,7 @@ def test_status_also_uses_the_effective_template_declaration(tmp_path: Path):
     assert 'supports layouts stage' in result['next_phase']['problems']['inputs.json#template']
 
 
-def test_materializing_identical_resource_bytes_is_not_stale(tmp_path: Path):
+def test_materializing_identical_resource_bytes_invalidates_nothing(tmp_path: Path):
     status_fixtures.settle(tmp_path, fetch_materials=False)
     for name in ('modules/layouts/stage.json', 'modules/designs/default/default.json'):
         path = tmp_path / name
@@ -255,16 +251,16 @@ def test_duplicate_qualified_material_ids_are_reported_as_ambiguous():
         status.parse_ref('example/img_001', index)
 
 
-def test_unreadable_offset_hash_source_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_unreadable_offset_source_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     status_fixtures.write_script(tmp_path, status_fixtures.SCRIPT_TXT)
-    read_bytes = Path.read_bytes
+    read_text = Path.read_text
 
-    def denied(path):
+    def denied(path, *args, **kwargs):
         if path == tmp_path / 'script.txt':
             raise PermissionError('injected unreadable script.txt')
-        return read_bytes(path)
+        return read_text(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, 'read_bytes', denied)
+    monkeypatch.setattr(Path, 'read_text', denied)
     result = status.check_narration_offsets(tmp_path, 'narration-offsets.json')
     assert not result.ok
     assert 'unreadable script.txt' in result.detail

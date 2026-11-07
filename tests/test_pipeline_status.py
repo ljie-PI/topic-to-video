@@ -5,8 +5,6 @@ JSON, exit codes 0 / 1 / 2). Fixture workspaces are built in tmp dirs.
 """
 from __future__ import annotations
 
-import hashlib
-import importlib.util
 import json
 import os
 import subprocess
@@ -15,8 +13,6 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-
-from composition_hash import composition_sources_fingerprint
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'pipeline-status.py'
@@ -181,8 +177,7 @@ def write_text(path: Path, text: str) -> None:
 
 def write_narration(ws: Path, script: str) -> None:
     """What make-narration produces for `script` with nothing to replace: narration.txt
-    equal to the script, and an offset table of one whole-text segment, including
-    the content hashes make-narration records."""
+    equal to the script, and an offset table of one whole-text segment."""
     length = len(script)
     write_text(ws / 'narration.txt', script)
     write_json(
@@ -191,8 +186,6 @@ def write_narration(ws: Path, script: str) -> None:
             'version': 1,
             'script_length': length,
             'narration_length': length,
-            'script_sha256': hashlib.sha256(script.encode('utf-8')).hexdigest(),
-            'narration_sha256': hashlib.sha256(script.encode('utf-8')).hexdigest(),
             'segments': [{'narration_start': 0, 'narration_end': length, 'script_start': 0, 'script_end': length}],
         },
     )
@@ -334,15 +327,9 @@ def complete_through_composition(ws: Path, **inputs_overrides) -> None:
     write_text(ws / 'composition' / 'storyboard.md', '# storyboard\n\n## scene_1\n内容区域：main\n')
     write_text(ws / 'composition' / 'index.html', '<html></html>')
     write_text(ws / 'composition' / 'compositions' / 'scene_1.html', '<template></template>')
-    # 报告必须写上当前 composition 的源指纹：没有指纹的报告不再靠 mtime 降级验收。
     write_json(
         ws / 'composition' / 'check-composition.json',
-        {
-            'success': True,
-            'verdict': 'pass',
-            'findings': [],
-            'sources_sha256': composition_sources_fingerprint(ws / 'composition'),
-        },
+        {'success': True, 'verdict': 'pass', 'findings': []},
     )
     write_blob(ws / 'composition' / 'renders' / 'final.mp4')
 
@@ -787,7 +774,7 @@ def test_scene_plan_with_content_plan_passes_and_can_be_approved(tmp_path: Path)
     assert 'scene-plan.json' not in result['corrupt_products']
     assert '6-script-scene-plan' in result['completed_phases']
     approval = read_approvals(tmp_path)['gates']['script']
-    assert 'scene-plan.json' in approval['products']
+    assert 'approved_at' in approval
 
 
 @pytest.mark.parametrize('field', ['intent', 'content_plan'])
@@ -1232,14 +1219,12 @@ def test_compositions_dir_with_a_nested_file_is_accepted(tmp_path: Path):
     complete_through_composition(tmp_path)
     (tmp_path / 'composition' / 'compositions' / 'scene_1.html').unlink()
     write_text(tmp_path / 'composition' / 'compositions' / 'scene_1' / 'index.html', '<template></template>')
-    # 内容变了就要重新检查：报告里嵌入的源指纹必须覆盖现在这份 composition。
+    # 内容变了需要 composition agent 重跑检查并保存新报告，但状态脚本只验收
+    # 报告数据本身：一份结论为 pass 的报告不因为没有源哈希而被判不合格。
     write_json(
         tmp_path / 'composition' / 'check-composition.json',
-        {'success': True, 'verdict': 'pass', 'findings': [],
-         'sources_sha256': composition_sources_fingerprint(tmp_path / 'composition')},
+        {'success': True, 'verdict': 'pass', 'findings': []},
     )
-    mtime = (tmp_path / 'composition' / 'check-composition.json').stat().st_mtime_ns + 10**9
-    os.utime(tmp_path / 'composition' / 'renders' / 'final.mp4', ns=(mtime, mtime))
     result = parse_result(run_cli(str(tmp_path)))
     assert '8-composition' in result['completed_phases']
 
@@ -1658,10 +1643,8 @@ def test_phases_after_a_missing_product_are_pending_not_completed(tmp_path: Path
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase']['id'] == '3-research'
     assert result['next_phase']['reason'] == 'missing'
-    assert 'changed_upstream' not in result['next_phase']  # only a stale phase has one
     assert result['completed_phases'] == ['1-gather-inputs']
     assert result['pending_phases'] == PHASE_IDS[3:]
-    assert result['stale_phases'] == []
     assert [phase['id'] for phase in result['phases']] == PHASE_IDS
     assert statuses(result) == {
         '1-gather-inputs': 'completed',
@@ -1700,192 +1683,25 @@ def test_a_phase_with_both_missing_and_corrupt_products_is_corrupt(tmp_path: Pat
     assert statuses(result)['6-script-scene-plan'] == 'corrupt'
 
 
-def test_complete_workspace_has_no_pending_or_stale_phases(tmp_path: Path):
+def test_complete_workspace_has_no_pending_phases(tmp_path: Path):
     complete_all(tmp_path)
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase'] is None
-    assert result['pending_phases'] == [] and result['stale_phases'] == []
+    assert result['pending_phases'] == []
     assert statuses(result) == {**{phase_id: 'completed' for phase_id in PHASE_IDS}, '2-paper-parse': 'skipped'}
 
 
-# --- stamps: .pipeline/stamps.json records which upstream each phase was built from ---
-
-
-def sha256_of(data: str | bytes) -> str:
-    return hashlib.sha256(data.encode('utf-8') if isinstance(data, str) else data).hexdigest()
-
-
-def field_sha256(value) -> str:
-    """The fingerprint of one inputs.json field, as the issue defines it."""
-    return sha256_of(json.dumps(value, sort_keys=True, ensure_ascii=False))
-
-
-def read_stamps(ws: Path) -> dict:
-    return json.loads((ws / '.pipeline' / 'stamps.json').read_text(encoding='utf-8'))
-
-
-def test_first_run_writes_a_stamp_for_every_completed_phase(tmp_path: Path):
-    complete_all(tmp_path)
-    parse_result(run_cli(str(tmp_path)))
-    stamps = read_stamps(tmp_path)
-    assert stamps['version'] == 1
-    assert set(stamps['phases']) == set(PHASE_IDS) - {'2-paper-parse'}  # a skipped phase has no stamp
-    for stamp in stamps['phases'].values():
-        assert set(stamp) == {'upstream', 'products', 'stamped_at'}
-        datetime.fromisoformat(stamp['stamped_at'])
-
-
-def test_stamp_records_upstream_and_product_fingerprints(tmp_path: Path):
-    complete_all(tmp_path)
-    parse_result(run_cli(str(tmp_path)))
-    phases = read_stamps(tmp_path)['phases']
-
-    assert phases['1-gather-inputs']['upstream'] == {}
-    assert phases['1-gather-inputs']['products'] == {'inputs.json': sha256_of((tmp_path / 'inputs.json').read_bytes())}
-
-    script = phases['6-script-scene-plan']
-    assert script['products']['script.txt'] == sha256_of(SCRIPT_TXT)
-    assert script['upstream']['research-brief.md'] == sha256_of(RESEARCH_BRIEF)
-    assert script['upstream']['inputs.json#duration'] == field_sha256(5.0)  # "5min" normalizes to 5
-    assert script['upstream']['material-catalog.json'] == sha256_of((tmp_path / 'material-catalog.json').read_bytes())
-    assert script['upstream']['inputs.json#narration_requests'] == field_sha256([])  # 缺省与 [] 等价
-
-
-def test_absent_qa_level_fingerprints_like_the_default(tmp_path: Path):
-    complete_through_research(tmp_path)
-    parse_result(run_cli(str(tmp_path)))
-    upstream = read_stamps(tmp_path)['phases']['3-research']['upstream']
-    assert 'inputs.json#qa_level' not in upstream  # qa_level is not an upstream of Phase 3
-    complete_all(tmp_path)
-    without_default = {key: value for key, value in INPUTS.items() if key != 'qa_level'}
-    write_json(tmp_path / 'inputs.json', without_default)
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['stale_phases'] == []  # absent means the standard tier, spelled out or not
-    assert result['next_phase'] is None
-
-
-def test_duration_spelling_variants_fingerprint_alike(tmp_path: Path):
-    settle(tmp_path)  # duration "5min"
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'duration': 5})
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['stale_phases'] == []
-    assert result['next_phase'] is None
-
-
-def test_inputs_field_fingerprint_sorts_keys_and_keeps_non_ascii(tmp_path: Path):
-    complete_through_research(tmp_path, language='中文', source={'url': 'https://e.com', 'a': 1})
-    parse_result(run_cli(str(tmp_path)))
-    upstream = read_stamps(tmp_path)['phases']['3-research']['upstream']
-    assert upstream['inputs.json#language'] == sha256_of('"中文"')
-    assert upstream['inputs.json#source'] == sha256_of('{"a": 1, "url": "https://e.com"}')
-
-
-# What each phase is built from, as the issue lists it; "inputs.json#x" is the field x of inputs.json.
-UPSTREAM_KEYS = {
-    '1-gather-inputs': [],
-    '3-research': [
-        'inputs.json#source', 'inputs.json#input_mode', 'inputs.json#language',
-        'harvest_page/main-paper/metadata.json',
-    ],
-    '4-material-harvest': ['research-brief.md'],
-    '5-material-catalog': ['harvest_page/manifest.json', 'research-brief.md', 'catalog-instructions.md'],
-    '6-script-scene-plan': [
-        'research-brief.md', 'material-catalog.json', 'inputs.json#duration', 'inputs.json#language',
-        'inputs.json#input_mode', 'inputs.json#narration_requests',
-    ],
-    '7-voice-subtitles': [
-        'narration.txt', 'narration-offsets.json', 'script.txt', 'scene-plan.json',
-    ],
-    '8-composition': [
-        'voice_clone/narration.mp3', 'transcribe/transcript.json', 'narration.txt',
-        'narration-offsets.json', 'transcribe/timeline.json', 'material-catalog.json',
-        'scene-plan.json', 'script.txt', 'inputs.json#design', 'inputs.json#layout',
-        'inputs.json#template', 'inputs.json#orientation', 'inputs.json#composition_requests',
-        'modules/designs/default/default.json', 'modules/layouts/stage.json',
-    ],
-    '9-check-mix': ['composition/renders/final.mp4', 'inputs.json#qa_level'],
-}
-
-
-@pytest.mark.parametrize('phase_id', list(UPSTREAM_KEYS))
-def test_stamp_upstream_keys_of_each_phase(tmp_path: Path, phase_id: str):
-    complete_all(tmp_path)
-    parse_result(run_cli(str(tmp_path)))
-    assert list(read_stamps(tmp_path)['phases'][phase_id]['upstream']) == UPSTREAM_KEYS[phase_id]
-
-
-def test_paper_parse_stamp_upstream_and_its_metadata_as_upstream_of_research(tmp_path: Path):
-    complete_through_inputs(tmp_path, input_mode='paper')
-    metadata = {
-        'slug': 'main-paper', 'success': True, 'source_type': 'paper_pdf',
-        'paper_metadata': {'full_markdown_path': 'main-paper/full.md'},
-    }
-    write_json(tmp_path / 'harvest_page' / 'main-paper' / 'metadata.json', metadata)
-    write_json(tmp_path / 'harvest_page' / 'manifest.json', {'version': 2, 'entries': [PAPER_ENTRY]})
-    write_text(tmp_path / 'research-brief.md', RESEARCH_BRIEF)
-    approve(tmp_path, 'research-brief')
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['completed_phases'] == ['1-gather-inputs', '2-paper-parse', '3-research']
-    phases = read_stamps(tmp_path)['phases']
-    assert list(phases['2-paper-parse']['upstream']) == ['inputs.json#source', 'inputs.json#input_mode']
-    assert phases['3-research']['upstream']['harvest_page/main-paper/metadata.json'] == sha256_of(
-        (tmp_path / 'harvest_page' / 'main-paper' / 'metadata.json').read_bytes()
-    )
-
-    # Re-parsing the paper changes Phase 2's product, which makes the research stale.
-    write_json(
-        tmp_path / 'harvest_page' / 'main-paper' / 'metadata.json',
-        {**metadata, 'paper_metadata': {'full_markdown_path': 'main-paper/mineru/full.md'}},
-    )
-    result = parse_result(run_cli(str(tmp_path)))
-    assert statuses(result)['2-paper-parse'] == 'completed'
-    assert result['next_phase']['id'] == '3-research'
-    assert result['next_phase']['changed_upstream'] == ['harvest_page/main-paper/metadata.json']
-
-
-def test_directory_products_are_not_fingerprinted(tmp_path: Path):
-    complete_all(tmp_path)
-    parse_result(run_cli(str(tmp_path)))
-    products = read_stamps(tmp_path)['phases']['8-composition']['products']
-    assert set(products) == {
-        'composition/assets/subtitle-units.json',
-        'composition/storyboard.md',
-        'composition/index.html',
-        'composition/check-composition.json',
-        'composition/renders/final.mp4',
-    }
-
-
-def test_phases_that_are_not_completed_get_no_stamp(tmp_path: Path):
-    complete_all(tmp_path)
-    (tmp_path / 'research-brief.md').unlink()
-    assert not (tmp_path / '.pipeline' / 'stamps.json').exists()  # fixtures no longer stamp via approvals
-    parse_result(run_cli(str(tmp_path)))
-    assert list(read_stamps(tmp_path)['phases']) == ['1-gather-inputs']
-
-
-def test_a_workspace_without_inputs_gets_no_pipeline_dir(tmp_path: Path):
-    parse_result(run_cli(str(tmp_path)))
-    assert not (tmp_path / '.pipeline').exists()
-
-
-def test_second_run_leaves_the_stamp_file_untouched(tmp_path: Path):
-    complete_all(tmp_path)
-    parse_result(run_cli(str(tmp_path)))
-    stamps_file = tmp_path / '.pipeline' / 'stamps.json'
-    before = (stamps_file.read_bytes(), stamps_file.stat().st_mtime_ns)
-    result = parse_result(run_cli(str(tmp_path)))
-    assert (stamps_file.read_bytes(), stamps_file.stat().st_mtime_ns) == before
-    assert result['next_phase'] is None
-
-
-# --- stale: a phase whose upstream changed after it was built ---------------------
+# --- 没有自动新鲜度追踪：上游改动不使任何阶段过期 -------------------------
+#
+# 状态脚本不比对文件哈希或修改时间。改了上游之后要不要重做、重做哪些阶段，
+# 由主 agent 按已知修改范围显式登记（--redo）；这里验证脚本确实不从文件
+# 变化推断任何失效，也不需要任何指纹状态文件。
 
 EDITED_SCRIPT_TXT = '甲' * 1050 + '\n\n' + '丙' * 1050 + '\n'  # same length as SCRIPT_TXT, other content
 
 
 def settle(ws: Path, **inputs_overrides) -> dict:
-    """A complete workspace whose stamps have been written by a first run."""
+    """A complete workspace accepted by a first run."""
     complete_all(ws, **inputs_overrides)
     result = parse_result(run_cli(str(ws)))
     assert result['next_phase'] is None
@@ -1899,124 +1715,61 @@ def rewrite_voice_subtitles(ws: Path) -> None:
     write_json(ws / 'transcribe' / 'timeline.json', {**TIMELINE, 'total_s': 2.6})
 
 
-def rewrite_subtitle_units(ws: Path) -> None:
-    """Phase 8's deterministic subtitles regenerated (same audio, new layout)."""
-    write_json(
-        ws / 'composition' / 'assets' / 'subtitle-units.json',
-        {'units': [{'text': '大家好呀', 'begin_s': 0.0, 'end_s': 2.6}]},
-    )
-    write_json(
-        ws / 'composition' / 'check-composition.json',
-        {'success': True, 'verdict': 'pass', 'findings': [],
-         'sources_sha256': composition_sources_fingerprint(ws / 'composition')},
-    )
-    write_blob(ws / 'composition' / 'renders' / 'final.mp4', size=256)
-
-
-def test_a_partial_redo_keeps_the_phase_stale(tmp_path: Path):
-    # Only re-running the aligner after a script edit must not clear Phase 7's
-    # stale mark: narration.mp3 and transcript.json are still the old build.
+def test_editing_the_script_and_rerunning_make_narration_invalidates_nothing(tmp_path: Path):
+    # 上游改了、偏移表也重跑了：没有指纹比对，一切照常完成。
     settle(tmp_path)
     write_script(tmp_path, EDITED_SCRIPT_TXT)
     approve(tmp_path, 'script')
-    assert parse_result(run_cli(str(tmp_path)))['next_phase']['id'] == '7-voice-subtitles'
 
-    write_json(tmp_path / 'transcribe' / 'timeline.json', {**TIMELINE, 'total_s': 2.6})
     result = parse_result(run_cli(str(tmp_path)))
 
-    assert result['next_phase']['id'] == '7-voice-subtitles'
-    assert result['next_phase']['reason'] == 'stale'
-    assert result['next_phase']['changed_upstream'] == ['narration.txt', 'narration-offsets.json', 'script.txt']
-    # While the phase is stale the stamp keeps the pre-change fingerprints: the
-    # rebuilt product is NOT recorded until the redo is complete.
-    stamp = read_stamps(tmp_path)['phases']['7-voice-subtitles']
-    assert stamp['upstream']['script.txt'] == sha256_of(SCRIPT_TXT)
-    assert stamp['products']['transcribe/timeline.json'] == sha256_of(
-        json.dumps(TIMELINE, ensure_ascii=False)
-    )
-
-    rewrite_voice_subtitles(tmp_path)
-    result = parse_result(run_cli(str(tmp_path)))
-    assert statuses(result)['7-voice-subtitles'] == 'completed'
+    assert result['next_phase'] is None
+    assert result['completed_phases'] == [
+        phase_id for phase_id in PHASE_IDS if phase_id != '2-paper-parse'
+    ]
 
 
-def test_an_upstream_key_missing_from_an_old_stamp_makes_the_phase_stale(tmp_path: Path):
-    # 新要求不能因为旧戳缺键就永久忽略：缺键就是“不是按当前要求构建”，该阶段要重做。
+def test_editing_the_script_to_the_same_length_without_rerunning_anything_is_not_caught(tmp_path: Path):
+    # 等长编辑不再由内容哈希识别：状态脚本没有证据就什么也不判。
+    # 上游改动后的影响由主 agent 按已知修改范围显式登记重做。
     settle(tmp_path)
-    stamps = read_stamps(tmp_path)
-    del stamps['phases']['9-check-mix']['upstream']['inputs.json#qa_level']
-    write_json(tmp_path / '.pipeline' / 'stamps.json', stamps)
+    write_text(tmp_path / 'script.txt', EDITED_SCRIPT_TXT)
 
     result = parse_result(run_cli(str(tmp_path)))
 
-    assert result['next_phase']['id'] == '9-check-mix'
-    assert result['next_phase']['reason'] == 'stale'
-    assert result['next_phase']['changed_upstream'] == ['inputs.json#qa_level']
-    # 旧戳与旧产物都原样保留，不自动迁移。
-    assert (tmp_path / '.pipeline' / 'stamps.json').is_file()
-    assert (tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4').is_file()
-
-
-def test_an_upstream_key_removed_from_the_contract_makes_the_phase_stale(tmp_path: Path):
-    # 旧戳里还留着阶段已不再声明的键：那也是契约变化，不能静默当作没变。
-    settle(tmp_path)
-    stamps = read_stamps(tmp_path)
-    stamps['phases']['7-voice-subtitles']['upstream']['inputs.json#layout'] = 'stale'
-    write_json(tmp_path / '.pipeline' / 'stamps.json', stamps)
-
-    result = parse_result(run_cli(str(tmp_path)))
-
-    assert result['next_phase']['id'] == '7-voice-subtitles'
-    assert result['next_phase']['changed_upstream'] == ['inputs.json#layout']
-
-
-def test_fingerprint_cache_is_written_and_trusted(tmp_path: Path):
-    settle(tmp_path)
-    cache = json.loads((tmp_path / '.pipeline' / 'fpcache.json').read_text(encoding='utf-8'))
-    assert cache['version'] == 1
-    entry = cache['files']['composition/renders/final.mp4']
-    assert set(entry) == {'size', 'mtime_ns', 'sha256'}
-    # A same-size, same-mtime rewrite is trusted without re-hashing (the accepted
-    # trade-off that avoids re-reading every media file on each scan).
-    target = tmp_path / 'composition' / 'renders' / 'final.mp4'
-    target.write_bytes(b'\1' * entry['size'])
-    os.utime(target, ns=(entry['mtime_ns'], entry['mtime_ns']))
-    result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase'] is None
 
 
-def test_editing_the_script_makes_phase_7_stale_and_later_phases_pending(tmp_path: Path):
+def test_changing_the_layout_and_orientation_consistently_invalidates_nothing(tmp_path: Path):
+    """换布局只影响画面：没有新鲜度比对时，状态脚本不要求任何阶段重做。"""
     settle(tmp_path)
-    write_script(tmp_path, EDITED_SCRIPT_TXT)  # the script agent re-ran make-narration
-    approve(tmp_path, 'script')
-
+    write_json(
+        tmp_path / 'inputs.json',
+        {**INPUTS, 'layout': 'portrait', 'orientation': 'portrait'},
+    )
     result = parse_result(run_cli(str(tmp_path)))
-
-    assert result['next_phase']['id'] == '7-voice-subtitles'
-    assert result['next_phase']['reason'] == 'stale'
-    assert result['next_phase']['changed_upstream'] == ['narration.txt', 'narration-offsets.json', 'script.txt']
-    assert result['next_phase']['problems'] == {}
-    assert result['stale_phases'] == ['7-voice-subtitles']
-    assert result['pending_phases'] == ['8-composition', '9-check-mix']
-    assert result['completed_phases'] == [
-        '1-gather-inputs', '3-research', '4-material-harvest', '5-material-catalog', '6-script-scene-plan',
-    ]
-    assert statuses(result)['7-voice-subtitles'] == 'stale'
-    assert result['missing_products'] == [] and result['corrupt_products'] == []
+    assert result['next_phase'] is None
+    assert statuses(result)['7-voice-subtitles'] == 'completed'
 
 
-def test_changing_only_qa_level_makes_only_phase_9_stale(tmp_path: Path):
+def test_changing_only_qa_level_invalidates_nothing(tmp_path: Path):
     settle(tmp_path)
     write_json(tmp_path / 'inputs.json', {**INPUTS, 'qa_level': 'strict'})
 
     result = parse_result(run_cli(str(tmp_path)))
 
-    assert result['next_phase']['id'] == '9-check-mix'
-    assert result['next_phase']['reason'] == 'stale'
-    assert result['next_phase']['changed_upstream'] == ['inputs.json#qa_level']
-    assert result['stale_phases'] == ['9-check-mix']
-    assert result['pending_phases'] == []
-    assert result['completed_phases'] == [phase_id for phase_id in PHASE_IDS[:-1] if phase_id != '2-paper-parse']
+    assert result['next_phase'] is None
+    assert '9-check-mix' in result['completed_phases']
+
+
+def test_a_newly_added_request_list_invalidates_nothing(tmp_path: Path):
+    # 要求列表是 handoff 的指令输入，不是重做的触发依据：登记与否由主 agent 判断。
+    settle(tmp_path)
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'narration_requests': ['结尾不要 CTA']})
+    assert parse_result(run_cli(str(tmp_path)))['next_phase'] is None
+
+    write_json(tmp_path / 'inputs.json', {**INPUTS, 'composition_requests': ['不要人物区']})
+    assert parse_result(run_cli(str(tmp_path)))['next_phase'] is None
 
 
 def test_the_old_instruction_files_are_not_upstreams_any_more(tmp_path: Path):
@@ -2026,169 +1779,29 @@ def test_the_old_instruction_files_are_not_upstreams_any_more(tmp_path: Path):
         write_text(tmp_path / name, '旧要求\n')
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase'] is None
-    assert result['stale_phases'] == []
 
 
-def test_changing_the_layout_makes_only_phase_8_stale(tmp_path: Path):
-    """换布局只重做画面：音频、transcript 与时间轴都不重建。"""
+def test_catalog_instructions_are_a_plain_optional_input(tmp_path: Path):
+    # catalog-instructions.md 是可读可不读的输入：写了、改了都不让任何阶段失效。
     settle(tmp_path)
-    write_json(
-        tmp_path / 'inputs.json',
-        {**INPUTS, 'layout': 'portrait', 'orientation': 'portrait'},
-    )
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['next_phase']['id'] == '8-composition'
-    assert result['next_phase']['reason'] == 'stale'
-    assert result['next_phase']['changed_upstream'] == [
-        'inputs.json#layout', 'inputs.json#orientation',
-        'modules/layouts/portrait.json', 'modules/layouts/stage.json',
-    ]
-    assert result['stale_phases'] == ['8-composition']
-    assert result['pending_phases'] == ['9-check-mix']
-    # Phase 7 不依赖 layout，保持完成。
-    assert statuses(result)['7-voice-subtitles'] == 'completed'
-
-
-def test_a_layout_that_does_not_match_the_orientation_blocks_phase_8(tmp_path: Path):
-    """3:4 与 9:16 混用、或横竖错配时，问题留在 Phase 8，不回退 Phase 1。"""
-    settle(tmp_path)
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'layout': 'portrait'})  # landscape 项目
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['next_phase']['id'] == '8-composition'
-    assert result['next_phase']['reason'] == 'corrupt'
-    detail = result['next_phase']['problems']['inputs.json#layout']
-    assert 'portrait' in detail and '1080x1920' in detail and 'landscape' in detail
-    assert 'inputs.json' not in result['corrupt_products']
-    # 视觉配置问题不算产物缺失，也不会让 Phase 1 重做。
-    assert statuses(result)['1-gather-inputs'] == 'completed'
-
-
-def test_a_three_by_four_layout_cannot_stand_in_for_nine_by_sixteen(tmp_path: Path):
-    settle(tmp_path, orientation='portrait', layout='portrait')
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'orientation': 'portrait-3:4', 'layout': 'portrait'})
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['next_phase']['id'] == '8-composition'
-    detail = result['next_phase']['problems']['inputs.json#layout']
-    assert '1080x1920' in detail and '1080x1440' in detail
-
-
-def test_a_newly_added_narration_request_makes_phase_6_stale(tmp_path: Path):
-    # narration_requests 缺省时是 absent，补上后就变成上游变化。
-    settle(tmp_path)
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'narration_requests': ['结尾不要 CTA']})
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['next_phase']['id'] == '6-script-scene-plan'
-    assert result['next_phase']['changed_upstream'] == ['inputs.json#narration_requests']
-    assert result['stale_phases'] == ['6-script-scene-plan']
-
-
-def test_a_newly_added_composition_request_makes_phase_8_stale(tmp_path: Path):
-    settle(tmp_path)
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'composition_requests': ['不要人物区']})
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['next_phase']['id'] == '8-composition'
-    assert result['next_phase']['changed_upstream'] == ['inputs.json#composition_requests']
-
-
-@pytest.mark.parametrize('change', ['create', 'edit', 'delete'])
-def test_catalog_instruction_changes_stale_catalog_and_stop_downstream(tmp_path: Path, change: str):
-    instructions = tmp_path / 'catalog-instructions.md'
-    if change != 'create':
-        write_text(instructions, '优先展示 UI 操作。')
-    settle(tmp_path)
-    original_stamp = read_stamps(tmp_path)['phases']['5-material-catalog']
-
-    if change == 'delete':
-        instructions.unlink()
-    else:
-        write_text(instructions, '不要使用当前 img_001，只选择流程图。')
-    result = parse_result(run_cli(str(tmp_path)))
-
-    assert result['next_phase']['id'] == '5-material-catalog'
-    assert result['next_phase']['reason'] == 'stale'
-    assert result['next_phase']['changed_upstream'] == ['catalog-instructions.md']
-    assert '5-material-catalog' not in result['completed_phases']
-    assert result['pending_phases'] == ['6-script-scene-plan', '7-voice-subtitles', '8-composition', '9-check-mix']
-    assert read_stamps(tmp_path)['phases']['5-material-catalog'] == original_stamp
-
-
-def test_unchanged_catalog_instructions_keep_the_pipeline_current(tmp_path: Path):
     write_text(tmp_path / 'catalog-instructions.md', '优先展示 UI 操作。')
-    settle(tmp_path)
+    assert parse_result(run_cli(str(tmp_path)))['next_phase'] is None
 
+    write_text(tmp_path / 'catalog-instructions.md', '不要使用当前 img_001，只选择流程图。')
     result = parse_result(run_cli(str(tmp_path)))
-
     assert result['next_phase'] is None
-    assert result['stale_phases'] == []
 
 
-def test_old_catalog_stamp_without_instruction_dependency_is_stale(tmp_path: Path):
-    settle(tmp_path)
-    stamps = read_stamps(tmp_path)
-    del stamps['phases']['5-material-catalog']['upstream']['catalog-instructions.md']
-    write_json(tmp_path / '.pipeline' / 'stamps.json', stamps)
-
-    result = parse_result(run_cli(str(tmp_path)))
-
-    assert result['next_phase']['id'] == '5-material-catalog'
-    assert result['next_phase']['reason'] == 'stale'
-    assert result['next_phase']['changed_upstream'] == ['catalog-instructions.md']
-    assert read_stamps(tmp_path) == stamps
-
-
-def test_reapproving_an_edited_product_stales_the_next_phase(tmp_path: Path):
-    settle(tmp_path, approval_gates=['research-brief'])
-    edited = RESEARCH_BRIEF + '- one more fact [source]\n'
-    write_text(tmp_path / 'research-brief.md', edited)
-    waiting = parse_result(run_cli(str(tmp_path)))
-    assert waiting['next_phase']['reason'] == 'awaiting_approval'
-
-    result = approve(tmp_path, 'research-brief')
-
-    assert statuses(result)['3-research'] == 'completed'
-    assert result['next_phase']['id'] == '4-material-harvest'
-    assert result['next_phase']['reason'] == 'stale'
-    assert result['next_phase']['changed_upstream'] == ['research-brief.md']
-    # The stamp now describes the edited file, so the edit is not reported again as a product change.
-    phases = read_stamps(tmp_path)['phases']
-    assert phases['3-research']['products']['research-brief.md'] == sha256_of(edited)
-    assert phases['4-material-harvest']['upstream']['research-brief.md'] == sha256_of(RESEARCH_BRIEF)
-
-
-def test_regenerating_a_phase_after_its_upstream_changed_makes_it_completed_again(tmp_path: Path):
+def test_regenerating_phase_7_after_a_script_edit_keeps_the_pipeline_current(tmp_path: Path):
     settle(tmp_path)
     write_script(tmp_path, EDITED_SCRIPT_TXT)
     approve(tmp_path, 'script')
-    assert parse_result(run_cli(str(tmp_path)))['next_phase']['id'] == '7-voice-subtitles'
-
     rewrite_voice_subtitles(tmp_path)
     result = parse_result(run_cli(str(tmp_path)))
 
+    # 重跑完成后一切照旧；下游也不会被自动登记重做。
     assert statuses(result)['7-voice-subtitles'] == 'completed'
-    assert result['next_phase']['id'] == '8-composition'
-    assert result['next_phase']['reason'] == 'stale'
-    assert result['next_phase']['changed_upstream'] == [
-        'voice_clone/narration.mp3',
-        'transcribe/transcript.json',
-        'narration.txt',
-        'narration-offsets.json',
-        'transcribe/timeline.json',
-        'script.txt',
-    ]
-    assert result['pending_phases'] == ['9-check-mix']
-    # Phase 7's stamp was rewritten against the new upstream.
-    stamp = read_stamps(tmp_path)['phases']['7-voice-subtitles']
-    assert stamp['upstream']['script.txt'] == sha256_of(EDITED_SCRIPT_TXT)
-    assert stamp['products']['voice_clone/narration.mp3'] == sha256_of(b'\0' * 256)
-
-
-def test_a_stale_phase_stays_stale_until_it_is_regenerated_or_restamped(tmp_path: Path):
-    settle(tmp_path)
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'qa_level': 'strict'})
-    first = parse_result(run_cli(str(tmp_path)))
-    second = parse_result(run_cli(str(tmp_path)))
-    assert first['next_phase'] == second['next_phase']
-    assert second['stale_phases'] == ['9-check-mix']
+    assert result['next_phase'] is None
 
 
 def test_deleting_phase_6_products_makes_6_next_and_the_rest_pending_until_restored(tmp_path: Path):
@@ -2205,29 +1818,12 @@ def test_deleting_phase_6_products_makes_6_next_and_the_rest_pending_until_resto
     assert result['pending_phases'] == ['7-voice-subtitles', '8-composition', '9-check-mix']
     assert result['completed_phases'] == ['1-gather-inputs', '3-research', '4-material-harvest', '5-material-catalog']
 
-    # The same bytes are written back: nothing downstream is stale.
+    # 相同的字节写回去：一切照旧。
     for name, data in saved.items():
         (tmp_path / name).write_bytes(data)
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase'] is None
-    assert result['stale_phases'] == [] and result['pending_phases'] == []
-
-
-def test_redoing_phase_6_with_new_content_makes_phase_7_stale(tmp_path: Path):
-    settle(tmp_path)
-    for name in ('script.txt', 'narration.txt', 'narration-offsets.json', 'scene-plan.json', 'tts-lexicon.json'):
-        (tmp_path / name).unlink()
-    write_script(tmp_path, EDITED_SCRIPT_TXT)
-    write_json(tmp_path / 'tts-lexicon.json', {'OpenHuman': 'Open Human'})
-    write_json(tmp_path / 'scene-plan.json', SCENE_PLAN)
-    approve(tmp_path, 'script')
-
-    result = parse_result(run_cli(str(tmp_path)))
-
-    assert statuses(result)['6-script-scene-plan'] == 'completed'
-    assert result['next_phase']['id'] == '7-voice-subtitles'
-    assert result['next_phase']['reason'] == 'stale'
-    assert result['pending_phases'] == ['8-composition', '9-check-mix']
+    assert result['pending_phases'] == []
 
 
 def test_changed_upstream_of_a_pending_phase_is_not_looked_at(tmp_path: Path):
@@ -2236,218 +1832,15 @@ def test_changed_upstream_of_a_pending_phase_is_not_looked_at(tmp_path: Path):
     write_json(tmp_path / 'inputs.json', {**INPUTS, 'qa_level': 'strict'})
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase']['id'] == '3-research'
-    assert result['stale_phases'] == []
     assert statuses(result)['9-check-mix'] == 'pending'
-
-
-# --- --restamp: accept the current files of a phase as built from the current upstream ---
-
-
-def test_restamp_clears_a_stale_phase(tmp_path: Path):
-    settle(tmp_path)
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'qa_level': 'strict'})
-    assert parse_result(run_cli(str(tmp_path)))['stale_phases'] == ['9-check-mix']
-
-    proc = run_cli(str(tmp_path), '--restamp', '9-check-mix')
-
-    assert proc.returncode == 0
-    result = parse_result(proc)
-    assert result['success'] is True
-    assert result['next_phase'] is None
-    assert result['stale_phases'] == []
-    assert statuses(result)['9-check-mix'] == 'completed'
-    assert read_stamps(tmp_path)['phases']['9-check-mix']['upstream']['inputs.json#qa_level'] == field_sha256('strict')
-    # And it sticks on the next plain run.
-    assert parse_result(run_cli(str(tmp_path)))['next_phase'] is None
-
-
-def test_restamp_only_touches_the_named_phase(tmp_path: Path):
-    settle(tmp_path)
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'language': 'en'})  # upstream of Phases 3 and 6
-
-    result = parse_result(run_cli(str(tmp_path), '--restamp', '3-research'))
-
-    assert statuses(result)['3-research'] == 'completed'
-    assert result['next_phase']['id'] == '6-script-scene-plan'
-    assert result['next_phase']['reason'] == 'stale'
-    assert result['next_phase']['changed_upstream'] == ['inputs.json#language']
-
-
-def test_restamp_reads_the_current_files_not_the_old_ones(tmp_path: Path):
-    settle(tmp_path)
-    write_script(tmp_path, EDITED_SCRIPT_TXT)
-    approve(tmp_path, 'script')
-    assert parse_result(run_cli(str(tmp_path)))['next_phase']['id'] == '7-voice-subtitles'
-
-    result = parse_result(run_cli(str(tmp_path), '--restamp', '7-voice-subtitles'))
-
-    assert statuses(result)['7-voice-subtitles'] == 'completed'
-    assert result['next_phase']['id'] == '8-composition'  # its upstream moved too
-    assert read_stamps(tmp_path)['phases']['7-voice-subtitles']['upstream']['script.txt'] == sha256_of(EDITED_SCRIPT_TXT)
-
-
-def test_restamp_fails_with_exit_1_when_the_products_do_not_pass(tmp_path: Path):
-    settle(tmp_path)
-    stamps_before = (tmp_path / '.pipeline' / 'stamps.json').read_bytes()
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'qa_level': 'strict'})
-    (tmp_path / 'qa' / 'qa-report.json').unlink()
-
-    proc = run_cli(str(tmp_path), '--restamp', '9-check-mix')
-
-    assert proc.returncode == 1
-    result = parse_result(proc)
-    assert result['success'] is False
-    assert '9-check-mix' in result['error']
-    assert 'qa/qa-report.json' in result['problems']
-    assert (tmp_path / '.pipeline' / 'stamps.json').read_bytes() == stamps_before
-
-
-def test_restamp_fails_with_exit_1_for_a_phase_that_is_skipped(tmp_path: Path):
-    settle(tmp_path)  # standard mode: Phase 2 does not apply
-    proc = run_cli(str(tmp_path), '--restamp', '2-paper-parse')
-    assert proc.returncode == 1
-    result = parse_result(proc)
-    assert result['success'] is False
-    assert 'skipped' in result['error']
-
-
-def test_restamp_with_an_unknown_phase_is_a_usage_error(tmp_path: Path):
-    proc = run_cli(str(tmp_path), '--restamp', '10-publish')
-    assert proc.returncode == 2
-    result = parse_result(proc)
-    assert result['success'] is False
-    assert '10-publish' in result['error']
-
-
-def test_restamp_without_a_phase_is_a_usage_error(tmp_path: Path):
-    proc = run_cli(str(tmp_path), '--restamp')
-    assert proc.returncode == 2
-    assert parse_result(proc)['success'] is False
-
-
-# --- a stamps.json that cannot be trusted stops the run instead of resetting it ---
-
-
-@pytest.mark.parametrize(
-    'content',
-    [
-        '{"version": 1, "phases": ',  # truncated
-        '[]',
-        '{"version": 2, "phases": {}}',
-        '{"phases": {}}',
-        '{"version": 1, "phases": []}',
-        '{"version": 1, "phases": {"1-gather-inputs": []}}',
-        '{"version": 1, "phases": {"1-gather-inputs": {"upstream": {}, "products": []}}}',
-        '{"version": 1, "phases": {"1-gather-inputs": {"upstream": {}}}}',
-    ],
-)
-def test_unusable_stamps_file_is_quarantined_and_reported(tmp_path: Path, content: str):
-    complete_all(tmp_path)
-    write_text(tmp_path / '.pipeline' / 'stamps.json', content)
-
-    proc = run_cli(str(tmp_path))
-
-    assert proc.returncode == 0
-    result = parse_result(proc)
-    assert result['stamps_reset'] is True
-    assert not (tmp_path / '.pipeline' / 'stamps.json').exists()
-    # The evidence is kept for inspection, not deleted.
-    assert (tmp_path / '.pipeline' / 'stamps.json.quarantined').read_text(encoding='utf-8') == content
-
-
-def test_quarantined_stamps_keep_every_phase_unverified_until_it_is_accepted(tmp_path: Path):
-    complete_all(tmp_path)
-    write_text(tmp_path / '.pipeline' / 'stamps.json', 'garbage')
-
-    for _ in range(2):
-        result = parse_result(run_cli(str(tmp_path)))
-        assert result['stamps_reset'] is True
-        # Nothing was accepted yet, so there is nothing to record as built.
-        assert not (tmp_path / '.pipeline' / 'stamps.json').exists()
-        assert result['next_phase']['id'] == '1-gather-inputs'
-        assert result['next_phase']['reason'] == 'unverified'
-        assert result['completed_phases'] == []
-
-
-def test_accepting_every_phase_resolves_the_quarantined_stamps(tmp_path: Path):
-    settle(tmp_path)
-    write_text(tmp_path / '.pipeline' / 'stamps.json', 'garbage')
-
-    # Accepting one phase is not enough: the other phases stay unknown.
-    first = parse_result(run_cli(str(tmp_path), '--restamp', '1-gather-inputs'))
-    assert first['stamps_reset'] is True
-    assert list(read_stamps(tmp_path)['phases']) == ['1-gather-inputs']
-    assert first['next_phase']['id'] == '3-research'
-    assert first['next_phase']['reason'] == 'unverified'
-
-    for phase_id in (phase for phase in PHASE_IDS if phase != '2-paper-parse'):
-        proc = run_cli(str(tmp_path), '--restamp', phase_id)
-        assert proc.returncode == 0, proc.stderr
-
-    resolved = parse_result(run_cli(str(tmp_path)))
-    assert resolved['stamps_reset'] is False
-    assert not (tmp_path / '.pipeline' / 'stamps.json.quarantined').exists()
-    assert (tmp_path / '.pipeline' / 'stamps.json').is_file()
-    assert resolved['next_phase'] is None
-
-
-def test_last_acceptance_keeps_quarantine_if_saving_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    settle(tmp_path)
-    write_text(tmp_path / '.pipeline' / 'stamps.json', 'garbage')
-    parse_result(run_cli(str(tmp_path)))  # Quarantine the unusable stamps.
-    for phase_id in PHASE_IDS:
-        if phase_id not in ('2-paper-parse', '9-check-mix'):
-            proc = run_cli(str(tmp_path), '--restamp', phase_id)
-            assert proc.returncode == 0, proc.stderr
-
-    spec = importlib.util.spec_from_file_location('pipeline_status_recovery_test', SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module  # @dataclass resolves its module here.
-    spec.loader.exec_module(module)
-    stamps = module.Stamps(tmp_path)
-    phase = module.PHASES_BY_ID['9-check-mix']
-    fingerprints = module.Fingerprinter(tmp_path)
-    stamps.put(phase['id'], fingerprints.upstream(phase), fingerprints.products(phase))
-    before = (tmp_path / '.pipeline' / 'stamps.json').read_bytes()
-
-    def fail_save():
-        raise OSError('simulated stamps write failure')
-
-    monkeypatch.setattr(stamps, 'save', fail_save)
-    with pytest.raises(OSError, match='simulated stamps write failure'):
-        stamps.resolve_quarantine()
-
-    # The marker must survive until the full record is on disk; another run
-    # cannot quietly treat the last phase as a new, implicitly trusted phase.
-    assert stamps.reset is True
-    assert (tmp_path / '.pipeline' / 'stamps.json.quarantined').exists()
-    assert (tmp_path / '.pipeline' / 'stamps.json').read_bytes() == before
-    retry = parse_result(run_cli(str(tmp_path)))
-    assert retry['next_phase']['id'] == '9-check-mix'
-    assert retry['next_phase']['reason'] == 'unverified'
-
-    recovered = parse_result(run_cli(str(tmp_path), '--restamp', '9-check-mix'))
-    assert recovered['next_phase'] is None
-    assert recovered['stamps_reset'] is False
-    assert not (tmp_path / '.pipeline' / 'stamps.json.quarantined').exists()
-
-
-def test_deleting_the_pipeline_dir_starts_over_from_the_current_files(tmp_path: Path):
-    settle(tmp_path)
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'qa_level': 'strict'})
-    assert parse_result(run_cli(str(tmp_path)))['stale_phases'] == ['9-check-mix']
-    (tmp_path / '.pipeline' / 'stamps.json').unlink()
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['next_phase'] is None
-    assert (tmp_path / '.pipeline' / 'stamps.json').is_file()
 
 
 # --- phase 6 check: script.txt / narration.txt still match the offset table ---------
 #
 # make-narration records the character counts of the script.txt it read and the
 # narration.txt it wrote. A script.txt edited afterwards without re-running it
-# leaves a stale narration.txt and offset table, which align-narration only
-# rejects in Phase 7, after the TTS has already run.
+# leaves a narration.txt and offset table that no longer belong together, which
+# align-narration would only reject in Phase 7, after the TTS has already run.
 
 MAKE_NARRATION = REPO_ROOT / 'scripts' / 'make-narration.py'
 
@@ -2466,39 +1859,6 @@ def test_script_edited_after_make_narration_sends_phase_6_back(tmp_path: Path):
     detail = offsets_problem(tmp_path)
     assert 'script_length' in detail and 'script.txt' in detail and '2103' in detail and '2108' in detail, detail
     assert 'make-narration' in detail
-
-
-def test_script_edited_to_the_same_length_is_caught_by_the_hash(tmp_path: Path):
-    # The character counts cannot see it, but make-narration records content
-    # hashes in the offset table exactly for this case.
-    settle(tmp_path)
-    write_text(tmp_path / 'script.txt', EDITED_SCRIPT_TXT)
-    detail = offsets_problem(tmp_path)
-    assert 'script_sha256' in detail and 'script.txt' in detail and 'make-narration' in detail, detail
-
-
-def test_offsets_without_content_hashes_are_rejected_even_at_the_same_length(tmp_path: Path):
-    # 没有内容哈希就只能比字数，而等长编辑看不出文字变了。这种偏移表属于旧格式，
-    # 明确判损坏并要求重新生成，不降级验收。
-    settle(tmp_path)
-    offsets = json.loads((tmp_path / 'narration-offsets.json').read_text(encoding='utf-8'))
-    for field in ('script_sha256', 'narration_sha256'):
-        offsets.pop(field, None)
-    write_json(tmp_path / 'narration-offsets.json', offsets)
-
-    result = parse_result(run_cli(str(tmp_path)))
-
-    assert result['next_phase']['id'] == '6-script-scene-plan'
-    assert result['next_phase']['reason'] == 'corrupt'
-    assert 'narration-offsets.json' in result['corrupt_products']
-    detail = result['next_phase']['problems']['narration-offsets.json']
-    assert 'script_sha256' in detail and 'make-narration' in detail
-    # 不改完就没法审稿过关：缺证据的产物不是“可接受的旧格式”。
-    approve_proc = run_cli(str(tmp_path), '--approve', 'script')
-    assert approve_proc.returncode == 2
-    # 旧文件与下游产物都还在，只是不再被当成合格的验收证据。
-    assert (tmp_path / 'narration-offsets.json').is_file()
-    assert (tmp_path / 'voice_clone' / 'narration.mp3').is_file()
 
 
 def test_narration_edited_after_make_narration_sends_phase_6_back(tmp_path: Path):
@@ -2560,10 +1920,11 @@ def test_what_make_narration_writes_is_accepted(tmp_path: Path, newline: str):
     assert statuses(result)['6-script-scene-plan'] == 'completed'
 
 
-# --- phase 8 check: the saved check-composition report is not older than the composition ---
+# --- phase 8 check: the saved check-composition report ----------------------
 #
-# The report is saved by the composition agent itself. A pass that predates the
-# last edit of index.html or compositions/ says nothing about the current files.
+# 报告是 composition agent 保存的 check-composition stdout。状态脚本只验收
+# 报告数据本身：JSON 可解析、结论为 pass、（视觉模式下）scenes_checked 覆盖
+# 当前视觉声明。它不比对源文件哈希或修改时间，报告没有哈希字段也照常验收。
 
 REPORT = 'composition/check-composition.json'
 
@@ -2576,160 +1937,24 @@ def touch_after_report(ws: Path, relpath: str, seconds: int = 5) -> None:
     os.utime(path, ns=(mtime, mtime))
 
 
-@pytest.mark.parametrize(
-    'edited',
-    ['composition/compositions/scene_1.html', 'composition/index.html'],
-)
-def test_composition_edited_after_the_report_sends_phase_8_back(tmp_path: Path, edited: str):
+def test_a_pass_report_without_a_sources_hash_is_accepted(tmp_path: Path):
+    # complete_all 写的报告就没有哈希字段：无源哈希的 pass 报告通过基本验收。
     settle(tmp_path)
-    touch_after_report(tmp_path, edited)
-
+    report = json.loads((tmp_path / REPORT).read_text(encoding='utf-8'))
+    assert report['verdict'] == 'pass'
+    assert 'sources_sha256' not in report
     result = parse_result(run_cli(str(tmp_path)))
-
-    assert result['next_phase']['id'] == '8-composition'
-    assert result['next_phase']['reason'] == 'corrupt'
-    assert result['corrupt_products'] == [REPORT]
-    detail = result['next_phase']['problems'][REPORT]
-    assert 'sources_sha256 does not match' in detail and 'check-composition' in detail, detail
-    assert result['pending_phases'] == ['9-check-mix']
+    assert result['next_phase'] is None
 
 
-def test_nested_composition_file_edited_after_the_report_sends_phase_8_back(tmp_path: Path):
-    settle(tmp_path)
-    write_text(tmp_path / 'composition' / 'compositions' / 'extra' / 'scene_2.html', '<template></template>')
-    touch_after_report(tmp_path, 'composition/compositions/extra/scene_2.html')
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['corrupt_products'] == [REPORT]
-    # 报告里只有一份聚合指纹，所以只能报“composition 变了”，具体改哪个文件要看 diff。
-    assert 'sources_sha256 does not match' in result['next_phase']['problems'][REPORT]
-
-
-def test_rerunning_check_composition_brings_phase_8_back(tmp_path: Path):
+def test_composition_edited_after_the_report_does_not_invalidate_it(tmp_path: Path):
+    # 没有内容新鲜度追踪：报告保存后改动 composition 源文件，状态脚本不会
+    # 自动判报告失效；需要重跑检查和渲染时，由主 agent 显式登记重做。
     settle(tmp_path)
     touch_after_report(tmp_path, 'composition/compositions/scene_1.html')
-    assert parse_result(run_cli(str(tmp_path)))['next_phase']['id'] == '8-composition'
-
-    write_report_with_sources_hash(tmp_path)
-    # 重新渲染，使成片不早于任何源文件（含被推到期时间之后的那份 scene）。
-    newest = max(
-        path.stat().st_mtime_ns
-        for path in (tmp_path / 'composition').rglob('*')
-        if path.is_file() and path.name != 'final.mp4'
-    )
-    os.utime(tmp_path / 'composition' / 'renders' / 'final.mp4', ns=(newest + 10**9, newest + 10**9))
-    result = parse_result(run_cli(str(tmp_path)))
-
-    assert result['next_phase'] is None
-
-
-def test_report_with_the_same_mtime_as_the_composition_is_accepted(tmp_path: Path):
-    settle(tmp_path)
-    mtime = (tmp_path / REPORT).stat().st_mtime_ns
-    os.utime(tmp_path / 'composition' / 'index.html', ns=(mtime, mtime))
-    assert parse_result(run_cli(str(tmp_path)))['next_phase'] is None
-
-
-def test_hidden_files_and_the_render_do_not_count_for_the_report_age(tmp_path: Path):
-    settle(tmp_path)
-    write_text(tmp_path / 'composition' / 'compositions' / '.DS_Store', 'junk')
-    touch_after_report(tmp_path, 'composition/compositions/.DS_Store')
-    touch_after_report(tmp_path, 'composition/storyboard.md')
-    write_blob(tmp_path / 'composition' / 'renders' / 'final.mp4', size=256)  # the render follows the check
-    mtime = (tmp_path / REPORT).stat().st_mtime_ns + 10**10
-    os.utime(tmp_path / 'composition' / 'renders' / 'final.mp4', ns=(mtime, mtime))
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['corrupt_products'] == []
-    assert statuses(result)['8-composition'] == 'completed'
-
-
-def write_report_with_sources_hash(ws: Path) -> None:
-    """A pass report as a current check-composition writes it, sources hash included."""
-    write_json(
-        ws / REPORT,
-        {
-            'success': True,
-            'verdict': 'pass',
-            'findings': [],
-            'sources_sha256': composition_sources_fingerprint(ws / 'composition'),
-        },
-    )
-
-
-def test_report_with_a_sources_hash_ignores_forged_mtime(tmp_path: Path):
-    # The check report carries a content fingerprint: an edit whose mtime was
-    # pushed back below the report's must still invalidate the pass.
-    settle(tmp_path)
-    write_report_with_sources_hash(tmp_path)
-    report_mtime = (tmp_path / REPORT).stat().st_mtime_ns
-    for path in (
-        tmp_path / 'composition' / 'index.html',
-        tmp_path / 'composition' / 'compositions' / 'scene_1.html',
-        tmp_path / 'composition' / 'renders' / 'final.mp4',
-    ):
-        os.utime(path, ns=(report_mtime, report_mtime))
-
-    index = tmp_path / 'composition' / 'index.html'
-    index.write_text(index.read_text(encoding='utf-8') + '\n<!-- edited -->', encoding='utf-8')
-    forged = report_mtime - 10**9  # older than the report: the mtime rule is fooled
-    os.utime(index, ns=(forged, forged))
-
-    result = parse_result(run_cli(str(tmp_path)))
-
-    assert result['next_phase']['id'] == '8-composition'
-    assert result['next_phase']['reason'] == 'corrupt'
-    assert 'sources_sha256' in result['next_phase']['problems'][REPORT]
-
-
-def test_report_with_a_matching_sources_hash_passes_despite_newer_source_mtime(tmp_path: Path):
-    # A copy that rewrote every mtime does not force a useless re-check.
-    settle(tmp_path)
-    write_report_with_sources_hash(tmp_path)
-    mtime = (tmp_path / REPORT).stat().st_mtime_ns + 5 * 10**9
-    for path in (
-        tmp_path / 'composition' / 'index.html',
-        tmp_path / 'composition' / 'compositions' / 'scene_1.html',
-        tmp_path / 'composition' / 'renders' / 'final.mp4',
-    ):
-        os.utime(path, ns=(mtime, mtime))
-
-    result = parse_result(run_cli(str(tmp_path)))
-
-    assert result['corrupt_products'] == []
-    assert statuses(result)['8-composition'] == 'completed'
-
-
-def test_assets_and_storyboard_edits_send_phase_8_back(tmp_path: Path):
-    # Changes under composition/assets/ and to storyboard.md count: the render
-    # predating them means the mp4 does not contain them.
-    settle(tmp_path)
-    asset = tmp_path / 'composition' / 'assets' / 'brand' / 'logo.png'
-    write_blob(asset, size=64)
-    mtime = (tmp_path / 'composition' / 'renders' / 'final.mp4').stat().st_mtime_ns + 5 * 10**9
-    os.utime(asset, ns=(mtime, mtime))
-    # The report itself is fresh (its sources hash covers the asset); only the
-    # render predates the edit.
-    write_report_with_sources_hash(tmp_path)
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['next_phase']['id'] == '8-composition'
-    assert 'final.mp4' in result['next_phase']['problems'][REPORT]
-
-    # Re-render and re-check after the asset edit: back to completed.
-    later = mtime + 10**9
-    os.utime(tmp_path / 'composition' / 'renders' / 'final.mp4', ns=(later, later))
-    write_report_with_sources_hash(tmp_path)
-    os.utime(tmp_path / REPORT, ns=(later + 10**9, later + 10**9))
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase'] is None
-
-
-def test_storyboard_edited_after_the_render_sends_phase_8_back(tmp_path: Path):
-    settle(tmp_path)
-    storyboard = tmp_path / 'composition' / 'storyboard.md'
-    mtime = (tmp_path / 'composition' / 'renders' / 'final.mp4').stat().st_mtime_ns + 5 * 10**9
-    os.utime(storyboard, ns=(mtime, mtime))
-    result = parse_result(run_cli(str(tmp_path)))
-    assert result['next_phase']['id'] == '8-composition'
-    assert 'storyboard.md' in result['next_phase']['problems'][REPORT]
+    assert '8-composition' in result['completed_phases']
 
 
 # --- opt-in user approval gates: inputs.json + .pipeline/approvals.json -----------
@@ -2767,7 +1992,7 @@ def test_requested_research_waits_for_approval_and_later_phases_are_pending(tmp_
     assert result['pending_phases'] == PHASE_IDS[3:]
 
 
-def test_approving_research_records_product_hash_and_completes_the_gate(tmp_path: Path):
+def test_approving_research_records_the_confirmation_fact_and_completes_the_gate(tmp_path: Path):
     complete_through_research(tmp_path, approved=False, approval_gates=['research-brief'])
 
     result = approve(tmp_path, 'research-brief')
@@ -2778,26 +2003,30 @@ def test_approving_research_records_product_hash_and_completes_the_gate(tmp_path
     assert approvals['version'] == 1
     assert set(approvals['gates']) == {'research-brief'}
     approval = approvals['gates']['research-brief']
-    assert set(approval) == {'approved_at', 'products'}
+    # 确认事实与时间，不绑定文件哈希。
+    assert set(approval) == {'approved_at'}
     datetime.fromisoformat(approval['approved_at'])
-    assert approval['products'] == {'research-brief.md': sha256_of(RESEARCH_BRIEF)}
     # Approval is durable, not a one-shot transition in this invocation.
     assert parse_result(run_cli(str(tmp_path)))['next_phase']['id'] == '4-material-harvest'
 
 
-def test_changing_an_approved_research_brief_requires_confirmation_again(tmp_path: Path):
+def test_changing_an_approved_product_keeps_the_gate_until_an_explicit_redo(tmp_path: Path):
+    # 确认不绑定文件哈希：编辑已确认的产物不会自动撤销确认……
     complete_through_research(tmp_path, approved=False, approval_gates=['research-brief'])
     approve(tmp_path, 'research-brief')
     write_text(tmp_path / 'research-brief.md', RESEARCH_BRIEF + '- another verified fact [source]\n')
 
     result = parse_result(run_cli(str(tmp_path)))
 
-    assert result['next_phase']['id'] == '3-research'
-    assert result['next_phase']['reason'] == 'awaiting_approval'
-    assert result['next_phase']['gate'] == 'research-brief'
+    assert '3-research' in result['completed_phases']
+    assert result['next_phase']['id'] == '4-material-harvest'
+
+    # ……但显式重做该阶段会撤销对应 gate 的旧确认。
+    redo(tmp_path, '3-research', '事实需要重核')
+    assert not (tmp_path / '.pipeline' / 'approvals.json').exists()
 
 
-def test_script_gate_records_only_its_contract_products(tmp_path: Path):
+def test_script_gate_records_the_confirmation_fact(tmp_path: Path):
     complete_through_script(tmp_path, approved=False, approval_gates=['script'])
     waiting = parse_result(run_cli(str(tmp_path)))
     assert waiting['next_phase']['id'] == '6-script-scene-plan'
@@ -2813,32 +2042,24 @@ def test_script_gate_records_only_its_contract_products(tmp_path: Path):
 
     assert '6-script-scene-plan' in result['completed_phases']
     assert result['next_phase']['id'] == '7-voice-subtitles'
-    products = read_approvals(tmp_path)['gates']['script']['products']
-    assert products == {
-        'script.txt': sha256_of(SCRIPT_TXT),
-        'tts-lexicon.json': sha256_of((tmp_path / 'tts-lexicon.json').read_bytes()),
-        'scene-plan.json': sha256_of((tmp_path / 'scene-plan.json').read_bytes()),
-    }
+    approval = read_approvals(tmp_path)['gates']['script']
+    assert set(approval) == {'approved_at'}
 
 
-@pytest.mark.parametrize('product', ['script.txt', 'tts-lexicon.json', 'scene-plan.json'])
-def test_changing_script_gate_products_after_approval_returns_to_the_gate(tmp_path: Path, product: str):
+def test_changing_script_gate_products_after_approval_keeps_it_until_a_redo(tmp_path: Path):
     complete_through_script(tmp_path, approved=False, approval_gates=['script'])
     approve(tmp_path, 'script')
-    if product == 'script.txt':
-        write_script(tmp_path, EDITED_SCRIPT_TXT)
-    elif product == 'tts-lexicon.json':
-        write_json(tmp_path / product, {'OpenHuman': '欧鹏休曼'})
-    else:
-        write_json(tmp_path / product, [{**SCENE_PLAN[0], 'intent': '更新后的开场'}])
+    write_json(tmp_path / 'scene-plan.json', [{**SCENE_PLAN[0], 'intent': '更新后的开场'}])
 
     result = parse_result(run_cli(str(tmp_path)))
 
-    assert result['next_phase']['id'] == '6-script-scene-plan'
-    assert result['next_phase']['reason'] == 'awaiting_approval'
-    assert result['next_phase']['gate'] == 'script'
-    assert statuses(result)['6-script-scene-plan'] == 'awaiting_approval'
-    assert result['pending_phases'] == ['7-voice-subtitles', '8-composition', '9-check-mix']
+    # 编辑不撤销确认；显式重做才会。
+    assert '6-script-scene-plan' in result['completed_phases']
+
+    redo(tmp_path, '6-script-scene-plan', '开场重写')
+    rerequested = parse_result(run_cli(str(tmp_path)))
+    assert rerequested['next_phase']['id'] == '6-script-scene-plan'
+    assert rerequested['next_phase']['reason'] == 'redo'
 
 
 def test_approve_rejects_products_that_do_not_pass_with_exit_2(tmp_path: Path):
@@ -2873,14 +2094,12 @@ def test_default_and_explicit_auto_complete_without_approval_records(tmp_path: P
         assert result['approval_gates'] == []
         assert result['next_phase'] is None
         assert not result['pending_phases']
-        assert not result['stale_phases']
     assert not (tmp_path / '.pipeline' / 'approvals.json').exists()
 
 
 @pytest.mark.parametrize('record', [
     'not json',
     json.dumps({'version': 99, 'gates': {}}),
-    json.dumps({'version': 1, 'gates': {'research-brief': {'products': {}}}}),
 ])
 @pytest.mark.parametrize('requested', [False, True])
 def test_unusable_approval_records_only_block_requested_review(tmp_path: Path, record: str, requested: bool):
@@ -2916,9 +2135,8 @@ def test_invalid_approval_gates_are_corrupt_inputs(tmp_path: Path, gates):
     assert 'approval_gates' in result['next_phase']['problems']['inputs.json']
 
 
-def test_enabling_review_and_authorizing_auto_do_not_stale_existing_products(tmp_path: Path):
+def test_enabling_review_and_authorizing_auto_keep_existing_products(tmp_path: Path):
     settle(tmp_path)
-    before = read_stamps(tmp_path)['phases']
     assert not (tmp_path / '.pipeline' / 'approvals.json').exists()
     write_json(tmp_path / 'inputs.json', {**INPUTS, 'approval_gates': ['research-brief', 'script']})
 
@@ -2926,14 +2144,12 @@ def test_enabling_review_and_authorizing_auto_do_not_stale_existing_products(tmp
     assert waiting['next_phase']['gate'] == 'research-brief'
     assert waiting['next_phase']['reason'] == 'awaiting_approval'
     assert waiting['pending_phases'] == PHASE_IDS[3:]
-    assert waiting['stale_phases'] == []
 
     # Approving this draft must not cancel the separate request to review the script.
     waiting = approve(tmp_path, 'research-brief')
     assert waiting['next_phase']['gate'] == 'script'
     assert waiting['next_phase']['reason'] == 'awaiting_approval'
     assert waiting['pending_phases'] == PHASE_IDS[6:]
-    assert waiting['stale_phases'] == []
     approvals_before_auto = read_approvals(tmp_path)
 
     # Explicit user authorization to finish automatically changes policy, not approvals.
@@ -2942,13 +2158,8 @@ def test_enabling_review_and_authorizing_auto_do_not_stale_existing_products(tmp
         resumed = parse_result(run_cli(str(tmp_path)))
         assert resumed['approval_gates'] == []
         assert resumed['next_phase'] is None
-        assert resumed['stale_phases'] == []
     assert read_approvals(tmp_path) == approvals_before_auto
     assert set(approvals_before_auto['gates']) == {'research-brief'}
-    after = read_stamps(tmp_path)['phases']
-    assert {key: value for key, value in after.items() if key != '1-gather-inputs'} == {
-        key: value for key, value in before.items() if key != '1-gather-inputs'
-    }
 
 
 def test_disabling_unapproved_review_resumes_without_manufacturing_approval(tmp_path: Path):
@@ -2969,18 +2180,6 @@ def test_corrupt_products_take_precedence_over_requested_approval(tmp_path: Path
 
     write_text(tmp_path / 'research-brief.md', RESEARCH_BRIEF)
     assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'awaiting_approval'
-
-
-def test_restamp_does_not_bypass_requested_review(tmp_path: Path):
-    complete_through_research(tmp_path, approved=False, approval_gates=['research-brief'])
-    assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'awaiting_approval'
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'language': 'en', 'approval_gates': ['research-brief']})
-    assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'stale'
-
-    proc = run_cli(str(tmp_path), '--restamp', '3-research')
-    assert proc.returncode == 0, proc.stderr
-    assert parse_result(proc)['next_phase']['reason'] == 'awaiting_approval'
-    assert not (tmp_path / '.pipeline' / 'approvals.json').exists()
 
 
 # --- redo requests: products that pass can still be asked to be redone -----------
@@ -3022,7 +2221,6 @@ def test_a_redo_request_stops_the_phase_from_counting_as_completed(tmp_path: Pat
     assert result['redo_phases'] == ['6-script-scene-plan']
     assert result['pending_phases'] == PHASE_IDS[6:]
     assert '6-script-scene-plan' not in result['completed_phases']
-    assert result['stale_phases'] == []
     # The products stay in place: a redo is a request, not a deletion.
     assert (tmp_path / 'script.txt').read_bytes() == before
     assert read_redos(tmp_path)['requests']['6-script-scene-plan']['reason'] == '第三段重复，合并后重写'
@@ -3056,61 +2254,27 @@ def test_finish_accepts_a_redo_once_its_products_pass(tmp_path: Path):
     assert result['redo_phases'] == []
     assert statuses(result)['6-script-scene-plan'] == 'completed'
     assert not (tmp_path / '.pipeline' / 'redos.json').exists()
-    # The redo changed script.txt, so the phases built from it must be redone.
-    assert result['next_phase']['id'] == '7-voice-subtitles'
-    assert result['next_phase']['reason'] == 'stale'
-    assert set(result['next_phase']['changed_upstream']) == {'script.txt', 'narration.txt', 'narration-offsets.json'}
+    # 没有自动失效：下游阶段保持完成，直到主 agent 按已知修改范围显式登记重做。
+    assert result['next_phase'] is None
+    follow_up = redo(tmp_path, '7-voice-subtitles', '旁白已改，需要重新对齐')
+    assert follow_up['next_phase']['id'] == '7-voice-subtitles'
+    assert follow_up['next_phase']['reason'] == 'redo'
 
 
-def test_finish_does_not_skip_the_phase_novelty_check(tmp_path: Path):
+def test_finishing_a_redo_accepts_byte_identical_products(tmp_path: Path):
+    # --finish 不要求产物字节与上次不同：确定性重跑得到相同字节也是正常结束。
     settle(tmp_path)
-    # An input changed before the redo was requested: the products are the old build.
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'qa_level': 'strict'})
-    assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'stale'
-    redo(tmp_path, '9-check-mix')
-
-    # The rerun is deterministic and produces the very same bytes.
+    redo(tmp_path, '9-check-mix', '重新核对 QA 结论')
     for relpath in ('qa/qa-report.json', 'composition/renders/final_with_bgm.mp4'):
         product = tmp_path / relpath
         product.write_bytes(product.read_bytes())
 
     proc = finish(tmp_path, '9-check-mix')
 
-    # Finishing clears the request but still refuses to accept the old build.
-    assert proc.returncode == 2
-    result = parse_result(proc)
-    assert result['success'] is False
-    assert 'restamp' in result['error']
-    assert result['changed_upstream'] == ['inputs.json#qa_level']
-    assert not (tmp_path / '.pipeline' / 'redos.json').exists()
-    assert parse_result(run_cli(str(tmp_path)))['next_phase']['reason'] == 'stale'
-
-    # Accepting a byte-identical rerun is what --restamp is for.
-    accepted = parse_result(run_cli(str(tmp_path), '--restamp', '9-check-mix'))
-    assert statuses(accepted)['9-check-mix'] == 'completed'
-    assert accepted['next_phase'] is None
-
-
-def test_finishing_a_redo_does_not_accept_the_other_unverified_phases(tmp_path: Path):
-    settle(tmp_path)
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'qa_level': 'strict'})  # Phase 9 goes stale
-    redo(tmp_path, '3-research', '核对简报')
-    write_text(tmp_path / '.pipeline' / 'stamps.json', 'garbage')  # none of the stamps are usable
-
-    proc = finish(tmp_path, '3-research')
-
     assert proc.returncode == 0, proc.stderr
     result = parse_result(proc)
-    # Only the finished phase was accepted, and only it was recorded.
-    assert result['completed_phases'] == []
-    assert result['stamps_reset'] is True
-    assert result['next_phase']['id'] == '1-gather-inputs'
-    assert result['next_phase']['reason'] == 'unverified'
-    assert statuses(result)['9-check-mix'] == 'pending'
-    recorded = read_stamps(tmp_path)['phases']
-    assert list(recorded) == ['3-research']
-    # The old table is still quarantined until every phase is accepted again.
-    assert (tmp_path / '.pipeline' / 'stamps.json.quarantined').exists()
+    assert statuses(result)['9-check-mix'] == 'completed'
+    assert result['next_phase'] is None
 
 
 def test_finish_refuses_products_that_do_not_pass(tmp_path: Path):
@@ -3160,14 +2324,9 @@ def test_redo_requests_are_worked_off_earliest_first(tmp_path: Path):
     assert second['next_phase']['redo_reason'] == '叙事重复'
 
 
-def test_restamp_and_approve_do_not_bypass_a_pending_redo(tmp_path: Path):
+def test_approve_does_not_bypass_a_pending_redo(tmp_path: Path):
     complete_through_research(tmp_path, approved=False, approval_gates=['research-brief'])
     redo(tmp_path, '3-research')
-    write_json(tmp_path / 'inputs.json', {**INPUTS, 'language': 'en', 'approval_gates': ['research-brief']})
-
-    restamp = run_cli(str(tmp_path), '--restamp', '3-research')
-    assert restamp.returncode == 1
-    assert 'redo is pending' in parse_result(restamp)['error']
 
     approve_proc = run_cli(str(tmp_path), '--approve', 'research-brief')
     assert approve_proc.returncode == 2
@@ -3195,7 +2354,6 @@ def test_a_redo_of_a_skipped_phase_is_refused(tmp_path: Path):
         ('--redo', '6-script-scene-plan', '--reason', 'x', '--finish', '6-script-scene-plan'),
         ('--redo', '10-publish', '--reason', 'x'),  # unknown phase
         ('--finish', '10-publish'),
-        ('--restamp', '6-script-scene-plan', '--reason', 'x'),  # reason only applies to --redo
     ],
 )
 def test_redo_and_finish_usage_errors_exit_2(tmp_path: Path, args: tuple[str, ...]):
@@ -3208,7 +2366,7 @@ def test_redo_and_finish_usage_errors_exit_2(tmp_path: Path, args: tuple[str, ..
 # --- optional material_search_requests: a platform search the user asked for ------
 
 
-def test_adding_a_material_search_request_restales_only_the_harvest(tmp_path: Path):
+def test_adding_a_material_search_request_requires_an_explicit_redo(tmp_path: Path):
     settle(tmp_path)
 
     write_json(
@@ -3220,7 +2378,6 @@ def test_adding_a_material_search_request_restales_only_the_harvest(tmp_path: Pa
     # Recording the request alone changes nothing: whether a redo is needed is not
     # inferred from the files or the inputs, only from an explicit request.
     assert result['next_phase'] is None
-    assert result['stale_phases'] == []
 
     scheduled = redo(tmp_path, '4-material-harvest', '执行用户要求的平台搜索')
     assert scheduled['next_phase']['id'] == '4-material-harvest'
@@ -3443,15 +2600,9 @@ def test_a_residual_catalog_does_not_block_no_material_mode(tmp_path: Path):
     result = parse_result(run_cli(str(tmp_path)))
 
     assert '5-material-catalog' in result['skipped_phases']
-    # 残留 catalog 不再要求 scene-plan 覆盖它。
-    problems = result['next_phase'].get('problems', {})
-    assert 'required_material_refs' not in str(problems)
-    assert 'scene-plan.json' not in result['corrupt_products']
-    assert result['next_phase']['id'] == '6-script-scene-plan'
-    assert result['next_phase']['reason'] == 'stale'
-    # 切换策略会改变依赖集合；核对已按无素材规则重建的结果后可接受同字节产物。
-    accepted = parse_result(run_cli(str(tmp_path), '--restamp', '6-script-scene-plan'))
-    assert accepted['next_phase']['id'] == '7-voice-subtitles'
+    # 残留 catalog 不再要求 scene-plan 覆盖它；scene-plan 按无素材规则重建后照常完成。
+    assert result['corrupt_products'] == []
+    assert result['next_phase'] is None
     assert (tmp_path / 'material-catalog.json').is_file()  # 旧产物没被删掉
 
 
@@ -3551,37 +2702,6 @@ def test_switching_a_request_list_between_absent_and_empty_is_not_a_change(tmp_p
 
     write_json(tmp_path / 'inputs.json', {**INPUTS, field: []})
     result = parse_result(run_cli(str(tmp_path)))
-    assert result['next_phase'] is None
-    assert result['stale_phases'] == []
-
-
-# --- 指纹缓存与不可读的持久状态 ------------------------------------------------
-
-
-def test_an_unreadable_fingerprint_cache_is_ignored_not_fatal(tmp_path: Path):
-    settle(tmp_path)
-    (tmp_path / '.pipeline' / 'fpcache.json').write_text('{not json', encoding='utf-8')
-
-    result = parse_result(run_cli(str(tmp_path)))
-
-    assert result['success'] is True
-    assert result['next_phase'] is None  # 缓存只是加速手段，坏了就重新哈希
-    read_json = json.loads((tmp_path / '.pipeline' / 'fpcache.json').read_text(encoding='utf-8'))
-    assert read_json['version'] == 1
-
-
-def test_an_unwritable_fingerprint_cache_does_not_lose_the_scan(tmp_path: Path):
-    settle(tmp_path)
-    cache = tmp_path / '.pipeline' / 'fpcache.json'
-    cache.write_text('{"version": 1, "files": {}}', encoding='utf-8')
-    cache.chmod(0o444)
-    try:
-        proc = run_cli(str(tmp_path))
-    finally:
-        cache.chmod(0o644)
-
-    result = parse_result(proc)
-    assert result['success'] is True
     assert result['next_phase'] is None
 
 

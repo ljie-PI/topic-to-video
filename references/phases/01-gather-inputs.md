@@ -39,7 +39,7 @@
 - 用户的原话有没有丢：旁白要求进 `narration_requests`，画面要求进 `composition_requests`，点名要在某平台找素材的进 `material_search_requests`；素材理解 / 筛选要求写进 `catalog-instructions.md`，阶段级 agent / model 要求写进 `delegation`。
 - 拿不准、又没有可默认项的字段（比如用户只说了“做个短视频”却看不出用途和重点）是问过了，还是猜的。猜的要先问，一次只问一个。
 
-发现问题就改 `inputs.json` 再查状态。已经有下游产物时，改输入会让依赖它的阶段变 stale，按状态脚本的提示处理，不要自己另找一套记录。
+发现问题就改 `inputs.json` 再查状态。改输入不会自动让任何阶段过期：核对下游影响后，按已知修改范围用 `--redo` 显式登记需要重做的阶段，不要自己另找一套记录。
 
 ## 下一步
 

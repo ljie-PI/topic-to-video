@@ -1,4 +1,8 @@
-"""Scene-mode Phase 8/9 state and freshness without changing legacy fixtures."""
+"""Scene-mode Phase 8/9 state without changing legacy fixtures.
+
+指纹删除后，状态脚本只验收产物与报告数据本身：视觉声明改了、layout 副本改了
+都不会让 Phase 8/9 自动过期；需要重做时由主 agent 显式登记。
+"""
 from __future__ import annotations
 
 import json
@@ -9,8 +13,7 @@ import pytest
 
 import media
 import video_contract
-from composition_hash import composition_sources_fingerprint, visual_contract_fingerprint
-from test_pipeline_status import complete_all, parse_result, read_stamps, run_cli
+from test_pipeline_status import complete_all, parse_result, run_cli
 
 pytestmark = pytest.mark.usefixtures('require_ffmpeg')
 ROOT = Path(__file__).resolve().parent.parent
@@ -36,10 +39,6 @@ def refresh_report(ws: Path) -> None:
     assert problem is None, problem
     write_json(ws / 'composition/check-composition.json', {
         'success': True, 'verdict': 'pass', 'findings': [],
-        'sources_sha256': composition_sources_fingerprint(ws / 'composition'),
-        'visual_contract_sha256': visual_contract_fingerprint(
-            ws / video_contract.VISUAL_SCENES_PATH, [scene['layout_path'] for scene in scenes],
-        ),
         'scenes_checked': [
             {'scene_id': scene['scene_id'], 'layout': scene['layout'], 'check_times': [scene['begin_s']]}
             for scene in scenes
@@ -71,23 +70,34 @@ def make_visual_workspace(ws: Path, layouts: tuple[str, str] = ('presenter', 'st
     refresh_report(ws)
 
 
-def test_visual_workspace_completes_without_legacy_layout_and_tracks_only_used_layouts(tmp_path: Path):
+def test_visual_workspace_completes_without_legacy_layout_and_without_state_files(tmp_path: Path):
     make_visual_workspace(tmp_path)
 
     result = parse_result(run_cli(str(tmp_path)))
 
     assert result['next_phase'] is None, result
-    stamp = read_stamps(tmp_path)['phases']['8-composition']
-    assert video_contract.VISUAL_SCENES_PATH in stamp['products']
-    assert 'inputs.json#layout' not in stamp['upstream']
-    assert 'modules/layouts/presenter.json' in stamp['upstream']
-    assert 'modules/layouts/stage.json' in stamp['upstream']
-    assert 'modules/layouts/portrait.json' not in stamp['upstream']
-    assert 'modules/layouts/None.json' not in stamp['upstream']
-    assert read_stamps(tmp_path)['phases']['9-check-mix']['upstream'][video_contract.VISUAL_SCENES_PATH]
+    # 指纹状态文件已删除：扫描只依赖产物、报告数据、审稿与重做记录。
+    assert not (tmp_path / '.pipeline' / 'stamps.json').exists()
+    assert not (tmp_path / '.pipeline' / 'fpcache.json').exists()
 
 
-def test_scene_declaration_change_rejects_old_report_without_touching_phase_7(tmp_path: Path):
+def test_old_or_corrupt_fingerprint_state_files_do_not_block_a_fresh_scan(tmp_path: Path):
+    # 旧指纹文件存在或损坏都不影响新扫描，也不被误删其他用户状态。
+    make_visual_workspace(tmp_path)
+    pipeline = tmp_path / '.pipeline'
+    pipeline.mkdir(exist_ok=True)
+    (pipeline / 'stamps.json').write_text('garbage', encoding='utf-8')
+    (pipeline / 'fpcache.json').write_text('{broken', encoding='utf-8')
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase'] is None
+    # 不再读写的旧文件原样保留（不属于本脚本的状态，不替用户清理）。
+    assert (pipeline / 'stamps.json').read_text(encoding='utf-8') == 'garbage'
+    assert (pipeline / 'fpcache.json').read_text(encoding='utf-8') == '{broken'
+
+
+def test_scene_declaration_change_after_the_report_is_not_auto_invalidating(tmp_path: Path):
     make_visual_workspace(tmp_path)
     parse_result(run_cli(str(tmp_path)))
     before = (tmp_path / 'transcribe/timeline.json').read_bytes()
@@ -99,21 +109,19 @@ def test_scene_declaration_change_rejects_old_report_without_touching_phase_7(tm
 
     result = parse_result(run_cli(str(tmp_path)))
 
-    assert result['next_phase']['id'] == '8-composition'
-    assert 'composition/check-composition.json' in result['corrupt_products']
+    # 声明仍然合法（覆盖与边界都成立），scenes_checked 比对的是报告里记录的
+    # 声明快照：没有内容指纹，状态脚本不会自动判报告失效。
+    assert result['next_phase'] is None
     assert '7-voice-subtitles' in result['completed_phases']
     assert (tmp_path / 'transcribe/timeline.json').read_bytes() == before
-    restamp = run_cli(str(tmp_path), '--restamp', '8-composition')
-    assert restamp.returncode == 1
 
 
-def test_used_layout_edit_invalidates_but_unused_layout_edit_does_not(tmp_path: Path):
+def test_used_layout_edit_after_the_report_is_not_auto_invalidating(tmp_path: Path):
     make_visual_workspace(tmp_path)
     parse_result(run_cli(str(tmp_path)))
     used = tmp_path / 'modules/layouts/stage.json'
     used.parent.mkdir(parents=True, exist_ok=True)
     used.write_bytes((ROOT / 'modules/layouts/stage.json').read_bytes())
-    # Materialize the effective copy before the initial accepted stamp.
     refresh_report(tmp_path)
     parse_result(run_cli(str(tmp_path)))
 
@@ -122,23 +130,30 @@ def test_used_layout_edit_invalidates_but_unused_layout_edit_does_not(tmp_path: 
     unused.write_text('{"changed": true}', encoding='utf-8')
     assert parse_result(run_cli(str(tmp_path)))['next_phase'] is None
 
+    # 有效 layout 副本被改：声明与 report 仍旧合法时，状态脚本不自动判失效；
+    # 需要按修改范围显式登记 Phase 8 重做并重跑 check-composition。
     data = json.loads(used.read_text(encoding='utf-8'))
     data['caption']['font_size_px'] = 34
     write_json(used, data)
     result = parse_result(run_cli(str(tmp_path)))
-    assert result['next_phase']['id'] == '8-composition'
-    assert 'visual_contract_sha256' in result['next_phase']['problems']['composition/check-composition.json']
+    assert result['next_phase'] is None
     assert '7-voice-subtitles' in result['completed_phases']
 
 
-def test_identical_effective_layout_copy_does_not_invalidate_report(tmp_path: Path):
+def test_scene_declaration_error_is_still_reported_as_a_corrupt_product(tmp_path: Path):
+    # 删除的是指纹比对，不是声明本身的校验：不合法的场景声明仍判损坏。
     make_visual_workspace(tmp_path)
     parse_result(run_cli(str(tmp_path)))
-    copy = tmp_path / 'modules/layouts/stage.json'
-    copy.parent.mkdir(parents=True, exist_ok=True)
-    copy.write_bytes((ROOT / 'modules/layouts/stage.json').read_bytes())
+    path = tmp_path / video_contract.VISUAL_SCENES_PATH
+    data = json.loads(path.read_text(encoding='utf-8'))
+    data['scenes'][1]['end_s'] = 0.5  # 覆盖错误：最后一个场景够不到配音时长
+    write_json(path, data)
 
-    assert parse_result(run_cli(str(tmp_path)))['next_phase'] is None
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '8-composition'
+    assert video_contract.VISUAL_SCENES_PATH in result['corrupt_products']
+    assert '7-voice-subtitles' in result['completed_phases']
 
 
 def test_identical_scene_bytes_recopied_do_not_invalidate(tmp_path: Path):
@@ -194,7 +209,7 @@ def test_corrupt_visual_declaration_with_compatible_layouts_does_not_blame_templ
     assert 'inputs.json#template' not in result['next_phase']['problems']
 
 
-def test_phase_9_rechecks_visual_scene_identity_after_phase_8_is_restamped(tmp_path: Path):
+def test_phase_9_is_not_auto_invalidated_after_a_phase_8_redo(tmp_path: Path):
     make_visual_workspace(tmp_path)
     parse_result(run_cli(str(tmp_path)))
     path = tmp_path / video_contract.VISUAL_SCENES_PATH
@@ -202,10 +217,16 @@ def test_phase_9_rechecks_visual_scene_identity_after_phase_8_is_restamped(tmp_p
     data['scenes'][1]['scene_id'] = 'renamed_visual'
     write_json(path, data)
     refresh_report(tmp_path)
-    assert run_cli(str(tmp_path), '--restamp', '8-composition').returncode == 0
+
+    # 显式登记 Phase 8 重做并结束后，Phase 9 保持完成——QA/混音是否重跑由主
+    # agent 按交付范围显式登记，不由文件变化推断。
+    redo_proc = run_cli(
+        str(tmp_path), '--redo', '8-composition', '--reason', '视觉场景重命名',
+    )
+    assert redo_proc.returncode == 0, redo_proc.stderr
+    finish = run_cli(str(tmp_path), '--finish', '8-composition')
+    assert finish.returncode == 0, finish.stderr
 
     result = parse_result(run_cli(str(tmp_path)))
 
-    assert result['next_phase']['id'] == '9-check-mix'
-    assert result['next_phase']['reason'] == 'stale'
-    assert result['next_phase']['changed_upstream'] == [video_contract.VISUAL_SCENES_PATH]
+    assert result['next_phase'] is None
