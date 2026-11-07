@@ -1,4 +1,7 @@
+# 开发与测试依赖。包含流水线运行时依赖；本地语音后端另按平台安装：
+#   macOS Apple Silicon -> requirements-macos.txt
+#   Linux + NVIDIA     -> requirements-cuda.txt
+-r requirements.txt
+
 pytest>=8
-Pillow>=10
-playwright>=1.40
 coverage>=7.10

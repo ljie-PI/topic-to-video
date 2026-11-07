@@ -1,0 +1,5 @@
+# DashScope 云端后端：CosyVoice 配音 + paraformer-v2 转写。
+# 需要 DASHSCOPE_API_KEY（配音还需要 COSYVOICE_VOICE_ID）。
+-r requirements.txt
+
+dashscope>=2.0

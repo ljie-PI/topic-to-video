@@ -1,0 +1,16 @@
+# Linux + NVIDIA GPU 本地 TTS / ASR 后端的基础依赖。
+# torch / torchaudio 如需匹配特定 CUDA 版本，先从 PyTorch 官方索引安装，
+# 再运行本文件（见 README 的「Linux + NVIDIA」）。
+-r requirements.txt
+
+torch>=2.4
+torchaudio>=2.4
+soundfile>=0.12
+wetext>=0.2.1
+
+# Qwen3-TTS 与 Qwen3-ASR 不能由 pip 一次解析：两者分别锁死
+# transformers==4.57.3 和 transformers==4.57.6。
+# 安装顺序见 README 的「Linux + NVIDIA」：
+#   pip install qwen-tts==0.1.1
+#   pip install --no-deps qwen-asr==0.0.6
+#   pip install nagisa soynlp qwen-omni-utils flask pytz
