@@ -41,7 +41,7 @@
 
 - **先引出问题，再展开机制**：每个新部分或核心概念，先交代“具体卡在哪、为什么旧做法行不通或为什么会有这个现象”，让观众带着问题听，再进入原理和解法，不要上来就抛定义或结论。
 - **语言直白连贯，不堆术语和碎短句**：“三句短句”只约束开场钩子；正文用自然流畅的口语化长短句把因果和过程讲透，避免电报式短句连发。非用不可的专业术语，第一次出现时当场用大白话或日常熟悉的事物解释清楚。
-- **拒绝空泛的 high-level 套话**：禁止“赋能、范式转移、架构极其优雅、极具应用潜力、意义深远”这类没有信息量的拔高结论。每个判断都必须落到具体机制、真实案例、同条件对比或实际代价上。
+- **拒绝空泛的 high-level 套话**：禁止“赋能、范式转移、架构极其优雅、极具应用潜力、意义深远”这类没有信息量的拔高结论。
 - **多举日常例子，难点分步拆解**：抽象概念尽量借日常场景、常见工作流或具体小例子打比方；遇到复杂原理、算法链路或反直觉机制时，拆成环环相扣的几个步骤（先输入什么 → 中间哪一步发生了什么变化 → 为什么会得到这个结果），一步只讲透一件事，并在 `scene-plan.json` 的 `content_plan` 里同步写出这套分步演进逻辑，供画面阶段做成动态拆解。
 
 以上是所有视频的默认讲解风格；用户在 `inputs.json` 的 `narration_requests`（handoff 的 `## Additional Instructions`）里对受众深度、语气或展开方式另有要求时，按叠加顺序以用户要求为准。
@@ -118,14 +118,14 @@ TTS 朗读稿由 `scripts/make-narration.py` 按词表确定性生成，不要�
    - `scene_id`：`scene_1`, `scene_2`, ... 顺序编号。
    - `paragraphs`：覆盖的**段落序号（1 起）**；所有 scene 的段落并集必须覆盖 `script.txt` 的全部段落，段落可以属于多个 scene（合并 / 拆分时）。
    - `intent`：这场景要帮观众理解什么。
-   - `content_plan`：这场景讲什么、怎样展开。说清内容对象（哪组结果、哪个反例、哪张图、哪个日常例子）和展开顺序 / 演绎方式（先引出问题再给解法、先给结果再倒推、同条件对照、失败复盘、日常类比、分步动态推演、图表解读）。遇到抽象或难懂的机制时，在 `content_plan` 里明确拆成可逐步演示的几个阶段及每一步的关键变化，便于 composition 用分步动画讲清。不写模板 / pattern 名、组件、layout 区域、屏幕文字、动画参数或精确秒数——那是 composition 的设计空间；也不要把它写成 `intent` 的同义重复。
+   - `content_plan`：这场景讲什么、怎样展开。说清内容对象（如哪组结果、哪个反例、哪张图、哪个日常例子等）和展开顺序 / 演绎方式（如先引出问题再给解法、先给结果再倒推、同条件对照、失败复盘、日常类比、分步动态推演、图表解读等，不局限于此）。遇到抽象或难懂的机制时，在 `content_plan` 里明确拆成可逐步演示的几个阶段及每一步的关键变化，便于 composition 用分步动画讲清。不写模板 / pattern 名、组件、layout 区域、屏幕文字、动画参数或精确秒数——那是 composition 的设计空间；也不要把它写成 `intent` 的同义重复。
    - `cues`：可选。本 scene 里值得对齐到秒的关键句（例如要卡住画面切换的那一句），必须原样取自显示稿；Phase 7 用它们从配音里算出秒数。不要为了让某个模板好看而倒推旁白。
    - `material_candidates`：候选素材引用，每项含 `ref`、`score`（1–10）、`reason`。catalog 的 `required_material_refs` 必须至少各被一个 scene 选中（状态脚本会打回没覆盖的），但选为候选不等于已经出现在成片：实际画面由 composition 阶段落实。**只是候选，不做排他分配**；同一素材可以被多个 scene 候选。`ref` 的格式（即上面论文结构里说的 `material_ref`）：图片和视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>`；`slug` 必须等于 catalog 的 `entries[*].slug`，id 只需存在于该 entry，裸 id 无效。即使两个 entry 都有 `img_001` 或同一个 video id，也必须用各自 slug 区分。clip 秒数与该 entry 的 `selected_clips` 对应——数字间不加空格，起止时间要与某一项相差不超过 0.01 秒。没有 catalog（`fetch_materials = false` 且不是论文模式）时留空列表。
    - **不包含** `template_scene` / `pattern_hints` / `beats` / `layout_role` / `visual_role` / `display_text`——模板、pattern、动作与画面都是 composition 阶段的设计空间；把场景计划写成那样会被状态脚本打回。
 
 ## 完成后
 
-以 `script.txt` 和 `tts-lexicon.json` 为输入运行 `scripts/make-narration.py` 生成 `narration.txt` 与 `narration-offsets.json`（命令见 handoff 的 Outputs 一节；它不读 `scene-plan.json`），然后向主 agent 报告五个产物路径：`script.txt`、`tts-lexicon.json`、`scene-plan.json`、`narration.txt`、`narration-offsets.json`。主 agent 会运行状态脚本做确定性校验（字数 / 段落覆盖 / 素材引用），不通过就把原因交还给你修复；通过后默认自动继续，只有 `inputs.json` 的 `approval_gates` 包含 `script` 时才由主 agent 找用户确认。你不自行批准或决定取消审稿。
+以 `script.txt` 和 `tts-lexicon.json` 为输入运行 `scripts/make-narration.py` 生成 `narration.txt` 与 `narration-offsets.json`（命令见 handoff 的 Outputs 一节），然后向主 agent 报告五个产物路径：`script.txt`、`tts-lexicon.json`、`scene-plan.json`、`narration.txt`、`narration-offsets.json`。主 agent 会运行状态脚本做确定性校验（字数 / 段落覆盖 / 素材引用），不通过就把原因交还给你修复；通过后默认自动继续，只有 `inputs.json` 的 `approval_gates` 包含 `script` 时才由主 agent 找用户确认。你不自行批准或决定取消审稿。
 
 报告前自己先过一遍下面几项（状态脚本看不出来）：
 
