@@ -28,6 +28,14 @@ Pi 已核实的 flag（`pi --help`）：
 - `--`：后面全部当作 message，prompt 以 `-` 开头也不会被当成参数；
 - `--model <provider/model-id>`：指定模型（可选；使用解析后的完整原生标识，不猜模糊简称）。指定了 model 时命令形态为 `cd <ws> && pi --model "<coding_model>" -p -- "<dispatch_prompt>"`；没有 model 请求时省略 `--model`。
 - `--list-models [search]`：列出本机可用的 provider / model（含 context、images 等能力列）；带 search 参数时按名称过滤。模型解析用它查询，见下文「模型查询与近似选择」。其他 agent 用其 `--help` 声明的自身查询方式。
+- `--no-skills, -ns`：禁用 skill 的发现与加载；`--skill <path>`：显式加载一个 skill 文件或目录（可多次使用）。两者均已核对本机 `pi --help` 支持。
+- **仅 composition 派发限制加载的 skill**：本项目只允许 `hyperframes` / `hyperframes-cli` 两个 skill，派发 composition 时用上面两条 flag 显式指定它们，避免自动发现带进其他 HyperFrames 扩展。命令形态：
+
+  ```text
+  cd <ws> && pi --no-skills --skill <hyperframes skill 实际路径> --skill <hyperframes-cli skill 实际路径> [--model "<coding_model>"] -p -- "<dispatch_prompt>"
+  ```
+
+  两个 skill 的实际路径以派发机器上的安装位置为准（通常与本 skill 同级的 skills 目录）；派发前先核对路径存在，未安装就先报告，不静默退回自动发现。catalog / script 等其余委派步骤不照搬这套参数，也不为它们禁用自己的能力；不卸载或修改仓库外的 skill 安装与用户全局配置。
 - 命令形态：`cd <ws> && pi -p -- "<dispatch_prompt>"`。在当前目录启动，被委派的 agent 就能直接读写工作区；handoff 与 Required References 里都是绝对路径，skill 侧脚本也用绝对路径调用，不依赖 cwd。
 - `pi --help` 里没有单独授予目录访问的 flag，因此不要照搬其他 CLI 的参数；确实需要额外授权时按 `pi --help` 与本地配置处理，并把差异告诉用户。
 - **委派 prompt 只有一句话**，由 `prepare-handoff.py` 生成：运行 `source .venv/bin/activate && python3 scripts/prepare-handoff.py <ws> <step>`，把输出 JSON 里的 `dispatch_prompt` 原样派发。例如：
@@ -56,7 +64,7 @@ Pi 已核实的 flag（`pi --help`）：
 委派时，被委派的 agent 按以下顺序读取指令，**后面的补充前面的**，冲突时以后者为准：
 
 1. **委派包的基础指令**（`references/delegation/<step>/base-instructions.md`）；
-2. **模板的组装说明**（仅 composition 步骤）：`modules/templates/<template>/<template>.md`。选哪个模板由该步骤的 agent 在开始工作时决定并写回 `inputs.json`，选定后才读它；不选模板则跳过。其他步骤不读它，也不为旁白或场景规划选模板；
+2. **模板的组装说明**（仅 composition 步骤）：`modules/templates/<template>/<template>.md`。模板按视觉场景借用：agent 对某个场景采用某个模板时才读对应文档，不采用则跳过，也不写回 `inputs.json`。其他步骤不读它，也不为旁白或场景规划选模板；
 3. **用户在对话中提出的要求**，按阶段分开记在 `inputs.json`：旁白要求写进 `narration_requests`（script 步骤读），画面要求写进 `composition_requests`（composition 步骤读）。catalog 步骤读可选的 `<work_dir>/<topic_name>/catalog-instructions.md`（用户素材要求），不读旁白 / 画面要求列表；
 4. 这些要求由主 agent 在对应阶段整理后写入 `inputs.json`（catalog 素材要求写入 `catalog-instructions.md`），再运行 `prepare-handoff.py`：Additional Instructions 在生成 handoff 时计算一次，之后才写的要求不会出现在已生成的 handoff 里——这时重新运行一次 `prepare-handoff.py`（幂等；已物化的副本不会被覆盖）再派发。
 
@@ -72,6 +80,6 @@ Pi 已核实的 flag（`pi --help`）：
 4. Required References
 5. Additional Instructions
 
-handoff 由 `scripts/prepare-handoff.py <ws> <step> [--refresh] [--resolved-model <实际标识>]` 生成，主 agent 不手写：脚本把本约定和 `references/delegation/<step>/` 拷进 `<ws>/references/delegation/`（composition 另外把 `modules/`（不含 `examples/`）拷进 `<ws>/modules/`，并按所选 design 预置字体），再按模板填出 `<ws>/<step>-handoff.md`。已存在的副本不覆盖，`--refresh` 才覆盖：委派包里的规则更新后，已有工作区要显式 refresh 才会读到新规则（先确认那份副本没有被本地改过）。派发的 prompt 只有上面那一句。
+handoff 由 `scripts/prepare-handoff.py <ws> <step> [--refresh] [--resolved-model <实际标识>]` 生成，主 agent 不手写：脚本把本约定和 `references/delegation/<step>/` 拷进 `<ws>/references/delegation/`（composition 另外把 `modules/` 拷进 `<ws>/modules/`，并按所选 design 预置字体），再按模板填出 `<ws>/<step>-handoff.md`。已存在的副本不覆盖，`--refresh` 才覆盖：委派包里的规则更新后，已有工作区要显式 refresh 才会读到新规则（先确认那份副本没有被本地改过）。派发的 prompt 只有上面那一句。
 
 handoff 里的路径全是绝对路径，命令里的 skill 脚本写成 `source <skill_root>/.venv/bin/activate && python3 <skill_root>/scripts/<x>.py ...`，不依赖当前目录。委派包文档里的相对路径：`scripts/` 与 `references/phases/` 相对 skill 根目录；`references/delegation/` 相对工作区（那里有物化的副本）；`modules/` 在 composition 步骤相对工作区副本，在 script 步骤相对 skill 根目录（script 与 catalog 步骤都不拷 modules）。

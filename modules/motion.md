@@ -6,14 +6,7 @@
 
 ## 需要核对实现能力时
 
-HyperFrames 当前安装版本的动画能力以外部 skill 为准。实现已构思的动效、需要核对能力或 API 时，加载 `/hyperframes-animation`，按问题读取：
-
-- `rules-index.md`：原子 motion recipes；
-- `blueprints-index.md`：多阶段 scene choreography；
-- `transitions/overview.md` 与 `transitions/catalog.md`：scene handoff；
-- `techniques.md`：SVG、Canvas、CSS 3D、Lottie、MotionPath、shader 等技术菜单。
-
-需要 shared element / FLIP、path、mask、SVG morph / draw、DOM 3D、Three.js / WebGL keyframes 时，再加载 `/hyperframes-keyframes`。确定 effect / blueprint 后只读对应的 recipe 和实际 runtime adapter；不要预读全部实现文件，也不要把任何索引当作能力全集。具体的组件级写法（组件、模板、示例工程）见 `components/components.md` 和各模板文档。
+本项目只依赖 `hyperframes` 与 `hyperframes-cli` 两个外部 skill；不允许加载其他 HyperFrames 扩展。实现已构思的动效、需要核对能力或 API 时，从这两个 skill 的文档按问题读取：工程结构、渲染与检查命令看 `hyperframes-cli`；核心协议与场景组装约定看 `hyperframes`。确定方案后只读与本次实现直接相关的部分；不要预读全部实现文件，也不要把任何索引当作能力全集。具体的组件级写法（组件、模板）见 `components/components.md` 和各模板文档。
 
 ## 动效构思的参考维度
 

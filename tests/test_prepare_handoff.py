@@ -625,7 +625,6 @@ class TestCompositionHandoff:
         assert absolute_paths(optional) == {ws / 'modules/patterns', ws / 'modules/motion.md'}
         assert '查阅条件见基础指令第四部分' in optional
         assert all('modules/patterns' not in item and 'modules/motion.md' not in item for item in items)
-        assert 'modules/examples' not in body
         # 模板按场景借用：不预选任何具体模板文档。
         assert 'modules/templates/github' not in body
 
@@ -645,7 +644,7 @@ class TestCompositionHandoff:
 
 
 class TestCompositionMaterialization:
-    def test_modules_are_copied_without_examples(self, tmp_path: Path):
+    def test_modules_are_copied_for_composition(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition')
 
         result = prepare(ws, 'composition')
@@ -654,7 +653,6 @@ class TestCompositionMaterialization:
         assert (modules / 'modules.md').read_bytes() == (REPO_ROOT / 'modules' / 'modules.md').read_bytes()
         assert (modules / 'layouts' / 'presenter.json').is_file()
         assert (modules / 'components' / 'jay' / 'jay.html').is_file()
-        assert not (modules / 'examples').exists()
         delegation = ws / 'references' / 'delegation'
         assert (delegation / 'conventions.md').is_file()
         assert (delegation / 'composition' / 'base-instructions.md').is_file()
@@ -1052,7 +1050,7 @@ class TestReviewRoundFixes:
         # 已从库中移除的 design 不再靠工作区的历史副本继续驱动生成。
         (skill_copy / 'modules').unlink()
         gutted = tmp_path / 'gutted-modules'
-        shutil.copytree(REPO_ROOT / 'modules', gutted, ignore=shutil.ignore_patterns('github', 'examples'))
+        shutil.copytree(REPO_ROOT / 'modules', gutted, ignore=shutil.ignore_patterns('github'))
         (skill_copy / 'modules').symlink_to(gutted)
         ws = make_workspace(tmp_path, 'composition', design='github')
         copied = ws / 'modules' / 'designs' / 'github'

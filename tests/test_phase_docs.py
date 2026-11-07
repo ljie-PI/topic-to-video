@@ -529,12 +529,11 @@ def test_template_is_chosen_by_the_composition_agent():
     # Phase 6 不读模板、不依赖它。
     assert '模板不在本阶段输入里' in phase_6
     assert 'narration.md' not in phase_6
-    # Phase 8 主 agent 只确认全片约束；视觉 scenes / layouts 与模板由被委派 agent 决定。
+    # Phase 8 主 agent 只确认全片约束；视觉 scenes、模板与 layout 由被委派 agent 决定。
     assert text_index(phase_8, '#### 8.0 — 确认全片约束与派发前置条件') < text_index(
         phase_8, '#### 8.1 — 物化与字体'
     )
-    assert '模板与 layout 不在这一步决定' in phase_8
-    assert '视觉 scenes 与 layout 不在这一步决定' in phase_8
+    assert '视觉 scenes、模板与 layout 不在这一步决定' in phase_8
     assert '不要求预先决定全局 template / layout' in phase_8
     assert 'composition/scene-config.json` 已存在' in phase_8
     assert '不命中就不用' in composition

@@ -124,7 +124,6 @@ def test_every_phase_has_guardrails_immediately_after_next_step(doc_path: Path):
     ('references/phases/07-voice-subtitles.md', 'TTS 后端由环境变量选择'),
     ('references/phases/07-voice-subtitles.md', 'ASR 后端由环境变量选择'),
     ('references/phases/08-composition.md', '预先 stage 确定性的 WOFF2 字体'),
-    ('references/phases/08-composition.md', '字体实现归 HyperFrames'),
     ('references/phases/08-composition.md', 'Composition 委派给 coding agent'),
     ('references/phases/08-composition.md', 'Scene 设计由 composition agent 负责'),
 ])

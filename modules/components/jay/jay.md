@@ -74,7 +74,7 @@ window.VIDEO = { jay: {
 } };
 ```
 
-完整例子：`examples/github-trending/`，剧本由它的 `tools/build-data.mjs` 从字幕和配音生成。（示例只在 skill 仓库；委派场景下工作区没有 `examples/`。）
+数据（`acts` 动作脚本、`placements` 显示区间等）建议用脚本从字幕和配音时间生成，别手写秒数。
 
 ## 安装
 
@@ -168,7 +168,7 @@ jay: {
 
 ### 动作库（`acts`）
 
-每个动作都可以在 `examples/jay-actions/` 里看到：Jay 放大到 840px，逐个演一遍，顶部标出动作名。（示例只在 skill 仓库；委派场景下工作区没有 `examples/`。）
+每个动作的表现见下表（推荐时长、头部与手势细节）。
 
 **挥手和头部动作**
 

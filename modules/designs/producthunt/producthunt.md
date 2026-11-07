@@ -86,7 +86,7 @@
 }
 ```
 
-字体已经下载好放在仓库的 `resources/fonts/`（CSS 在 `producthunt/`，WOFF2 在共用的 `files/`）。安装：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/producthunt`，把 NotoSansSC（中文和正文）、IBMPlexMono（数字、upvote、英文数据）的 WOFF2 和一份 `producthunt-fonts.css` 拷进工程，不联网。在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/producthunt-fonts.css">` 引入，CSS 里的字体名就是上面变量用的 `NotoSansSC` / `IBMPlexMono`。
+字体已经下载好放在仓库的 `resources/fonts/`（CSS 在 `producthunt/`，WOFF2 在共用的 `files/`）。安装：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/producthunt`，把 NotoSansSC（中文和正文）、IBMPlexMono（数字、upvote、英文数据）的 WOFF2 和一份 `producthunt-fonts.css` 从仓库拷进工程。在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/producthunt-fonts.css">` 引入，CSS 里的字体名就是上面变量用的 `NotoSansSC` / `IBMPlexMono`。
 
 ---
 

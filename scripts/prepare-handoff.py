@@ -12,7 +12,7 @@
      非法时就地失败，workspace 完全未被改动。
   1. 落地：把 references/delegation/conventions.md 和
      references/delegation/<step>/ 复制到 <ws>/references/delegation/；
-     composition 步骤还复制 modules/（不含 examples/）到 <ws>/modules/。workspace
+     composition 步骤还复制 modules/ 到 <ws>/modules/。workspace
      中已存在的文件会被保留（该副本可能被编辑过）；--refresh 会覆盖它。
   2. 字体（仅 composition）：用 scripts/fonts-download.sh --theme 把所选 design
      自带的 WOFF2 字体安装到 <ws>/composition/assets/fonts/。每次调用都执行。
@@ -173,7 +173,7 @@ def materialize(ws: Path, step: str, refresh: bool) -> list[str]:
         (SKILL_ROOT / DELEGATION / step, ws / DELEGATION / step, ()),
     ]
     if step == 'composition':
-        units.append((SKILL_ROOT / 'modules', ws / 'modules', ('examples',)))
+        units.append((SKILL_ROOT / 'modules', ws / 'modules', ()))
     written = []
     for source, target, skip in units:
         if copy_missing(source, target, refresh, skip):
