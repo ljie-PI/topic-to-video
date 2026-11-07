@@ -45,6 +45,8 @@ window.VIDEO = { jay: {
   glances:  [[1.467, 1.0, "U"], [3.167, 1.0, "L"]],
   envelopeFps: 30,
   envelope: [ /* node components/jay/make-envelope.mjs 配音.wav */ ],
+  // 可选：视觉 scene 的显示与位置；映射规则见下文
+  placements: [{ begin_s: 0, end_s: 27.2, visible: true, x: 1294, y: 642, size: 420 }],
 } };
 ```
 
@@ -71,6 +73,42 @@ window.VIDEO = { jay: {
 | `size` | 420 | 舞台边长，单位 px（原图 2048 等比缩放）。600 是 100%，420 是 70% |
 | `fxScale` | 1 | 思考气泡和“!”的额外放大倍数。人物缩小后可以设 1.2–1.4 |
 | `data` | `"jay"` | 从 `window.VIDEO` 里读哪一个键作为剧本 |
+
+## 视觉 scene 放置（`window.VIDEO.jay.placements`）
+
+`placements` 是可选数组。提供非空数组后，Jay 仍然是**从 0 秒挂到整片结束的唯一一个挂载点**，只在一个组件实例里按视频秒切换显示与位置；不要按 scene 重复挂载 Jay。
+
+每一项形状为：
+
+```js
+{ begin_s, end_s, visible, x?, y?, size? }
+```
+
+- 命中规则是 `begin_s <= t < end_s`；数组按 `begin_s` 排序，重叠时最后开始的一项生效。
+- `visible: false` 将 `#jay-stage` 设为 `display: none`，用于 `stage` / `portrait` 等非主持人场景；`visible: true` 恢复显示。
+- 可见项可用 `x` / `y` / `size` 覆盖舞台左边、上边和边长（px）。省略的字段不修改当前值；通常每个可见项都写明完整位置，避免依赖前一项留下的值。
+- 只要 `placements` 非空，没有命中任何一项时就隐藏 Jay；这也包括 `t` 恰好等于最后一项 `end_s` 的片尾时刻。完全不提供 `placements`（或提供空数组）时保留旧行为：Jay 全片显示。
+
+从 `composition/scenes.json` 到 `placements` 的映射是确定的：每个视觉 scene 产生一项，`begin_s` / `end_s` 原样复制，只有 `layout === "presenter"` 时可见。可见项的几何值取 `modules/layouts/presenter.json` 中的 `person` 区域，而不是另估坐标：
+
+```js
+const person = presenterLayout.regions.find((region) => region.id === "person").rect;
+window.VIDEO.jay.placements = visualScenes.scenes.map((scene) => {
+  const placement = {
+    begin_s: scene.begin_s,
+    end_s: scene.end_s,
+    visible: scene.layout === "presenter",
+  };
+  if (placement.visible) {
+    placement.x = person.x;
+    placement.y = person.y;
+    placement.size = person.width; // person 是正方形，width === height
+  }
+  return placement;
+});
+```
+
+因此，非 `presenter` scene 的 Jay 必须在同一常驻实例中隐藏；进入下一个 `presenter` scene 时再显示。
 
 ## 动作剧本（`window.VIDEO.jay`）
 

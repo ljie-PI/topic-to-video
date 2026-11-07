@@ -15,10 +15,9 @@
 两个滤镜在单次 ffmpeg 解码中运行；它们的区间报告从 stderr 解析。一直持续到文件
 末尾的定格没有 freeze_end 行，会按容器时长收口。
 
-每条发现都通过 timeline.json 中可选 `scenes` 列表
-（[{scene_id, begin_s, end_s}]）的时间范围映射回 scene_id。当发现的时间不落在
-任何 scene 内时，取中点最近的 scene；当 timeline.json 完全没有 scenes 时，
-scene_id 为 null。
+每条发现优先通过 --scenes 的最终视觉 scenes 映射回 scene_id；旧工程可用
+--timeline 的可选叙事 scenes。当发现的时间不落在任何 scene 内时，取中点最近的
+scene；旧工程完全没有 scenes 时，scene_id 为 null。
 
 用法：
   python3 check-render.py --video composition/renders/final.mp4 \
@@ -71,7 +70,8 @@ def parse_args() -> argparse.Namespace:
     parser = cli.JsonArgumentParser(TOOL_NAME, description='Deterministic post-render checks (metadata, blackdetect, freezedetect).')
     parser.add_argument('--video', required=True, help='Rendered video file to check.')
     parser.add_argument('--inputs', required=True, help='inputs.json (orientation source).')
-    parser.add_argument('--timeline', help='timeline.json; optional scene time ranges for scene_id mapping.')
+    parser.add_argument('--timeline', help='Legacy timeline.json; optional narrative scene ranges for scene_id mapping.')
+    parser.add_argument('--scenes', help='Phase 8 composition/scenes.json; final visual scenes for scene_id mapping.')
     parser.add_argument(
         '--freeze-threshold',
         type=float,
@@ -85,6 +85,8 @@ def parse_args() -> argparse.Namespace:
         help='Minimum black segment length in seconds (default: 0.5).',
     )
     args = parser.parse_args()
+    if args.timeline and args.scenes:
+        parser.error('--timeline and --scenes are mutually exclusive')
     if args.freeze_threshold <= 0:
         parser.error('--freeze-threshold must be greater than 0')
     if args.black_threshold <= 0:
@@ -116,13 +118,28 @@ def load_timeline_scene_ranges(timeline_path: Path | None) -> list[tuple[str, fl
     return scene_ranges(scenes)
 
 
+def load_visual_scene_ranges(scenes_path: Path, inputs_path: Path) -> list[tuple[str, float, float]]:
+    """Phase 9 的最终视觉 scene 归属，不复用上游叙事 scenes。"""
+    ws = inputs_path.parent
+    orientation = load_orientation(inputs_path)
+    duration_s = media.probe_duration(ws / 'voice_clone' / 'narration.mp3')
+    scenes = video_contract.load_visual_scenes(
+        scenes_path, Path(__file__).resolve().parent.parent, orientation, duration_s, ws=ws,
+    )
+    return scene_ranges(scenes)
+
+
 def map_time_to_scene(scene_ranges: list[tuple[str, float, float]], time_s: float) -> str | None:
     # 半开区间，使恰好从切点开始的发现归到切点之后的那个 scene；
     # 最后一个 scene 同时认领它的终点。
-    for index, (scene_id, begin, end) in enumerate(scene_ranges):
-        is_last = index == len(scene_ranges) - 1
-        if begin <= time_s < end or (is_last and time_s == end):
-            return scene_id
+    final_end = max((end for _, _, end in scene_ranges), default=None)
+    containing = [
+        (index, scene_id, begin) for index, (scene_id, begin, end) in enumerate(scene_ranges)
+        if begin <= time_s < end or (time_s == final_end and end == final_end)
+    ]
+    if containing:
+        # 转场重叠时，后开始的视觉 scene 接管当前反馈归属。
+        return max(containing, key=lambda item: (item[2], item[0]))[1]
     if not scene_ranges:
         return None
     # 回退到中点离该发现最近的 scene。
@@ -295,6 +312,8 @@ def main() -> int:
         raise FileNotFoundError(f'inputs file not found: {args.inputs}')
     if args.timeline and not Path(args.timeline).expanduser().is_file():
         raise FileNotFoundError(f'timeline file not found: {args.timeline}')
+    if args.scenes and not Path(args.scenes).expanduser().is_file():
+        raise FileNotFoundError(f'visual scenes file not found: {args.scenes}')
 
     metadata = media.probe(video_path.resolve(), timeout=FFPROBE_TIMEOUT_SECONDS)
     if metadata['width'] is None or metadata['height'] is None:
@@ -307,7 +326,10 @@ def main() -> int:
         'container_duration_s': metadata['duration_seconds'] or 0.0,
     }
     orientation = load_orientation(inputs_path.resolve())
-    scene_ranges = load_timeline_scene_ranges(Path(args.timeline).expanduser().resolve() if args.timeline else None)
+    scene_ranges = (
+        load_visual_scene_ranges(Path(args.scenes).expanduser().resolve(), inputs_path.resolve())
+        if args.scenes else load_timeline_scene_ranges(Path(args.timeline).expanduser().resolve() if args.timeline else None)
+    )
 
     findings = check_container(probe, orientation)
     stderr_text = run_detection_pass(video_path.resolve(), args.black_threshold, args.freeze_threshold)

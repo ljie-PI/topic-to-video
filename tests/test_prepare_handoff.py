@@ -398,6 +398,7 @@ COMPOSITION_PRODUCTS = {
 
 # 本阶段自己生成的产物：handoff 命令会写它们，所以生成前它们不该存在。
 COMPOSITION_GENERATED = {
+    'composition/scenes.json',
     'composition/assets/subtitle-units.json',
     'composition/assets/template-cues.json',
     'composition/assets/template-timeline.json',
@@ -430,7 +431,31 @@ class TestHandoffContract:
 
 
 class TestCompositionHandoff:
-    def test_commands_use_the_workspace_copies_of_layout_and_design(self, tmp_path: Path):
+    def test_tool_only_inputs_are_not_agent_reading_inputs(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'composition')
+        result = prepare(ws, 'composition')
+        text = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
+        sections = handoff_sections(text)
+        agent_inputs, tool_inputs = sections['Inputs'].split('### 仅供工具读取', 1)
+
+        assert '### Agent 阅读与画面资源' in agent_inputs
+        for relative in ('script.txt', 'scene-plan.json', 'transcribe/timeline.json'):
+            assert str(ws / relative) in agent_inputs
+        for relative in ('transcribe/transcript.json', 'narration.txt', 'narration-offsets.json'):
+            path = str(ws / relative)
+            assert path not in agent_inputs
+            assert path in tool_inputs
+            assert path in sections['Outputs']  # existing tool commands still receive the files
+        assert '正常流程不阅读或复述其全文' in tool_inputs
+        assert str(ws / 'composition/scenes.json') not in sections['Inputs']
+        assert str(ws / 'composition/scenes.json') in sections['Outputs']
+        assert '生成后读取这份结果' in sections['Outputs']
+        assert result['dispatch_prompt'] == f'读取 {ws}/composition-handoff.md 并按它执行；完成后报告产物路径。'
+        base = (ws / 'references/delegation/composition/base-instructions.md').read_text(encoding='utf-8')
+        assert '标为「仅供工具读取」' in base
+        assert '先读工作区里的输入（handoff 的 Inputs 一节列出的文件）' not in base
+
+    def test_commands_use_visual_scenes_and_the_workspace_design_copy(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition', design='default', layout='stage')
         prepare(ws, 'composition')
 
@@ -438,9 +463,12 @@ class TestCompositionHandoff:
 
         assert f'cd {ws}/composition && npx hyperframes check' in text
         assert f'source {REPO_ROOT}/.venv/bin/activate && python3 {REPO_ROOT}/scripts/check-composition.py' in text
-        assert f'--layout {ws}/modules/layouts/stage.json' in text
+        assert f'--scenes {ws}/composition/scenes.json' in text
+        assert f'--narration-audio {ws}/voice_clone/narration.mp3' in text
         assert f'--design {ws}/modules/designs/default/default.json' in text
         assert f'--output {ws}/composition/check-composition.json' in text
+        assert '--layout ' not in text
+        assert '--timeline ' not in text
         assert 'python3 scripts/' not in text
 
     def test_documented_options_of_the_commands_exist_in_the_scripts(self, tmp_path: Path):
@@ -463,14 +491,25 @@ class TestCompositionHandoff:
         assert 'check-composition.py' in checked  # the positional-first command is covered
         assert 'make-narration.py' in checked
 
-    def test_inputs_section_lists_the_catalog_only_when_materials_are_fetched(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'composition', fetch_materials=False)
+    @pytest.mark.parametrize('input_mode', ['standard', 'paper'])
+    def test_inputs_section_lists_the_catalog_only_when_materials_are_fetched(
+        self, tmp_path: Path, input_mode: str
+    ):
+        ws = make_workspace(
+            tmp_path, 'composition', input_mode=input_mode, fetch_materials=False
+        )
+        if input_mode == 'paper':
+            write(ws / 'material-catalog.json', '{"entries": []}')
         prepare(ws, 'composition')
 
         inputs = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))['Inputs']
 
-        assert '- material-catalog.json：无（' in inputs
-        assert f'design github、layout presenter、template 无（不使用模板）、orientation landscape' in inputs
+        if input_mode == 'paper':
+            assert str(ws / 'material-catalog.json') in inputs
+        else:
+            assert '- material-catalog.json：无（' in inputs
+        assert f'design github、template 无（不使用模板）、orientation landscape' in inputs
+        assert 'layout presenter' not in inputs
 
     @pytest.mark.parametrize('template', ['github', None], ids=['selected-template', 'no-template'])
     def test_required_references_follow_the_overlay_order(self, tmp_path: Path, template: str | None):
@@ -498,7 +537,7 @@ class TestCompositionHandoff:
                 'modules/designs/producthunt/producthunt.json',
                 'modules/designs/producthunt/producthunt.md',
             ],
-            ['modules/layouts/presenter.json', 'modules/layouts/presenter.md'],
+            ['modules/layouts/layouts.md'],
             ['modules/templates/templates.md'],
         ]
         if template:
@@ -553,8 +592,8 @@ class TestCompositionMaterialization:
         ]
 
     def test_an_edited_workspace_layout_copy_is_what_gets_validated(self, tmp_path: Path):
-        """校验的必须是 handoff 实际引用的那份副本，不是库里的原文件。"""
-        ws = make_workspace(tmp_path, 'composition')
+        """旧 layout 的校验仍用工作区实际副本，而不是库里的原文件。"""
+        ws = make_workspace(tmp_path, 'composition', layout='presenter')
         prepare(ws, 'composition')
         copy = ws / 'modules' / 'layouts' / 'presenter.json'
         data = json.loads(copy.read_text(encoding='utf-8'))
@@ -568,6 +607,17 @@ class TestCompositionMaterialization:
 
         # --refresh 把副本换回库文件后，同一个 workspace 又能生成 handoff。
         prepare(ws, 'composition', '--refresh')
+
+    def test_visual_scenes_override_an_unused_legacy_template_layout_default(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'composition', template='github', layout='stage')
+        write(ws / 'composition/scenes.json', json.dumps({
+            'version': 1,
+            'scenes': [{'scene_id': 'host', 'begin_s': 0, 'end_s': 5, 'layout': 'presenter'}],
+        }))
+
+        prepare(ws, 'composition')
+
+        assert '--scenes' in (ws / 'composition-handoff.md').read_text(encoding='utf-8')
 
     def test_a_template_that_cannot_use_the_layout_is_rejected(self, tmp_path: Path):
         """模板只支持 presenter，竖屏项目不能带着它生成矛盾的 handoff。"""
@@ -686,16 +736,21 @@ class TestFailures:
 
         prepare(ws, 'script')
 
-    def test_the_composition_step_requires_the_layout(self, tmp_path: Path):
+    def test_composition_handoff_needs_neither_legacy_layout_nor_scenes_json(self, tmp_path: Path):
+        """Scene layouts are decided after dispatch, not a handoff precondition."""
         ws = make_workspace(tmp_path, 'composition')
         inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
-        inputs.pop('layout')
+        inputs.pop('layout', None)
         write(ws / 'inputs.json', json.dumps(inputs, ensure_ascii=False))
+        assert not (ws / 'composition' / 'scenes.json').exists()
 
-        proc, result = run_cli(str(ws), 'composition')
+        prepare(ws, 'composition')
 
-        assert proc.returncode == 1
-        assert 'layout' in result['error']
+        text = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
+        assert f'{ws}/modules/layouts/layouts.md' in text
+        assert f'--scenes {ws}/composition/scenes.json' in text
+        assert f'--narration-audio {ws}/voice_clone/narration.mp3' in text
+        assert not (ws / 'composition' / 'scenes.json').exists()
 
     @pytest.mark.parametrize('field', ['narration_requests', 'composition_requests'])
     @pytest.mark.parametrize('value', ['语气更口语', None, [''], ['ok', 3]])
@@ -893,16 +948,18 @@ class TestInputsRendering:
 class TestReviewRoundFixes:
     """Regressions pinned from the first /code-review round."""
 
-    def test_portrait_3x4_uses_the_shared_portrait_doc(self, tmp_path: Path):
-        # portrait-3x4 has only a .json; portrait.md covers both portrait canvases.
+    def test_legacy_layout_still_references_the_layout_catalog(self, tmp_path: Path):
+        # 旧字段继续参与校验，但 handoff 不把某一个 layout 当成全片选择。
         ws = make_workspace(tmp_path, 'composition', layout='portrait-3x4', orientation='portrait-3:4')
 
         prepare(ws, 'composition')
 
         text = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
-        assert f'--layout {ws}/modules/layouts/portrait-3x4.json' in text
+        assert f'--scenes {ws}/composition/scenes.json' in text
+        assert '--layout ' not in text
         body = handoff_sections(text)['Required References']
-        assert f'{ws}/modules/layouts/portrait-3x4.json + {ws}/modules/layouts/portrait.md' in body
+        assert f'{ws}/modules/layouts/layouts.md' in body
+        assert f'{ws}/modules/layouts/portrait-3x4.json' not in body
 
     def test_paths_with_spaces_are_quoted_in_commands(self, tmp_path: Path):
         spaced = (tmp_path / 'AI Agents 2026').resolve()
@@ -923,7 +980,8 @@ class TestReviewRoundFixes:
 
         composition = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
         assert f"cd '{ws}/composition' && npx hyperframes check" in composition
-        assert f"--layout '{ws}/modules/layouts/presenter.json'" in composition
+        assert f"--scenes '{ws}/composition/scenes.json'" in composition
+        assert f"--narration-audio '{ws}/voice_clone/narration.mp3'" in composition
         script = (ws / 'script-handoff.md').read_text(encoding='utf-8')
         assert f"--script '{ws}/script.txt'" in script
 

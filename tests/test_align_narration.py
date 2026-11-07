@@ -52,6 +52,7 @@ def align_args(
     max_lines: int = 1,
     layout: Path | None = None,
     scene_plan=None,
+    scenes: Path | None = None,
 ) -> list[str]:
     """一个 mode 的完整命令行；两个 mode 各自只带自己的输出与参数。"""
     args = [
@@ -67,7 +68,12 @@ def align_args(
             args += ['--scene-plan', str(tmp_path / 'scene-plan.json')]
         return args
     args += ['--units-output', str(tmp_path / 'transcribe' / 'subtitle-units.json')]
-    if layout is not None:
+    if scenes is not None:
+        args += [
+            '--scenes', str(scenes),
+            '--narration-audio', str(tmp_path / 'voice_clone' / 'narration.mp3'),
+        ]
+    elif layout is not None:
         args += ['--layout', str(layout)]
     else:
         args += ['--width', str(width), '--font-size', str(font_size), '--max-lines', str(max_lines)]
@@ -85,6 +91,7 @@ def make_workspace(
     max_lines: int = 1,
     layout: Path | None = None,
     scene_plan=None,
+    scenes: Path | None = None,
     subtitle_args: tuple[str, ...] = (),
 ):
     """Build a fixture workspace and run both align-narration modes on it.
@@ -113,11 +120,22 @@ def make_workspace(
 
     if scene_plan is not None:
         write_json(tmp_path / 'scene-plan.json', scene_plan)
+    if scenes is not None:
+        write_json(tmp_path / 'inputs.json', {
+            'orientation': 'landscape', 'design': 'default',
+        })
+        audio = tmp_path / 'voice_clone' / 'narration.mp3'
+        audio.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run([
+            'ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono',
+            '-t', '6', '-c:a', 'libmp3lame', str(audio),
+        ], capture_output=True, check=True)
 
     units_path = tmp_path / 'transcribe' / 'subtitle-units.json'
     timeline_path = tmp_path / 'transcribe' / 'timeline.json'
     proc = run_cli(*align_args(
         tmp_path, 'subtitles', width=width, font_size=font_size, max_lines=max_lines, layout=layout,
+        scenes=scenes,
     ), *subtitle_args)
     result = json.loads(proc.stdout)
     timeline_result = None

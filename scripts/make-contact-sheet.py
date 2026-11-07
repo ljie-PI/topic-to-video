@@ -14,7 +14,8 @@
 
 用法：
   python3 make-contact-sheet.py --video composition/renders/final.mp4 \
-      --timeline transcribe/timeline.json --inputs inputs.json [--output-dir qa]
+      --scenes composition/scenes.json --inputs inputs.json [--output-dir qa]
+  旧单 layout 工程可将 --scenes 换成 --timeline transcribe/timeline.json。
 
 输出约定：
   stdout: 单个 JSON 对象
@@ -37,6 +38,7 @@ from pathlib import Path
 
 import cli
 import media
+import video_contract
 from timeline_scenes import normalize_scenes
 
 TOOL_NAME = 'make-contact-sheet'
@@ -71,7 +73,9 @@ log = cli.make_logger(TOOL_NAME)
 def parse_args() -> argparse.Namespace:
     parser = cli.JsonArgumentParser(TOOL_NAME, description='Extract per-scene frames and montage 2x2 contact sheets.')
     parser.add_argument('--video', required=True, help='Rendered video file.')
-    parser.add_argument('--timeline', required=True, help='timeline.json with a scenes list.')
+    scene_input = parser.add_mutually_exclusive_group(required=True)
+    scene_input.add_argument('--timeline', help='Legacy timeline.json with narrative scenes.')
+    scene_input.add_argument('--scenes', help='Phase 8 composition/scenes.json with final visual scenes.')
     parser.add_argument('--output-dir', default='qa', help='Output directory for sheets (default: qa).')
     parser.add_argument('--inputs', required=True, help='inputs.json; qa_level controls extraction and vision QA.')
     args = parser.parse_args()
@@ -95,6 +99,19 @@ def load_scenes(timeline_path: Path) -> list[dict[str, object]]:
     return scenes
 
 
+def load_visual_scenes(scenes_path: Path, inputs_path: Path) -> list[dict[str, object]]:
+    """按真实配音时长校验并读取最终视觉 scenes。"""
+    data = json.loads(inputs_path.read_text(encoding='utf-8'))
+    if not isinstance(data, dict):
+        raise ValueError(f'{inputs_path} is not a JSON object')
+    ws = inputs_path.parent
+    duration_s = media.probe_duration(ws / 'voice_clone' / 'narration.mp3')
+    return video_contract.load_visual_scenes(
+        scenes_path, Path(__file__).resolve().parent.parent,
+        data.get('orientation'), duration_s, ws=ws,
+    )
+
+
 def load_qa_level(inputs_path: Path) -> str:
     data = json.loads(inputs_path.read_text(encoding='utf-8'))
     if not isinstance(data, dict):
@@ -109,7 +126,11 @@ def clamp_time(time_s: float, duration_s: float) -> float:
     return min(max(time_s, 0.0), max(duration_s - 0.01, 0.0))
 
 
-def build_frame_specs(scenes: list[dict[str, object]], qa_level: str, duration_s: float) -> list[FrameSpec]:
+def build_frame_specs(
+    scenes: list[dict[str, object]], qa_level: str, duration_s: float,
+    *,
+    transition_scenes: list[dict[str, object]] | None = None,
+) -> list[FrameSpec]:
     specs = []
     for scene in scenes:
         scene_id = scene['scene_id']
@@ -121,8 +142,14 @@ def build_frame_specs(scenes: list[dict[str, object]], qa_level: str, duration_s
             entrance = clamp_time(begin + ENTRANCE_OFFSET_S, duration_s)
             specs.append(FrameSpec(scene_id=scene_id, kind='entrance', time_s=entrance))
     if qa_level == 'strict':
-        for previous, current in zip(scenes, scenes[1:]):
-            cut = (previous['end_s'] + current['begin_s']) / 2
+        transitions = transition_scenes if transition_scenes is not None else scenes
+        for previous, current in zip(transitions, transitions[1:]):
+            # 视觉布局在新 scene 开始时切换；重叠转场不能取首尾中点，否则
+            # 会把实际切换后的画面错当成切换前。
+            cut = (
+                current['begin_s'] if transition_scenes is not None
+                else (previous['end_s'] + current['begin_s']) / 2
+            )
             label = f"{previous['scene_id']}->{current['scene_id']}"
             specs.append(
                 FrameSpec(scene_id=label, kind='cut_before', time_s=clamp_time(cut - CUT_WINDOW_S, duration_s))
@@ -233,9 +260,9 @@ def main() -> int:
     video_path = Path(args.video).expanduser()
     if not video_path.is_file():
         raise FileNotFoundError(f'video file not found: {args.video}')
-    timeline_path = Path(args.timeline).expanduser()
-    if not timeline_path.is_file():
-        raise FileNotFoundError(f'timeline file not found: {args.timeline}')
+    scene_path = Path(args.scenes or args.timeline).expanduser()
+    if not scene_path.is_file():
+        raise FileNotFoundError(f'scene timing file not found: {scene_path}')
     inputs_path = Path(args.inputs).expanduser()
     if not inputs_path.is_file():
         raise FileNotFoundError(f'inputs file not found: {args.inputs}')
@@ -248,9 +275,12 @@ def main() -> int:
         stale.unlink()
 
     duration_s = media.probe_duration(video_path.resolve(), timeout=FFPROBE_TIMEOUT_SECONDS)
-    scenes = load_scenes(timeline_path.resolve())
+    scenes = load_visual_scenes(scene_path.resolve(), inputs_path.resolve()) if args.scenes else load_scenes(scene_path.resolve())
     extraction_level = 'strict' if qa_level == 'strict' else 'standard'
-    specs = build_frame_specs(scenes, extraction_level, duration_s)
+    specs = build_frame_specs(
+        scenes, extraction_level, duration_s,
+        transition_scenes=video_contract.caption_layout_segments(scenes) if args.scenes else None,
+    )
     log(f'Extracting {len(specs)} frame(s) from {video_path} (qa_level={qa_level})...')
     for index, spec in enumerate(specs):
         frame_path = frames_dir / f'frame_{index + 1:03d}.jpg'

@@ -35,7 +35,7 @@ Pi 已核实的 flag（`pi --help`）：
   读取 <ws>/script-handoff.md 并按它执行；完成后报告产物路径。
   ```
 
-  被委派的 agent 自己从磁盘读 handoff 与 Required References 里列出的文件；主 agent 不在 prompt 里复述指令内容。
+   被委派的 agent 自己从磁盘读 handoff、其中要求 agent 阅读的输入与 Required References；主 agent 不在 prompt 里复述指令内容或派生产物的重复文本。handoff 标为「仅供工具读取」的文件只传给命令，正常流程不要求 agent 全文阅读；仅在工具报错且必须诊断时读取相关片段。
 
 ## 指令叠加顺序
 
