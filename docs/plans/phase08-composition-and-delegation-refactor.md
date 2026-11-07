@@ -503,7 +503,9 @@ md5 与基线一致（未重复 TTS/ASR、未覆盖 Phase 7 时间轴）；成�
 `--finish 9-check-mix` 通过，全阶段 completed。为证明不依赖新鲜度门槛，验收前把
 scene-config、index.html、compositions/、字幕、帧、final.mp4、check-composition.json
 的 mtime 全部设为 2000-01-01，`--finish` 仍通过；`.pipeline/` 仅有 approvals/redos
-状态，scene-config 通过「精确键集合」校验不含哈希/mtime 字段。
+状态，scene-config 通过「精确键集合」校验不含哈希/mtime 字段。验收结束时
+`.pipeline/` 为空：`--finish` 后 redos.json 按 #147 语义 unlink，approvals 因本流程
+未启用审稿 gate 本就不存在——空目录是预期状态，非状态丢失。
 
 **委派一致性（AC7）**：本机 `pi --list-models` 真实查询。请求 kimi-k2 时
 pi 候选表无 kimi provider → 按约定属阻塞情形（已记录，未派发）。可解析样例：
@@ -523,6 +525,12 @@ object-fit）上：`hyperframes check` → Check passed（Motion/Contrast/Craft/
 比例正确。迭代中发现并纠正两处工程侧用法（clip 元素不得用 GSAP 改可见性、
 clip 默认需可见由框架按时间隐藏），最终以框架契约方式通过。主工作区画面走
 项目自有 Chromium + ffmpeg 渲染（无 stub）。
+
+**独立组件与重复实例（AC5 前半）**：基线 `tests/test_scene_components_browser.py`
+（真实 Chromium、普通浏览器无厂商全局 + 最小 adapter）覆盖六模块独立初始化/seek、
+双 caption-bar 与双 jay 实例隔离、destroy 重挂无残留；本集成中 check-composition
+真 Chromium seek 再次运行该链路（vs1–vs3 × 起点/中点/终点），`__timelines`/
+`__hyperframes` 全程为 undefined。
 
 **测试**：定向 18 个测试文件 729 passed；全仓 1232 passed（与基线一致，
 无新增失败）。基线失败 / 环境阻塞 / 条件项分别记录（见「遗留与未验证项」）。
