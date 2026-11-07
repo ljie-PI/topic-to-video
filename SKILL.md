@@ -18,6 +18,8 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 ## 工作流：一个循环
 
+首次运行先按「工具与依赖」做环境预检，环境就绪后进入循环。
+
 1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`（工作区目录必填）。它输出一个 JSON：已完成的 phase、下一个 phase（`next_phase.reason` 说明原因：缺失 / 损坏 / stale / 要求重做 / 未确认 / 等审稿）、要读的文档、缺失或损坏的产物。
 2. 先查状态，再读它指出的那一份阶段文档（`next_phase.doc`），不要提前读完所有阶段。需要核对前后步骤的输入输出、回退重做或排查问题时，可以查相关文档和文件；下一步仍由状态脚本确定。
 3. 按该文档执行；文档头部的「输入 / 输出 / 完成判据 / 下一步 / 护栏」是自包含的，正常情况下不需要查其他阶段文档。Phase 7 把脚本校验和执行者核对合并在完成判据里，其余阶段仍分成两节。
@@ -60,8 +62,8 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
    ↳ DO NOT：主 agent 手写旁白或 composition HTML；能委派时主 agent 手写 catalog。
 5. **屏幕上的每个素材都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。
    ↳ DO NOT：让没有 catalog 引用的素材出现在屏幕上。
-6. **跑 Python 前一律 `source .venv/bin/activate`。** 用 `python3`。
-   ↳ DO NOT：在未激活项目 venv 的 shell 里运行 Python，或改用 `python`。
+6. **运行项目脚本前一律 `source .venv/bin/activate`。** 用 `python3`；首次创建 `.venv` 的引导命令见「工具与依赖」。
+   ↳ DO NOT：在未激活项目 venv 的 shell 里运行项目脚本，或改用 `python`。
 
 ## 输出约定
 
@@ -73,7 +75,14 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 真正要记住的只有两件事：每一步先跑 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`；具体工具、调用示例和失败处理写在当前阶段文档里，用不到的不必读。
 
-**共同准备：** 在 skill 根目录 `source .venv/bin/activate`（用 `python3`）；系统依赖 `ffmpeg`、系统 Chrome、`yt-dlp`；`playwright` 用 `pip install playwright` 安装，**不要**执行 `playwright install chromium`。各后端自己的依赖、环境变量和硬件要求只写在 `scripts/voice-clone.py` 与 `scripts/transcribe.py` 的顶部说明里。
+**环境预检与按需准备（首次运行或缺依赖时）：**
+
+1. 检查 Python、`ffmpeg` / `ffprobe`、系统 Chrome、`yt-dlp`、Node.js 和 skill 根目录的 `.venv`；已有环境直接复用，不重复安装。
+2. 按实际硬件选择后端：Apple Silicon 用 MLX，Linux + NVIDIA 用 Qwen / PyTorch，没有可用本地后端再考虑云端。只安装所选后端需要的依赖；平台、库、模型和 KEY 的细节见 `README.md`，版本以 `requirements*.txt` 为准。
+3. 宿主权限允许且用户授权时，agent 可创建 `.venv` 并在其中安装项目依赖；系统软件、驱动和系统 CUDA Toolkit 的安装、升级或重启由用户 / 管理员处理。
+4. 下载大模型或需要明显磁盘、显存、网络资源前，先说明资源需求并取得授权；优先复用已有缓存或用户指定目录。
+5. 只有选择云端语音时才检查对应 KEY，配置方法见 `README.md` 的「配置 KEY」；密钥由用户通过环境变量或宿主秘密配置提供，不写入仓库或日志。未授权的云端切换先确认。
+6. 缺依赖时先补齐并用语音脚本的 `--resolve-backend` 核对选择；无法解决时明确报告阻塞，不静默切换后端，也不把环境检查当作阶段完成。
 
 **Pipeline 之外的三个入口：**
 

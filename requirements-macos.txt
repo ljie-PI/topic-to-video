@@ -1,0 +1,5 @@
+# macOS（Apple Silicon）本地 TTS / ASR 后端。
+# mlx-audio 只在 darwin + arm64 上安装；Intel Mac 请改用 requirements-cloud.txt。
+-r requirements.txt
+
+mlx-audio>=0.6.4; sys_platform == "darwin" and platform_machine == "arm64"
