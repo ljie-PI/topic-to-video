@@ -6,7 +6,7 @@ Phase 5（素材 catalog）、Phase 6（脚本与场景规划）与 Phase 8（co
 
 - 默认 coding agent 是 **pi-coding-agent**（命令 `pi`）；用户指定全局 agent 时，记入 `inputs.json` 的 `coding_agent` 字段。
 - **用户指定某阶段的 agent / model 时必须严格遵循。** 阶段级要求记入可选的 `inputs.json.delegation`，键为 `catalog` / `script` / `composition`，值为包含 `agent` 和 / 或 `model` 的对象，例如 `"delegation": {"catalog": {"agent": "pi-coding-agent", "model": "<provider>/<model-id>"}}`。只覆盖指定字段：未指定 agent 时继承 `coding_agent`，未指定 model 时使用目标 agent 自身的模型配置。素材理解 / 素材匹配指 Phase 5 时记为 `catalog`，场景与素材匹配指 Phase 6 时记为 `script`；范围不清楚先问用户。
-- `prepare-handoff.py` 会把有效 agent / model 写入 handoff，并返回 `coding_agent` / `coding_model`，供主 agent 派发时使用；模型未指定时 `coding_model` 为 `null`。不能仅把 model 写进 prompt，实际调用也必须选中它。指定 agent 不可用、模型标识不明确或不支持看图时，向用户说明并确认，不得自动换 agent / model 或悄悄用另一个 VLM。
+- `prepare-handoff.py` 会把有效 agent 写入 handoff，并返回 `coding_agent` / `coding_model` / `requested_model`，供主 agent 派发时使用。用户请求了模型时，`coding_model` 是经目标 CLI 解析的真实原生标识，`requested_model` 是原始请求；未请求模型时二者都是 `null`，使用目标 agent 自身配置。不能仅把 model 写进 prompt，实际调用也必须选中它。指定 agent 不可用、或候选模型都无法满足本阶段能力时，向用户说明并确认，不得自动换 agent / model 或悄悄用另一个 VLM。
 - 主 agent 自己承担委派职责，按下面的方式派发；**不要**写脚本去 shell 调用 coding agent——委派是主 agent（一个 LLM）的行为，不是仓库脚本的行为。
 
 ## 怎么派发
@@ -26,7 +26,8 @@ Pi 已核实的 flag（`pi --help`）：
 
 - `-p` / `--print`：非交互模式，处理完 prompt 后退出；
 - `--`：后面全部当作 message，prompt 以 `-` 开头也不会被当成参数；
-- `--model <provider/model-id>`：指定模型（可选；使用完整模型标识，不猜模糊简称）。指定了 model 时命令形态为 `cd <ws> && pi --model "<coding_model>" -p -- "<dispatch_prompt>"`。
+- `--model <provider/model-id>`：指定模型（可选；使用解析后的完整原生标识，不猜模糊简称）。指定了 model 时命令形态为 `cd <ws> && pi --model "<coding_model>" -p -- "<dispatch_prompt>"`；没有 model 请求时省略 `--model`。
+- `--list-models [search]`：列出本机可用的 provider / model（含 context、images 等能力列）；带 search 参数时按名称过滤。模型解析用它查询，见下文「模型查询与近似选择」。其他 agent 用其 `--help` 声明的自身查询方式。
 - 命令形态：`cd <ws> && pi -p -- "<dispatch_prompt>"`。在当前目录启动，被委派的 agent 就能直接读写工作区；handoff 与 Required References 里都是绝对路径，skill 侧脚本也用绝对路径调用，不依赖 cwd。
 - `pi --help` 里没有单独授予目录访问的 flag，因此不要照搬其他 CLI 的参数；确实需要额外授权时按 `pi --help` 与本地配置处理，并把差异告诉用户。
 - **委派 prompt 只有一句话**，由 `prepare-handoff.py` 生成：运行 `source .venv/bin/activate && python3 scripts/prepare-handoff.py <ws> <step>`，把输出 JSON 里的 `dispatch_prompt` 原样派发。例如：
@@ -36,6 +37,19 @@ Pi 已核实的 flag（`pi --help`）：
   ```
 
    被委派的 agent 自己从磁盘读 handoff、其中要求 agent 阅读的输入与 Required References；主 agent 不在 prompt 里复述指令内容或派生产物的重复文本。handoff 标为「仅供工具读取」的文件只传给命令，正常流程不要求 agent 全文阅读；仅在工具报错且必须诊断时读取相关片段。
+
+## 模型查询与近似选择
+
+用户在某阶段请求了模型（`inputs.json.delegation.<step>.model`）时，原始请求留在输入中不动；实际派发的模型由主 agent 在**生成 handoff 之前**按下面的流程解析，三个阶段（catalog / script / composition）用同一套规则：
+
+1. 先用目标 coding agent 的 `--help` 核对本机命令与它声明的模型查询方式，不用主 agent 自己的另一份模型目录替代目标 CLI。
+2. 查询目标 CLI 的真实候选：Pi 用 `pi --list-models "<请求>"`；结果为空时用 `pi --list-models` 取它的完整候选表。其他 agent 用它自身 `--help` 声明的查询入口。
+3. **精确匹配优先**：CLI 列出的候选里有与请求一致的原生标识（provider / model-id）就直接用。
+4. 没有精确匹配时，在 CLI 实际列出的 chat 模型里找同系列 / 版本 / 变体中最接近请求、且满足本阶段能力的真实候选：catalog 与看图相关任务要求候选具备图像输入能力（Pi 的 `images` 列为 yes）。用户明确指定了 provider 时只在那个 provider 内选，不静默跨 provider；未指定时优先 CLI 中已有可用认证的候选。
+5. 找到明确的近似候选可以直接采用：向用户简短说明「请求 → 实际模型」，不再因非精确匹配一律停下确认。
+6. **以下情况明确阻塞、向用户报告并寻求决定**：目标 CLI 不可用或无法列出模型；候选表里没有满足能力要求的可用模型；最接近的候选要求改变用户明确指定的 provider；几个候选同样接近、无法合理区分。**不编造模型 id，不换成另一个 coding agent，不输出凭据 / API key，不自动安装模型，不改用户全局认证。**
+
+解析完成后带 `--resolved-model "<实际原生标识>"` 运行 `prepare-handoff.py`：handoff 的 Coding Agent 小节同时展示请求与实际值，JSON 的 `coding_model` 返回实际值、`requested_model` 返回原始请求；实际派发用实际值（`pi --model "<coding_model>"`）。**请求了模型但还没解析出结果时，不要运行 `prepare-handoff.py` 生成 handoff**——脚本会拒绝生成一份把模糊名称冒充执行模型的 handoff。没有模型请求时不传 `--resolved-model`，二者都为 `null`，使用目标 agent 自身配置。
 
 ## 指令叠加顺序
 
@@ -58,6 +72,6 @@ Pi 已核实的 flag（`pi --help`）：
 4. Required References
 5. Additional Instructions
 
-handoff 由 `scripts/prepare-handoff.py <ws> <step> [--refresh]` 生成，主 agent 不手写：脚本把本约定和 `references/delegation/<step>/` 拷进 `<ws>/references/delegation/`（composition 另外把 `modules/`（不含 `examples/`）拷进 `<ws>/modules/`，并按所选 design 预置字体），再按模板填出 `<ws>/<step>-handoff.md`。已存在的副本不覆盖，`--refresh` 才覆盖：委派包里的规则更新后，已有工作区要显式 refresh 才会读到新规则（先确认那份副本没有被本地改过）。派发的 prompt 只有上面那一句。
+handoff 由 `scripts/prepare-handoff.py <ws> <step> [--refresh] [--resolved-model <实际标识>]` 生成，主 agent 不手写：脚本把本约定和 `references/delegation/<step>/` 拷进 `<ws>/references/delegation/`（composition 另外把 `modules/`（不含 `examples/`）拷进 `<ws>/modules/`，并按所选 design 预置字体），再按模板填出 `<ws>/<step>-handoff.md`。已存在的副本不覆盖，`--refresh` 才覆盖：委派包里的规则更新后，已有工作区要显式 refresh 才会读到新规则（先确认那份副本没有被本地改过）。派发的 prompt 只有上面那一句。
 
 handoff 里的路径全是绝对路径，命令里的 skill 脚本写成 `source <skill_root>/.venv/bin/activate && python3 <skill_root>/scripts/<x>.py ...`，不依赖当前目录。委派包文档里的相对路径：`scripts/` 与 `references/phases/` 相对 skill 根目录；`references/delegation/` 相对工作区（那里有物化的副本）；`modules/` 在 composition 步骤相对工作区副本，在 script 步骤相对 skill 根目录（script 与 catalog 步骤都不拷 modules）。

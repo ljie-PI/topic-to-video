@@ -429,19 +429,23 @@ def test_catalog_defaults_to_ordered_coarse_frames_then_local_detail():
     assert '仅作为后续可评测' not in flow
 
 
-def test_all_documented_coding_agent_defaults_use_pi():
+def test_default_agent_and_command_live_only_in_the_conventions():
     for path in (REPO_ROOT / 'references').rglob('*.md'):
         text = path.read_text(encoding='utf-8')
         assert not re.search(r'默认\s+`?claude-code', text), str(path)
+    # 默认目标与命令只在统一约定维护；各 phase / 模板只引用它，不复述默认 Pi 提示。
+    conventions = doc_text('references/delegation/conventions.md')
+    assert '默认 coding agent 是 **pi-coding-agent**' in conventions
+    assert '`pi`' in conventions
     for doc in (
-        'references/delegation/conventions.md',
         'references/phases/01-gather-inputs.md',
         'references/phases/05-material-catalog.md',
         'references/phases/06-script-scene-plan.md',
         'references/phases/08-composition.md',
     ):
-        assert 'pi-coding-agent' in doc_text(doc)
-        assert '`pi`' in doc_text(doc)
+        text = doc_text(doc)
+        assert 'references/delegation/conventions.md' in text, doc
+        assert not re.search(r'默认[^\n。；]*pi-coding-agent', text), doc
 
 
 def test_catalog_delegation_package_documents_the_paper_only_path():
@@ -495,8 +499,9 @@ def test_phase_1_collects_inputs_without_interviewing_the_user():
     assert '默认横屏 `1920×1080`' in phase_1
     assert '用户说“竖屏”但没给比例时用 `1080×1440`' in phase_1
     assert '明确要 9:16 时才用 `1080×1920`' in phase_1
-    # 委派默认 Pi。
-    assert '默认 `pi-coding-agent`' in phase_1
+    # 委派默认目标：Phase 1 只引用统一约定，不复述默认 Pi 提示。
+    assert '默认 `pi-coding-agent`' not in phase_1
+    assert 'references/delegation/conventions.md' in phase_1
     assert 'claude-code' not in phase_1
 
 

@@ -1,6 +1,6 @@
 # Phase 6 — 脚本与场景规划（委派给 coding agent）
 
-本 phase 整体委派给 coding agent 完成：旁白（显示稿 + 词表）与叙事层场景规划由 script agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认 pi-coding-agent（命令 `pi`）；派发 prompt 只有一句话，让对方读 handoff）。
+本 phase 整体委派给 coding agent 完成：旁白（显示稿 + 词表）与叙事层场景规划由 script agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认目标与模型解析只在该约定里维护；派发 prompt 只有一句话，让对方读 handoff）。
 
 ## 输入
 
