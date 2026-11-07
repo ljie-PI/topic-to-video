@@ -248,31 +248,6 @@ def template_contract_problem(skill_root: Path, template: Any) -> str | None:
     )
 
 
-def template_layouts(
-    skill_root: Path, template: str, *, ws: Path | None = None, refresh: bool = False,
-) -> list[str] | None:
-    """模板按场景借用时推荐的 layout（``<t>/<t>.json`` 的 preferred_layouts）。
-
-    推荐是建议性的：执行者根据内容、画布和实际可读性判断是否适用，不是全片
-    硬枚举门槛。声明缺失或不合法时返回 None，调用方按错误处理，而不是猜一个
-    默认值。
-    """
-    relpath = f'{TEMPLATES_PATH}/{template}/{template}.json'
-    path = effective_resource(skill_root, ws, relpath, refresh=refresh) if ws is not None else skill_root / relpath
-    try:
-        data = json.loads(path.read_text(encoding='utf-8'))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
-    if not isinstance(data, dict) or data.get('template') != template:
-        return None
-    layouts = data.get('preferred_layouts')
-    if not isinstance(layouts, list) or not layouts:
-        return None
-    if any(not isinstance(name, str) or not name for name in layouts):
-        return None
-    return list(layouts)
-
-
 def effective_resource(skill_root: Path, ws: Path, relpath: str, *, refresh: bool) -> Path:
     """校验和引用都必须指向的那个文件。
 

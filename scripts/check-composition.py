@@ -52,7 +52,6 @@ import chrome_cdp
 import cli
 import media
 import scene_config
-import video_contract
 from timeline_scenes import normalize_scenes
 
 TOOL_NAME = 'check-composition'
@@ -182,41 +181,17 @@ def load_scene_config_scenes(args: argparse.Namespace, composition_dir: Path) ->
     ws = composition_dir.parent
     audio = Path(args.narration_audio).expanduser().resolve() if args.narration_audio else ws / 'voice_clone' / 'narration.mp3'
     duration_s = media.probe_duration(audio)
-    try:
-        inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
-        orientation = inputs.get('orientation') if isinstance(inputs, dict) else None
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f'cannot read {ws / "inputs.json"} for visual-scene validation: {exc}') from exc
-    expected_canvas = video_contract.orientation_canvas(orientation)
-    if expected_canvas is None:
-        raise ValueError(f'inputs.json field orientation must be a canonical orientation, got {orientation!r}')
+    expected_canvas = scene_config.load_workspace_expected_canvas(ws)
     config = scene_config.load_scene_config(
         Path(args.scene_config).expanduser().resolve(),
         expected_canvas=expected_canvas,
-        known_scene_ids=workspace_scene_ids(ws),
+        known_scene_ids=scene_config.workspace_scene_ids(ws),
         modules_root=Path(__file__).resolve().parent.parent,
     )
-    total_s = config['total_s']
-    if abs(total_s - duration_s) > scene_config.DURATION_TOLERANCE_S + 0.05:
-        raise ValueError(
-            f'scene-config total_s {total_s} does not match narration duration {duration_s}'
-        )
+    problem = scene_config.total_s_problem(config['total_s'], duration_s)
+    if problem:
+        raise ValueError(problem)
     return config['scenes'], {'canvas': config['canvas']}
-
-
-def workspace_scene_ids(ws: Path) -> set[str] | None:
-    """scene-plan.json 的叙事 scene_id 集合；缺失或损坏时不阻塞检查。"""
-    try:
-        plan = json.loads((ws / 'scene-plan.json').read_text(encoding='utf-8'))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
-    if not isinstance(plan, list):
-        return None
-    ids = {
-        scene['scene_id'] for scene in plan
-        if isinstance(scene, dict) and isinstance(scene.get('scene_id'), str)
-    }
-    return ids or None
 
 
 def load_snapshot_list(path: str) -> List[Dict[str, Any]]:

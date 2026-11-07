@@ -148,17 +148,12 @@ def test_unknown_names_are_rejected_with_the_available_ones():
     assert "got 'nope'" in video_contract.template_contract_problem(REPO_ROOT, 'nope')
 
 
-def test_a_template_declares_the_layouts_it_supports():
-    assert video_contract.template_layouts(REPO_ROOT, 'github') == ['presenter']
-    assert video_contract.template_layouts(REPO_ROOT, 'no-such-template') is None
-
-
-def test_a_template_without_a_declaration_has_no_layouts(tmp_path: Path):
+def test_a_template_without_a_declaration_is_not_registered(tmp_path: Path):
     template = tmp_path / 'modules' / 'templates' / 'bare'
     template.mkdir(parents=True)
     (template / 'bare.md').write_text('# bare', encoding='utf-8')
     (template / 'bare.json').write_text('{"template": "bare"}', encoding='utf-8')
-    assert video_contract.template_layouts(tmp_path, 'bare') is None
+    assert video_contract.template_contract_problem(tmp_path, 'bare') is None
 
 
 def test_the_effective_resource_follows_the_copy_then_refresh_policy(tmp_path: Path):

@@ -786,41 +786,19 @@ def load_workspace_scene_config(ws: Path) -> tuple[dict[str, Any] | None, str | 
         return None, 'inputs.json is unavailable for scene canvas validation'
     try:
         duration_s = media.probe_duration(ws / 'voice_clone' / 'narration.mp3')
-        expected = video_contract.orientation_canvas(inputs.get('orientation'))
-        if expected is None:
-            return None, (
-                'inputs.json field orientation must be a canonical orientation, '
-                f'got {inputs.get("orientation")!r}'
-            )
+        expected = scene_config.expected_canvas_for(inputs.get('orientation'))
         config = scene_config.load_scene_config(
             path,
             expected_canvas=expected,
-            known_scene_ids=workspace_scene_ids(ws),
+            known_scene_ids=scene_config.workspace_scene_ids(ws),
             modules_root=SKILL_ROOT,
         )
-        if abs(config['total_s'] - duration_s) > scene_config.DURATION_TOLERANCE_S + 0.05:
-            return None, (
-                f'scene-config total_s {config["total_s"]} does not match narration '
-                f'duration {duration_s}'
-            )
+        problem = scene_config.total_s_problem(config['total_s'], duration_s)
+        if problem:
+            return None, problem
     except (ValueError, OSError, media.MediaToolMissing, media.MediaProbeError) as exc:
         return None, str(exc)
     return config, None
-
-
-def workspace_scene_ids(ws: Path) -> set[str] | None:
-    """scene-plan.json 的叙事 scene_id 集合；缺失或损坏时不阻塞状态扫描。"""
-    try:
-        plan = json.loads((ws / 'scene-plan.json').read_text(encoding='utf-8'))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
-    if not isinstance(plan, list):
-        return None
-    ids = {
-        scene['scene_id'] for scene in plan
-        if isinstance(scene, dict) and isinstance(scene.get('scene_id'), str)
-    }
-    return ids or None
 
 
 def check_scene_config_product(ws: Path, relpath: str) -> CheckResult:

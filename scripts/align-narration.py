@@ -1008,32 +1008,16 @@ def load_scene_caption_segments(args: argparse.Namespace) -> list[dict[str, Any]
     ws = transcript_path.parent.parent
     audio_path = Path(args.narration_audio).resolve() if args.narration_audio else ws / 'voice_clone' / 'narration.mp3'
     duration_s = media.probe_duration(audio_path)
-    try:
-        inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f'cannot read {ws / "inputs.json"} for scene canvas validation: {exc}') from exc
-    if not isinstance(inputs, dict):
-        raise ValueError(f'{ws / "inputs.json"} root must be an object')
-    orientation = inputs.get('orientation')
-    expected_canvas = video_contract.orientation_canvas(orientation)
-    if expected_canvas is None:
-        raise ValueError(f'inputs.json field orientation must be a canonical orientation, got {orientation!r}')
-    config_path = Path(args.scene_config).resolve()
-    try:
-        config = scene_config.load_scene_config(
-            config_path,
-            expected_canvas=expected_canvas,
-            known_scene_ids=workspace_scene_ids(ws),
-            modules_root=Path(__file__).resolve().parent.parent,
-        )
-    except ValueError as exc:
-        raise ValueError(str(exc)) from exc
-    total_s = config['total_s']
-    if abs(total_s - duration_s) > scene_config.DURATION_TOLERANCE_S + 0.05:
-        raise ValueError(
-            f'scene-config total_s {total_s} does not match narration duration {duration_s}; '
-            'total_s bounds the delivered video at the narration length'
-        )
+    expected_canvas = scene_config.load_workspace_expected_canvas(ws)
+    config = scene_config.load_scene_config(
+        Path(args.scene_config).resolve(),
+        expected_canvas=expected_canvas,
+        known_scene_ids=scene_config.workspace_scene_ids(ws),
+        modules_root=Path(__file__).resolve().parent.parent,
+    )
+    problem = scene_config.total_s_problem(config['total_s'], duration_s)
+    if problem:
+        raise ValueError(problem)
     segments = scene_config.caption_layout_segments(config['scenes'])
     for segment in segments:
         caption = segment['layout_data']['caption']
@@ -1043,21 +1027,6 @@ def load_scene_caption_segments(args: argparse.Namespace) -> list[dict[str, Any]
             f'font_size={caption["font_size_px"]} max_lines={caption["max_lines"]}'
         )
     return segments
-
-
-def workspace_scene_ids(ws: Path) -> set[str] | None:
-    """scene-plan.json 的叙事 scene_id 集合；缺失或损坏时不阻塞字幕生成。"""
-    try:
-        plan = json.loads((ws / 'scene-plan.json').read_text(encoding='utf-8'))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
-    if not isinstance(plan, list):
-        return None
-    ids = {
-        scene['scene_id'] for scene in plan
-        if isinstance(scene, dict) and isinstance(scene.get('scene_id'), str)
-    }
-    return ids or None
 
 
 def caption_budget(segments: list[dict[str, Any]]) -> Callable[[int, int], float]:

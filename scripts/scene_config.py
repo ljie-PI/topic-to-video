@@ -345,24 +345,78 @@ def load_scene_config(
 def caption_layout_segments(scenes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """把校验过的视觉 scenes 投影成有效字幕布局区间。
 
-    scene-config 的主区间不重叠，每个 scene 恰好投影为一个区间；相邻同 scene
-    区间仍保持分开，以保留场景来源。每个 segment 带 ``layout``（借用的 preset
-    名，自由布局为 None）与 ``layout_data``（落盘的实际 regions / caption）。
+    scene-config 的主区间不重叠且 scene_id 唯一，每个 scene 恰好投影为一个
+    区间。每个 segment 带 ``layout``（借用的 preset 名，自由布局为 None）与
+    ``layout_data``（落盘的实际 regions / caption）。
     """
-    segments: list[dict[str, Any]] = []
-    for scene in scenes:
-        layout = scene['layout']
-        if segments and segments[-1]['scene_id'] == scene['scene_id'] and segments[-1]['end_s'] == scene['begin_s']:
-            segments[-1]['end_s'] = scene['end_s']
-        else:
-            segments.append({
-                'scene_id': scene['scene_id'],
-                'begin_s': scene['begin_s'],
-                'end_s': scene['end_s'],
-                'layout': layout['preset'],
-                'layout_data': layout,
-            })
-    return segments
+    return [
+        {
+            'scene_id': scene['scene_id'],
+            'begin_s': scene['begin_s'],
+            'end_s': scene['end_s'],
+            'layout': scene['layout']['preset'],
+            'layout_data': scene['layout'],
+        }
+        for scene in scenes
+    ]
+
+
+# --- 宿主共用的工作区上下文 ----------------------------------------------------
+#
+# 状态、字幕与渲染前检查都用同一套「工作区 → 画布 / 时长 / 叙事场景」推断，
+# 只写一份，调用方不再各自复制。
+
+
+def workspace_scene_ids(ws: Path) -> set[str] | None:
+    """scene-plan.json 的叙事 scene_id 集合；缺失或损坏时不阻塞调用方。"""
+    try:
+        plan = json.loads((ws / 'scene-plan.json').read_text(encoding='utf-8'))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(plan, list):
+        return None
+    ids = {
+        scene['scene_id'] for scene in plan
+        if isinstance(scene, dict) and isinstance(scene.get('scene_id'), str)
+    }
+    return ids or None
+
+
+def expected_canvas_for(orientation: Any) -> tuple[int, int]:
+    """规范 orientation 对应的精确画布；非规范值给出带字段定位的错误。"""
+    canvas = video_contract.orientation_canvas(orientation)
+    if canvas is None:
+        raise ValueError(
+            f'inputs.json field orientation must be a canonical orientation, got {orientation!r}'
+        )
+    return canvas
+
+
+def load_workspace_expected_canvas(ws: Path) -> tuple[int, int]:
+    """读取 ``<ws>/inputs.json``，返回其 orientation 对应的精确画布。"""
+    try:
+        inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f'cannot read {ws / "inputs.json"} for scene-config validation: {exc}') from exc
+    if not isinstance(inputs, dict):
+        raise ValueError(f'{ws / "inputs.json"} root must be an object')
+    return expected_canvas_for(inputs.get('orientation'))
+
+
+def total_s_problem(total_s: float, duration_s: Any) -> str | None:
+    """scene-config total_s 与实际配音时长不一致的原因，或 None。
+
+    total_s 以配音为边界（含语音前后的静音画面），两者超出容差就是配置错误，
+    不靠改 Phase 7 时间轴凑时长。
+    """
+    if isinstance(duration_s, bool) or not isinstance(duration_s, (int, float)):
+        return f'narration duration must be a positive finite number, got {duration_s!r}'
+    if abs(total_s - float(duration_s)) > DURATION_TOLERANCE_S + 0.05:
+        return (
+            f'scene-config total_s {total_s} does not match narration duration {duration_s}; '
+            'total_s bounds the delivered video at the narration length'
+        )
+    return None
 
 
 def caption_region(layout: dict[str, Any]) -> dict[str, Any] | None:
