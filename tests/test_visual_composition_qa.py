@@ -253,3 +253,37 @@ def test_template_and_free_fallback_scenes_pass_together(tmp_path: Path):
     assert [(s['scene_id'], s['layout']) for s in result['scenes_checked']] == [
         ('tpl', 'presenter'), ('free', None),
     ]
+
+
+def test_hand_edited_subtitle_units_are_the_checked_truth(tmp_path: Path):
+    """用户手改过的字幕文本与边界就是检查基准：按当前文件核对，不还原初稿。"""
+    ws, snapshots_path = mixed_workspace(tmp_path, [
+        mixed_snapshot('tpl', 2, jay=True),
+        mixed_snapshot('free', 7, jay=False),
+    ])
+    snapshots = json.loads(snapshots_path.read_text(encoding='utf-8'))
+    for snap in snapshots:
+        snap['captionTexts'] = ['改过的字幕']
+        snap['captionDetails'][0]['text'] = '改过的字幕'
+    units = tmp_path / 'units.json'
+    # 文本与边界都被改过；没有锁文件 / 指纹 / 编辑审批，检查直接消费当前内容
+    write_json(units, {'units': [{'text': '改过的字幕', 'begin_s': 0, 'end_s': 10}]})
+    edited_path = tmp_path / 'edited-snapshots.json'
+    write_json(edited_path, snapshots)
+
+    proc, result = run(ws, edited_path, '--subtitle-units', str(units))
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert [f for f in result['findings'] if f['check'] == 'caption_mismatch'] == []
+
+    # 反向对照：屏幕若仍是初稿文本，与当前（已编辑）单元不符，必须报 mismatch
+    for snap in snapshots:
+        snap['captionTexts'] = ['字幕']
+    original_path = tmp_path / 'original-snapshots.json'
+    write_json(original_path, snapshots)
+    proc, result = run(ws, original_path, '--subtitle-units', str(units))
+
+    assert proc.returncode == 0
+    mismatch = [f for f in result['findings'] if f['check'] == 'caption_mismatch']
+    assert len(mismatch) == 2
+    assert all('改过的字幕' in f['issue'] for f in mismatch)

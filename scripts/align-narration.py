@@ -54,20 +54,32 @@
   `fallback: false`。计数汇总在 `summary.fallback_units` 中。
 
 切分（仅 --mode subtitles）：
-  - 先按句末标点切（。！？!?…，以及不在词 / 数字内部的拉丁 .!?）；
-  - 去掉每个单元结尾的 ，和 。，保留 ？！；
-  - 宽于上限的单元在 ，,；;、：:—— 处断开；断点绝不落在英文词或数字内部
-    （禁止在两个拉丁 token 字符之间断开）；
-  - 过短的尾部片段（窄于 max(2, 0.2 * cap)）会被重新平衡一次：在离两者中点最近
-    的断点处把最后两段重新切开；
-  - 短于 0.6 s 的单元并入相邻单元（有前一个就并到前一个）；合并后的单元可能
-    超出宽度上限，但与字幕闪烁相比这是较小的恶。
+  单 layout / 显式参数入口按给定预算切整段文本，行为与历史一致。
+  视觉 scene 入口（--scene-config）先把每个 atom 按真实时间完整归属到一个
+  scene（与各 scene 区间重叠最多者，平手归较早 scene；atom 的真实时间不改），
+  再按 scene 分组复用同一套切分逻辑：
+  - 每个 scene 组用自己的 width_px / font_size_px / max_lines 预算，不用全片
+    最小预算冒充逐场景规格，也不为凑预算改 atom 时间；
+  - 组内规则：先按句末标点切（。！？!?…，以及不在词 / 数字内部的拉丁 .!?）；
+    去掉每个单元结尾的 ，和 。，保留 ？！；宽于上限的单元在 ，,；;、：:——
+    处断开；断点绝不落在英文词或数字内部；
+  - 过短的尾部片段在组内重新平衡一次；
+  - 短于 0.6 s 的单元并入相邻单元，但绝不跨「不同版面」的 scene 切点合并
+    （相邻 scene 的 caption 规格完全一致才算同一版面）；超预算的合并会被
+    拒绝并给出诊断；
+  - 英文 / 数字 token 的 atoms 分属不同 scene（切点落在 token 时间内部且
+    无法完整归属一侧）时返回可定位错误：报出涉及的 scene_id 与两侧真实
+    可用的时间边界，由 composition agent 调整视觉切点或编辑字幕；不静默
+    截断、重复或丢弃文字。
+  - 每个单元带 scene_id（归属的 visual scene），保留 text / 段落 / 秒 /
+    毫秒等既有字段。
 
 产出（路径来自 --units-output / --timeline-output；只写当前 mode 属于它的那份）：
   subtitle-units.json : {"version": 1, "units": [...], "summary": {...}}
     每个单元：{index, text, begin_ms, end_ms, begin_s, end_s, fallback,
     paragraph} —— 其中 text / begin_s / end_s 字段保持既有的下游字幕单元契约。
-    视觉 scenes 模式另含 caption_segments，供组件与 QA 消费同一组派生边界。
+    视觉 scenes 模式另含 scene_id（该单元归属的 visual scene）与
+    caption_segments，供组件与 QA 消费同一组派生边界。
   timeline.json : {"version": 1, "total_s", "paragraphs": [{index, begin_s,
     end_s}]}；带 --scene-plan 时还会加上 "scenes" 列表 [{scene_id, begin_s,
     end_s}]（场景边界由各 scene 覆盖的段落推导），以及 "cues" 列表
@@ -748,11 +760,19 @@ def merge_short_units(
     warnings: list[str],
     *,
     respect_budget: bool = False,
+    segment_owners: list[int] | None = None,
+    scene_keys: list[tuple[int, int, int]] | None = None,
 ) -> tuple[list[list[Atom]], int]:
     """把短于 MIN_UNIT_MS 的单元并入相邻单元（优先并入前一个）。
 
     旧单 layout 入口保留“最短显示时长优先”的历史兼容行为。视觉 scene 模式中
     布局预算是硬约束：若合并会超预算，就保留较短的单元并给出诊断。
+
+    segment_owners（与 units 等长的 scene 下标）与 scene_keys（每个 scene
+    的版面键）同时给出时，合并只允许在「同一版面」内进行：两侧单元的 owner
+    之间（含）的所有 scene 版面键必须完全一致，否则视为不同版面的切点，
+    绝不合并——中间没有 atoms 的空 scene 也构成屏障。segment_owners 随合并
+    同步收缩，保证调用方的平行列表不错位。
     """
     merged_count = 0
     changed = True
@@ -763,6 +783,16 @@ def merge_short_units(
             atoms = units[index]
             if atoms and atoms[-1].end_ms - atoms[0].begin_ms < MIN_UNIT_MS and len(units) > 1:
                 target = index - 1 if index > 0 else index + 1
+                if segment_owners is not None and scene_keys is not None:
+                    owner_lo = min(segment_owners[index], segment_owners[target])
+                    owner_hi = max(segment_owners[index], segment_owners[target])
+                    if any(key != scene_keys[owner_lo] for key in scene_keys[owner_lo:owner_hi + 1]):
+                        warnings.append(
+                            f'short subtitle unit stays on its side of a layout cut point: '
+                            f'{unit_text(atoms)[:40]!r}'
+                        )
+                        index += 1
+                        continue
                 candidate = units[target] + atoms if index > 0 else atoms + units[target]
                 if respect_budget and atoms_width(candidate) > atoms_budget(cap, candidate):
                     warnings.append(
@@ -771,12 +801,106 @@ def merge_short_units(
                     )
                     index += 1
                     continue
-                units[min(index, target):max(index, target) + 1] = [candidate]
-                index = min(index, target)
+                lo, hi = min(index, target), max(index, target)
+                units[lo:hi + 1] = [candidate]
+                if segment_owners is not None:
+                    segment_owners[lo:hi + 1] = [segment_owners[lo]]
+                index = lo
                 merged_count += 1
                 changed = True
             index += 1
     return units, merged_count
+
+
+# --- 视觉 scene 归属 ----------------------------------------------------------
+
+
+def scene_caption_keys(segments: list[dict[str, Any]]) -> list[tuple[int, int, int]]:
+    """每个 scene 的「版面键」：caption 规格三元组。相邻 scene 键相同，它们
+    之间的切点不算「不同版面」，短字幕合并允许跨过；键不同则绝不跨切点合并。"""
+    keys = []
+    for item in segments:
+        caption = item['layout_data']['caption']
+        keys.append((caption['width_px'], caption['font_size_px'], caption['max_lines']))
+    return keys
+
+
+def attribute_atoms_to_scenes(
+    atoms: list[Atom],
+    segments: list[dict[str, Any]],
+) -> list[int]:
+    """把每个 atom 按真实时间完整归属到一个视觉 scene。
+
+    归属规则：atom 的 [begin_ms, end_ms) 与各 scene 区间重叠最多者；平手归
+    较早的 scene。atom 的真实时间不被修改，因此不丢字、不重复、不编时间。
+    atom 不被任何 scene 覆盖时给出可定位错误。
+    """
+    ranges = [
+        (round(item['begin_s'] * 1000), round(item['end_s'] * 1000))
+        for item in segments
+    ]
+    attribution: list[int] = []
+    for atom in atoms:
+        best_index = -1
+        best_overlap = 0
+        for index, (begin, end) in enumerate(ranges):
+            overlap = min(atom.end_ms, end) - max(atom.begin_ms, begin)
+            if overlap > best_overlap:
+                best_index = index
+                best_overlap = overlap
+        if best_index < 0:
+            raise ValueError(
+                f'aligned atom {atom.text!r} at [{atom.begin_ms}, {atom.end_ms}) ms '
+                'is not covered by any visual scene range'
+            )
+        attribution.append(best_index)
+    return attribution
+
+
+def raise_for_token_at_scene_cuts(
+    atoms: list[Atom],
+    attribution: list[int],
+    segments: list[dict[str, Any]],
+) -> None:
+    """英文 / 数字 token 的 atoms 分属不同 scene 时报可定位错误。
+
+    切点绝不落在 token 内部：把一个跨切点的 token 硬归某侧会让字幕单元越过
+    该 scene 的真实显示区间，而拆散它又违反「不在英文词 / 数字内部断开」。
+    此时报出涉及的 scene_id 与两侧真实可用的时间边界（该 scene 已对齐 atoms
+    的最小 begin / 最大 end），交给 composition agent 调整视觉切点或编辑字
+    幕；不静默截断、重复或丢弃文字。
+    """
+    index = 0
+    while index < len(atoms):
+        if not is_latin_token_char(atoms[index].text):
+            index += 1
+            continue
+        end = index + 1
+        while end < len(atoms) and is_latin_token_char(atoms[end].text):
+            end += 1
+        owners = attribution[index:end]
+        if len(set(owners)) > 1:
+            first, last = atoms[index], atoms[end - 1]
+            details = []
+            for scene_index in sorted(set(owners)):
+                scene_atoms = [atom for atom, owner in zip(atoms, attribution) if owner == scene_index]
+                # 真实可用边界以非借用 atoms 为准；该 scene 只有借用 atoms 时退回全部
+                members = [atom for atom in scene_atoms if not atom.borrowed] or scene_atoms
+                label = f"scene {segments[scene_index]['scene_id']!r}"
+                if members:
+                    details.append(
+                        f'{label} has aligned audio [{min(a.begin_ms for a in members)}, '
+                        f'{max(a.end_ms for a in members)}] ms'
+                    )
+                else:
+                    details.append(f'{label} has no aligned atoms')
+            raise ValueError(
+                f"caption token {''.join(atom.text for atom in atoms[index:end])!r} "
+                f"([{first.begin_ms}, {last.end_ms}) ms) crosses a visual scene cut and "
+                f'cannot be fully attributed: ' + '; '.join(details) + '; '
+                'move the scene cut point or edit the subtitle'
+            )
+        index = end
 
 
 # --- timeline 的 scenes 与 cues ----------------------------------------------
@@ -908,19 +1032,51 @@ def build_units(
     warnings: list[str],
     *,
     scene_budgets: bool = False,
+    scene_segments: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], int, int]:
-    """把 atoms 切成字幕单元；返回 (units, fallback_units, merged_units)。"""
+    """把 atoms 切成字幕单元；返回 (units, fallback_units, merged_units)。
+
+    scene_segments 给定（视觉 scene 模式）时，先把段落 atoms 完整归属到各自
+    scene，按 scene 分组后用该 scene 自己的预算切分；短字幕合并不跨不同版面
+    的切点。units 带 scene_id。
+    """
     units: list[dict[str, Any]] = []
     fallback_units = 0
     merged_total = 0
     previous_end = -1
+    caption_keys = scene_caption_keys(scene_segments) if scene_segments is not None else None
     for paragraph, paragraph_atoms in paragraphs_in_order(atoms_by_paragraph):
+        attribution: list[int] | None = None
+        if scene_segments is not None:
+            attribution = attribute_atoms_to_scenes(paragraph_atoms, scene_segments)
+            raise_for_token_at_scene_cuts(paragraph_atoms, attribution, scene_segments)
         segments: list[list[Atom]] = []
-        for sentence in split_into_sentences(paragraph_atoms):
-            segments.extend(split_sentence(sentence, cap, warnings, strict_tokens=scene_budgets))
-        segments, merged = merge_short_units(segments, cap, warnings, respect_budget=scene_budgets)
+        segment_owners: list[int] = []
+        owner_sentences: list[tuple[int | None, list[Atom]]] = []
+        if attribution is None:
+            owner_sentences = [(None, sentence) for sentence in split_into_sentences(paragraph_atoms)]
+        else:
+            # 按归属 scene 分组（保持文本顺序），每组用该 scene 自己的预算切分
+            groups: list[tuple[int, list[Atom]]] = []
+            for atom, owner in zip(paragraph_atoms, attribution):
+                if groups and groups[-1][0] == owner:
+                    groups[-1][1].append(atom)
+                else:
+                    groups.append((owner, [atom]))
+            for owner, group_atoms in groups:
+                owner_sentences.extend(
+                    (owner, sentence) for sentence in split_into_sentences(group_atoms)
+                )
+        for owner, sentence_atoms in owner_sentences:
+            pieces = split_sentence(sentence_atoms, cap, warnings, strict_tokens=scene_budgets)
+            segments.extend(pieces)
+            segment_owners.extend([owner] * len(pieces))
+        segments, merged = merge_short_units(
+            segments, cap, warnings, respect_budget=scene_budgets,
+            segment_owners=segment_owners, scene_keys=caption_keys,
+        )
         merged_total += merged
-        for segment in segments:
+        for owner, segment in zip(segment_owners, segments):
             if scene_budgets and atoms_width(segment) > atoms_budget(cap, segment):
                 raise ValueError(
                     f'caption segment exceeds its visual-scene budget after split/merge: '
@@ -939,18 +1095,19 @@ def build_units(
             fallback = any(atom.fallback for atom in segment)
             if fallback:
                 fallback_units += 1
-            units.append(
-                {
-                    'index': len(units) + 1,
-                    'text': text,
-                    'begin_ms': begin_ms,
-                    'end_ms': end_ms,
-                    'begin_s': round(begin_ms / 1000, 3),
-                    'end_s': round(end_ms / 1000, 3),
-                    'fallback': fallback,
-                    'paragraph': paragraph,
-                }
-            )
+            unit: dict[str, Any] = {
+                'index': len(units) + 1,
+                'text': text,
+                'begin_ms': begin_ms,
+                'end_ms': end_ms,
+                'begin_s': round(begin_ms / 1000, 3),
+                'end_s': round(end_ms / 1000, 3),
+                'fallback': fallback,
+                'paragraph': paragraph,
+            }
+            if scene_segments is not None:
+                unit['scene_id'] = scene_segments[owner]['scene_id']
+            units.append(unit)
     return units, fallback_units, merged_total
 
 
@@ -1118,7 +1275,8 @@ def align(args: argparse.Namespace) -> dict[str, Any]:
         cap = int(caption_width / caption_font_size) * caption_max_lines
         log(f'cap={cap}')
     units, fallback_units, merged_total = build_units(
-        atoms_by_paragraph, cap, warnings, scene_budgets=segments is not None,
+        atoms_by_paragraph, cap, warnings,
+        scene_budgets=segments is not None, scene_segments=segments,
     )
     if not units:
         raise ValueError('alignment produced no subtitle units')

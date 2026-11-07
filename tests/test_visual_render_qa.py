@@ -120,3 +120,61 @@ def test_contact_sheet_reads_scene_config_scenes_leniently(tmp_path: Path):
 
     assert proc.returncode == 0, proc.stderr
     assert {frame['scene_id'] for frame in result['frames']} >= {'visual_before', 'visual_after'}
+
+
+def test_phase9_uses_split_and_merged_visual_scene_ids(tmp_path: Path):
+    """拆并后的最终视觉 scene_id 是 Phase 9 的唯一归属依据（#151 验收）。
+
+    叙事 scene_1 被拆成 intro_part_1 / intro_part_2，scene_2 + scene_3 合并成
+    demo_merged；黑屏 / 抽帧标注必须落在视觉 scene_id 上，不得冒出叙事 id。
+    """
+    write_json(tmp_path / 'inputs.json', {'orientation': 'landscape', 'qa_level': 'strict'})
+    audio = tmp_path / 'voice_clone/narration.mp3'
+    audio.parent.mkdir(parents=True)
+    subprocess.run([
+        'ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono',
+        '-t', '10', '-c:a', 'libmp3lame', str(audio),
+    ], capture_output=True, check=True)
+    write_json(tmp_path / 'composition/scene-config.json', {
+        'version': 1,
+        'canvas': {'width': 1920, 'height': 1080},
+        'total_s': 10,
+        'scenes': [
+            {'scene_id': 'intro_part_1', 'source_scene_ids': ['scene_1'],
+             'begin_s': 0, 'end_s': 3, 'template': None,
+             'layout': {'preset': None, 'regions': [], 'caption': {'width_px': 1, 'font_size_px': 1, 'max_lines': 1}}},
+            {'scene_id': 'intro_part_2', 'source_scene_ids': ['scene_1'],
+             'begin_s': 3, 'end_s': 6, 'template': None,
+             'layout': {'preset': None, 'regions': [], 'caption': {'width_px': 1, 'font_size_px': 1, 'max_lines': 1}}},
+            {'scene_id': 'demo_merged', 'source_scene_ids': ['scene_2', 'scene_3'],
+             'begin_s': 6, 'end_s': 10, 'template': None,
+             'layout': {'preset': None, 'regions': [], 'caption': {'width_px': 1, 'font_size_px': 1, 'max_lines': 1}}},
+        ],
+    })
+
+    video = tmp_path / 'black.mp4'
+    make_black_video(video)
+    proc = subprocess.run([
+        sys.executable, str(ROOT / 'scripts/check-render.py'),
+        '--video', str(video), '--inputs', str(tmp_path / 'inputs.json'),
+        '--timeline', str(tmp_path / 'composition/scene-config.json'),
+    ], capture_output=True, text=True)
+    result = parse_stdout(proc)
+    assert proc.returncode == 0, proc.stderr
+    black = next(f for f in result['findings'] if f['check'] == 'black_screen')
+    assert black['scene_id'] == 'intro_part_2'  # 黑屏段 4.0–5.5s 落在 [3, 6)
+    assert not {'scene_1', 'scene_2', 'scene_3'} & {f['scene_id'] for f in result['findings']}
+
+    video = tmp_path / 'final.mp4'
+    make_video(video)
+    proc = subprocess.run([
+        sys.executable, str(ROOT / 'scripts/make-contact-sheet.py'),
+        '--video', str(video), '--inputs', str(tmp_path / 'inputs.json'),
+        '--timeline', str(tmp_path / 'composition/scene-config.json'),
+        '--output-dir', str(tmp_path / 'qa'),
+    ], capture_output=True, text=True)
+    result = parse_stdout(proc)
+    assert proc.returncode == 0, proc.stderr
+    ids = {frame['scene_id'] for frame in result['frames']}
+    assert {'intro_part_1', 'intro_part_2', 'demo_merged'} <= ids
+    assert not {'scene_1', 'scene_2', 'scene_3'} & ids

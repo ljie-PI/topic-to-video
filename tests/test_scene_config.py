@@ -107,6 +107,31 @@ def test_caption_region_prefers_caption_text_and_accepts_component_prefix():
     assert scene_config.caption_region(no_caption) is None
 
 
+def test_narrative_split_and_merge_mappings_are_both_valid(tmp_path: Path):
+    """一个叙事 scene 拆成多个视觉 scene、多个叙事 scene 并成一个视觉 scene，
+    都是有效映射；区间有序、无歧义并覆盖 total_s。"""
+    path = tmp_path / 'scene-config.json'
+    path.write_text(json.dumps(config(
+        scene('split_first', 0, 8, sources=['scene_1']),
+        scene('split_second', 8, 14, sources=['scene_1']),
+        scene('merged', 14, 20, sources=['scene_2', 'scene_3']),
+    )), encoding='utf-8')
+
+    loaded = scene_config.load_scene_config(
+        path, expected_canvas=LANDSCAPE,
+        known_scene_ids={'scene_1', 'scene_2', 'scene_3'},
+        modules_root=ROOT,
+    )
+
+    assert [(s['scene_id'], s['source_scene_ids']) for s in loaded['scenes']] == [
+        ('split_first', ['scene_1']),
+        ('split_second', ['scene_1']),
+        ('merged', ['scene_2', 'scene_3']),
+    ]
+    ranges = [(s['begin_s'], s['end_s']) for s in loaded['scenes']]
+    assert ranges == [(0.0, 8.0), (8.0, 14.0), (14.0, 20.0)]
+
+
 @pytest.mark.parametrize('mutate, expected', [
     (lambda c: c.pop('version'), 'version'),
     (lambda c: c.update(version=2), 'version'),
