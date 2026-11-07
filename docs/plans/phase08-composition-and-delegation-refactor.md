@@ -1,7 +1,7 @@
 # Phase 08：逐场景视觉配置、依赖清理与委派约定重构计划
 
 日期：2026-11-07  
-状态：已实施。WI-01 / WI-02 / WI-04 / WI-05 由 #147–#152 交付，WI-03 / WI-06 / WI-07 由 #153 交付；WI-08「必须做」的联网禁令清理已做，自动下载条件项按 10 行门槛评估为「无安全路径」并跳过（结论记录在 #153 完成报告）；WI-09 的集成验收按各实施票记录，未在本文件勾选 checklist。本文件保留为历史计划与决策依据，现行指令以仓库内 references/ 与 modules/ 文档为准。  
+状态：已实施。WI-01 / WI-02 / WI-04 / WI-05 由 #147–#152 交付，WI-03 / WI-06 / WI-07 由 #153 交付；WI-08「必须做」的联网禁令清理已做，自动下载条件项按 10 行门槛评估为「无安全路径」并跳过（结论记录在 #153 完成报告）；WI-09 的集成验收由 #154 完成，验收记录见本节末尾「WI-09 验收记录（#154）」。本文件保留为历史计划与决策依据，现行指令以仓库内 references/ 与 modules/ 文档为准。  
 依据：用户对 `docs/phase-08-review-answers.tmp.md` 的本轮 15 条批注；本轮要求优先于临时答复和旧计划。
 
 **本轮只编写 plan。实现、删除、迁移、下载及真实模型调用都留到实施阶段。**
@@ -445,11 +445,118 @@ Checklist：
 - 基线失败 / 环境阻塞 / 条件项跳过全部记录，未运行的真实测试明确标为未运行。
 
 Checklist：
-- [ ] 全部定向测试和全仓测试完成，新增失败均已修复或明确解释。
-- [ ] 3-scene 集成流程使用逐场景布局、保留手改字幕，进入 Phase 9 后 QA 场景映射正确。
-- [ ] 不产生指纹状态文件，不触发哈希 / mtime 新鲜度门槛。
-- [ ] 两个允许 skill 之外无直接或传递加载；生成工程运行协议不泄漏回模块库。
-- [ ] 更新本计划状态和验收记录，未实施项不标已完成；未经用户要求不提交 / 推送 / 合并。
+- [x] 全部定向测试和全仓测试完成，新增失败均已修复或明确解释。
+- [x] 3-scene 集成流程使用逐场景布局、保留手改字幕，进入 Phase 9 后 QA 场景映射正确。
+- [x] 不产生指纹状态文件，不触发哈希 / mtime 新鲜度门槛。
+- [x] 两个允许 skill 之外无直接或传递加载；生成工程运行协议不泄漏回模块库。
+- [x] 更新本计划状态和验收记录，未实施项不标已完成；未经用户要求不提交 / 推送 / 合并。
+
+### WI-09 验收记录（#154）
+
+日期：2026-11-08。基线：main @ 7ed25e5（已含 #147–#153）。临时工作区：
+`/tmp/opencode/ttv-154/demo`（standard 模式、fetch_materials=false、1 分钟中文显示稿、
+fake TTS/ASR、本机 Chromium + ffmpeg、本机 `pi` 1.4.0）。集成中发现的问题均为
+夹具/环境侧，未发现仓库代码 bug，无代码改动。
+
+**交付的接口（真实入口逐一跑通）**
+- `make-narration.py` → narration.txt + narration-offsets.json（真实现入口）。
+- `voice-clone.py --backend fake` → voice_clone/narration.mp3 + transcribe/transcript.json
+  （一次运行同时产出配音与转写，无付费调用）。
+- `align-narration.py --mode timing --scene-plan` → transcribe/timeline.json
+  （段落 + 叙事 scene + 1 条 cue 秒数，无警告）。
+- `prepare-handoff.py <ws> {script,composition} --resolved-model <实际标识>` →
+  handoff 同时展示请求模型与实际模型，JSON 返回 coding_model / requested_model /
+  单句 dispatch_prompt；composition 步骤物化委派包、modules 副本并预置 design 字体。
+  catalog 步骤在本工作区被输入门禁正确拒绝（无 harvest manifest，与
+  pipeline-status 的 skipped 一致）。
+- `scene_config.load_scene_config`（公共校验）→ 3 视觉 scene 通过
+  （canvas 1920×1080、主区间覆盖 [0,54.933]、模板/stage/presenter/自由布局合法）。
+- `align-narration.py --mode subtitles --scene-config --narration-audio` →
+  16 个字幕单元按各 scene 落盘 caption 规格切分（vs1 4 / vs2 8 / vs3 4，
+  vs3 按用户要求用 48px×2 行放大规格），带 scene_id 与 caption_segments。
+- 模板锚点：`template-cues.json` + timing 模式 → `template-timeline.json`，
+  cue「Phase Runner」真实词时间 2.000s 驱动 github/project-cover 的 nameAt。
+- `check-composition.py --scene-config --design --subtitle-units --output`
+  （真 Chromium seek 三场景 × 起点/中点/终点）→ verdict pass、0 findings，
+  scenes_checked 覆盖 stage / presenter / null 三种 layout。
+- `pipeline-status.py` → Phase 8 产物齐后 next_phase 进入 9-check-mix；
+  全部产物 `--redo` / `--finish` 语义符合 #147 重做模型。
+- `check-render.py --timeline scene-config.json` → 音轨/时长/分辨率/黑屏/冻结
+  全过，finding 带视觉 scene_id（修复轮中 vs1/vs2/vs3 的 freeze 均正确映射）。
+- `make-contact-sheet.py --timeline scene-config.json` → 3 视觉 scene 中点抽帧
+  拼 sheet；`mix-bgm.py` → final_with_bgm.mp4（54.933s、解说轨 + BGM 0.03 垫底）。
+
+**3-scene 集成流程**：vs1 = github/project-cover 模板 + stage 预设（用户要求作用于
+本场景）；vs2 = template null + presenter 预设（含 jay 组件）；vs3 = template null +
+自由布局（caption 按用户要求放大）。全片 orientation/design/唯一配音保持一致；
+storyboard 逐 scene 记录「用户要求 → template → layout → 自主设计」决策与理由。
+
+**中间 scene 手改字幕（AC4）**：手改 vs2 字幕单元（追加「（用户手改…）」）→
+只修 vs2 画面（卡片文案）→ 重截 vs2 帧、重渲染、重跑 check-composition（pass）。
+验证：subtitle-units.json 手改内容仍在；voice_clone/narration.mp3、
+transcribe/transcript.json、transcribe/timeline.json、narration-offsets.json
+md5 与基线一致（未重复 TTS/ASR、未覆盖 Phase 7 时间轴）；成片 18.6s 帧可见手改字幕。
+
+**显式重做 QA/混音（#147 redo 模型）**：交付后修订 vs3 → 重渲染 final.mp4，
+`--redo 8-composition --reason …` 登记 → `--finish 8-composition` 通过；
+`--redo 9-check-mix` → 重做 check-render / contact sheet / qa-report / mix-bgm →
+`--finish 9-check-mix` 通过，全阶段 completed。为证明不依赖新鲜度门槛，验收前把
+scene-config、index.html、compositions/、字幕、帧、final.mp4、check-composition.json
+的 mtime 全部设为 2000-01-01，`--finish` 仍通过；`.pipeline/` 仅有 approvals/redos
+状态，scene-config 通过「精确键集合」校验不含哈希/mtime 字段。验收结束时
+`.pipeline/` 为空：`--finish` 后 redos.json 按 #147 语义 unlink，approvals 因本流程
+未启用审稿 gate 本就不存在——空目录是预期状态，非状态丢失。
+
+**委派一致性（AC7）**：本机 `pi --list-models` 真实查询。请求 kimi-k2 时
+pi 候选表无 kimi provider → 按约定属阻塞情形（已记录，未派发）。可解析样例：
+catalog 请求 "deepseek"（需图像能力）→ 实际 deepseek/deepseek-flash；
+script 请求 "deepseek-v4"（近似匹配）→ 实际 deepseek/deepseek-v4-pro；
+composition 请求 "deepseek-flash"（精确匹配）→ 实际 deepseek/deepseek-flash。
+三个阶段的 handoff「Coding Agent」小节均展示请求与实际值，命令使用实际值；
+composition 委派包仅引用 hyperframes / hyperframes-cli 两个 skill，无演示目录或
+旧模块入口引用；conventions.md 仍是默认 agent/命令/模型规则的唯一维护处
+（phase 文档只回指约定，pi-coding-agent 仅作 schema 示例值出现）。
+
+**HyperFrames 真实 smoke（AC5）**：`npx hyperframes`（0.9.20，经 npx 临时获取）
+在最小工程（blank 模板 + 本 skill 预置 WOFF2 字体 + 真实字幕单元 + 4:3 素材
+object-fit）上：`hyperframes check` → Check passed（Motion/Contrast/Craft/Audio
+0 errors）；`hyperframes render --end 6` → 真实 6s 1920×1080 h264 MP4；
+抽帧验证中文字体（NotoSansSC）正确、字幕单元随 data-start 切换、4:3 素材留边
+比例正确。迭代中发现并纠正两处工程侧用法（clip 元素不得用 GSAP 改可见性、
+clip 默认需可见由框架按时间隐藏），最终以框架契约方式通过。主工作区画面走
+项目自有 Chromium + ffmpeg 渲染（无 stub）。
+
+**独立组件与重复实例（AC5 前半）**：基线 `tests/test_scene_components_browser.py`
+（真实 Chromium、普通浏览器无厂商全局 + 最小 adapter）覆盖六模块独立初始化/seek、
+双 caption-bar 与双 jay 实例隔离、destroy 重挂无残留；本集成中 check-composition
+真 Chromium seek 再次运行该链路（vs1–vs3 × 起点/中点/终点），`__timelines`/
+`__hyperframes` 全程为 undefined。
+
+**测试**：定向 18 个测试文件 729 passed；全仓 1232 passed（与基线一致，
+无新增失败）。基线失败 / 环境阻塞 / 条件项分别记录（见「遗留与未验证项」）。
+
+**15 条用户批注落实对照**：1–13、15 已由 #147–#153 交付并有对应测试
+（输入说明 WI-06、删重复段 WI-06、storyboard 归属 WI-05/06、指纹清理 WI-01、
+字体归 skill WI-06、字幕可编辑 WI-04/06、场景归 composition WI-05/06、
+仅两 skill WI-03、不重复默认提示 WI-05/06、删动画 skill WI-03、逐场景选择
+WI-02/04/05、简化阶段文档 WI-06、清理演示工程 WI-07、集中模型说明 WI-05），
+本票经集成流程复核其运行链一致；14（字体 ≤10 行条件项）按 #153 结论跳过
+自动下载行为变更，联网禁令措辞清理已完成，不标「自动下载已实现」。
+
+**遗留与未验证项（如实记录）**
+- 真实付费 TTS/ASR 与真实 VLM 未调用（按约束使用 fake 后端与本机 vision）；
+  fake 配音为静音，混音的「解说可闻」只能验证到音轨结构与 BGM 增益路径
+  （mix-bgm 逻辑由 test_mix_bgm 覆盖）。
+- 本机未安装 hyperframes/hyperframes-cli 两个 skill（npx CLI 可用）；
+  composition 派发的 `--no-skills --skill <path>` 形态未以 skill 文件真实加载过，
+  路径核对与命令形态按 conventions 验证。
+- catalog 委派阶段的 --resolved-model 路径被输入门禁拒绝（工作区无 catalog），
+  模型解析规则本身三阶段一致（见上）。
+- handoff 内嵌的 venv 激活路径指向 skill 根的 .venv；本 worktree 无 .venv 时
+  需用等价 venv 执行命令（环境差异，非缺陷）。
+- `npx hyperframes check` 对主工作区手工 index.html 报 contract lint 错误
+  （根节点缺 data-composition-id/__timelines 等）——主工作区画面不是
+  HyperFrames 工程，属预期；HF 契约仅存在于最小 HF 工程内，未泄漏回模块库。
 
 ## 6. 实施顺序
 
