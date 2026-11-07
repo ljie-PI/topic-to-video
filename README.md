@@ -18,16 +18,6 @@
 
 最终产物：`<work_dir>/<topic_name>/composition/renders/final.mp4`（混入 BGM 后为 `final_with_bgm.mp4`）。
 
-## 状态脚本不是启动器
-
-```bash
-python3 scripts/pipeline-status.py <work_dir>/<topic_name>
-```
-
-它扫描工作区里各阶段的产物，向 stdout 输出一份 JSON：已完成 / 缺失 / 损坏 / 过期的阶段，以及 `next_phase` 和该阶段要读的文档。续跑、回退、重做都由它决定。
-
-但它**不生成**调研、旁白、字幕或视频，也不调用下游阶段；真正执行的是 agent 和阶段文档里写的脚本。手动运行它只适合查看进度或调试。
-
 ## 环境要求
 
 agent 首次运行时按 `SKILL.md` 检查环境，已有配置直接复用。**项目依赖可以由已授权的 agent 代装；系统级调整和云端凭据由用户负责。**
