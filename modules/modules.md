@@ -9,9 +9,9 @@
 
 用模块拼视频，比每次从零写场景更快，风格也更统一。
 
-本文档是模块库的入口。下文所有路径都相对 `modules/` 目录。每个模块的文档、HTML 和图片放在同一个目录里；HTML 和图片按各模块文档复制进视频工程。
+本文档是模块库的入口。每个模块的文档、HTML 和图片放在同一个目录里；HTML 和图片按各模块文档复制进视频工程。
 
-路径约定：正文（散文、表格、行内代码）里的路径引用一律相对 `modules/` 书写；可以直接照抄运行的 shell 命令一律从 skill 根目录（仓库根）写相对路径，例如 `bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/github`。
+路径约定：正文（散文、表格、行内代码）里的路径引用相对 `modules/`；**Markdown 链接目标相对当前 Markdown 文件所在目录**，阅读原始文档时也按此基准解析链接；可以直接照抄运行的 shell 命令从 skill 根目录（仓库根）写相对路径，例如 `bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/github`。
 
 ## 目录
 

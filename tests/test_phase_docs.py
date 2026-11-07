@@ -708,3 +708,27 @@ def test_pattern_and_motion_indexes_are_optional_and_not_a_fixed_design_sequence
         assert '可选参考' in text
         assert '素材与 pattern 选择' not in text
         assert '模板 / pattern 的选择与理由' not in text
+
+
+def test_module_path_conventions_distinguish_prose_links_and_commands():
+    modules = doc_text('modules/modules.md')
+    assert '下文所有路径都相对 `modules/`' not in modules
+    assert '正文（散文、表格、行内代码）里的路径引用相对 `modules/`' in modules
+    assert 'Markdown 链接目标相对当前 Markdown 文件所在目录' in modules
+    assert '阅读原始文档时也按此基准解析链接' in modules
+    assert 'shell 命令从 skill 根目录（仓库根）写相对路径' in modules
+
+
+@pytest.mark.parametrize('doc', [
+    'modules/modules.md',
+    'modules/motion.md',
+    'modules/patterns/patterns.md',
+])
+def test_composition_reference_links_resolve_from_the_markdown_file(doc):
+    match = re.search(r'\[composition 基础指令第四部分\]\(([^)]+)\)', doc_text(doc))
+    assert match, doc
+    relative_path, _, fragment = match.group(1).partition('#')
+    target = (REPO_ROOT / doc).parent / relative_path
+    assert target.resolve() == (REPO_ROOT / 'references/delegation/composition/base-instructions.md').resolve()
+    assert target.is_file()
+    assert fragment == '四内容演绎与模板选择'
