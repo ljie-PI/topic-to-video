@@ -746,6 +746,8 @@ def build_report(
                 'issue': 'visual scene was not sampled', 'time_s': None, 'frame': None,
             })
         for snapshot in scene_snapshots:
+            # sought 是三态：False = 快照时确认没有任何 seek 驱动，必报；
+            # True = 正常 seek；键缺失 = 无此字段的旧录制快照，保持旧行为不判。
             if snapshot.get('sought') is False:
                 findings.append({
                     'scene_id': scene['scene_id'], 'check': 'seek',

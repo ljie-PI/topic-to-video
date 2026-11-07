@@ -14,9 +14,9 @@ async ({ checks }) => {
     for (const media of Array.from(document.querySelectorAll('video,audio'))) {
       try {
         media.pause();
-        if (Number.isFinite(media.duration)) {
-          media.currentTime = Math.max(0, Math.min(time, media.duration || time));
-        }
+        // Not actually seekable without a finite duration: don't count it.
+        if (!Number.isFinite(media.duration)) continue;
+        media.currentTime = Math.max(0, Math.min(time, media.duration || time));
         didSeek = true;
       } catch (_) {}
     }
