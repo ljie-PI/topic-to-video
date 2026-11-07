@@ -533,13 +533,13 @@ def test_template_is_chosen_by_the_composition_agent():
     assert text_index(phase_8, '#### 8.0 — 确认全片约束与派发前置条件') < text_index(
         phase_8, '#### 8.1 — 物化与字体'
     )
-    assert '模板不在这一步决定' in phase_8
+    assert '模板与 layout 不在这一步决定' in phase_8
     assert '视觉 scenes 与 layout 不在这一步决定' in phase_8
-    assert '允许 `layout` 与 `template` 缺省' in phase_8
-    assert 'composition/scenes.json` 尚不存在' in phase_8
+    assert '不要求预先决定全局 template / layout' in phase_8
+    assert 'composition/scene-config.json` 已存在' in phase_8
     assert '不命中就不用' in composition
-    assert '把 `template` 字段写回 `inputs.json`' in composition
-    assert '每一个 layout' in composition
+    assert '不写回 `inputs.json`' in composition
+    assert 'preferred_layouts' in composition
 
 
 def test_phase_8_visual_scenes_are_outputs_not_handoff_preconditions():
@@ -547,12 +547,12 @@ def test_phase_8_visual_scenes_are_outputs_not_handoff_preconditions():
     outputs = phase_8.split('## 输出', 1)[1].split('## 完成判据', 1)[0]
     criteria = phase_8.split('## 完成判据', 1)[1].split('## 执行后自检', 1)[0]
 
-    assert 'composition/scenes.json' in outputs
-    assert '{version: 1, scenes: [{scene_id, begin_s, end_s, layout}]}' in outputs
-    assert 'composition/scenes.json' in criteria
-    assert '每一个 layout' in criteria
-    assert '不要求 `inputs.json.layout` 或 `composition/scenes.json` 已存在' in phase_8
-    assert 'align-narration.py --mode subtitles --scenes ... --narration-audio ...' in phase_8
+    assert 'composition/scene-config.json' in outputs
+    assert '{version: 1, canvas, total_s, scenes}' in outputs
+    assert 'composition/scene-config.json' in criteria
+    assert 'template' in criteria
+    assert '不要求预先决定全局 template / layout' in phase_8
+    assert 'align-narration.py --mode subtitles --scene-config ... --narration-audio ...' in phase_8
 
 
 def test_paper_key_figures_are_declared_and_checked_end_to_end():
@@ -588,9 +588,9 @@ def test_phase_1_says_nothing_about_layout():
     assert '`orientation`' in phase_1
 
     phase_8 = doc_text('references/phases/08-composition.md')
-    assert '主 agent 不选择视觉 scene 或 layout' in phase_8
+    assert '主 agent 不选择视觉 scene、模板或 layout' in phase_8
     assert 'modules/layouts/layouts.md' in phase_8
-    assert 'composition/scenes.json' in phase_8
+    assert 'composition/scene-config.json' in phase_8
 
 
 def test_jay_generic_performance_and_github_specific_overlay():
@@ -641,7 +641,7 @@ def test_composition_requires_jay_for_presenter():
     composition = doc_text('references/delegation/composition/base-instructions.md')
     layout_rules = composition.split('## 三、必须遵守各 scene 的 layout 区域')[1].split('## 工作顺序')[0]
 
-    assert 'layout 有人物区（presenter）时必须挂 `jay`' in layout_rules
+    assert 'scene 的 regions 有人物区' in layout_rules
     assert '没有人物区的 scene 不强制显示 Jay' in layout_rules
     assert '`VIDEO.jay` 按 `jay.md` 的通用演法编排' in layout_rules
     assert '有模板时再叠加模板的演法' in layout_rules
@@ -676,10 +676,10 @@ def test_scene_plan_content_plan_and_opening_hook_contract():
     composition = doc_text('references/delegation/composition/base-instructions.md')
     # 模板与 pattern 归 composition，不再按上游节拍映射动作。
     assert '## 四、内容演绎与模板选择' in composition
-    assert '模板归你选' in composition and '参考库按需' in composition
+    assert '逐场景选择' in composition and '参考库按需' in composition
     assert 'beat → 画面' not in composition
     assert '语义节拍' not in composition
-    assert '把 `template` 字段写回 `inputs.json`' in composition
+    assert '模板选择及理由写进 storyboard，不写回 `inputs.json`' in composition
 
     # 模板不再给旁白下指令：它由 composition 阶段选。
     assert not (REPO_ROOT / 'modules' / 'templates' / 'github' / 'narration.md').exists()
@@ -706,7 +706,7 @@ def test_composition_defaults_to_original_design_and_only_records_borrowed_refer
     assert '动效选择参考 `modules/motion.md`' not in workflow
     # 自主发挥不放松 design、区域与真实语音的边界。
     assert '默认时长、缓动与列表间隔跟随主题 token' in composition
-    assert 'reserved 区域只放各自对应的组件' in composition
+    assert 'reserved 区域只放各自 `component` 声明的组件' in composition
     assert '时间只取真实语音' in composition
 
 

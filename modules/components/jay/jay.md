@@ -113,26 +113,29 @@ window.VIDEO = { jay: {
 - 可见项可用 `x` / `y` / `size` 覆盖舞台左边、上边和边长（px）。省略的字段不修改当前值；通常每个可见项都写明完整位置，避免依赖前一项留下的值。
 - 只要 `placements` 非空，没有命中任何一项时就隐藏 Jay；这也包括 `t` 恰好等于最后一项 `end_s` 的片尾时刻。完全不提供 `placements`（或提供空数组）时保留旧行为：Jay 全片显示。
 
-从 `composition/scenes.json` 到 `placements` 的映射是确定的：每个视觉 scene 产生一项，`begin_s` / `end_s` 原样复制，只有 `layout === "presenter"` 时可见。可见项的几何值取 `modules/layouts/presenter.json` 中的 `person` 区域，而不是另估坐标：
+从 `composition/scene-config.json` 到 `placements` 的映射是确定的：每个视觉 scene 产生一项，`begin_s` / `end_s` 原样复制，只有 regions 有人物区（`component` 为 `jay` 的 reserved 区）时可见。可见项的几何值取该 scene 人物区的 rect，而不是另估坐标：
 
 ```js
-const person = presenterLayout.regions.find((region) => region.id === "person").rect;
-window.VIDEO.jay.placements = visualScenes.scenes.map((scene) => {
+// scene-config 的 scene.layout.regions 中 component === "jay" 的 reserved 区即人物区
+window.VIDEO.jay.placements = sceneConfig.scenes.map((scene) => {
+  const personRegion = scene.layout.regions.find(
+    (region) => region.kind === "reserved" && region.component === "jay",
+  );
   const placement = {
     begin_s: scene.begin_s,
     end_s: scene.end_s,
-    visible: scene.layout === "presenter",
+    visible: personRegion !== undefined,
   };
   if (placement.visible) {
-    placement.x = person.x;
-    placement.y = person.y;
-    placement.size = person.width; // person 是正方形，width === height
+    placement.x = personRegion.rect.x;
+    placement.y = personRegion.rect.y;
+    placement.size = personRegion.rect.width; // 人物区是正方形，width === height
   }
   return placement;
 });
 ```
 
-因此，非 `presenter` scene 的 Jay 必须在同一常驻实例中隐藏；进入下一个 `presenter` scene 时再显示。
+因此，没有人物区的 scene 的 Jay 必须在同一常驻实例中隐藏；进入下一个人物区 scene 时再显示。
 
 ## 动作剧本（`init` 的 `data`；adapter 从 `window.VIDEO` 选键传入）
 

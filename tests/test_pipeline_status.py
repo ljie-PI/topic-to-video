@@ -14,6 +14,10 @@ from pathlib import Path
 
 import pytest
 
+import media
+
+pytestmark = pytest.mark.usefixtures('require_ffmpeg')
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'pipeline-status.py'
 
@@ -316,9 +320,39 @@ def complete_through_voice_subtitles(ws: Path, **inputs_overrides) -> None:
     phase never writes them.
     """
     complete_through_script(ws, **inputs_overrides)
-    write_blob(ws / 'voice_clone' / 'narration.mp3')
+    write_audio(ws / 'voice_clone' / 'narration.mp3')
     write_json(ws / 'transcribe' / 'transcript.json', TRANSCRIPT)
     write_json(ws / 'transcribe' / 'timeline.json', TIMELINE)
+
+
+def write_audio(path: Path) -> float:
+    """一段真实可探测的静音 mp3；scene-config 的 total_s 以它的时长为边界。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run([
+        'ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono',
+        '-t', '2.6', '-c:a', 'libmp3lame', str(path),
+    ], capture_output=True, check=True)
+    return media.probe_duration(path)
+
+
+def write_scene_config(ws: Path) -> dict:
+    """Phase 8 的机器配置产物：两个视觉 scene 借用一个注册 preset。"""
+    duration = media.probe_duration(ws / 'voice_clone' / 'narration.mp3')
+    stage = json.loads((REPO_ROOT / 'modules' / 'layouts' / 'stage.json').read_text(encoding='utf-8'))
+    layout = {'preset': 'stage', 'regions': stage['regions'], 'caption': stage['caption']}
+    def visual_scene(scene_id: str, begin: float, end: float) -> dict:
+        return {
+            'scene_id': scene_id, 'source_scene_ids': ['scene_1'],
+            'begin_s': begin, 'end_s': end, 'template': None, 'layout': layout,
+        }
+    config = {
+        'version': 1,
+        'canvas': {'width': 1920, 'height': 1080},
+        'total_s': duration,
+        'scenes': [visual_scene('visual_a', 0, duration / 2), visual_scene('visual_b', duration / 2, duration)],
+    }
+    write_json(ws / 'composition' / 'scene-config.json', config)
+    return config
 
 
 def complete_through_composition(ws: Path, **inputs_overrides) -> None:
@@ -327,11 +361,21 @@ def complete_through_composition(ws: Path, **inputs_overrides) -> None:
     write_text(ws / 'composition' / 'storyboard.md', '# storyboard\n\n## scene_1\n内容区域：main\n')
     write_text(ws / 'composition' / 'index.html', '<html></html>')
     write_text(ws / 'composition' / 'compositions' / 'scene_1.html', '<template></template>')
-    write_json(
-        ws / 'composition' / 'check-composition.json',
-        {'success': True, 'verdict': 'pass', 'findings': []},
-    )
+    write_scene_config(ws)
+    write_json(ws / 'composition' / 'check-composition.json', pass_report(ws))
     write_blob(ws / 'composition' / 'renders' / 'final.mp4')
+
+
+def pass_report(ws: Path) -> dict:
+    """一份覆盖当前 scene-config 的 pass 报告（状态脚本验收 scenes_checked）。"""
+    config = json.loads((ws / 'composition' / 'scene-config.json').read_text(encoding='utf-8'))
+    return {
+        'success': True, 'verdict': 'pass', 'findings': [],
+        'scenes_checked': [
+            {'scene_id': scene['scene_id'], 'layout': scene['layout']['preset'], 'check_times': [scene['begin_s']]}
+            for scene in config['scenes']
+        ],
+    }
 
 
 def complete_all(ws: Path, **inputs_overrides) -> None:
@@ -1221,10 +1265,7 @@ def test_compositions_dir_with_a_nested_file_is_accepted(tmp_path: Path):
     write_text(tmp_path / 'composition' / 'compositions' / 'scene_1' / 'index.html', '<template></template>')
     # 内容变了需要 composition agent 重跑检查并保存新报告，但状态脚本只验收
     # 报告数据本身：一份结论为 pass 的报告不因为没有源哈希而被判不合格。
-    write_json(
-        tmp_path / 'composition' / 'check-composition.json',
-        {'success': True, 'verdict': 'pass', 'findings': []},
-    )
+    write_json(tmp_path / 'composition' / 'check-composition.json', pass_report(tmp_path))
     result = parse_result(run_cli(str(tmp_path)))
     assert '8-composition' in result['completed_phases']
 
@@ -1710,7 +1751,7 @@ def settle(ws: Path, **inputs_overrides) -> dict:
 
 def rewrite_voice_subtitles(ws: Path) -> None:
     """Phase 7 regenerated: same shape, other bytes."""
-    write_blob(ws / 'voice_clone' / 'narration.mp3', size=256)
+    write_audio(ws / 'voice_clone' / 'narration.mp3')
     write_json(ws / 'transcribe' / 'transcript.json', [{**TRANSCRIPT[0], 'text': '大家好呀。'}])
     write_json(ws / 'transcribe' / 'timeline.json', {**TIMELINE, 'total_s': 2.6})
 
@@ -1740,12 +1781,13 @@ def test_editing_the_script_to_the_same_length_without_rerunning_anything_is_not
     assert result['next_phase'] is None
 
 
-def test_changing_the_layout_and_orientation_consistently_invalidates_nothing(tmp_path: Path):
-    """换布局只影响画面：没有新鲜度比对时，状态脚本不要求任何阶段重做。"""
+def test_changing_the_legacy_layout_field_invalidates_nothing(tmp_path: Path):
+    """旧全局 layout 字段不再是门槛：没有新鲜度比对时，改它不要求任何阶段重做。
+    全片 orientation 是固定事实，scene-config 的画布以它为准。"""
     settle(tmp_path)
     write_json(
         tmp_path / 'inputs.json',
-        {**INPUTS, 'layout': 'portrait', 'orientation': 'portrait'},
+        {**INPUTS, 'layout': 'portrait'},
     )
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase'] is None
@@ -2446,19 +2488,21 @@ def test_template_is_not_a_phase_1_field(tmp_path: Path):
 
 
 @pytest.mark.parametrize('value', ['github/../escape', '', 3])
-def test_template_must_be_null_or_a_plain_name_in_phase_8(tmp_path: Path, value):
+def test_legacy_global_template_field_is_not_a_gate(tmp_path: Path, value):
+    # 模板是逐 scene 的决定，写进 scene-config.json；inputs.json 的旧全局
+    # template 字段原样保留但不再是任何阶段的门槛。
     complete_through_voice_subtitles(tmp_path, template=value)
 
     result = parse_result(run_cli(str(tmp_path)))
 
     assert result['next_phase']['id'] == '8-composition'
-    assert result['next_phase']['reason'] == 'corrupt'
-    assert 'inputs.json#template' in result['next_phase']['problems']
+    assert 'inputs.json#template' not in result['next_phase']['problems']
     assert '1-gather-inputs' in result['completed_phases']
 
 
-def test_composition_must_write_the_template_choice(tmp_path: Path):
-    """模板选择归 composition：未写回字段时不能以旧行为当作“不用模板”。"""
+def test_composition_needs_no_template_field_or_choice_in_inputs(tmp_path: Path):
+    """模板选择归 composition agent 的 scene-config：inputs.json 不带 template
+    字段也完全合法，不按旧行为当作“还没决定”。"""
     complete_through_voice_subtitles(tmp_path)
     inputs = json.loads((tmp_path / 'inputs.json').read_text(encoding='utf-8'))
     inputs.pop('template', None)
@@ -2467,9 +2511,7 @@ def test_composition_must_write_the_template_choice(tmp_path: Path):
     result = parse_result(run_cli(str(tmp_path)))
 
     assert result['next_phase']['id'] == '8-composition'
-    assert result['next_phase']['reason'] == 'corrupt'
-    assert 'inputs.json#template' in result['next_phase']['problems']
-    assert 'not set' in result['next_phase']['problems']['inputs.json#template']
+    assert 'inputs.json#template' not in result['next_phase']['problems']
 
 
 @pytest.mark.parametrize('field', ['narration_requests', 'composition_requests'])

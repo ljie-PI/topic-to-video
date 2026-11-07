@@ -63,7 +63,7 @@ source .venv/bin/activate && python3 scripts/pipeline-status.py <workspace> --fi
 
 一次反馈涉及多个阶段时，先登记最早的那一个，后面的阶段等它完成后再按已知修改范围逐项登记；用户明确要求后面的步骤也全部重做时，逐项登记。
 
-最终视觉 scenes 与逐 scene layout 是 Phase 8 的画面选择，由 composition agent 写在 `composition/scenes.json`；模板选择写回 `inputs.json.template`。主 agent 只维护全片 orientation / design 与用户约束，不替它预选 scene layout。用户改画面主意时登记 Phase 8 重做并交回 composition agent；这些变化只让 Phase 8 及其登记的下游重做，音频、transcript 和时间轴都不重建。旧单 layout 工程的 `inputs.json.layout` 仍可作默认值，但新流程不要求它存在。
+最终视觉 scenes 与逐场景 template / layout 是 Phase 8 的画面选择，由 composition agent 写在 `composition/scene-config.json`（storyboard 记录理由）；主 agent 只维护全片 orientation / design 与 `composition_requests`（含作用范围），不替它预选任何 scene 方案，也不要求准备 handoff 前决定全局 template / layout。用户改画面主意时登记 Phase 8 重做并交回 composition agent；这些变化只让 Phase 8 及其登记的下游重做，音频、transcript 和时间轴都不重建。旧工作区的 `inputs.json.layout` / `template` 原样保留，但新流程不拿它们当门槛。
 
 重做仍由原负责人做：委派步骤交回原执行 agent，并附上具体修改点；改旁白后要重新生成朗读稿与偏移表；改画面后要重跑渲染前检查并重新渲染。
 

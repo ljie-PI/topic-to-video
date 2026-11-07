@@ -12,7 +12,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 - **Web 调研** 在写脚本之前获取准确的内容
 - **HyperFrames** 用于下游 HTML composition + 渲染（delegated）
 - **TTS / ASR** 生成配音并拿回词级时间戳；后端由环境变量选择，参数和依赖见两个脚本的 `--help`
-- 一份 Phase 1 确定的 design 与 orientation（全片外观与画布）、Phase 8 确定的视觉 scenes、逐 scene layout 与 template（各场景的版面与一类视频的组装方式）
+- 一份 Phase 1 确定的 design 与 orientation（全片外观与画布）、Phase 8 确定的视觉 scenes 与逐场景 template / layout（`composition/scene-config.json`，各场景的版面与一类视频的组装方式）
 
 **输出：** `{work_dir}/{topic_name}/composition/renders/final.mp4`，可直接发布（由 Phase 8 coding sub-agent 产出）；Phase 9 混入 BGM 后得到 `final_with_bgm.mp4`。
 
@@ -41,7 +41,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 续跑、回退与重做都由状态脚本驱动。状态脚本不比对文件哈希或修改时间：上游改动不会自动让任何 phase 过期，也没有 `--restamp` 这类重新接受产物的命令。状态由三部分组成：`inputs.json`、各 phase 的产物，以及 `.pipeline/`（状态脚本记下的审稿确认和重做请求，**只由状态脚本写，不要手改**）。
 
 - 某个 phase 的产物被删掉或写坏时，脚本回退到那个 phase（`reason` 为 `missing` / `corrupt`）。
-- 上游改动后要不要重做、重做哪些 phase，由主 agent 按已知修改范围显式登记，不从文件变化推断。改了 `script.txt` 就重跑 make-narration 并按需登记下游；改了 `composition/scenes.json` 的视觉时间 / scene layout 就登记 Phase 8 重做，交回 composition agent 重跑 check-composition、重新渲染，交付范围包含成片时再显式登记 / 执行 Phase 9。
+- 上游改动后要不要重做、重做哪些 phase，由主 agent 按已知修改范围显式登记，不从文件变化推断。改了 `script.txt` 就重跑 make-narration 并按需登记下游；改了 `composition/scene-config.json` 的视觉时间 / scene 方案就登记 Phase 8 重做，交回 composition agent 重跑 check-composition、重新渲染，交付范围包含成片时再显式登记 / 执行 Phase 9。
 - 产物齐全、上游也没变，但用户或自检认为内容不合格时，用 `--redo <phase_id> --reason "..."` 登记（`reason` 为 `redo`，带 `redo_reason`）；改完并用 `--finish <phase_id>` 结束。`--finish` 先清掉登记，再按该阶段平时的检查验收产物，只影响这一个阶段；它不要求产物字节与上次不同。显式重做带审稿 gate 的阶段会撤销该 gate 的旧确认，重做完成后需要用户重新确认。登记与结束的规则见 `references/pipeline-control.md`。
 - `next_phase` 之后的 phase 一律是 `pending`：不进 `completed_phases`，也不检查；轮到它们时再判断。
 - 用户说 "redo phase N" 时，先按上一条登记重做；只有确实要丢掉产物时才删文件。

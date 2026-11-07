@@ -1,6 +1,6 @@
 {
   "template": "github",
-  "supported_layouts": ["presenter"],
+  "preferred_layouts": ["presenter"],
   "scenes": ["trending-overview", "project-cover"],
   "anchor_fields": {
     "project-cover": {"required": ["nameAt"], "optional": ["taglineAt", "starsAt"]},

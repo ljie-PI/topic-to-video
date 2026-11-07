@@ -117,30 +117,32 @@ def test_catalog_rejects_persisted_absolute_paths(tmp_path: Path, kind: str, fie
     assert field in result['next_phase']['problems']['material-catalog.json']
 
 
-def test_effective_template_copy_is_validated_and_refresh_repairs_it(tmp_path: Path):
+def test_edited_template_copy_is_advisory_and_refresh_repairs_it(tmp_path: Path):
+    # preferred_layouts 是推荐不是门槛：工作区副本被改过不再阻止准备 handoff；
+    # --refresh 仍会把副本恢复成库里的声明。
     ws = handoff_fixtures.make_workspace(tmp_path, 'composition', template='github')
     path = ws / 'modules/templates/github/github.json'
     contract = json.loads((ROOT / 'modules/templates/github/github.json').read_text())
-    contract['supported_layouts'] = ['stage']
+    contract['preferred_layouts'] = ['stage']
     status_fixtures.write_json(path, contract)
     proc, result = run('prepare-handoff.py', ws, 'composition')
-    assert proc.returncode == 1
-    assert 'supports layouts stage' in result['error']
-    assert not (ws / 'composition-handoff.md').exists()
-    assert not (ws / 'composition/assets/fonts').exists()
+    assert proc.returncode == 0, result
+    assert (ws / 'composition-handoff.md').exists()
     repaired, _ = run('prepare-handoff.py', ws, 'composition', '--refresh')
     assert repaired.returncode == 0, repaired.stderr
-    assert json.loads(path.read_text())['supported_layouts'] == ['presenter']
+    assert json.loads(path.read_text())['preferred_layouts'] == ['presenter']
 
 
 @pytest.mark.parametrize('template', [{}, [], '', '../escape'])
-def test_visual_type_errors_belong_to_phase_8(tmp_path: Path, template):
+def test_legacy_global_template_values_are_not_gates(tmp_path: Path, template):
+    # 模板是逐 scene 的决定：inputs.json 的旧全局 template 字段无论是什么值，
+    # 都不再制造 inputs.json#template 问题。
     status_fixtures.complete_through_voice_subtitles(tmp_path, fetch_materials=False, template=template)
     _, result = run('pipeline-status.py', tmp_path)
     assert '1-gather-inputs' in result['completed_phases']
     assert '7-voice-subtitles' in result['completed_phases']
     assert result['next_phase']['id'] == '8-composition'
-    assert 'inputs.json#template' in result['next_phase']['problems']
+    assert 'inputs.json#template' not in result['next_phase']['problems']
 
 
 @pytest.mark.parametrize('step', ['catalog', 'script'])
@@ -214,15 +216,15 @@ def test_required_refs_are_deduplicated_by_resolved_identity():
     assert 'repeats' in result.detail
 
 
-def test_status_also_uses_the_effective_template_declaration(tmp_path: Path):
+def test_status_does_not_gate_on_the_template_declaration(tmp_path: Path):
+    # preferred_layouts 是建议性的：状态脚本不读模板声明做兼容性门槛。
     status_fixtures.settle(tmp_path, fetch_materials=False, layout='presenter', template='github')
     path = tmp_path / 'modules/templates/github/github.json'
     contract = json.loads((ROOT / 'modules/templates/github/github.json').read_text())
-    contract['supported_layouts'] = ['stage']
+    contract['preferred_layouts'] = ['stage']
     status_fixtures.write_json(path, contract)
     _, result = run('pipeline-status.py', tmp_path)
-    assert result['next_phase']['id'] == '8-composition'
-    assert 'supports layouts stage' in result['next_phase']['problems']['inputs.json#template']
+    assert result['next_phase'] is None
 
 
 def test_materializing_identical_resource_bytes_invalidates_nothing(tmp_path: Path):

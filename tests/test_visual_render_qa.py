@@ -17,12 +17,13 @@ pytestmark = pytest.mark.usefixtures('require_ffmpeg')
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def write_json(path: Path, data) -> None:
+def write_json(path: Path, data) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data), encoding='utf-8')
+    return path
 
 
-def visual_workspace(tmp_path: Path, duration: float, *, strict: bool = False) -> Path:
+def visual_workspace(tmp_path: Path, duration: float, *, strict: bool = False, overlap: bool = False) -> Path:
     write_json(tmp_path / 'inputs.json', {
         'orientation': 'landscape', 'qa_level': 'strict' if strict else 'standard',
     })
@@ -32,22 +33,35 @@ def visual_workspace(tmp_path: Path, duration: float, *, strict: bool = False) -
         'ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono',
         '-t', str(duration), '-c:a', 'libmp3lame', str(audio),
     ], capture_output=True, check=True)
-    write_json(tmp_path / 'composition/scenes.json', {'version': 1, 'scenes': [
-        {'scene_id': 'visual_before', 'begin_s': 0, 'end_s': duration * 0.6, 'layout': 'presenter'},
-        {'scene_id': 'visual_after', 'begin_s': duration * 0.5, 'end_s': duration, 'layout': 'stage'},
-    ]})
+    # Phase 9 通过 --timeline 复用 timeline_scenes 的宽松字段读取：scene-config
+    # 与旧 timeline.json 都只取 scene_id / begin_s / end_s。
+    mid = duration * 0.5
+    before_end, after_begin = (duration * 0.6, mid) if overlap else (mid, mid)
+    write_json(tmp_path / 'composition/scene-config.json', {
+        'version': 1,
+        'canvas': {'width': 1920, 'height': 1080},
+        'total_s': duration,
+        'scenes': [
+            {'scene_id': 'visual_before', 'source_scene_ids': ['scene_1'],
+             'begin_s': 0, 'end_s': before_end, 'template': None,
+             'layout': {'preset': 'presenter', 'regions': [], 'caption': {'width_px': 1, 'font_size_px': 1, 'max_lines': 1}}},
+            {'scene_id': 'visual_after', 'source_scene_ids': ['scene_2'],
+             'begin_s': after_begin, 'end_s': duration, 'template': None,
+             'layout': {'preset': None, 'regions': [], 'caption': {'width_px': 1, 'font_size_px': 1, 'max_lines': 1}}},
+        ],
+    })
     return tmp_path
 
 
 def test_check_render_maps_overlap_to_later_visual_scene(tmp_path: Path):
-    ws = visual_workspace(tmp_path, 7.5)
+    ws = visual_workspace(tmp_path, 7.5, overlap=True)
     video = ws / 'black.mp4'
     make_black_video(video)
 
     proc = subprocess.run([
         sys.executable, str(ROOT / 'scripts/check-render.py'),
         '--video', str(video), '--inputs', str(ws / 'inputs.json'),
-        '--scenes', str(ws / 'composition/scenes.json'),
+        '--timeline', str(ws / 'composition/scene-config.json'),
     ], capture_output=True, text=True)
     result = parse_stdout(proc)
 
@@ -73,7 +87,7 @@ def test_contact_sheet_uses_visual_ids_and_real_transition_start(tmp_path: Path)
     proc = subprocess.run([
         sys.executable, str(ROOT / 'scripts/make-contact-sheet.py'),
         '--video', str(video), '--inputs', str(ws / 'inputs.json'),
-        '--scenes', str(ws / 'composition/scenes.json'), '--output-dir', str(ws / 'qa'),
+        '--timeline', str(ws / 'composition/scene-config.json'), '--output-dir', str(ws / 'qa'),
     ], capture_output=True, text=True)
     result = parse_stdout(proc)
 
@@ -85,20 +99,24 @@ def test_contact_sheet_uses_visual_ids_and_real_transition_start(tmp_path: Path)
     assert cuts == {'cut_before': 4.6, 'cut_mid': 5.0, 'cut_after': 5.4}
 
 
-def test_visual_scene_cli_rejects_invalid_contract(tmp_path: Path):
+def test_contact_sheet_reads_scene_config_scenes_leniently(tmp_path: Path):
+    # --timeline 的宽松读取只认 scene_id / begin_s / end_s：即便 scene-config
+    # 缺可选细节（如自由布局的 regions 留待排版），Phase 9 的场景映射仍可用。
     ws = visual_workspace(tmp_path, 10)
-    path = ws / 'composition/scenes.json'
+    path = ws / 'composition/scene-config.json'
     data = json.loads(path.read_text(encoding='utf-8'))
-    data['scenes'][0]['scene_id'] = data['scenes'][1]['scene_id']
-    write_json(path, data)
+    for scene in data['scenes']:
+        scene['layout'] = {'preset': None}
+    path = write_json(path, data)
     video = ws / 'final.mp4'
     make_video(video)
 
     proc = subprocess.run([
         sys.executable, str(ROOT / 'scripts/make-contact-sheet.py'),
         '--video', str(video), '--inputs', str(ws / 'inputs.json'),
-        '--scenes', str(path), '--output-dir', str(ws / 'qa'),
+        '--timeline', str(path), '--output-dir', str(ws / 'qa'),
     ], capture_output=True, text=True)
     result = parse_stdout(proc)
-    assert proc.returncode == 1
-    assert 'duplicate' in result['error']
+
+    assert proc.returncode == 0, proc.stderr
+    assert {frame['scene_id'] for frame in result['frames']} >= {'visual_before', 'visual_after'}

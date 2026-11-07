@@ -13,8 +13,10 @@ script.txt 与 narration.txt。
 
 阶段的分工也在这里体现：Phase 7 只产出音频、fresh transcript 与时间轴（不读
 layout）；最终字幕是 Phase 8 的产物（`composition/assets/subtitle-units.json`），
-按 `composition/scenes.json` 的实际视觉 layouts 生成；旧工程保留 inputs.layout 入口。
-Phase 8 校验精确画布与逐 scene 模板兼容，Phase 7 不依赖视觉配置。
+按 `composition/scene-config.json` 各 scene 落盘的 caption 规格生成。
+Phase 8 经公共接口（`scripts/scene_config.py`）校验 scene-config：画布、时间
+覆盖、源场景引用、区域几何、caption 规格与模板资源存在性，Phase 7 不依赖视觉
+配置。
 
 本脚本不做内容新鲜度追踪：不比对文件哈希或修改时间，不判断某个阶段是不是
 “基于当前上游构建”。上游改动后的影响由主 agent 根据已知修改范围显式登记重做，
@@ -79,6 +81,7 @@ import cli
 import clip_paths
 import harvest_manifest
 import media
+import scene_config
 import script_text
 import video_contract
 from harvest_manifest import _stage_json as stage_json, stored_path_problem
@@ -773,9 +776,9 @@ def check_inputs_product(ws: Path, relpath: str) -> CheckResult:
     return result
 
 
-def load_workspace_visual_scenes(ws: Path) -> tuple[list[dict[str, Any]] | None, str | None]:
-    """当前视觉声明；不存在时返回 (None, None)，非法时返回具体原因。"""
-    path = ws / video_contract.VISUAL_SCENES_PATH
+def load_workspace_scene_config(ws: Path) -> tuple[dict[str, Any] | None, str | None]:
+    """当前 scene-config；不存在时返回 (None, None)，非法时返回具体原因。"""
+    path = ws / scene_config.SCENE_CONFIG_PATH
     if not path.is_file():
         return None, None
     _, inputs = load_inputs(ws)
@@ -783,107 +786,52 @@ def load_workspace_visual_scenes(ws: Path) -> tuple[list[dict[str, Any]] | None,
         return None, 'inputs.json is unavailable for scene canvas validation'
     try:
         duration_s = media.probe_duration(ws / 'voice_clone' / 'narration.mp3')
-        scenes = video_contract.load_visual_scenes(
-            path, SKILL_ROOT, inputs.get('orientation'), duration_s, ws=ws,
+        expected = video_contract.orientation_canvas(inputs.get('orientation'))
+        if expected is None:
+            return None, (
+                'inputs.json field orientation must be a canonical orientation, '
+                f'got {inputs.get("orientation")!r}'
+            )
+        config = scene_config.load_scene_config(
+            path,
+            expected_canvas=expected,
+            known_scene_ids=workspace_scene_ids(ws),
+            modules_root=SKILL_ROOT,
         )
+        if abs(config['total_s'] - duration_s) > scene_config.DURATION_TOLERANCE_S + 0.05:
+            return None, (
+                f'scene-config total_s {config["total_s"]} does not match narration '
+                f'duration {duration_s}'
+            )
     except (ValueError, OSError, media.MediaToolMissing, media.MediaProbeError) as exc:
         return None, str(exc)
-    return scenes, None
+    return config, None
 
 
-def declared_visual_layouts(ws: Path, visual_scenes: list[dict[str, Any]] | None) -> list[str]:
-    """scenes.json 声明的合法 layout 名；即使时间覆盖尚未通过，也供模板与指纹读取。"""
-    if visual_scenes is not None:
-        return sorted({scene['layout'] for scene in visual_scenes})
-    _, data = read_json_product(ws, video_contract.VISUAL_SCENES_PATH)
-    if not isinstance(data, dict) or not isinstance(data.get('scenes'), list):
-        return []
-    return sorted({
-        scene['layout']
-        for scene in data['scenes']
-        if isinstance(scene, dict)
-        and isinstance(scene.get('layout'), str)
-        and video_contract.layout_contract_problem(SKILL_ROOT, scene['layout']) is None
-    })
+def workspace_scene_ids(ws: Path) -> set[str] | None:
+    """scene-plan.json 的叙事 scene_id 集合；缺失或损坏时不阻塞状态扫描。"""
+    try:
+        plan = json.loads((ws / 'scene-plan.json').read_text(encoding='utf-8'))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(plan, list):
+        return None
+    ids = {
+        scene['scene_id'] for scene in plan
+        if isinstance(scene, dict) and isinstance(scene.get('scene_id'), str)
+    }
+    return ids or None
 
 
-def check_visual_scenes_product(ws: Path, relpath: str) -> CheckResult:
-    """新视觉声明存在时严格校验；旧单 layout 工程不要求补写它。"""
+def check_scene_config_product(ws: Path, relpath: str) -> CheckResult:
+    """scene-config 存在时严格校验；它是 Phase 8 完成的必需产物。"""
     path = ws / relpath
     if not path.exists():
-        _, inputs = load_inputs(ws)
-        if inputs is not None and inputs.get('layout') is not None:
-            return OK
-        return CheckResult(STATUS_MISSING, 'visual scene declaration is required before Phase 8 can complete')
+        return CheckResult(STATUS_MISSING, 'visual scene config is required before Phase 8 can complete')
     if not path.is_file():
-        return CheckResult(STATUS_CORRUPT, 'visual scene declaration is not a file')
-    _, problem = load_workspace_visual_scenes(ws)
+        return CheckResult(STATUS_CORRUPT, 'visual scene config is not a file')
+    _, problem = load_workspace_scene_config(ws)
     return CheckResult(STATUS_CORRUPT, problem) if problem else OK
-
-
-def check_visual_inputs(ws: Path) -> dict[str, CheckResult]:
-    """Phase 8 的输入前置条件：视觉配置由本阶段决定，所以校验也留在本阶段。
-
-    它和输出产物检查分开报告：layout 缺失 / 不在库里 / 与朝向对不上，或选中的
-    模板不支持这个 layout，都是本阶段要改的东西，而不是回到 Phase 1。
-    """
-    _, inputs = load_inputs(ws)
-    if inputs is None:
-        # inputs.json 本身不合格时由 Phase 1 承担，这里不多报一次。
-        return {}
-    problems: dict[str, CheckResult] = {}
-
-    def record(field: str, detail: str) -> None:
-        problems[f'{INPUTS_FIELD_PREFIX}{field}'] = CheckResult(STATUS_CORRUPT, detail)
-
-    visual_scenes, _ = load_workspace_visual_scenes(ws)
-    uses_visual_scenes = (ws / video_contract.VISUAL_SCENES_PATH).exists()
-    layout = inputs.get('layout')
-    if not uses_visual_scenes and 'layout' in inputs:
-        problem = video_contract.layout_contract_problem(SKILL_ROOT, layout)
-        if problem:
-            record('layout', problem)
-        else:
-            path = video_contract.effective_resource(SKILL_ROOT, ws, f'modules/layouts/{layout}.json', refresh=False)
-            problem = video_contract.layout_file_problem(path, inputs.get('orientation'), str(layout))
-            if problem:
-                record('layout', problem)
-    template = inputs.get('template')
-    if 'template' not in inputs:
-        # template 缺省表示“还没选”：模板选择归 composition agent，它必须在
-        # 完成前写回字段（模板名或 null），否则无法知道它到底用没用模板。
-        record(
-            'template',
-            'field template is not set: composition must write the chosen template name, '
-            'or null when it uses no template',
-        )
-    else:
-        problem = video_contract.template_contract_problem(SKILL_ROOT, template)
-        if problem:
-            record('template', problem)
-        elif template is not None:
-            supported = video_contract.template_layouts(SKILL_ROOT, str(template), ws=ws)
-            if supported is None:
-                record(
-                    'template',
-                    f'template {template!r} has no supported_layouts declaration in '
-                    f'modules/templates/{template}/{template}.json',
-                )
-            else:
-                if uses_visual_scenes:
-                    used_layouts = declared_visual_layouts(ws, visual_scenes)
-                elif 'layout' in inputs:
-                    used_layouts = [layout]
-                else:
-                    used_layouts = []
-                incompatible = [name for name in used_layouts if name not in supported]
-                if incompatible:
-                    record(
-                        'template',
-                        f'template {template!r} supports layouts {", ".join(supported)}, not '
-                        f'{", ".join(map(str, incompatible))}: choose compatible scene layouts or write template: null',
-                    )
-    return problems
 
 
 def check_paper_metadata(ws: Path, relpath: str) -> CheckResult:
@@ -1173,8 +1121,8 @@ def check_composition_report(ws: Path, relpath: str) -> CheckResult:
     """composition/check-composition.json：composition agent 上一次
     check-composition 运行保存下来的 stdout；其结论必须是 pass。
 
-    报告是否存在、结论是否 pass、以及（视觉模式下）scenes_checked 是否覆盖
-    当前视觉声明，就是全部验收：本脚本不比对源文件哈希或修改时间，也不会因为
+    报告是否存在、结论是否 pass、以及 scenes_checked 是否覆盖当前 scene-config
+    的视觉场景，就是全部验收：本脚本不比对源文件哈希或修改时间，也不会因为
     composition 后来又改过而自动判这份报告失效——重跑检查由执行流程显式完成，
     需要时按已知修改范围登记重做。"""
     result, data = read_json_product(ws, relpath)
@@ -1184,11 +1132,13 @@ def check_composition_report(ws: Path, relpath: str) -> CheckResult:
         return CheckResult(STATUS_CORRUPT, 'JSON root is not an object')
     if data.get('verdict') != 'pass':
         return CheckResult(STATUS_CORRUPT, f'verdict must be "pass", got {data.get("verdict")!r}')
-    visual_scenes, visual_problem = load_workspace_visual_scenes(ws)
-    if visual_problem:
-        return CheckResult(STATUS_CORRUPT, visual_problem)
-    if visual_scenes is not None:
-        expected_coverage = [(scene['scene_id'], scene['layout']) for scene in visual_scenes]
+    config, config_problem = load_workspace_scene_config(ws)
+    if config_problem:
+        return CheckResult(STATUS_CORRUPT, config_problem)
+    if config is not None:
+        expected_coverage = [
+            (scene['scene_id'], scene['layout']['preset']) for scene in config['scenes']
+        ]
         actual_coverage = [
             (scene.get('scene_id'), scene.get('layout'))
             for scene in data.get('scenes_checked', []) if isinstance(scene, dict)
@@ -1331,9 +1281,8 @@ PHASES: list[dict[str, Any]] = [
         'title': 'composition（委派）',
         'doc': 'references/phases/08-composition.md',
         'applies': 'always',
-        'precondition': check_visual_inputs,
         'products': {
-            'composition/scenes.json': check_visual_scenes_product,
+            'composition/scene-config.json': check_scene_config_product,
             'composition/assets/subtitle-units.json': check_subtitle_units,
             'composition/storyboard.md': check_text_product,
             'composition/index.html': check_file_product,

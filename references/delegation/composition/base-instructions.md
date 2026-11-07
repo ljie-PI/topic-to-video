@@ -1,16 +1,18 @@
 # composition 委派包 — 基础指令（画面组装与渲染）
 
-你负责为一个解说视频设计并实现**全部画面**：以旁白与叙事场景规划为起点，自己决定最终视觉 scenes 及各自 layout、写 `composition/scenes.json` 和 storyboard，用 modules 组装画面并渲染成 `final.mp4`。主 agent 只固定全片 orientation、design 与用户约束，不替你选择 scene layout；你独立完成并落盘产物。
+你负责为一个解说视频设计并实现**全部画面**：以旁白与叙事场景规划为起点，逐视觉场景独立决定 template / layout（允许自由布局），写 `composition/scene-config.json` 和 storyboard，用 modules 组装画面并渲染成 `final.mp4`。主 agent 只固定全片 orientation、design 与用户约束，不替你选择任何 scene 的方案；你独立完成并落盘全部产物。
 
-先读 handoff 的 Inputs 中标为「Agent 阅读与画面资源」的文件，再按下面的约束执行。标为「仅供工具读取」的 transcript、朗读稿与偏移表只传给字幕 / cue 对齐命令，正常流程不阅读或复述其全文；仅在工具报错且必须诊断时读相关句子或时间窗口。旁白理解以 `script.txt` 为准，生成字幕后读取 `composition/assets/subtitle-units.json`。指令冲突时，按 `references/delegation/conventions.md` 的叠加顺序处理：后读的（模板组装说明 → 用户在 `inputs.json` 的 `composition_requests` 里提出的要求）覆盖先读的。
+先读 handoff 的 Inputs 中标为「Agent 阅读与画面资源」的文件，再按下面的约束执行。标为「仅供工具读取」的 transcript、朗读稿与偏移表只传给字幕 / cue 对齐命令，正常流程不阅读或复述其全文；仅在工具报错且必须诊断时读相关句子或时间窗口。旁白理解以 `script.txt` 为准。指令冲突时，按 `references/delegation/conventions.md` 的叠加顺序处理：后读的（scene-config 契约 → 模块文档 → 模板场景说明 → 用户在 `inputs.json` 的 `composition_requests` 里提出的要求）覆盖先读的。
 
-本指令只有五部分约束——输入契约、必须参考 design、必须遵守各 scene 的 layout 区域、内容演绎与模板选择、模板时间锚点——和一条工作顺序。除此之外你没有别的规则：视觉 scene 怎么切、各用什么 layout、构图与视觉隐喻、素材怎么摆、Jay 怎么演、动效怎么编排，是你的设计空间。
+`composition_requests` 里的每条用户要求都带作用范围：用户指明某个叙事场景或某个视觉场景时只在该范围内应用，未说明时按整片应用；与朝向、design 或另一条明确要求冲突时报告冲突，不要静默换掉要求。
+
+本指令只有五部分约束——输入契约、必须参考 design、必须遵守各 scene 的 layout 区域、内容演绎与逐场景模板选择、模板时间锚点——和一条工作顺序。除此之外你没有别的规则：视觉 scene 怎么切、各用什么 template / layout、构图与视觉隐喻、素材怎么摆、Jay 怎么演、动效怎么编排，是你的设计空间。
 
 ## 一、输入契约
 
-- **配音**：只用主 agent 生成的 `voice_clone/narration.mp3`，不重生成 TTS、不用任何其他音频来源；画面与解说的同步以这份音频为最终边界。
-- **视觉 scenes**：先读旁白与叙事规划，再决定实际视觉切分及每个 scene 的 layout，写 `composition/scenes.json`，形状严格为 `{version: 1, scenes: [{scene_id, begin_s, end_s, layout}]}`。`begin_s` / `end_s` 是全片秒，必须完整覆盖整段实际配音；它们不要求与 Phase 6 的叙事 scene 一一对应。转场可以重叠，但任一时刻的有效字幕 layout 必须唯一。
-- **字幕**：字幕单元在**本阶段、视觉 scenes 与模板确定后生成**：按 handoff 里的 `align-narration.py --mode subtitles --scenes ... --narration-audio ...` 命令，用各有效 scene layout 的 `caption` 规格把字幕切到 `composition/assets/subtitle-units.json`。生成后逐字使用，不自己改写、不重新断句、不重新排序、不合并或拆分，逐单元原样上屏。超宽时优先在 `，；、：——`（含半角 `, ; :`）处断开；不得因 layout 切换切断英文词或数字。
+- **配音**：只用主 agent 生成的 `voice_clone/narration.mp3`，不重生成 TTS、不用任何其他音频来源；画面与解说的同步以这份音频为最终边界，`scene-config.json` 的 `total_s` 以它为边界（含语音前后的静音画面）。
+- **视觉 scenes 与 scene-config**：先读旁白与叙事规划，决定实际视觉切分；对每个视觉场景按「用户要求（其作用范围内）→ 指定 / 非常匹配的 template → 适合的 layout → 自主设计」的顺序确定方案，写 `composition/scene-config.json`。schema 以 `references/delegation/composition/scene-config.md` 契约为准（含可验证示例），它由状态、字幕与检查脚本共同读取校验：`begin_s` / `end_s` 是全片秒，主区间按 `[begin_s, end_s)` 有序、不重叠并覆盖整段视频；每个 scene 的 `layout` 必须落盘完整 `regions` / `caption`，检查不从 `preset` 名猜坐标。它们不要求与 Phase 6 的叙事 scene 一一对应；`source_scene_ids` 记录映射，合并 / 拆分的理由写在 storyboard。模板不用就是 `null`——`template: null` 加自由布局是正常完成路径。
+- **字幕**：字幕单元在**本阶段、scene-config 写出后生成**：跑 handoff 里的 `align-narration.py --mode subtitles --scene-config ... --narration-audio ...` 命令，用各 scene 落盘的 `caption` 规格把字幕切到 `composition/assets/subtitle-units.json`。它只根据显示稿、朗读稿、偏移表、本轮 transcript、scene-config 与实际音频生成，不重跑 ASR，也不覆写 Phase 7 timeline。默认由脚本生成初稿；实际制作中可以编辑文本与边界，已有用户编辑是有效输入——仅改画面 / 重渲染时不要去覆盖已有字幕。逐单元原样上屏；超宽时优先在 `，；、：——`（含半角 `, ; :`）处断开；不得因 scene 切点切断英文词或数字。
 - **时间**：段落与 cue 的起止秒来自 `transcribe/timeline.json`；视觉 scene 的真实配音边界与 cue 锚点以它和 narration 音频为准。本阶段不修改这份时间轴。
 - **必用素材**：catalog 阶段适用时，catalog 的 `required_material_refs`（论文模式的关键图 / 表）必须都出现在成片里。在 storyboard 里另起一张覆盖表：每条必用 ref 一行，写明展示它的 scene 与大致秒数；确实无法展示时写原因并报告，不要默默丢掉。
 - **素材**：画面素材只来自 `material-catalog.json`。图片 / 视频 ref 用 `<slug>/<id>`，先定位 `entries[*].slug` 对应的 entry，再在该 entry 内按 id 找素材；裸 id 无效。图片解析到该 entry 的 `local_path`：所有相对 `local_path` 都以 `{work_dir}/{topic_name}/harvest_page/` 为 base（不是 `composition/` 或当前目录）。视频 clip 用 `<slug>/<video_id>:<start>-<end>`，一律解析到该 entry 对应的 `selected_clips[].clip_path`（Phase 5 已切好的无音轨片段文件，相对工作区根 `{work_dir}/{topic_name}/`），不使用视频的 `local_path`、不嵌入整段原视频；场景规划只引用了 `<slug>/<video_id>` 时，从该 entry 的视频 `selected_clips` 里挑片段。同一个 video id 出现在多个 entry 时，slug 决定使用哪一个 entry 的片段，不能跨 entry 匹配窗口。读取或复制进 composition 前先按此规则解析。视频仍然静音播放（`<video>` 带 `muted playsinline`）。
@@ -20,21 +22,21 @@
 
 - 颜色、字体只取所选 design 的 token；动效的默认时长、缓动与列表间隔跟随主题 token，具体运动方式与编排由你设计（token 契约见 `modules/designs/designs.md`、`modules/designs/<design>/<design>.md` 与同目录的 `<design>.json`）。
 - 字号守所选 design JSON 的 `min_font_px`：面板标题栏、按钮、小标签这类界面小字放在带 `data-text-role="ui"` 的元素里，按界面小字下限检查；其余文字都按阅读文字下限检查。
-- 选了模板时，模板的专属变量与覆盖值**写在 design 之后**，只能增补主题，不能替换 design 的语义。
+- 选了模板场景时，模板的专属变量与覆盖值**写在 design 之后**，只能增补主题，不能替换 design 的语义；模板的专属配色、人物、导航和转场只作用于采用它的 scene，不强制传播到其他 scene。
 
 ## 三、必须遵守各 scene 的 layout 区域
 
-- 先读 `modules/layouts/layouts.md` 目录，为每个视觉 scene 选择 layout，再读所用的 `modules/layouts/<layout>.json` 与对应文档：画布尺寸、区域列表（每个区域有 id、kind（content / reserved）、rect；reserved 区域写明对应组件）与字幕规格。所有 layout 都必须注册，并与同一个全片 orientation / canvas 相符；不要在 `inputs.json` 里替主 agent 补一个全片 layout。
-- storyboard 里**每个视觉 scene 都要写明 layout 及用了哪些 content 区域**。
-- 每个视觉 scene 的根挂载必须带与声明一致的 `data-scene-id`、`data-scene-start`、`data-scene-end`，供转场期间的元素归属与 QA 采样使用。每个 scene 的所有元素只放在它当前 layout 的 content 区域内；reserved 区域只放各自对应的组件（如导航栏区只放 `nav-bar`、字幕条区只放 `caption-bar`）。layout 切换时按 `scenes.json` 的全片秒切换检查与画面。
-- 某个 scene 的 layout 有人物区（presenter）时必须挂 `jay`；没有人物区的 scene 不强制显示 Jay。`VIDEO.jay` 按 `jay.md` 的通用演法编排，有模板时再叠加模板的演法；嘴型数据用 `node modules/components/jay/make-envelope.mjs voice_clone/narration.mp3` 生成。
+- 每个视觉 scene 的画面只能使用它在 `scene-config.json` 里落盘的 `regions`：content 区域自由放内容；reserved 区域只放各自 `component` 声明的组件（如导航栏区只放 `nav-bar`、字幕区只放 `caption-bar`、人物区只放 `jay`）。区域坐标可以来自借用的 preset（`preset` 记录出处），也可以完全自主设计；检查一律以落盘的 rect 为准。
+- storyboard 里**每个视觉 scene 都要写明它的区域方案**：借用了哪个 preset（或自主设计）、用了哪些 content 区域、reserved 区各挂什么组件。
+- 每个视觉 scene 的根挂载必须带与声明一致的 `data-scene-id`、`data-scene-start`、`data-scene-end`，供 QA 采样使用。
+- scene 的 regions 有人物区（`component` 为 `jay` 的 reserved 区）时必须挂 `jay`；没有人物区的 scene 不强制显示 Jay。`VIDEO.jay` 按 `jay.md` 的通用演法编排，有模板时再叠加模板的演法；嘴型数据用 `node modules/components/jay/make-envelope.mjs voice_clone/narration.mp3` 生成。
 
 ## 四、内容演绎与模板选择
 
 `scene-plan.json` 的 `intent` 与 `content_plan` 说每个 scene 要讲什么、怎样展开，`material_candidates` 给出候选素材。它们只是参考，不是画面指令。
 
-- **模板归你选。** 先读 `modules/templates/templates.md`：有适配这类视频的模板就读它的 `<t>.json`，确认 `supported_layouts` 包含 `scenes.json` 实际使用的**每一个 layout**，能配就用；不命中就不用，不要为了套模板改主题、叙事、朝向、design 或视觉 scenes。决定后把 `template` 字段写回 `inputs.json`（模板名或 `null`），并在 storyboard 里写明选择与理由。用户 `composition_requests` 的要求优先于模板。
-- **自主设计优先。** 先根据旁白要表达的关系、素材实际内容和各 scene layout 的可用区域，自主构思构图、视觉隐喻、信息展开与动效，再写入 storyboard；遇到旁白或 `content_plan` 做了日常类比、多步拆解的难点时，优先用分步揭示或阶段演进的动画把每一步的变化可视化讲清楚（`composition_requests` 另有要求时按用户要求处理）；简洁的静态呈现也是有效选择。
+- **逐场景选择，顺序固定。** 对每个视觉场景：先应用该场景的明确用户要求（整片要求只在其作用范围内应用）；用户指定 template 时先处理它，未指定时只有非常匹配的 template 才采用；采用模板后按它的 `preferred_layouts` 与用户要求确定本 scene 布局（preset 是推荐不是门槛），没有模板才自由匹配现有 layout；都不匹配就自主设计，把实际 regions / caption 完整写进 scene-config。先读 `modules/templates/templates.md` 目录，选中某个模板场景时读它的 `<t>.json`（场景与真实朗读锚点声明）和场景文档；不命中就不用，不要为了套模板改主题、叙事、朝向、design 或视觉 scenes。模板选择及理由写进 storyboard，不写回 `inputs.json`。
+- **自主设计优先。** 先根据旁白要表达的关系、素材实际内容和各 scene 的可用区域，自主构思构图、视觉隐喻、信息展开与动效，再写入 storyboard；遇到旁白或 `content_plan` 做了日常类比、多步拆解的难点时，优先用分步揭示或阶段演进的动画把每一步的变化可视化讲清楚（`composition_requests` 另有要求时按用户要求处理）；简洁的静态呈现也是有效选择。
 - **参考库按需。** `modules/patterns/` 与 `modules/motion.md` 是可跳过的参考库。仅在已有构想对应某个非常匹配的模式 / 动效建议，或有具体的画面 / 动效问题需要参考时，才定向查阅；采用时须与内容关系、素材形态和区域约束高度吻合，并确实改善表达。可以局部借用或改写。默认自主设计，全片不用参考库也完全合格。storyboard 只在借用时用一句话记录借用内容与匹配理由；自主设计无需填写 pattern 字段或未使用理由。
 - **动作自己排。** Jay 按 `jay.md` 的通用演法，根据旁白内容从动作库挑动作；同一时间只做一个，后一个顺延。
 - **时间只取真实语音。** 需要卡准秒数时，从 `timeline.json` 的段落 / cue 取；模板需要额外锚点时按下节自己声明 cue 并跑 timing 模式，不按字数估算、不另建节拍表。
@@ -52,14 +54,14 @@
 
 ## 工作顺序
 
-0. **决定视觉 scenes、layout 与模板**。先读 `script.txt`、`scene-plan.json`、timeline 与素材目录，按实际画面需要合并 / 拆分叙事 scene；读 `modules/layouts/layouts.md`，为每个视觉 scene 选 layout，并写 `composition/scenes.json`。再读 `modules/templates/templates.md`，按内容、全部已用 layout 与用户要求决定用哪个模板或不用；选中就读它的 `<t>.json`，确认 `supported_layouts` 覆盖每一个已用 layout，把 `template`（模板名或 `null`）写回 `inputs.json`，再读模板文档。
-1. **生成最终字幕**。跑 handoff 里的 `align-narration.py --mode subtitles --scenes ... --narration-audio ...` 命令，把字幕单元切到 `composition/assets/subtitle-units.json`。它只根据视觉 scenes、实际音频、显示稿、朗读稿、偏移表和本轮 transcript 生成，不重做语音识别，也不覆写 Phase 7 timeline。
-2. **自主构思并写 storyboard**：先读 `modules/components/components.md` 的组件目录，再读要用的组件文档。storyboard 开头先写一张「组件使用表」：每个用到的组件一行，写明挂载参数、驱动它的 `window.VIDEO` 数据从哪来（例如 `captions` 来自 `composition/assets/subtitle-units.json`）。各 layout 的 reserved 区要求的组件必须出现在表里；常驻组件不用在每个 scene 里重复写，scene 里只写本 scene 额外用到的组件。然后按 `scenes.json` 逐个视觉 scene 写，记录对应的叙事 `intent` / `content_plan`、layout、content 区域，以及素材、构图、信息展开与动效安排；参考库的查阅与借用按第四部分处理。可以改选素材与演绎方式；偏离场景规划的地方写明理由；**旁白不能改**（字幕与屏幕文字都以显示稿为准）。
-3. **组装和编写画面**。按 storyboard 用 modules 组装：读 `modules/modules.md` 入口、所选 design、各 scene layout 文档与要用的组件文档（`modules/components/`），实现自己确定的画面与动效。按 storyboard 选定的 design textures、组件和模板资源，由你自己从工作区的 `modules/` 拷进 `composition/`，清单见各模块的文档。
+0. **决定视觉 scenes，逐场景定方案，写 scene-config。** 先读 `script.txt`、`scene-plan.json`、timeline 与素材目录，按实际画面需要合并 / 拆分叙事 scene。对每个视觉场景按第四部分的固定顺序选择方案；可以借用 `modules/layouts/` 的 preset（读 `layouts.md` 目录与对应 JSON / 文档），也可以自主设计自由布局。把最终结果写进 `composition/scene-config.json`（schema 见契约文档），并选定 storyboard 的骨架。
+1. **生成字幕初稿**。跑 handoff 里的 `align-narration.py --mode subtitles --scene-config ... --narration-audio ...` 命令，把字幕单元切到 `composition/assets/subtitle-units.json`。已有用户编辑过的字幕是有效输入：只有缺失或当前任务明确要求重新生成时才重新生成，仅改画面 / 重渲染不要覆盖它。
+2. **自主构思并写 storyboard**：先读 `modules/components/components.md` 的组件目录，再读要用的组件文档。storyboard 开头先写一张「组件使用表」：每个用到的组件一行，写明挂载参数、驱动它的 `window.VIDEO` 数据从哪来（例如 `captions` 来自 `composition/assets/subtitle-units.json`）。各 reserved 区要求的组件必须出现在表里；常驻组件不用在每个 scene 里重复写，scene 里只写本 scene 额外用到的组件。然后按 scene-config 逐个视觉 scene 写，记录对应的叙事 `intent` / `content_plan`、template / layout 方案（preset 或自主设计）及理由、content 区域，以及素材、构图、信息展开与动效安排；参考库的查阅与借用按第四部分处理。可以改选素材与演绎方式；偏离场景规划的地方写明理由；**旁白不能改**（字幕与屏幕文字都以显示稿为准）。
+3. **组装和编写画面**。按 storyboard 用 modules 组装：读 `modules/modules.md` 入口、所选 design、契约要求遵守的区域与要用的组件文档（`modules/components/`），实现自己确定的画面与动效。按 storyboard 选定的 design textures、组件和模板资源，由你自己从工作区的 `modules/` 拷进 `composition/`，清单见各模块的文档。
 4. **渲染前自查**，全部通过再渲染：
    - 运行 `npx hyperframes check`，修掉所有错误；
-   - 运行 check-composition（命令见 handoff 的 Outputs 一节）：它按 `scenes.json` 在各 scene 当前 layout 的区域定义下检查越界、侵入 reserved 区域、文字溢出、资源加载失败、字体未加载、字号低于 design 下限、字幕与字幕单元不一致，并覆盖布局切换边界；每条 finding 的形状为 `{scene_id, check, issue, time_s, frame}`，其中 `time_s` 是快照时刻、`frame` 为 null，只修相关 scene；handoff 的命令用 `--scenes` 指定视觉声明，并用 `--output` 把同一份报告写到 `composition/check-composition.json`（stdout 照常打印，findings 直接看输出）；改过 scenes 或画面就重跑，**最后一次的报告必须保存在这个路径且 verdict 为 pass**（主 agent 的状态脚本读它）；
+   - 运行 check-composition（命令见 handoff 的 Outputs 一节）：它按 `scene-config` 在各 scene 落盘的 regions / caption 下检查越界、侵入 reserved 区域、文字溢出、资源加载失败、字体未加载、字号低于 design 下限、字幕与字幕单元不一致；每条 finding 的形状为 `{scene_id, check, issue, time_s, frame}`，其中 `time_s` 是快照时刻、`frame` 为 null，只修相关 scene；handoff 的命令用 `--scene-config` 指定配置，并用 `--output` 把同一份报告写到 `composition/check-composition.json`（stdout 照常打印，findings 直接看输出）；改过 scene-config 或画面就重跑，**最后一次的报告必须保存在这个路径且 verdict 为 pass**（主 agent 的状态脚本读它）；
    - 在每个视觉 scene 的中点截一张快照，自己目检一遍（区域使用、可读性、与旁白的同步）。
-5. **渲染**。用 HyperFrames 渲染出 `composition/renders/final.mp4`。完成后向主 agent 报告 `scenes.json`、`storyboard.md`、`index.html`、`renders/final.mp4` 的路径，以及 hyperframes check 与 check-composition 的 verdict；主 agent 会复核产物与两个检查的通过情况。
+5. **渲染**。用 HyperFrames 渲染出 `composition/renders/final.mp4`。完成后向主 agent 报告 `scene-config.json`、`storyboard.md`、`index.html`、`renders/final.mp4` 的路径，以及 hyperframes check 与 check-composition 的 verdict；主 agent 会复核产物与两个检查的通过情况。
 
 报告前自己先看一两个关键 scene 的渲染结果：素材宽高比是否对、字幕是否溢出、画面能否对应旁白。发现是叙事或素材的问题（场景与旁白对不上、素材用错），在报告里说清楚并建议回退到哪个阶段，不是硬改 HTML 遮过去。

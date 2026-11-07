@@ -18,15 +18,16 @@ composition/index.html，seek 到该秒，然后测量 DOM。检查项：
   <composition>   composition 目录、包含 composition/ 的项目目录，
                   或 index.html 路径。
   --layout        旧单 layout 工程的区域定义 JSON。
-  --scenes        Phase 8 视觉场景声明；每个 scene 使用自己的 layout，字幕使用
-                  当前有效字幕布局。与 --layout 互斥。
+  --scene-config  Phase 8 composition/scene-config.json；每个 scene 使用自己
+                  落盘的 regions / caption，字幕使用当前 scene 的字幕规格。
+                  与 --layout 互斥。
   --min-font-size design 的最小正文字号，单位 px；UI 文本可用
                   --min-ui-font-size（默认：与正文相同）。另一种方式是
                   --design 从某个主题的 design JSON 读取 min_font_px.reading
                   与 min_font_px.ui。二者必居其一。
   --subtitle-units 用于字幕检查的 subtitle-units.json（可选）。
   --timeline      仅旧单 layout 模式：timeline.json 的可选叙事 scenes 决定场景时间。
-                  新视觉模式使用 --scenes，不接受 --timeline。
+                  新视觉模式使用 --scene-config，不接受 --timeline。
 
 输出约定：
   stdout: 单个 JSON 对象
@@ -50,6 +51,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import chrome_cdp
 import cli
 import media
+import scene_config
 import video_contract
 from timeline_scenes import normalize_scenes
 
@@ -92,8 +94,8 @@ def parse_args() -> argparse.Namespace:
                         help='Viewport WxH used for measurement (default: layout canvas).')
     parser.add_argument('--layout', default=None,
                         help='Legacy single-layout region definition JSON (modules/layouts/*.json).')
-    parser.add_argument('--scenes', default=None,
-                        help='Phase 8 composition/scenes.json with per-visual-scene layouts.')
+    parser.add_argument('--scene-config', default=None,
+                        help='Phase 8 composition/scene-config.json with per-visual-scene regions and caption specs.')
     parser.add_argument('--narration-audio', default=None,
                         help='Narration media for visual-scene coverage (default: <workspace>/voice_clone/narration.mp3).')
     font = parser.add_argument_group('design minimum font size (one required)')
@@ -126,12 +128,12 @@ def parse_args() -> argparse.Namespace:
         help='Write the raw Chrome-collected snapshot list for fixtures or debugging.',
     )
     args = parser.parse_args()
-    if (args.layout is None) == (args.scenes is None):
-        parser.error('pass exactly one of --layout (legacy) or --scenes (visual scenes)')
-    if args.narration_audio is not None and args.scenes is None:
-        parser.error('--narration-audio requires --scenes')
-    if args.scenes is not None and args.timeline is not None:
-        parser.error('--scenes supplies visual scene timing; do not also pass --timeline')
+    if (args.layout is None) == (args.scene_config is None):
+        parser.error('pass exactly one of --layout (legacy) or --scene-config (visual scenes)')
+    if args.narration_audio is not None and args.scene_config is None:
+        parser.error('--narration-audio requires --scene-config')
+    if args.scene_config is not None and args.timeline is not None:
+        parser.error('--scene-config supplies visual scene timing; do not also pass --timeline')
     if args.min_font_size is None and args.design is None:
         parser.error('design minimum font size required: pass --min-font-size or --design')
     if args.min_font_size is not None and args.min_font_size <= 0:
@@ -175,8 +177,8 @@ def layout_viewport(layout: Dict[str, Any]) -> Tuple[int, int]:
     return width, height
 
 
-def load_visual_scenes(args: argparse.Namespace, composition_dir: Path) -> List[Dict[str, Any]]:
-    """加载新视觉契约；以实际配音时长校验完整覆盖。"""
+def load_scene_config_scenes(args: argparse.Namespace, composition_dir: Path) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """加载 scene-config；以实际配音时长与全片朝向校验画布和覆盖。"""
     ws = composition_dir.parent
     audio = Path(args.narration_audio).expanduser().resolve() if args.narration_audio else ws / 'voice_clone' / 'narration.mp3'
     duration_s = media.probe_duration(audio)
@@ -185,10 +187,36 @@ def load_visual_scenes(args: argparse.Namespace, composition_dir: Path) -> List[
         orientation = inputs.get('orientation') if isinstance(inputs, dict) else None
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f'cannot read {ws / "inputs.json"} for visual-scene validation: {exc}') from exc
-    return video_contract.load_visual_scenes(
-        Path(args.scenes).expanduser().resolve(), Path(__file__).resolve().parent.parent,
-        orientation, duration_s, ws=ws,
+    expected_canvas = video_contract.orientation_canvas(orientation)
+    if expected_canvas is None:
+        raise ValueError(f'inputs.json field orientation must be a canonical orientation, got {orientation!r}')
+    config = scene_config.load_scene_config(
+        Path(args.scene_config).expanduser().resolve(),
+        expected_canvas=expected_canvas,
+        known_scene_ids=workspace_scene_ids(ws),
+        modules_root=Path(__file__).resolve().parent.parent,
     )
+    total_s = config['total_s']
+    if abs(total_s - duration_s) > scene_config.DURATION_TOLERANCE_S + 0.05:
+        raise ValueError(
+            f'scene-config total_s {total_s} does not match narration duration {duration_s}'
+        )
+    return config['scenes'], {'canvas': config['canvas']}
+
+
+def workspace_scene_ids(ws: Path) -> set[str] | None:
+    """scene-plan.json 的叙事 scene_id 集合；缺失或损坏时不阻塞检查。"""
+    try:
+        plan = json.loads((ws / 'scene-plan.json').read_text(encoding='utf-8'))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(plan, list):
+        return None
+    ids = {
+        scene['scene_id'] for scene in plan
+        if isinstance(scene, dict) and isinstance(scene.get('scene_id'), str)
+    }
+    return ids or None
 
 
 def load_snapshot_list(path: str) -> List[Dict[str, Any]]:
@@ -594,11 +622,7 @@ def check_caption(
                     f'caption uses {lines} lines, exceeding layout max_lines={caption["max_lines"]} '
                     f'at {snapshot["time"]:.3f}s'
                 )
-            caption_region = next(
-                (region for region in caption_layout['regions']
-                 if isinstance(region, dict) and region.get('id') == 'caption-text'),
-                None,
-            )
+            caption_region = scene_config.caption_region(caption_layout)
             if caption_region is not None and detail.get('rect') and not covered_by(
                 detail['rect'], [caption_region['rect']],
             ):
@@ -728,13 +752,13 @@ def build_report(
     for snapshot in snapshots:
         snapshot_by_scene.setdefault(snapshot['scene_id'], []).append(snapshot)
     visual_by_id = {scene['scene_id']: scene for scene in visual_scenes or []}
-    caption_segments = video_contract.caption_layout_segments(visual_scenes) if visual_scenes else []
+    caption_segments = scene_config.caption_layout_segments(visual_scenes) if visual_scenes else []
     for scene in scenes:
         scene_snapshots = snapshot_by_scene.get(scene['scene_id'], [])
         checked.append(
             {
                 'scene_id': scene['scene_id'],
-                **({'layout': scene['layout']} if visual_scenes else {}),
+                **({'layout': scene['layout']['preset']} if visual_scenes else {}),
                 'check_times': [snapshot['time'] for snapshot in scene_snapshots],
             }
         )
@@ -752,7 +776,7 @@ def build_report(
                     'issue': f'no visible element declares this data-scene-id at {snapshot["time"]:.3f}s',
                     'time_s': float(snapshot['time']), 'frame': None,
                 })
-            scene_regions = RegionIndex(visual_by_id[scene['scene_id']]['layout_data']) if visual_scenes else regions
+            scene_regions = RegionIndex(visual_by_id[scene['scene_id']]['layout']) if visual_scenes else regions
             caption_segment = next(
                 (segment for segment in caption_segments
                  if segment['begin_s'] <= snapshot['time'] < segment['end_s']),
@@ -813,9 +837,12 @@ def main() -> None:
         cli.fail(TOOL_NAME, str(exc), exit_code=1)
     try:
         recorded_snapshots = load_snapshot_list(args.snapshots_from) if args.snapshots_from else None
-        visual_scenes = load_visual_scenes(args, composition_dir) if args.scenes else None
-        layout_path = args.scenes or args.layout
-        layout = visual_scenes[0]['layout_data'] if visual_scenes else load_layout(args.layout)
+        visual_scenes, visual_root = load_scene_config_scenes(args, composition_dir) if args.scene_config else (None, None)
+        layout_path = args.scene_config or args.layout
+        layout = (
+            {**visual_scenes[0]['layout'], 'canvas': visual_root['canvas']}
+            if visual_scenes else load_layout(args.layout)
+        )
         canvas_viewport = layout_viewport(layout)
         viewport = explicit_viewport or canvas_viewport
         viewport_mismatch = explicit_viewport is not None and explicit_viewport != canvas_viewport
@@ -857,12 +884,12 @@ def main() -> None:
                     for time in scene_check_times(scene)
                 ]
                 if visual_scenes:
-                    # 明确覆盖有效字幕布局切换前后；转场中的旧 scene 内容仍按自己的
-                    # layout 检查，字幕则按这一刻唯一有效的布局检查。
-                    for segment in video_contract.caption_layout_segments(visual_scenes):
+                    # 明确覆盖每个视觉 scene 的首中尾；scene 的 regions / caption
+                    # 一律以 scene-config 落盘的实际值为准。
+                    for scene in visual_scenes:
                         checks.extend(
-                            {'scene_id': segment['scene_id'], 'time': time}
-                            for time in scene_check_times(segment)
+                            {'scene_id': scene['scene_id'], 'time': time}
+                            for time in scene_check_times(scene)
                         )
                 checks = list({(check['scene_id'], check['time']): check for check in checks}.values())
                 snapshots = page.evaluate(load_snapshot_js(), {'checks': checks})
