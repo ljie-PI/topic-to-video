@@ -59,6 +59,31 @@ composition agent 产出：它存脚本需要的数据（`scripts/scene_config.p
 不加入哈希、源文件修改时间、构建版本号或“是否最新”的追踪字段；读取接口对
 未知字段报错，而不是静默忽略。
 
+## 字幕产物（composition/assets/subtitle-units.json）
+
+`align-narration.py --mode subtitles --scene-config` 一次对齐显示稿 / 朗读稿 /
+transcript（不重复 ASR），把每个对齐 atom 按真实时间完整归属到一个视觉
+scene（重叠最多者，平手归较早 scene；atom 的真实时间不改），再按各 scene
+自己的 `caption` 预算（`width_px / font_size_px` 取整 × `max_lines`）切字幕
+单元。不用全片最小预算冒充逐场景规格。
+
+每个单元保留既有字段 `index` / `text` / `begin_ms` / `end_ms` / `begin_s` /
+`end_s` / `fallback` / `paragraph`，并增加 `scene_id`（该单元归属的视觉
+scene）。产物还带 `caption_segments`（各 scene 的显示区间与 caption 规格），
+组件与 QA 消费同一组派生边界。
+
+切点规则：
+
+- 短字幕自动合并不跨「不同版面」的切点（相邻 scene 的 caption 规格完全一
+  致才算同一版面）；合并超预算会被拒绝并给出诊断。
+- 英文 / 数字 token 的 atoms 分属不同 scene（切点落在 token 时间内部）时，
+  工具报出涉及的 `scene_id` 与两侧真实可用的时间边界（ms）后失败，由
+  composition agent 调整视觉切点或编辑字幕；不静默截断、重复或丢弃文字。
+
+编辑规则：初稿默认由脚本生成；实际制作中可以编辑字幕文本与边界，已有用户
+编辑是有效输入。显示（composition 组件）与检查（check-composition）都以当
+前文件为准，仅改画面 / 重渲染不会覆盖已有字幕；没有锁文件、指纹或编辑审批。
+
 ## 可验证示例
 
 下面两个示例覆盖了“采用模板的场景 + 预设布局”与“无模板 + 自由布局”两种正常
