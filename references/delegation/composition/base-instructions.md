@@ -34,7 +34,7 @@
 `scene-plan.json` 的 `intent` 与 `content_plan` 说每个 scene 要讲什么、怎样展开，`material_candidates` 给出候选素材。它们只是参考，不是画面指令。
 
 - **模板归你选。** 先读 `modules/templates/templates.md`：有适配这类视频的模板就读它的 `<t>.json`，确认 `supported_layouts` 包含 `scenes.json` 实际使用的**每一个 layout**，能配就用；不命中就不用，不要为了套模板改主题、叙事、朝向、design 或视觉 scenes。决定后把 `template` 字段写回 `inputs.json`（模板名或 `null`），并在 storyboard 里写明选择与理由。用户 `composition_requests` 的要求优先于模板。
-- **自主设计优先。** 先根据旁白要表达的关系、素材实际内容和各 scene layout 的可用区域，自主构思构图、视觉隐喻、信息展开与动效，再写入 storyboard；简洁的静态呈现也是有效选择。
+- **自主设计优先。** 先根据旁白要表达的关系、素材实际内容和各 scene layout 的可用区域，自主构思构图、视觉隐喻、信息展开与动效，再写入 storyboard；遇到旁白或 `content_plan` 做了日常类比、多步拆解的难点时，优先用分步揭示或阶段演进的动画把每一步的变化可视化讲清楚（`composition_requests` 另有要求时按用户要求处理）；简洁的静态呈现也是有效选择。
 - **参考库按需。** `modules/patterns/` 与 `modules/motion.md` 是可跳过的参考库。仅在已有构想对应某个非常匹配的模式 / 动效建议，或有具体的画面 / 动效问题需要参考时，才定向查阅；采用时须与内容关系、素材形态和区域约束高度吻合，并确实改善表达。可以局部借用或改写。默认自主设计，全片不用参考库也完全合格。storyboard 只在借用时用一句话记录借用内容与匹配理由；自主设计无需填写 pattern 字段或未使用理由。
 - **动作自己排。** Jay 按 `jay.md` 的通用演法，根据旁白内容从动作库挑动作；同一时间只做一个，后一个顺延。
 - **时间只取真实语音。** 需要卡准秒数时，从 `timeline.json` 的段落 / cue 取；模板需要额外锚点时按下节自己声明 cue 并跑 timing 模式，不按字数估算、不另建节拍表。

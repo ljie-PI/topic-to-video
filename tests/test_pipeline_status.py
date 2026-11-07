@@ -139,7 +139,6 @@ SCENE_PLAN = [
         'paragraphs': [1, 2],
         'intent': '开场与背景',
         'content_plan': '先用结论开场，再按背景、对比、限制的顺序展开。',
-        'facts': [],
         'material_candidates': [{'ref': 'example/img_001', 'score': 8, 'reason': '对应开场'}],
         'cues': [],
     }
@@ -750,7 +749,6 @@ def scene(scene_id: str, paragraphs, candidates=()) -> dict:
         'paragraphs': paragraphs,
         'intent': scene_id,
         'content_plan': f'{scene_id} 的内容与演绎方式',
-        'facts': [],
         'material_candidates': list(candidates),
         'cues': [],
     }
