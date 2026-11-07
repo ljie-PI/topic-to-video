@@ -9,9 +9,9 @@
 
 用模块拼视频，比每次从零写场景更快，风格也更统一。
 
-本文档是模块库的入口。下文所有路径都相对 `modules/` 目录。每个模块的文档、HTML 和图片放在同一个目录里；HTML 和图片按各模块文档复制进视频工程。
+本文档是模块库的入口。每个模块的文档、HTML 和图片放在同一个目录里；HTML 和图片按各模块文档复制进视频工程。
 
-路径约定：正文（散文、表格、行内代码）里的路径引用一律相对 `modules/` 书写；可以直接照抄运行的 shell 命令一律从 skill 根目录（仓库根）写相对路径，例如 `bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/github`。
+路径约定：正文（散文、表格、行内代码）里的路径引用相对 `modules/`；**Markdown 链接目标相对当前 Markdown 文件所在目录**，阅读原始文档时也按此基准解析链接；可以直接照抄运行的 shell 命令从 skill 根目录（仓库根）写相对路径，例如 `bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/github`。
 
 ## 目录
 
@@ -37,7 +37,7 @@ patterns/
   patterns.md                             patterns 总览：两类 pattern 的索引和使用方式
   media/                                  媒体呈现类：media-first、video-first、viewport-reveal、band、detail-callout、comparison、continuation
   info/                                   信息形态类：leaderboard、product-card、big-number、data-table、chart、process-flow、architecture、list-grid、comparison-matrix、code-terminal、callout-quote
-motion.md                                 运动指南：动画能力发现、选择顺序、runtime 选择、全局运动原则
+motion.md                                 按需动效参考：能力查询、构思维度、runtime 选择、编排建议
 templates/
   templates.md                            模板总览
   github/github.md                        GitHub 热榜视频：组装方法、专属配色和元素、人物演法
@@ -59,7 +59,7 @@ examples/
 | 选外观 / 新建主题 | `designs/designs.md`，再看具体主题的 `<主题>.md` + `<主题>.json`（机器可读 token、字号与字体契约） |
 | 安排版面、逐视觉 scene 选布局、确定区域坐标 | `layouts/layouts.md` → 每个所用 `layouts/<布局>.md` + 对应 `.json`（机器可读区域定义，字幕脚本读它的 `caption` 段） |
 | 挂某个组件、写它的数据 | `components/<组件>/<组件>.md` |
-| 设计某个 scene 的画面（选形态、摆位置、配动效） | `patterns/<类>/<pattern>.md`，动效问题再看 `motion.md` |
+| 已有画面构想，需要借用非常匹配的形态 / 动效建议 | 按需查 `patterns/<类>/<pattern>.md` 或 `motion.md`；查阅条件见 [composition 基础指令第四部分](../references/delegation/composition/base-instructions.md#四内容演绎与模板选择) |
 | 让人物做动作、配嘴型 | `components/jay/jay.md`；每个动作的样子见 `examples/jay-actions/`（示例只在 skill 仓库，工作区副本里没有） |
 | 看一个完整的成品怎么写 | `examples/github-trending/`（`index.html`、`data/video-data.js`、`tools/build-data.mjs`；示例只在 skill 仓库，工作区副本里没有） |
 
@@ -70,7 +70,7 @@ examples/
 | 设计主题 | `designs/<主题>/` | **通用**：配色、字体、字号、背景、形状、动效。只管外观 |
 | 布局 | `layouts/` | **通用**：区域的位置、尺寸、层级。只管版面 |
 | 组件 | `components/<组件>/` | **通用**：不带具体内容；配色和字体只读主题变量；位置默认按布局 |
-| patterns | `patterns/<类>/` | **通用建议**：媒体呈现和信息形态怎么摆、怎么动，只作建议不作规则 |
+| patterns / motion | `patterns/<类>/`、`motion.md` | **按需参考（可跳过）**：画面形态与动效建议，不承担 scene 分类或设计流程 |
 | 模板 | `templates/<类型>/` | **专用于一类视频**：选布局，组合组件并定好参数，加入专属配色和元素，提供可填内容的场景 |
 
 ## 组装一支视频

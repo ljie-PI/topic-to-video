@@ -409,8 +409,8 @@ def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan
         sources.append(SKILL_ROOT / 'modules' / 'templates' / template / f'{template}.json')
     sources.append(SKILL_ROOT / 'modules' / 'layouts' / 'layouts.md')
     sources.append(SKILL_ROOT / 'modules' / 'templates' / 'templates.md')
-    patterns, components = modules / 'patterns', modules / 'components'
-    references.append((f'按 storyboard 需要，自行阅读 {patterns}/、{components}/ 下的文档', [patterns, components]))
+    components = modules / 'components'
+    references.append((f'{components}/（组件目录：按需读要挂载的组件文档）', [components]))
     plan = Plan(
         values={
             'required_references': numbered([text for text, _ in references]),
