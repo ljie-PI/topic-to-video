@@ -31,12 +31,8 @@ composition/index.html，seek 到该秒，然后测量 DOM。检查项：
 输出约定：
   stdout: 单个 JSON 对象
     success: {"success": true, "verdict": "pass"|"fail",
-              "scenes_checked": [...], "findings": [...],
-              "sources_sha256": "..."}
+              "scenes_checked": [...], "findings": [...]}
       每条发现：{scene_id, check, issue, time_s, frame}
-      sources_sha256: 运行时对可检查源文件（index.html、compositions/、
-              assets/ 去掉 fonts）的指纹；pipeline-status 会在后续扫描中比对它，
-              因此即使文件 mtime 未被保留，任何编辑也会让已保存的 pass 报告失效
     error:   {"success": false, "error": "..."}
   stderr: 带 [check-composition] 前缀的人类可读进度
   exit:   0 = 运行完成（verdict 字段给出 pass/fail），
@@ -55,7 +51,6 @@ import chrome_cdp
 import cli
 import media
 import video_contract
-from composition_hash import composition_sources_fingerprint, visual_contract_fingerprint
 from timeline_scenes import normalize_scenes
 
 TOOL_NAME = 'check-composition'
@@ -798,8 +793,6 @@ def build_report(
         'min_ui_font_size': font_floors[1],
         'scenes_checked': checked,
         'findings': findings,
-        'sources_sha256': composition_sources_fingerprint(composition_dir),
-        **({'visual_contract_sha256': visual_contract_fingerprint(Path(layout_path), [scene['layout_path'] for scene in visual_scenes])} if visual_scenes else {}),
         'warnings': warnings,
     }
 

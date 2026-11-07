@@ -722,8 +722,8 @@ def test_missing_input_file_exits_1(tmp_path: Path):
     assert result['success'] is False
 
 
-def test_offsets_without_content_hashes_are_rejected(tmp_path: Path):
-    """缺内容哈希的偏移表不能降级成“只比字数”：直接调用对齐也要拒绝。"""
+def test_offsets_without_content_hashes_are_accepted(tmp_path: Path):
+    """内容哈希已删除：make-narration 现在写的就是无哈希偏移表，直接对齐接受它。"""
     script_text = '内容。'
     write_text(tmp_path / 'script.txt', script_text)
     write_json(tmp_path / 'tts-lexicon.json', {})
@@ -745,11 +745,8 @@ def test_offsets_without_content_hashes_are_rejected(tmp_path: Path):
         '--script', str(tmp_path / 'script.txt'),
         '--timeline-output', str(tmp_path / 'timeline.json'),
     )
-    assert proc.returncode == 1
-    result = json.loads(proc.stdout)
-    assert result['success'] is False
-    assert 'script_sha256' in result['error']
-    assert not (tmp_path / 'timeline.json').exists()
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert (tmp_path / 'timeline.json').is_file()
 
 
 def test_transcript_without_word_timestamps_exit_1(tmp_path: Path):

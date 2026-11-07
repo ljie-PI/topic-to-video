@@ -24,7 +24,7 @@
 - 每个 `selected_clip` 都有 `clip_path`，且它指向的文件（相对工作区）存在且非空；
 - `required_material_refs` 必须是不重复、且能在本 catalog 里按 entry 解析的 ref；标准模式下它是可选的，论文模式下必须显式声明（没有适用的关键图时写 `[]`）；
 - 状态脚本检查结构、描述与文件；评分、相关性和片段内容由执行 agent 自检，不由状态脚本判定。
-- `catalog-instructions.md` 是可选上游输入：生成 catalog 后新增、修改或删除该文件，状态脚本会将本阶段标为 `stale`，并暂停下游；缺省时不要求创建该文件。上游依赖集合也按当前契约校验；旧戳缺少这个依赖时判为过期，不自动补齐基线。
+- `catalog-instructions.md` 是可选上游输入：缺省时不要求创建该文件。生成 catalog 后新增、修改或删除该文件，状态脚本不会自动将本阶段标为重做；内容确实需要重建时，由主 agent 用 `--redo 5-material-catalog --reason "..."` 显式登记。
 
 ## 执行后自检
 

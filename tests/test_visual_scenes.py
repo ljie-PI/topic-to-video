@@ -37,9 +37,6 @@ def test_visual_scenes_cover_actual_duration_and_project_caption_layouts(tmp_pat
         ('intro', 0, 9.5), ('demo', 9.5, 20),
     ]
     assert [s['layout'] for s in segments] == ['presenter', 'stage']
-    assert video_contract.visual_layout_relpaths(scenes) == [
-        'modules/layouts/presenter.json', 'modules/layouts/stage.json',
-    ]
 
 
 @pytest.mark.parametrize('data, expected', [

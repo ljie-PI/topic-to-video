@@ -47,8 +47,8 @@
 - `composition/storyboard.md` 非空；
 - `composition/index.html` 存在；
 - `composition/compositions/` 里至少有一个文件；
-- `composition/check-composition.json` 的 `verdict` 为 `pass`，且覆盖当前 composition——报告里的 `sources_sha256` 必须等于当前 `scenes.json` / `index.html` / `compositions/` / `assets/`（字体除外）的内容指纹；`visual_contract_sha256` 还必须覆盖视觉声明与全部有效 layout JSON，`scenes_checked` 覆盖每个视觉 scene 及其实际 layout。缺少这些证据时直接判不合格（改过 scenes、有效 layout 或画面就要重跑 check-composition 并用 `--output` 保存报告）；
-- `composition/renders/final.mp4` 存在、非空，且不早于任一画面源文件（`index.html`、`compositions/`、`assets/`、`storyboard.md`）。视觉声明与有效外部 layout 的新旧另由内容指纹和 Phase 8 stamp 追踪，不能用相同字节复制造成的 mtime 变化误判；内容确已变化的确定性重做得到相同字节时，按通用 `--finish` / `--restamp` 规则确认；
+- `composition/check-composition.json` 的 `verdict` 为 `pass`，且覆盖当前视觉声明——`scenes_checked` 覆盖每个视觉 scene 及其实际 layout。改过 scenes、有效 layout 或画面就要重跑 check-composition 并用 `--output` 保存报告；状态脚本只验收报告数据本身，不比对源文件哈希或修改时间；
+- `composition/renders/final.mp4` 存在、非空。渲染是否覆盖最新画面由执行流程保证：改过画面就重新渲染，不由文件时间充当验收证据；
 - 状态脚本不判定的两项由主 agent 抽查（见 8.4）：`npx hyperframes check` 无错误；storyboard 的每个视觉 scene 都标注了 layout 与所用的 content 区域，并说明了表达设计，模板选择与参考库借用记录符合 composition 基础指令第四部分。
 
 ## 执行后自检
@@ -87,7 +87,7 @@ Phase 9（检查与混音）：渲染后 QA（`check-render.py` 确定性检查 
 - **模板不在这一步决定。** 主 agent 不预填 `template: null` 冒充“已决定不用”，也不替它试模板。`prepare-handoff.py composition` 允许 `layout` 与 `template` 缺省，也允许 `composition/scenes.json` 尚不存在；agent 最终决定 scenes / layouts 与模板，并把模板名或 `null` 写回 `inputs.json`。
 - **旧输入仍兼容。** 旧单 layout 工程若已有 `inputs.json.layout` / `template`，准备脚本仍校验其注册、canvas 与兼容性；但新 handoff 的命令一律使用本阶段生成的 `composition/scenes.json`，不把旧默认值当成全片限制。
 
-视觉 scenes 或实际使用的 layout 改变只会让本阶段及下游重做：Phase 7 不依赖它们，音频、transcript 和时间轴都不重建。状态指纹记录 `composition/scenes.json`、实际使用的 design / 全部 layout / template JSON；副本内容改变或 `--refresh` 更新了机器契约时同样重做本阶段，复制相同字节则不算变化。标准无素材模式不读取或记录残留 catalog。
+视觉 scenes 或实际使用的 layout 改变只会让本阶段及登记的下游重做：Phase 7 不依赖它们，音频、transcript 和时间轴都不重建。主 agent 核对影响范围后显式登记 `--redo 8-composition`，并按交付范围决定 Phase 9 的 QA / 混音是否重跑；标准无素材模式不读取残留 catalog。
 
 用户在本阶段新提出画面要求时，先按 `references/pipeline-control.md` 写进 `inputs.json` 的 `composition_requests`，再生成 handoff。
 
@@ -123,7 +123,7 @@ design textures、组件和模板资源不在这里拷：用哪些由 compositio
 
 agent 先读旁白与叙事规划，决定实际视觉 scenes 及各自 layout，写出 `composition/scenes.json`。接着它读 `modules/templates/templates.md` 决定模板（或不用），确认模板的 `supported_layouts` 覆盖 scenes 实际使用的每一个 layout，并把选择写回 `inputs.json` 的 `template`。
 
-视觉声明与模板确定后，agent 跑 handoff 里的 `align-narration.py --mode subtitles --scenes ... --narration-audio ...`，把最终字幕生成到 `composition/assets/subtitle-units.json`。这份文件在 `assets/` 下，因此会被 composition 源指纹和渲染新鲜度检查覆盖。然后按基础指令第四部分自主设计构图、动作与动效，选择组件并完成 storyboard 和画面；patterns / motion 的查阅和借用也按该部分处理。scene、layout、模板与画面设计都由它自己负责，主 agent 不代为决定。
+视觉声明与模板确定后，agent 跑 handoff 里的 `align-narration.py --mode subtitles --scenes ... --narration-audio ...`，把最终字幕生成到 `composition/assets/subtitle-units.json`。然后按基础指令第四部分自主设计构图、动作与动效，选择组件并完成 storyboard 和画面；patterns / motion 的查阅和借用也按该部分处理。scene、layout、模板与画面设计都由它自己负责，主 agent 不代为决定。
 
 #### 8.4 — 主 agent 校验
 
@@ -131,7 +131,7 @@ composition agent 报告完成后：
 
 0. catalog 阶段适用时抽查必用素材：storyboard 的覆盖表是否把 `required_material_refs` 每条都落到了具体 scene，实际画面里能不能看到；不能用“选为候选”冒充“已经展示”。
 1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`。
-2. `next_phase` 仍是 Phase 8 时分三种情况：`reason` 为 `missing` / `corrupt` 时，把 `next_phase.problems`（产物 → 原因，包括 `composition/scenes.json` 或 `inputs.json#template` → 原因）原样反馈给 composition agent；`reason` 为 `stale` 时 `problems` 是空的，真正的原因在 `next_phase.changed_upstream`（变化的上游文件列表）里，把它交给 composition agent，让它重新生成受影响的部分。无论哪种情况都限定范围修复，修完再跑一次。不要自己改产物。
+2. `next_phase` 仍是 Phase 8 时分两种情况：`reason` 为 `missing` / `corrupt` 时，把 `next_phase.problems`（产物 → 原因，包括 `composition/scenes.json` 或 `inputs.json#template` → 原因）原样反馈给 composition agent；`reason` 为 `redo` 时把 `redo_reason` 一并交给它。无论哪种情况都限定范围修复，修完由主 agent `--finish` 后再跑一次。不要自己改产物。
 3. Phase 8 不再是 `next_phase` 后，抽查状态脚本不判定的两项：agent 报告的 `npx hyperframes check` 无错误；storyboard 的每个视觉 scene 都写明了 layout、所用的 content 区域、构图、信息展开与动效安排，模板选择与参考库借用记录符合基础指令第四部分（设计是否合适看画面与内容是否对得上）。
 
 全部通过后进入 Phase 9。

@@ -223,8 +223,6 @@ def offsets(**overrides) -> dict:
         'version': 1,
         'script_length': len('甲。'),
         'narration_length': len('甲。'),
-        'script_sha256': video_contract.text_sha256('甲。'),
-        'narration_sha256': video_contract.text_sha256('甲。'),
         'segments': [{'narration_start': 0, 'narration_end': 2, 'script_start': 0, 'script_end': 2}],
     }
     payload.update(overrides)
@@ -238,14 +236,9 @@ def test_a_current_offsets_table_passes(tmp_path: Path):
     assert video_contract.offsets_problem(offsets(), script_path=script, narration_path=narration) is None
 
 
-def test_offsets_require_the_version_and_the_hashes():
+def test_offsets_require_the_version_lengths_and_segments():
     assert 'version' in video_contract.offsets_problem(offsets(version=2))
     assert 'segments' in video_contract.offsets_problem(offsets(segments=[]))
-    for field in ('script_sha256', 'narration_sha256'):
-        payload = offsets()
-        del payload[field]
-        problem = video_contract.offsets_problem(payload)
-        assert field in problem and 'make-narration' in problem
     for field in ('script_length', 'narration_length'):
         assert 'integer' in video_contract.offsets_problem(offsets(**{field: 2.5}))
 
@@ -256,10 +249,7 @@ def test_offsets_are_compared_against_the_source_files(tmp_path: Path):
     narration.write_text('甲。', encoding='utf-8')
     problem = video_contract.offsets_problem(offsets(), script_path=script, narration_path=narration)
     assert 'script_length' in problem
-    script.write_text('乙。', encoding='utf-8')
-    problem = video_contract.offsets_problem(offsets(), script_path=script, narration_path=narration)
-    assert 'script_sha256 does not match' in problem
     script.write_text('甲。', encoding='utf-8')
-    narration.write_text('乙。', encoding='utf-8')
+    narration.write_text('甲。乙', encoding='utf-8')
     problem = video_contract.offsets_problem(offsets(), script_path=script, narration_path=narration)
-    assert 'narration_sha256 does not match' in problem
+    assert 'narration_length' in problem

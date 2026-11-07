@@ -8,57 +8,40 @@
 
 Phase 6 的确定性规则也在这里检查，因此不需要 agent 手算：script.txt 长度对照
 inputs.json 的 duration、scene-plan 段落对照 script.txt 的段落、scene-plan 的
-素材引用对照 catalog、narration-offsets.json 记录的版本 / 字数 / 内容哈希对照
+素材引用对照 catalog、narration-offsets.json 记录的版本 / 字数对照
 script.txt 与 narration.txt。
 
 阶段的分工也在这里体现：Phase 7 只产出音频、fresh transcript 与时间轴（不读
 layout）；最终字幕是 Phase 8 的产物（`composition/assets/subtitle-units.json`），
 按 `composition/scenes.json` 的实际视觉 layouts 生成；旧工程保留 inputs.layout 入口。
-Phase 8 校验精确画布、逐 scene 模板兼容和报告内容指纹，Phase 7 不依赖视觉配置。
+Phase 8 校验精确画布与逐 scene 模板兼容，Phase 7 不依赖视觉配置。
 
-过期检测：{workspace}/.pipeline/stamps.json（只由本脚本写入）为每个已完成阶段
-记录它所依据的上游文件与 inputs.json 字段的 sha256 指纹，以及它自己产物的指纹。
-上游变了而产物没变的阶段即为过期：它是基于更早的上游构建的。部分重做不会清除
-这个标记：阶段会一直保持过期，直到每个产物都被重新生成（或该阶段被重新打戳），
-因此半途而废的重做永远无法掩盖过期。上游键按集合比对：旧戳里缺少当前声明的键、
-或留着已移除的键，都算变化（没有 backfill，不做自动迁移）——缺证据的旧构建
-要被重新生成，而不是因为旧戳缺键就继续信任。各阶段按顺序判定；第一个缺失、损坏、
-过期或等待用户确认的阶段成为 next_phase，其后每个适用的阶段都为 pending：它
-不被检查、不打戳、也不被报告为已完成。--restamp <phase_id> 把某阶段的当前产物
-当作基于当前上游构建的产物接受（其产物必须通过检查）。
+本脚本不做内容新鲜度追踪：不比对文件哈希或修改时间，不判断某个阶段是不是
+“基于当前上游构建”。上游改动后的影响由主 agent 根据已知修改范围显式登记重做，
+不从文件变化推断。各阶段按顺序判定；第一个缺失、损坏、等待用户确认或已登记
+重做的阶段成为 next_phase，其后每个适用的阶段都为 pending：它不被检查、也不
+被报告为已完成。
 
 用户关卡按需启用：inputs.json 可选的 approval_gates 列出要求审稿的关卡：
 research-brief（Phase 3）和/或 script（Phase 6）。缺省或 [] 表示全自动。只有
 列出的关卡需要 {workspace}/.pipeline/approvals.json 中匹配的确认。--approve
-<gate> 只在该阶段全部产物通过检查之后才记录当前产物的哈希；编辑已确认的产物会
-重新打开被请求的关卡。用户明确授权自动运行时，清空 approval_gates 以记录这一
-政策，不要伪造确认。改变审稿政策不会让产物过期。
+<gate> 只在该阶段全部产物通过检查之后才记录确认事实与时间，不绑定文件哈希。
+显式重做（--redo）一个带审稿 gate 的阶段会撤销该 gate 的旧确认；审稿策略本身
+只是政策：启用或停用它不会代替用户批准，也不会取消已登记的确认。
 
 重做请求：产物合格不等于内容合格，而用户或 agent 要求重做时，文件往往还没变。
 因此 {workspace}/.pipeline/redos.json 记录这类请求：--redo <phase_id> --reason <text>
 登记后，该阶段即使产物合格也不被当完成（next_phase.reason 为 redo），其后的
 阶段为 pending；旧产物保留，扫描也不会清掉请求。--finish <phase_id> 先清掉这条
-要求，再让该阶段走它平时的检查：产物要全部合格，而且必须是基于当前输入构建的
-（上游变了而产物还是旧构建就报失败；确定性重跑得到相同字节时用 --restamp）。
-通过后才把这个阶段记为基于当前输入构建，只影响这一个阶段。--restamp 和
---approve 都不能跳过待重做的阶段。结束本身不证明内容合格：agent 必须先按阶段
-文档自检，再执行 --finish。
+要求，再让该阶段走它平时的产物检查：全部合格才算结束。它不证明内容合格，也不
+替用户审批：agent 必须先按阶段文档自检，再执行 --finish。
 
-健壮性：扫描绝不会因状态文件问题而中止。不可读的可选上游按缺失计；不可用的
-stamps.json 会被隔离（改名为 stamps.json.quarantined），并通过 stamps_reset 报告，
-而不是被默默信任；保存戳或指纹缓存都是尽力而为，只有 workspace 不可写时才给出
-警告。redos.json 是例外：读不出来就无法知道有没有待重做的阶段，默默当它是空的
-会丢掉用户的要求，因此那一次运行直接失败（exit 1）。stamps.json 不可用时只有
-重新确认过的阶段算完成：其余报告为 unverified，逐个确认并用 --restamp 或
---finish 接受，全部补齐后隔离才解除。inputs.json 的字段在计算哈希
-之前会归一化（duration 的写法、缺省 qa_level、缺省要求列表与 [] 等价），而
-check-composition 的新鲜度比对的是报告里嵌入的 sources_sha256，不是 mtime：
-报告没有指纹就直接判不合格，因此不保留 mtime 的复制无法伪造一份新鲜的 pass。
-一份 size + mtime 指纹缓存（.pipeline/fpcache.json）会跳过对不可能变化的大媒体
-文件的重复哈希。
+健壮性：扫描绝不会因状态文件问题而中止。redos.json 是例外：读不出来就无法知道
+有没有待重做的阶段，默默当它是空的会丢掉用户的要求，因此那一次运行直接失败
+（exit 1）。approvals.json 读不出来时按没有确认处理，原文件原样保留。
 
 用法：
-  python3 scripts/pipeline-status.py <workspace_dir> [--restamp <phase_id> | --approve <gate> | --redo <phase_id> --reason <text> | --finish <phase_id>]
+  python3 scripts/pipeline-status.py <workspace_dir> [--approve <gate> | --redo <phase_id> --reason <text> | --finish <phase_id>]
 
 workspace_dir 是必需的：SKILL.md 中的命令从 skill 根目录运行，因此当前目录永远
 不是项目 workspace。项目 workspace 位于本仓库之外；输出中只有文档路径是相对本
@@ -67,31 +50,23 @@ workspace_dir 是必需的：SKILL.md 中的命令从 skill 根目录运行，�
 输出：stdout 上的一份 JSON 文档。除了沿用下来的 completed_phases /
 skipped_phases / missing_products / corrupt_products 之外，还带有：
   phases          [{id, status}]，覆盖每个阶段；status 为 completed、
-                  skipped、missing、corrupt、stale、redo_requested、
-                  unverified、awaiting_approval 或 pending
-  stale_phases, pending_phases, redo_phases
+                  skipped、missing、corrupt、redo_requested、
+                  awaiting_approval 或 pending
+  pending_phases, redo_phases
   approval_gates    inputs.json 中请求用户审稿的关卡（默认：[]）
-  stamps_reset      stamps.json 曾不可用并被隔离时为 true：
-                  每个阶段都可能是过期的；用 --restamp 重建戳
   next_phase      {id, title, doc, reason, problems}；reason 为 missing、
-                  corrupt、stale、redo、unverified 或 awaiting_approval。
-                  过期阶段会附加 changed_upstream；已登记重做的阶段会附加
+                  corrupt、redo 或 awaiting_approval。已登记重做的阶段会附加
                   redo_reason；确认关卡会附加 gate 与 instruction。
-                  unverified 只在 stamps.json 不可用时出现：该阶段还没人重新
-                  确认过，用 --restamp 或 --finish 接受它。
                   输入前置条件失败的键写作 inputs.json#<field>（例如
                   inputs.json#layout），它算 corrupt，但不进 corrupt_products：
                   那不是产物缺失，而是该阶段要修的配置。
 退出码：0 = 成功（存在下一个阶段，或流水线已完成），
-1 = 运行时错误（workspace 不可读或不可写、对产物不通过的阶段使用 --restamp、
-对当前不适用的阶段使用 --redo），
+1 = 运行时错误（workspace 不可读或不可写、对当前不适用的阶段使用 --redo），
 2 = 参数非法，或请求无法被接受（产物无法确认或结束重做、没有待重做的阶段）。
 """
 from __future__ import annotations
 
 import argparse
-import copy
-import hashlib
 import json
 import os
 import re
@@ -106,10 +81,6 @@ import harvest_manifest
 import media
 import script_text
 import video_contract
-from composition_hash import (
-    composition_source_relpaths, composition_sources_fingerprint, visible_files,
-    visual_contract_fingerprint,
-)
 from harvest_manifest import _stage_json as stage_json, stored_path_problem
 from delegation_config import validate_delegation
 
@@ -125,24 +96,17 @@ STATUS_CORRUPT = 'corrupt'
 # 其余状态在此命名。
 PHASE_COMPLETED = 'completed'
 PHASE_SKIPPED = 'skipped'
-PHASE_STALE = 'stale'
 PHASE_PENDING = 'pending'
 PHASE_AWAITING_APPROVAL = 'awaiting_approval'
 PHASE_REDO = 'redo_requested'
-# stamps.json 不可用时，没有自己确认过的阶段：产物合格但无法知道它是不是基于当前
-# 输入构建的，因此既不算完成，也不能被隐式接受。
-PHASE_UNVERIFIED = 'unverified'
 
-# next_phase.reason 的取值：前四个与同名的阶段状态一致，重做请求单独命名，
-# 以区别于上游变化造成的 stale。
+# next_phase.reason 的取值：前三个与同名的阶段状态一致，重做请求单独命名。
 REASON_REDO = 'redo'
 
 # Phase 1 的基础字段：定义在 video_contract，实际读取也只认那一份。
 INPUTS_REQUIRED_FIELDS = video_contract.INPUTS_BASE_FIELDS
 
 # 用户在对话里提出的长期要求，按阶段分开保存；缺省与 [] 等价。
-NARRATION_REQUESTS_FIELD = video_contract.NARRATION_REQUESTS_FIELD
-COMPOSITION_REQUESTS_FIELD = video_contract.COMPOSITION_REQUESTS_FIELD
 REQUESTS_FIELDS = video_contract.REQUESTS_FIELDS
 
 # qa_level 可选：缺省表示 standard 档。给出时必须是三个枚举值之一。
@@ -151,20 +115,11 @@ QA_LEVELS = video_contract.QA_LEVELS
 PAPER_MODES = {'paper'}
 
 # {workspace}/.pipeline/ 是本脚本自己的状态；只有本脚本写入它。
-# stamps.json 为每个已完成阶段记录它所依据的上游、以及它持有产物的指纹。
-# fpcache.json 记忆文件指纹（size + mtime_ns -> sha256），使扫描跳过对不可能
-# 变化的大媒体文件的重复哈希；它是尽力而为的，且从不被盲目信任。
-STAMPS_PATH = '.pipeline/stamps.json'
-STAMPS_VERSION = 1
-# 不可用的 stamps.json 会被改名到这里而不是删除；它的存在会阻止后续扫描
-# 保存新打的（可能过期的）戳。
-QUARANTINED_STAMPS = 'stamps.json.quarantined'
-FPCACHE_PATH = '.pipeline/fpcache.json'
-FPCACHE_VERSION = 1
 
 # inputs.json#approval_gates 按需启用用户审稿（默认：[]）；这是政策，不是构建输入，
 # 因此改变它不得使已经生成的产物失效。
-# 用户确认是持久状态，绑定到用户当时看到的那份确切产物。
+# 用户确认是持久状态：按 gate 记录确认事实与时间，不绑定文件哈希；显式重做
+# 对应阶段时撤销该 gate 的旧确认。
 APPROVALS_PATH = '.pipeline/approvals.json'
 APPROVALS_VERSION = 1
 
@@ -175,7 +130,6 @@ REDOS_VERSION = 1
 GATES: dict[str, dict[str, Any]] = {
     'research-brief': {
         'phase': '3-research',
-        'products': ['research-brief.md'],
         'instruction': (
             '把 research-brief.md 给用户过目；用户确认后运行 '
             '`python3 scripts/pipeline-status.py <ws> --approve research-brief`'
@@ -183,16 +137,12 @@ GATES: dict[str, dict[str, Any]] = {
     },
     'script': {
         'phase': '6-script-scene-plan',
-        'products': ['script.txt', 'tts-lexicon.json', 'scene-plan.json'],
         'instruction': (
             '把旁白和每个 scene 的 scene_id + intent + content_plan 摘要交给用户确认；确认后运行 '
             '`python3 scripts/pipeline-status.py <ws> --approve script`'
         ),
     },
 }
-
-# 一个不存在的上游文件的指纹（可选上游）。
-ABSENT = 'absent'
 
 # 上游键 "inputs.json#<field>" 指 inputs.json 的某个字段。
 INPUTS_FIELD_PREFIX = 'inputs.json#'
@@ -253,20 +203,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('workspace', help='Project workspace directory ({work_dir}/{topic_name}).')
     action = parser.add_mutually_exclusive_group()
     action.add_argument(
-        '--restamp',
-        metavar='PHASE_ID',
-        choices=[phase['id'] for phase in PHASES],
-        help=(
-            "Accept a phase's current products as built from the current upstream: rewrite its "
-            'stamp, then report the status as usual. For a stale phase whose products need no '
-            'regeneration. All products of the phase must pass their checks.'
-        ),
-    )
-    action.add_argument(
         '--approve',
         metavar='GATE',
         choices=list(GATES),
-        help='Record user approval of a gate, tied to the current product hashes, then report status.',
+        help='Record user approval of a gate (the confirmation fact and time), then report status.',
     )
     action.add_argument(
         '--redo',
@@ -282,9 +222,8 @@ def parse_args() -> argparse.Namespace:
         metavar='PHASE_ID',
         choices=[phase['id'] for phase in PHASES],
         help=(
-            'End a pending redo: clear the request, then run the phase`s usual checks. The products '
-            'must pass and must have been rebuilt from the current inputs; `--restamp` is the way to '
-            'accept a rerun that legitimately produced the same bytes.'
+            'End a pending redo: clear the request, then run the phase`s usual product checks. '
+            'The products must all pass; finishing does not decide whether the content is good.'
         ),
     )
     parser.add_argument(
@@ -1024,11 +963,11 @@ def check_lexicon_product(ws: Path, relpath: str) -> CheckResult:
 def check_narration_offsets(ws: Path, relpath: str) -> CheckResult:
     """narration-offsets.json：make-narration 的偏移表，Phase 7 的
     align-narration 的必需输入。外层结构是 {version, script_length,
-    narration_length, script_sha256, narration_sha256, segments: [...]}。
+    narration_length, segments: [...]}。
 
-    版本、两个字数与两个内容哈希都是必需的。字数抓得到 script.txt 被编辑却没重
-    跑 make-narration 的情形；哈希抓得到字数看不出的等长编辑。缺任何一项的证据
-    都不能说明这份表属于当前稿子，因此按损坏处理，而不是降级到字数比对。"""
+    版本与两个字数都是必需的：字数抓得到 script.txt 被编辑却没重跑
+    make-narration 的情形。等长编辑不再由内容哈希识别——上游改动后的影响由
+    主 agent 按已知修改范围显式登记重做。"""
     result, data = read_json_product(ws, relpath)
     if not result.ok:
         return result
@@ -1209,6 +1148,15 @@ def check_timeline(ws: Path, relpath: str) -> CheckResult:
     return OK
 
 
+def visible_files(directory: Path) -> list[Path]:
+    """`directory` 下任意深度的文件；像 .DS_Store 这样的隐藏文件不计入。"""
+    return [
+        item
+        for item in directory.rglob('*')
+        if item.is_file() and not any(part.startswith('.') for part in item.relative_to(directory).parts)
+    ]
+
+
 def check_directory_product(ws: Path, relpath: str) -> CheckResult:
     """一个在任意深度至少含有一个可见文件的目录。"""
     path = ws / relpath
@@ -1221,46 +1169,14 @@ def check_directory_product(ws: Path, relpath: str) -> CheckResult:
     return OK
 
 
-# 决定画面成什么样的是什么：index.html、compositions/、assets/
-# （fonts 除外 —— 字节完全相同的重复复制不得使任何东西失效）以及
-# storyboard.md。保存下来的检查报告必须覆盖这些，且 final.mp4 不得比其中
-# 任何一个更旧：早于某次编辑的渲染不包含那次编辑。
-COMPOSITION_RENDER = 'composition/renders/final.mp4'
-
-
-def composition_source_paths(ws: Path, *, include_storyboard: bool = True) -> list[Path]:
-    """对所有影响渲染及其检查报告的新鲜度的文件。
-
-    storyboard.md 是检查器从不读取的规划文档，因此它只属于渲染新鲜度集合：
-    编辑它会强制重新渲染，而不是重新检查。
-    """
-    composition_dir = ws / 'composition'
-    paths = [
-        composition_dir / relpath for relpath in composition_source_relpaths(composition_dir)
-        if relpath != 'scenes.json'
-    ]
-    # scenes.json 由内容指纹和 Phase 8 stamp 证明新鲜度；相同字节复制不能仅因
-    # mtime 改变而要求重渲染。有效外部 layout 同理由 visual_contract_sha256 绑定。
-    storyboard = composition_dir / 'storyboard.md'
-    if include_storyboard and storyboard.is_file():
-        paths.append(storyboard)
-    return paths
-
-
-def newest_composition_source(ws: Path, *, include_storyboard: bool = True) -> Path | None:
-    paths = composition_source_paths(ws, include_storyboard=include_storyboard)
-    return max(paths, key=lambda path: path.stat().st_mtime_ns, default=None)
-
-
 def check_composition_report(ws: Path, relpath: str) -> CheckResult:
     """composition/check-composition.json：composition agent 上一次
-    check-composition 运行保存下来的 stdout；其结论必须是 pass，且必须覆盖当前
-    的 composition：检查器嵌入的 sources_sha256 必须与当前可检查源文件一致，
-    且 final.mp4 不得比任何源文件更旧 —— 早于最近一次编辑的 pass、或早于它的
-    渲染，都不能说明当前画面。
+    check-composition 运行保存下来的 stdout；其结论必须是 pass。
 
-    sources_sha256 是必需字段：没有指纹的报告不能用 mtime 代替，因为 mtime 可以
-    被复制改写，那样的报告证明不了它检查的是当前画面。"""
+    报告是否存在、结论是否 pass、以及（视觉模式下）scenes_checked 是否覆盖
+    当前视觉声明，就是全部验收：本脚本不比对源文件哈希或修改时间，也不会因为
+    composition 后来又改过而自动判这份报告失效——重跑检查由执行流程显式完成，
+    需要时按已知修改范围登记重做。"""
     result, data = read_json_product(ws, relpath)
     if not result.ok:
         return result
@@ -1268,34 +1184,10 @@ def check_composition_report(ws: Path, relpath: str) -> CheckResult:
         return CheckResult(STATUS_CORRUPT, 'JSON root is not an object')
     if data.get('verdict') != 'pass':
         return CheckResult(STATUS_CORRUPT, f'verdict must be "pass", got {data.get("verdict")!r}')
-    recorded = data.get('sources_sha256')
-    if not isinstance(recorded, str) or not recorded:
-        return CheckResult(
-            STATUS_CORRUPT,
-            'sources_sha256 is required and must be a non-empty string: re-run check-composition '
-            'with --output to save a report about the current composition',
-        )
-    # 基于内容：没有保留 mtime 的复制无法伪造新鲜度。
-    if recorded != composition_sources_fingerprint(ws / 'composition'):
-        return CheckResult(
-            STATUS_CORRUPT,
-            'sources_sha256 does not match the current composition (index.html / scenes.json / compositions/ / assets/): '
-            'the composition changed after check-composition last ran, re-run it and save the report',
-        )
     visual_scenes, visual_problem = load_workspace_visual_scenes(ws)
     if visual_problem:
         return CheckResult(STATUS_CORRUPT, visual_problem)
     if visual_scenes is not None:
-        expected_visual = visual_contract_fingerprint(
-            ws / video_contract.VISUAL_SCENES_PATH,
-            [scene['layout_path'] for scene in visual_scenes],
-        )
-        if data.get('visual_contract_sha256') != expected_visual:
-            return CheckResult(
-                STATUS_CORRUPT,
-                'visual_contract_sha256 does not match scenes.json and its effective layouts: '
-                're-run check-composition with --scenes',
-            )
         expected_coverage = [(scene['scene_id'], scene['layout']) for scene in visual_scenes]
         actual_coverage = [
             (scene.get('scene_id'), scene.get('layout'))
@@ -1306,14 +1198,6 @@ def check_composition_report(ws: Path, relpath: str) -> CheckResult:
                 STATUS_CORRUPT,
                 'scenes_checked does not cover the current visual scenes and layouts: re-run check-composition',
             )
-    render = ws / COMPOSITION_RENDER
-    newest = newest_composition_source(ws)
-    if render.is_file() and newest is not None and newest.stat().st_mtime_ns > render.stat().st_mtime_ns:
-        return CheckResult(
-            STATUS_CORRUPT,
-            f'older than {newest.relative_to(ws).as_posix()}: final.mp4 was rendered before the last composition '
-            'edit, re-render it',
-        )
     return OK
 
 
@@ -1383,7 +1267,6 @@ PHASES: list[dict[str, Any]] = [
         'title': '收集输入',
         'doc': 'references/phases/01-gather-inputs.md',
         'applies': 'always',
-        'upstream': [],
         'products': {'inputs.json': check_inputs_product},
     },
     {
@@ -1391,7 +1274,6 @@ PHASES: list[dict[str, Any]] = [
         'title': '解析论文（仅论文模式）',
         'doc': 'references/phases/02-paper-parse.md',
         'applies': 'paper',
-        'upstream': ['inputs.json#source', 'inputs.json#input_mode'],
         'products': {
             'harvest_page/main-paper/metadata.json': check_paper_metadata,
             'harvest_page/manifest.json': check_paper_manifest,
@@ -1403,12 +1285,6 @@ PHASES: list[dict[str, Any]] = [
         'doc': 'references/phases/03-research.md',
         'applies': 'always',
         'gate': 'research-brief',
-        'upstream': [
-            'inputs.json#source',
-            'inputs.json#input_mode',
-            'inputs.json#language',
-            'harvest_page/main-paper/metadata.json',  # 可选：仅 paper 模式
-        ],
         'products': {'research-brief.md': check_research_brief},
     },
     {
@@ -1416,7 +1292,6 @@ PHASES: list[dict[str, Any]] = [
         'title': '素材抓取（可选）',
         'doc': 'references/phases/04-material-harvest.md',
         'applies': 'fetch',
-        'upstream': ['research-brief.md'],
         'products': {'harvest_page/manifest.json': check_harvest_manifest},
     },
     {
@@ -1424,11 +1299,6 @@ PHASES: list[dict[str, Any]] = [
         'title': '素材 catalog',
         'doc': 'references/phases/05-material-catalog.md',
         'applies': 'fetch_or_paper',
-        'upstream': [
-            'harvest_page/manifest.json',
-            'research-brief.md',
-            'catalog-instructions.md',  # 可选：用户的素材理解 / 筛选要求
-        ],
         'products': {'material-catalog.json': check_material_catalog},
     },
     {
@@ -1437,14 +1307,6 @@ PHASES: list[dict[str, Any]] = [
         'doc': 'references/phases/06-script-scene-plan.md',
         'applies': 'always',
         'gate': 'script',
-        'upstream': [
-            'research-brief.md',
-            'material-catalog.json',  # 可选：fetch_materials 为 false 时不存在
-            'inputs.json#duration',
-            'inputs.json#language',
-            'inputs.json#input_mode',
-            f'inputs.json#{NARRATION_REQUESTS_FIELD}',  # 可选
-        ],
         'products': {
             'script.txt': check_script_text,
             'tts-lexicon.json': check_lexicon_product,
@@ -1458,12 +1320,6 @@ PHASES: list[dict[str, Any]] = [
         'title': '配音与时间对齐',
         'doc': 'references/phases/07-voice-subtitles.md',
         'applies': 'always',
-        'upstream': [
-            'narration.txt',
-            'narration-offsets.json',
-            'script.txt',
-            'scene-plan.json',
-        ],
         'products': {
             'voice_clone/narration.mp3': check_file_product,
             'transcribe/transcript.json': check_transcript,
@@ -1476,23 +1332,6 @@ PHASES: list[dict[str, Any]] = [
         'doc': 'references/phases/08-composition.md',
         'applies': 'always',
         'precondition': check_visual_inputs,
-        'upstream': [
-            'voice_clone/narration.mp3',
-            # 最终字幕在这一阶段按选定 layout 生成，因此它依赖本轮新鲜的
-            # transcript 与逐字映射表。
-            'transcribe/transcript.json',
-            'narration.txt',
-            'narration-offsets.json',
-            'transcribe/timeline.json',
-            'material-catalog.json',  # 可选：fetch_materials 为 false 时不存在
-            'scene-plan.json',
-            'script.txt',
-            'inputs.json#design',
-            'inputs.json#layout',
-            'inputs.json#template',
-            'inputs.json#orientation',
-            f'inputs.json#{COMPOSITION_REQUESTS_FIELD}',  # 可选
-        ],
         'products': {
             'composition/scenes.json': check_visual_scenes_product,
             'composition/assets/subtitle-units.json': check_subtitle_units,
@@ -1508,7 +1347,6 @@ PHASES: list[dict[str, Any]] = [
         'title': '检查与混音',
         'doc': 'references/phases/09-check-mix.md',
         'applies': 'always',
-        'upstream': ['composition/renders/final.mp4', 'inputs.json#qa_level'],
         'products': {
             'composition/renders/final_with_bgm.mp4': check_file_product,
             'qa/qa-report.json': check_qa_report,
@@ -1529,201 +1367,15 @@ def phase_applies(phase: dict[str, Any], inputs: dict[str, Any] | None) -> bool:
     return applies(inputs)
 
 
-# --- 指纹与戳 ----------------------------------------------------------------
-
-
-class FpCache:
-    """文件指纹的尽力而为记忆：{relpath: {size, mtime_ns, sha256}}。
-
-    对每个已完成阶段的每个产物重新哈希，意味着每次扫描都要重读几百 MB 的媒体。
-    大小与 mtime_ns 都与记忆一致的文件不可能变过（除非刻意伪造时间戳），因此
-    复用其记录的 sha256。缓存是尽力而为写入的，且从不是真相来源：stamps.json
-    仍然记录内容哈希。
-    """
-
-    def __init__(self, ws: Path) -> None:
-        self.path = ws / FPCACHE_PATH
-        self.files: dict[str, dict[str, Any]] = {}
-        self._dirty = False
-        try:
-            data = json.loads(self.path.read_text(encoding='utf-8'))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-            return
-        if not isinstance(data, dict) or data.get('version') != FPCACHE_VERSION:
-            return
-        files = data.get('files')
-        if not isinstance(files, dict):
-            return
-        for relpath, entry in files.items():
-            if (
-                isinstance(relpath, str)
-                and isinstance(entry, dict)
-                and isinstance(entry.get('sha256'), str)
-                and isinstance(entry.get('size'), int)
-                and isinstance(entry.get('mtime_ns'), int)
-            ):
-                self.files[relpath] = entry
-
-    def cached(self, relpath: str, stat: os.stat_result) -> str | None:
-        entry = self.files.get(relpath)
-        if entry and entry['size'] == stat.st_size and entry['mtime_ns'] == stat.st_mtime_ns:
-            return entry['sha256']
-        return None
-
-    def record(self, relpath: str, stat: os.stat_result, sha256: str) -> None:
-        self.files[relpath] = {
-            'size': stat.st_size,
-            'mtime_ns': stat.st_mtime_ns,
-            'sha256': sha256,
-        }
-        self._dirty = True
-
-    def payload(self) -> dict[str, Any]:
-        return {'version': FPCACHE_VERSION, 'files': self.files}
-
-    def save(self) -> None:
-        """尽力而为：不可写的 workspace 也不得丢掉扫描结果。"""
-        if not self._dirty:
-            return
-        staged = stage_json(self.path, self.payload())
-        os.replace(staged, self.path)
-        self._dirty = False
-
-
-class Fingerprinter:
-    """workspace 中各文件与 inputs.json 字段的 sha256 指纹。
-
-    一个实例服务一次运行，因此被多个阶段用到的文件（final.mp4 既是 Phase 8 的
-    产物又是 Phase 9 的上游）只读一次。文件哈希经过 FpCache，使未变化的媒体不必
-    在每次扫描时重读。
-    """
-
-    def __init__(self, ws: Path, cache: FpCache | None = None) -> None:
-        self.ws = ws
-        self.cache = cache
-        self._files: dict[str, str] = {}
-        _, data = read_json_product(ws, 'inputs.json')
-        self._inputs: dict[str, Any] = data if isinstance(data, dict) else {}
-
-    def file(self, relpath: str) -> str:
-        if relpath in self._files:
-            return self._files[relpath]
-        path = self.ws / relpath
-        if not path.is_file():
-            self._files[relpath] = ABSENT
-            return ABSENT
-        try:
-            stat = path.stat()
-            sha256 = self.cache.cached(relpath, stat) if self.cache else None
-            if sha256 is None:
-                sha256 = file_sha256(path)
-            if self.cache:
-                self.cache.record(relpath, stat, sha256)
-            self._files[relpath] = sha256
-        except OSError:
-            # 不可读的文件（权限问题）绝不能中止整个扫描：
-            # 在这里它看起来就像一个缺失的可选上游，而它自己所属阶段的
-            # 产物检查会报告它。
-            self._files[relpath] = ABSENT
-        return self._files[relpath]
-
-    def inputs_field(self, name: str) -> str:
-        if name in self._inputs:
-            value = canonical_inputs_field(name, self._inputs[name])
-        elif name in video_contract.INPUTS_FIELD_DEFAULTS:
-            # 有缺省值的可选字段：缺省就是那个值，不是“未知”。
-            value = video_contract.INPUTS_FIELD_DEFAULTS[name]
-        else:
-            return ABSENT
-        return text_sha256(json.dumps(value, sort_keys=True, ensure_ascii=False))
-
-    def upstream(self, phase: dict[str, Any]) -> dict[str, str]:
-        result = {
-            key: self.inputs_field(key[len(INPUTS_FIELD_PREFIX):])
-            if key.startswith(INPUTS_FIELD_PREFIX)
-            else self.file(key)
-            for key in phase['upstream']
-            if key != 'material-catalog.json' or video_contract.catalog_applies(self._inputs)
-        }
-        if phase['id'] == '8-composition':
-            # 与 handoff 的副本策略相同。复制相同字节不算变更；真正改变有效的
-            # 机器契约才会使 Phase 8 stale，Phase 7 从不依赖这些资源。
-            design, layout, template = (self._inputs.get(name) for name in ('design', 'layout', 'template'))
-            declaration = self.ws / video_contract.VISUAL_SCENES_PATH
-            visual_scenes, _ = load_workspace_visual_scenes(self.ws) if declaration.is_file() else (None, None)
-            if declaration.is_file():
-                result.pop('inputs.json#layout', None)
-                result[video_contract.VISUAL_SCENES_PATH] = self.file(video_contract.VISUAL_SCENES_PATH)
-                layout_paths = [
-                    f'{video_contract.LAYOUTS_PATH}/{name}.json'
-                    for name in declared_visual_layouts(self.ws, visual_scenes)
-                ]
-            elif 'layout' in self._inputs:
-                layout_paths = [f'modules/layouts/{layout}.json']
-            else:
-                result.pop('inputs.json#layout', None)
-                layout_paths = []
-            paths = [f'modules/designs/{design}/{design}.json', *layout_paths]
-            if template is not None:
-                paths.append(f'modules/templates/{template}/{template}.json')
-            for relpath in dict.fromkeys(paths):
-                path = video_contract.effective_resource(SKILL_ROOT, self.ws, relpath, refresh=False)
-                try:
-                    result[relpath] = file_sha256(path) if path.is_file() else ABSENT
-                except OSError:
-                    result[relpath] = ABSENT
-        elif phase['id'] == '9-check-mix' and (self.ws / video_contract.VISUAL_SCENES_PATH).is_file():
-            # QA 的 scene_id 与抽帧窗口依赖视觉声明；即使渲染字节相同，也不能沿用
-            # 另一套 scene 划分下的 pass 报告。
-            result[video_contract.VISUAL_SCENES_PATH] = self.file(video_contract.VISUAL_SCENES_PATH)
-        return result
-
-    def products(self, phase: dict[str, Any]) -> dict[str, str]:
-        """该阶段声明的各产物路径的指纹；目录产物
-        被略过，不可读的文件记为 ABSENT。"""
-        return {
-            relpath: self.file(relpath)
-            for relpath in phase['products']
-            if not (self.ws / relpath).is_dir()
-            and not (
-                phase['id'] == '8-composition'
-                and relpath == video_contract.VISUAL_SCENES_PATH
-                and not (self.ws / relpath).exists()
-                and self._inputs.get('layout') is not None
-            )
-        }
-
-
-def canonical_inputs_field(name: str, value: Any) -> Any:
-    """在计算哈希之前归一化 inputs.json 的某个字段，使不同的写法可以相等。
-
-    duration 的 "5min" 与 5 是同一个目标时长，不得让某个阶段失效；
-    其他字段原样参与哈希。
-    """
-    if name == 'duration':
-        minutes = duration_minutes(value)
-        return minutes if minutes is not None else value
-    if name in REQUESTS_FIELDS:
-        # 缺省与 [] 是同一件事：两者必须得到同一个指纹，否则在新 requirement
-        # 字段上切换写法会白白使阶段失效。
-        return list(value) if isinstance(value, list) else value
-    return value
-
-
-def text_sha256(text: str) -> str:
-    return hashlib.sha256(text.encode('utf-8')).hexdigest()
-
-
-def file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open('rb') as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b''):
-            digest.update(chunk)
-    return digest.hexdigest()
+# --- 持久状态：用户确认与重做请求 --------------------------------------------
 
 
 class Approvals:
-    """持久的用户确认；已确认的产物一旦变化即失效。"""
+    """持久的用户确认；按 gate 记录确认事实与时间，不绑定文件哈希。
+
+    已确认的内容需要重做时，由 --redo 显式撤销对应 gate 的旧确认；确认本身
+    不会仅因为文件内容变化而失效或自动重新打开。
+    """
 
     def __init__(self, ws: Path) -> None:
         self.path = ws / APPROVALS_PATH
@@ -1742,15 +1394,28 @@ class Approvals:
                 if isinstance(gate, str) and isinstance(approval, dict)
             }
 
-    def matches(self, gate: str, products: dict[str, str]) -> bool:
-        approval = self.gates.get(gate)
-        return approval is not None and approval.get('products') == products
+    def matches(self, gate: str) -> bool:
+        return gate in self.gates
 
-    def approve(self, gate: str, products: dict[str, str]) -> None:
+    def approve(self, gate: str) -> None:
         self.gates[gate] = {
             'approved_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
-            'products': products,
         }
+        self._save()
+
+    def clear(self, gate: str) -> None:
+        if gate in self.gates:
+            del self.gates[gate]
+            self._save()
+
+    def _save(self) -> None:
+        if not self.gates:
+            # 没有确认时不留一个空状态文件；下次确认会重新写入。
+            try:
+                self.path.unlink()
+            except FileNotFoundError:
+                pass
+            return
         staged = stage_json(self.path, {'version': APPROVALS_VERSION, 'gates': self.gates})
         os.replace(staged, self.path)
 
@@ -1819,88 +1484,11 @@ class Redos:
         os.replace(staged, self.path)
 
 
-class Stamps:
-    """{ws}/.pipeline/stamps.json：{"version": 1, "phases": {<phase_id>: {upstream, products, stamped_at}}}。
-
-    不可用的 stamps.json 会被隔离而不是删除。隔离期间只信之后重新确认过的阶段：
-    stamps.json 里只存这些（可能不完整），缺失的阶段一律按“未确认”处理（见
-    scan_workspace），直到所有适用阶段都补齐才算隔离结束，所以不完整的表不会被
-    误当成完整的使用。
-    """
-
-    def __init__(self, ws: Path) -> None:
-        self.path = ws / STAMPS_PATH
-        self.quarantine_path = self.path.with_name(QUARANTINED_STAMPS)
-        self.phases: dict[str, dict[str, Any]]
-        self.reset: bool
-        self.phases, self.reset = self._load()
-        self._saved = copy.deepcopy(self.phases)
-
-    def _load(self) -> tuple[dict[str, dict[str, Any]], bool]:
-        phases: dict[str, dict[str, Any]] = {}
-        if self.path.exists():
-            try:
-                data = json.loads(self.path.read_text(encoding='utf-8'))
-                if not isinstance(data, dict) or data.get('version') != STAMPS_VERSION:
-                    raise ValueError(f'not a version {STAMPS_VERSION} stamp file')
-                stamped = data.get('phases')
-                if not isinstance(stamped, dict):
-                    raise ValueError('phases is not an object')
-                for phase_id, stamp in stamped.items():
-                    parts = ('upstream', 'products')
-                    if not isinstance(stamp, dict) or not all(isinstance(stamp.get(part), dict) for part in parts):
-                        raise ValueError(f'the stamp of {phase_id} has no upstream / products objects')
-                phases = stamped
-            except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-                # 保留证据、不再信任它：下面靠隔离标记让每个阶段重新确认。
-                try:
-                    os.replace(self.path, self.quarantine_path)
-                except OSError:
-                    pass
-                log(f'warning: {STAMPS_PATH} was unusable ({exc}); quarantined as {QUARANTINED_STAMPS}')
-                return {}, True
-        if self.quarantine_path.exists():
-            # 旧表丢失过：这些是之后重新确认过的阶段，其余仍未确认。
-            return phases, True
-        return phases, False
-
-    def get(self, phase_id: str) -> dict[str, Any] | None:
-        return self.phases.get(phase_id)
-
-    def put(self, phase_id: str, upstream: dict[str, str], products: dict[str, str]) -> None:
-        self.phases[phase_id] = {
-            'upstream': upstream,
-            'products': products,
-            'stamped_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
-        }
-
-    def resolve_quarantine(self) -> None:
-        """先保存完整的戳表，再解除隔离，避免崩溃后误信未落盘的阶段。"""
-        self.save()
-        try:
-            self.quarantine_path.unlink()
-        except OSError:
-            return  # 标记还在，下次扫描会继续尝试；不能声称隔离已解除。
-        self.reset = False
-
-    def save(self) -> None:
-        """有变化时写出；原子写入，使崩溃绝不会留下半个文件。
-
-        隔离期间也写：表里只含明确确认过的阶段。缺失的阶段由扫描按“未确认”
-        处理，所以不完整的表不会被误当成完整。
-        """
-        if self.phases == self._saved:
-            return
-        staged = stage_json(self.path, {'version': STAMPS_VERSION, 'phases': self.phases})
-        os.replace(staged, self.path)
-        self._saved = copy.deepcopy(self.phases)
-
-
 def validate_phase(ws: Path, phase: dict[str, Any]) -> dict[str, CheckResult]:
     """运行某阶段的每个产物检查器；返回失败产物的 {relpath: CheckResult}。
 
-    阶段声明的输入前置条件也一并返回，键用 inputs.json#<field>，与上游指纹的写法
-    一致；scan_workspace 会把它们和产物问题分开计数。
+    阶段声明的输入前置条件也一并返回，键用 inputs.json#<field>；
+    scan_workspace 会把它们和产物问题分开计数。
     """
     problems: dict[str, CheckResult] = {}
     precondition = phase.get('precondition')
@@ -1913,72 +1501,11 @@ def validate_phase(ws: Path, phase: dict[str, Any]) -> dict[str, CheckResult]:
     return problems
 
 
-def changed_upstream_keys(stamped: dict[str, str], current: dict[str, str]) -> list[str]:
-    """在戳与当下之间指纹不同的上游键，按当前顺序，再附上已移除的键。
-
-    比的是键集合而不是交集：某个阶段学会新的上游键，旧戳里没有它，那正是“这个
-    产物不是按当前要求构建的”的证据，必须让它失效并被重新生成，而不是因为旧戳
-    缺键就继续信任。反过来，声明里移除的键也从旧戳里消失也算变化。没有 backfill
-    或自动迁移：缺证据的旧构建要求重做该阶段，而不是猜一个已经合格的结论。
-    """
-    changed = [key for key in current if stamped.get(key) != current[key]]
-    changed.extend(sorted(key for key in stamped if key not in current))
-    return changed
-
-
-def stale_upstream(
-    stamp: dict[str, Any], upstream: dict[str, str], products: dict[str, str]
-) -> list[str]:
-    """该阶段的上游比戳里新、而产物还是旧构建时，返回变化的上游键。
-
-    上游变了但每个产物都与戳不同，就是新构建，不算过期；产物不可读时无法证明是
-    新构建，按旧构建计。
-    """
-    changed = changed_upstream_keys(stamp['upstream'], upstream)
-    if not changed:
-        return []
-    old_build = [
-        relpath
-        for relpath, fingerprint in products.items()
-        if fingerprint == ABSENT or stamp['products'].get(relpath) == fingerprint
-    ]
-    return changed if old_build else []
-
-
-def reconcile_stamp(
-    phase: dict[str, Any], stamps: Stamps, fingerprints: Fingerprinter, *, trust_missing: bool = True
-) -> list[str] | None:
-    """把产物全部通过的阶段与其戳做比对。
-
-    返回变化的上游键（过期）、空列表（新）或 None（没有戳且不允许隐式信任：
-    stamps.json 曾不可用，这个阶段还没人确认过）。在以下情形把戳更新到当下：
-    首次见到该阶段时、其产物在上游未变时被编辑时、或在上游变化之后被完整重新
-    生成时。上游变化期间，戳保留变化前的产物指纹：只有每个产物都与它们不同之后
-    过期标记才会清除，因此部分重做 —— 部分产物已重新生成、其他仍是旧构建 ——
-    永远无法掩盖过期。对能产出字节相同产物的确定性重做，请用 --restamp。
-    """
-    upstream = fingerprints.upstream(phase)
-    products = fingerprints.products(phase)
-    stamp = stamps.get(phase['id'])
-    if stamp is None:
-        if not trust_missing:
-            return None
-        stamps.put(phase['id'], upstream, products)
-        return []
-    changed = stale_upstream(stamp, upstream, products)
-    if not changed:
-        if stamp['products'] != products:
-            stamps.put(phase['id'], upstream, products)
-        return []
-    return changed
-
-
 def scan_workspace(
-    ws: Path, stamps: Stamps, approvals: Approvals, redos: Redos, cache: FpCache
+    ws: Path, approvals: Approvals, redos: Redos
 ) -> dict[str, Any]:
     _, inputs = load_inputs(ws)
     approval_gates = inputs.get('approval_gates', []) if inputs else []
-    fingerprints = Fingerprinter(ws, cache)
 
     statuses: list[dict[str, str]] = []
     missing: list[str] = []
@@ -2008,47 +1535,21 @@ def scan_workspace(
                     'problems': {},
                 }
                 continue
-            changed_upstream = reconcile_stamp(
-                phase, stamps, fingerprints, trust_missing=not stamps.reset
-            )
-            if changed_upstream is None:
-                # stamps.json 不可用时，没人确认过的阶段不能被默认为完成。
-                statuses.append({'id': phase['id'], 'status': PHASE_UNVERIFIED})
-                next_phase = {
-                    'id': phase['id'],
-                    'title': phase['title'],
-                    'doc': phase['doc'],
-                    'reason': PHASE_UNVERIFIED,
-                    'problems': {},
-                }
-                continue
-            if not changed_upstream:
-                gate = phase.get('gate')
-                if gate in approval_gates:
-                    products = {relpath: fingerprints.file(relpath) for relpath in GATES[gate]['products']}
-                    if not approvals.matches(gate, products):
-                        statuses.append({'id': phase['id'], 'status': PHASE_AWAITING_APPROVAL})
-                        next_phase = {
-                            'id': phase['id'],
-                            'title': phase['title'],
-                            'doc': phase['doc'],
-                            'reason': PHASE_AWAITING_APPROVAL,
-                            'gate': gate,
-                            'instruction': GATES[gate]['instruction'],
-                            'problems': {},
-                        }
-                        continue
-                statuses.append({'id': phase['id'], 'status': PHASE_COMPLETED})
-                continue
-            statuses.append({'id': phase['id'], 'status': PHASE_STALE})
-            next_phase = {
-                'id': phase['id'],
-                'title': phase['title'],
-                'doc': phase['doc'],
-                'reason': PHASE_STALE,
-                'changed_upstream': changed_upstream,
-                'problems': {},
-            }
+            gate = phase.get('gate')
+            if gate in approval_gates:
+                if not approvals.matches(gate):
+                    statuses.append({'id': phase['id'], 'status': PHASE_AWAITING_APPROVAL})
+                    next_phase = {
+                        'id': phase['id'],
+                        'title': phase['title'],
+                        'doc': phase['doc'],
+                        'reason': PHASE_AWAITING_APPROVAL,
+                        'gate': gate,
+                        'instruction': GATES[gate]['instruction'],
+                        'problems': {},
+                    }
+                    continue
+            statuses.append({'id': phase['id'], 'status': PHASE_COMPLETED})
             continue
         product_problems = {
             relpath: result for relpath, result in problems.items()
@@ -2075,27 +1576,15 @@ def scan_workspace(
     def ids_with(status: str) -> list[str]:
         return [entry['id'] for entry in statuses if entry['status'] == status]
 
-    # 隔离只有在本轮所有适用阶段都重新确认过之后才解除：只接受其中几个时，
-    # 剩下的仍是状态不明，不能将一份不完整的戳表当成完整的使用。
-    covered = all(
-        stamps.get(phase['id']) is not None for phase in PHASES if phase_applies(phase, inputs)
-    )
-    if stamps.reset and covered:
-        stamps.resolve_quarantine()
-        if not stamps.reset:
-            log(f'{QUARANTINED_STAMPS} is resolved: every applicable phase was accepted again')
-
     return {
         'success': True,
         'workspace': str(ws.resolve()),
         'input_mode': inputs.get('input_mode') if inputs else None,
         'fetch_materials': inputs.get('fetch_materials') if inputs else None,
         'approval_gates': approval_gates,
-        'stamps_reset': stamps.reset,
         'phases': statuses,
         'completed_phases': ids_with(PHASE_COMPLETED),
         'skipped_phases': ids_with(PHASE_SKIPPED),
-        'stale_phases': ids_with(PHASE_STALE),
         'pending_phases': ids_with(PHASE_PENDING),
         'redo_phases': ids_with(PHASE_REDO),
         'next_phase': next_phase,
@@ -2104,36 +1593,10 @@ def scan_workspace(
     }
 
 
-def restamp_phase(
-    ws: Path, phase_id: str, stamps: Stamps, redos: Redos, cache: FpCache
-) -> dict[str, Any] | None:
-    """用当前文件重写某阶段的戳。
-
-    成功时返回 None，否则返回失败载荷（那时什么都不写）。
-    """
-    phase = PHASES_BY_ID[phase_id]
-    if redos.get(phase_id) is not None:
-        return {'success': False, 'error': f'cannot restamp {phase_id}: a redo is pending; finish it instead'}
-    _, inputs = load_inputs(ws)
-    if not phase_applies(phase, inputs):
-        return {'success': False, 'error': f'cannot restamp {phase_id}: the phase is skipped for this workspace'}
-    problems = validate_phase(ws, phase)
-    if problems:
-        return {
-            'success': False,
-            'error': f'cannot restamp {phase_id}: its products do not pass their checks',
-            'problems': {relpath: result.detail or result.status for relpath, result in problems.items()},
-        }
-    fingerprints = Fingerprinter(ws, cache)
-    stamps.put(phase_id, fingerprints.upstream(phase), fingerprints.products(phase))
-    log(f'restamped {phase_id}')
-    return None
-
-
 def approve_gate(
-    ws: Path, gate: str, approvals: Approvals, redos: Redos, cache: FpCache
+    ws: Path, gate: str, approvals: Approvals, redos: Redos
 ) -> dict[str, Any] | None:
-    """只在该关卡所属阶段的每个产物都通过、且没有待重做时记录确认。"""
+    """只在该关卡所属阶段的每个产物都通过、且没有待重做时记录确认事实与时间。"""
     phase = PHASES_BY_ID[GATES[gate]['phase']]
     if redos.get(phase['id']) is not None:
         return {'success': False, 'error': f'cannot approve {gate}: a redo is pending for {phase["id"]}'}
@@ -2144,33 +1607,36 @@ def approve_gate(
             'error': f'cannot approve {gate}: its products do not pass their checks',
             'problems': {relpath: result.detail or result.status for relpath, result in problems.items()},
         }
-    fingerprints = Fingerprinter(ws, cache)
-    products = {relpath: fingerprints.file(relpath) for relpath in GATES[gate]['products']}
-    approvals.approve(gate, products)
+    approvals.approve(gate)
     log(f'approved {gate}')
     return None
 
 
-def request_redo(ws: Path, phase_id: str, reason: str, redos: Redos) -> dict[str, Any] | None:
-    """登记某阶段需要重做，保留旧产物。失败时返回失败载荷（那时什么都不写）。"""
+def request_redo(
+    ws: Path, phase_id: str, reason: str, redos: Redos, approvals: Approvals
+) -> dict[str, Any] | None:
+    """登记某阶段需要重做，保留旧产物。失败时返回失败载荷（那时什么都不写）。
+
+    该阶段带有审稿 gate 时，一并撤销该 gate 的旧确认：确认的是旧内容，重做后
+    需要用户重新确认。"""
     phase = PHASES_BY_ID[phase_id]
     _, inputs = load_inputs(ws)
     if not phase_applies(phase, inputs):
         return {'success': False, 'error': f'cannot redo {phase_id}: the phase is skipped for this workspace'}
     redos.request(phase_id, reason)
+    for gate, spec in GATES.items():
+        if spec['phase'] == phase_id:
+            approvals.clear(gate)
     log(f'redo requested for {phase_id}')
     return None
 
 
-def finish_redo(
-    ws: Path, phase_id: str, redos: Redos, stamps: Stamps, cache: FpCache
-) -> dict[str, Any] | None:
-    """结束一次重做：先清掉标记，再让该阶段走它平时的检查。
+def finish_redo(ws: Path, phase_id: str, redos: Redos) -> dict[str, Any] | None:
+    """结束一次重做：先清掉标记，再让该阶段走它平时的产物检查。
 
-    先清标记是为了不把一次失败的结束留在原地反复重试；检查不能跳过：产物要全部
-    合格，而且产物必须是基于当前输入构建的（上游变了而产物还是旧构建就报失败，
-    确定性重跑得到相同字节时用 --restamp）。通过后把这个阶段记为基于当前输入
-    构建。
+    先清标记是为了不把一次失败的结束留在原地反复重试；产物检查不能跳过：
+    全部合格才算结束。它不要求产物字节与上次不同，也不检查上游是否变过——
+    上游改动后的影响由主 agent 按已知修改范围显式登记重做。
     """
     if redos.get(phase_id) is None:
         return {'success': False, 'error': f'cannot finish {phase_id}: no redo is pending for this phase'}
@@ -2183,20 +1649,6 @@ def finish_redo(
             'error': f'cannot finish {phase_id}: its products do not pass their checks',
             'problems': {relpath: result.detail or result.status for relpath, result in problems.items()},
         }
-    fingerprints = Fingerprinter(ws, cache)
-    stamp = stamps.get(phase_id)
-    if stamp is not None:
-        changed = stale_upstream(stamp, fingerprints.upstream(phase), fingerprints.products(phase))
-        if changed:
-            return {
-                'success': False,
-                'error': (
-                    f'cannot finish {phase_id}: its products were not rebuilt from the current inputs; '
-                    f'rebuild them, or use --restamp {phase_id} if the rerun really produced the same bytes'
-                ),
-                'changed_upstream': changed,
-            }
-    stamps.put(phase_id, fingerprints.upstream(phase), fingerprints.products(phase))
     log(f'redo finished for {phase_id}')
     return None
 
@@ -2209,52 +1661,31 @@ def main() -> int:
             raise FileNotFoundError(f'workspace does not exist: {ws}')
         if not ws.is_dir():
             raise NotADirectoryError(f'workspace is not a directory: {ws}')
-        stamps = Stamps(ws)
         approvals = Approvals(ws)
         redos = Redos(ws)
         if redos.error is not None:
             log(f'error: {redos.error}; fix or remove {REDOS_PATH}, then run again')
             print_json({'success': False, 'error': redos.error})
             return 1
-        cache = FpCache(ws)
-        if args.restamp:
-            failure = restamp_phase(ws, args.restamp, stamps, redos, cache)
-            if failure is not None:
-                log(f"error: {failure['error']}")
-                print_json(failure)
-                return 1
         if args.approve:
-            failure = approve_gate(ws, args.approve, approvals, redos, cache)
+            failure = approve_gate(ws, args.approve, approvals, redos)
             if failure is not None:
                 log(f"error: {failure['error']}")
                 print_json(failure)
                 return 2
         if args.redo:
-            failure = request_redo(ws, args.redo, args.reason.strip(), redos)
+            failure = request_redo(ws, args.redo, args.reason.strip(), redos, approvals)
             if failure is not None:
                 log(f"error: {failure['error']}")
                 print_json(failure)
                 return 1
         if args.finish:
-            failure = finish_redo(ws, args.finish, redos, stamps, cache)
+            failure = finish_redo(ws, args.finish, redos)
             if failure is not None:
                 log(f"error: {failure['error']}")
                 print_json(failure)
                 return 2
-        result = scan_workspace(ws, stamps, approvals, redos, cache)
-        # 持久化状态是尽力而为的：只读的 workspace 或 .pipeline/
-        # 不得把刚刚算出的扫描结果丢掉。
-        try:
-            stamps.save()
-            cache.save()
-        except OSError as exc:
-            log(f'warning: could not save pipeline state: {exc}')
-        if stamps.reset:
-            log(
-                f'warning: {STAMPS_PATH} was unusable and is quarantined as {QUARANTINED_STAMPS}; '
-                'only the phases accepted again with --restamp / --finish count as completed. '
-                'Check each phase, then accept it: --restamp <phase_id>.'
-            )
+        result = scan_workspace(ws, approvals, redos)
         print_json(result)
         if result['next_phase'] is None:
             log('all phases complete')

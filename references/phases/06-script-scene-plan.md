@@ -23,7 +23,7 @@
 - 运行 `pipeline-status` 后，Phase 6 不再是 `next_phase`；状态脚本替你判定下面各项：
 - `script.txt`、`narration.txt` 存在且非空；`script.txt` 的字数（去掉所有空白）与 `inputs.json` 的 `duration`（分钟）× 60 × 7 的偏差在 ±15% 以内；
 - `tts-lexicon.json` 是可解析的非空 JSON map，键值都是非空字符串；
-- `narration-offsets.json` 是 `version` 为 1 的 JSON 对象，带非空的 `segments` 列表；它记录的 `script_length` / `narration_length` 等于当前 `script.txt` / `narration.txt` 的字符数；表里的 `script_sha256` / `narration_sha256`（make-narration 写入）必须等于当前两个文件的内容哈希——等长修改字符数看不出来，哈希躲不掉（改了 `script.txt` 就要重跑 make-narration）；
+- `narration-offsets.json` 是 `version` 为 1 的 JSON 对象，带非空的 `segments` 列表；它记录的 `script_length` / `narration_length` 等于当前 `script.txt` / `narration.txt` 的字符数（改了 `script.txt` 就要重跑 make-narration）；
 - `scene-plan.json` 是非空列表，每个 scene 有 `scene_id`、整数 `paragraphs`，以及非空字符串 `intent` / `content_plan`；所有 scene 的段落并集恰好是 `script.txt` 的第 1 段到最后一段；`template_scene` / `pattern_hints` / `beats` 已移除，出现即不合格（模板、pattern 与动作归 Phase 8 的 composition agent）；`material_candidates[].ref` 都能在 catalog 里按 entry 解析（图片 / 视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>` 且与该 entry 某个 `selected_clips` 的起止相差都不超过 0.01 秒；裸 id 无效）；没有 catalog（`fetch_materials = false` 且不是论文模式）时，`material_candidates` 必须是空列表；catalog 的 `required_material_refs` 必须每条都被某个 scene 选上（选上只是候选，不代表已经进成片）；
 - 校验通过后默认自动进入 TTS；只有 `inputs.json` 的 `approval_gates` 包含 `script` 时，才把旁白和场景摘要交给用户确认，再运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve script`。未明确确认前不要自己批准。
 

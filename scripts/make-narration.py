@@ -15,12 +15,12 @@
 
   {"version": 1,
    "script_length": S, "narration_length": N,
-   "script_sha256": "...", "narration_sha256": "...",
    "segments": [{"narration_start": a, "narration_end": b,
                  "script_start": c, "script_end": d}]}
 
-  两个哈希是构建该表时所用的那份 script.txt / narration.txt 的 sha256；
-  pipeline-status 用它拒绝仅靠字符数看不出来的等长编辑。
+  版本与两个字数是构建该表的基本事实：pipeline-status 用字数拒绝
+  script.txt 被编辑却没重跑 make-narration 的情形。等长编辑不再由内容
+  哈希识别——上游改动后的影响由主 agent 按已知修改范围显式登记重做。
 
   旁白位置 i 映射回
   script_start + min(i - narration_start, script_end - script_start - 1)。
@@ -48,7 +48,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -178,10 +177,6 @@ def main() -> None:
         'version': OFFSETS_VERSION,
         'script_length': len(script_text),
         'narration_length': len(narration_text),
-        # 脚本自身的字节：文本模式读取会翻译换行，因此哈希必须取自文件，
-        # 而不是取自解码后的文本。
-        'script_sha256': hashlib.sha256(script_path.read_bytes()).hexdigest(),
-        'narration_sha256': hashlib.sha256(narration_path.read_bytes()).hexdigest(),
         'segments': segments,
     }
     offsets_path.write_text(

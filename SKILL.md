@@ -20,7 +20,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 首次运行先按「工具与依赖」做环境预检，环境就绪后进入循环。
 
-1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`（工作区目录必填）。它输出一个 JSON：已完成的 phase、下一个 phase（`next_phase.reason` 说明原因：缺失 / 损坏 / stale / 要求重做 / 未确认 / 等审稿）、要读的文档、缺失或损坏的产物。
+1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`（工作区目录必填）。它输出一个 JSON：已完成的 phase、下一个 phase（`next_phase.reason` 说明原因：缺失 / 损坏 / 要求重做 / 等审稿）、要读的文档、缺失或损坏的产物。
 2. 先查状态，再读它指出的那一份阶段文档（`next_phase.doc`），不要提前读完所有阶段。需要核对前后步骤的输入输出、回退重做或排查问题时，可以查相关文档和文件；下一步仍由状态脚本确定。
 3. 按该文档执行；文档头部的「输入 / 输出 / 完成判据 / 下一步 / 护栏」是自包含的，正常情况下不需要查其他阶段文档。Phase 7 把脚本校验和执行者核对合并在完成判据里，其余阶段仍分成两节。
 4. 回到第 1 步，直到脚本报告 `next_phase` 为 `null`（全部完成）。
@@ -36,17 +36,15 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 - `next_phase.reason == "awaiting_approval"` 只会出现在已启用的 gate。按 `instruction` 展示内容并找用户确认：有询问工具就使用它，否则在对话中提问并结束本轮；sub-agent 报给主 agent，由主 agent 找用户确认。未明确确认前不得执行 `--approve` 或进入下游。
 - 用户只确认当前稿件时，执行 `--approve <gate>`，保留其他审稿要求；用户明确授权“后面全自动 / 不用再审”时，把 `approval_gates` 改为 `[]`，再跑状态脚本。不要用批量 `--approve` 冒充全自动授权，也不要把普通“继续”擅自理解成取消后续审稿。
-- 审稿策略变化不要求重做已有产物；自动模式仍必须通过缺失 / 损坏 / stale 和 QA 检查。旧工作区没有 `approval_gates` 时同样按全自动续跑。
+- 审稿策略变化不要求重做已有产物；自动模式仍必须通过缺失 / 损坏和 QA 检查。旧工作区没有 `approval_gates` 时同样按全自动续跑。
 
-续跑、回退与重做都由状态脚本驱动。状态由三部分组成：`inputs.json`、各 phase 的产物，以及 `.pipeline/`（状态脚本记下的上游指纹和请求，**只由状态脚本写，不要手改**）。
+续跑、回退与重做都由状态脚本驱动。状态脚本不比对文件哈希或修改时间：上游改动不会自动让任何 phase 过期，也没有 `--restamp` 这类重新接受产物的命令。状态由三部分组成：`inputs.json`、各 phase 的产物，以及 `.pipeline/`（状态脚本记下的审稿确认和重做请求，**只由状态脚本写，不要手改**）。
 
 - 某个 phase 的产物被删掉或写坏时，脚本回退到那个 phase（`reason` 为 `missing` / `corrupt`）。
-- 产物齐全，但它依赖的上游在它生成之后变过（比如改了 `script.txt`，或改了 `composition/scenes.json` 里的视觉时间 / scene layout），该 phase 判为 `stale`，`changed_upstream` 列出变化的上游，按它的 phase 文档重做。每个字段或产物只影响真正读它的阶段：视觉 scenes、实际使用的 layout 与 `template` 让 Phase 8 及依赖其 QA 身份的 Phase 9 重做，不影响 Phase 7。
-- 产物齐全、上游也没变，但用户或自检认为内容不合格时，用 `--redo <phase_id> --reason "..."` 登记（`reason` 为 `redo`，带 `redo_reason`）；改完并用 `--finish <phase_id>` 结束。`--finish` 先清掉登记，再按该阶段平时的检查验收：产物不合格或还是旧构建就报失败，只影响这一个阶段。登记与结束的规则见 `references/pipeline-control.md`。
+- 上游改动后要不要重做、重做哪些 phase，由主 agent 按已知修改范围显式登记，不从文件变化推断。改了 `script.txt` 就重跑 make-narration 并按需登记下游；改了 `composition/scenes.json` 的视觉时间 / scene layout 就登记 Phase 8 重做，交回 composition agent 重跑 check-composition、重新渲染，交付范围包含成片时再显式登记 / 执行 Phase 9。
+- 产物齐全、上游也没变，但用户或自检认为内容不合格时，用 `--redo <phase_id> --reason "..."` 登记（`reason` 为 `redo`，带 `redo_reason`）；改完并用 `--finish <phase_id>` 结束。`--finish` 先清掉登记，再按该阶段平时的检查验收产物，只影响这一个阶段；它不要求产物字节与上次不同。显式重做带审稿 gate 的阶段会撤销该 gate 的旧确认，重做完成后需要用户重新确认。登记与结束的规则见 `references/pipeline-control.md`。
 - `next_phase` 之后的 phase 一律是 `pending`：不进 `completed_phases`，也不检查；轮到它们时再判断。
 - 用户说 "redo phase N" 时，先按上一条登记重做；只有确实要丢掉产物时才删文件。
-- 某个 stale 的 phase 确认不用重新生成（比如确定性的重跑得到了字节完全相同的结果）时，运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --restamp <phase_id>`，让脚本按当前文件重写它的指纹；该 phase 的产物必须全部合格，否则退出码为 1。待重做的阶段不接受 `--restamp`。
-- 输出里 `stamps_reset` 为 `true` 时，`.pipeline/stamps.json` 曾损坏并被隔离为 `stamps.json.quarantined`：脚本不会把任何 phase 标为可信，未确认的阶段报告为 `unverified`，后面的阶段先停住。逐个核对产物后，用 `--restamp <phase_id>`（或 `--finish`）接受那一个；所有适用阶段都接受完，隔离才解除、才重新写回指纹。
 
 不要自己扫描工作区猜进度，也不要把 Scratchpad 当进度记录。
 
@@ -57,7 +55,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 2. **进度只看 pipeline-status。** 续跑、回退与重做都由状态脚本驱动。
    ↳ DO NOT：自己扫描工作区猜进度；把 Scratchpad 当进度记录；手改 `.pipeline/`。
 3. **每步自检，但不把工具的“成功”当内容合格。** 文件、格式、时长、字数、引用这类能由程序判断的以脚本为准；事实、叙事、素材是否贴题、画面是否对得上旁白这类内容判断由执行者按该阶段文档做，发现问题按 `references/pipeline-control.md` 登记重做。
-   ↳ DO NOT：跳过阶段的执行后自检；用改无关文件或 `--restamp` 过关；把内容不合格的产物交给下游。
+   ↳ DO NOT：跳过阶段的执行后自检；用改无关文件绕过检查；把内容不合格的产物交给下游。
 4. **委派步骤（Phase 5 / 6 / 8）的内容由 sub-agent 产出。** 主 agent 只准备 handoff、派发并验收。唯一例外：Phase 5 未指定 agent / model，且当前环境没有 sub-agent 工具也不能运行目标 CLI 时，主 agent 按 `references/phases/05-material-catalog.md` 的兜底流程生成 catalog；用户指定的 agent / model 不可用时先说明，不得自动替换。
    ↳ DO NOT：主 agent 手写旁白或 composition HTML；能委派时主 agent 手写 catalog。
 5. **屏幕上的每个素材都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。
@@ -67,7 +65,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 ## 输出约定
 
-状态脚本把结果作为一份 JSON 输出到 stdout，日志输出到 stderr；日志只说明运行情况，格式不作要求，也不能当作阶段完成的依据。退出码：`0`=成功，`1`=运行时错误，`2`=参数非法。`scripts/pipeline-status.py` 是整条流程唯一的续跑入口，取代了过去的人工 checkpoint 表；它的结果携带 `phases` / `completed_phases` / `stale_phases` / `pending_phases` / `redo_phases` / `next_phase` / `missing_products` / `corrupt_products`。
+状态脚本把结果作为一份 JSON 输出到 stdout，日志输出到 stderr；日志只说明运行情况，格式不作要求，也不能当作阶段完成的依据。退出码：`0`=成功，`1`=运行时错误，`2`=参数非法。`scripts/pipeline-status.py` 是整条流程唯一的续跑入口，取代了过去的人工 checkpoint 表；它的结果携带 `phases` / `completed_phases` / `skipped_phases` / `pending_phases` / `redo_phases` / `approval_gates` / `next_phase` / `missing_products` / `corrupt_products`。
 
 共享 Chrome profile：`{work_dir}/chrome_profile/` —— **不要**删除。
 

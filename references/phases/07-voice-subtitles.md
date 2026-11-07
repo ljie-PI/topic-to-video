@@ -75,9 +75,9 @@ source .venv/bin/activate && python3 scripts/voice-subtitles.py {work_dir}/{topi
 
 ### 下游要不要跟着重做
 
-由 `pipeline-status` 判定，不要猜。本阶段没完成时，后面的阶段是 `pending`，暂不检查；本阶段完成后，Phase 8 按音频 / transcript / 时间轴 / 显示稿等依赖、Phase 9 按成片判断，判为 `stale` 时按各自文档重做。用户明确要求多个阶段都重做时才逐项登记 `--redo`。
+由主 agent 按已知修改范围显式登记，不由文件变化推断。本阶段没完成时，后面的阶段是 `pending`，暂不检查；本阶段重建过（重跑配音 / 对齐 / 转写）后，主 agent 核对影响范围并登记下游重做：Phase 8 按音频 / transcript / 时间轴 / 显示稿等依赖、Phase 9 按成片判断，按各自文档重做。用户明确要求多个阶段都重做时才逐项登记 `--redo`。
 
-只重对齐时音频与 transcript 的字节没变，状态脚本仍可能把本阶段判为 `stale`——它按整阶段构建比对。确认复用正确后按 `references/pipeline-control.md` 收尾：有未完成的 redo 先 `--finish`，再用 `--restamp 7-voice-subtitles` 接受当前产物。反过来，朗读稿已经改过却只重跑对齐时，`--restamp` 是错的——那份音频确实不是当前稿的，要完整重跑。
+只重对齐时音频与 transcript 的字节没变：没有新鲜度比对，状态脚本不会因此要求本阶段重做。反过来，朗读稿已经改过却只重跑对齐时，主 agent 要完整重跑本阶段并登记重做——那份音频确实不是当前稿的。
 
 ## 时间戳与字幕
 
@@ -94,7 +94,7 @@ source .venv/bin/activate && python3 scripts/voice-subtitles.py {work_dir}/{topi
 - 句子的切分取决于来源：直接对齐按朗读稿原文的标点 / 换行分组，云端 ASR 沿用服务返回的句子。两条路都保留词级时间，但**不保证**句子有统一的最大长度或时长。
 - `timeline.json` 的 `begin_s` / `end_s` 用秒。
 
-**`narration-offsets.json` 的契约**：`version`、`script_length`、`narration_length`、`script_sha256`、`narration_sha256`、`segments` 全部必需。缺了内容哈希的偏移表不能验收（等长编辑看不出来），脚本会直接报错并让你重跑 `make-narration.py`。
+**`narration-offsets.json` 的契约**：`version`、`script_length`、`narration_length`、`segments` 全部必需；字数必须与当前 `script.txt` / `narration.txt` 对得上，对不上时脚本会直接报错并让你重跑 `make-narration.py`。
 
 **cue 只能取自显示稿。** `scene-plan.json` 的 `cues` 必须原样摘自显示稿，且落在该 scene 的 `paragraphs` 范围内。对齐时会归一化大小写、标点、空格和数字写法，所以 `NVIDIA` 和 `nvidia，` 都能匹配；但换成朗读稿里的读法（如 `英伟达`）就对不上显示稿，会被跳过。出现 `cue not found for scene ...` 时先核对显示稿文本和段落归属，确实要改就走上面「什么时候要回上游」。
 
