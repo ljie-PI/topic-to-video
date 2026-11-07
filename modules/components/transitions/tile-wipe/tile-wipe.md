@@ -17,7 +17,8 @@
 
 ## 文件
 
-- `components/transitions/tile-wipe/tile-wipe.html`
+- `components/transitions/tile-wipe/tile-wipe.html`：静态标记和样式。
+- `components/transitions/tile-wipe/tile-wipe.mjs`：导出 `init`（接口见 `modules.md` 的「模块初始化接口」）。
 
 ## 依赖（来自设计主题，视频的 `index.html` 必须提供）
 
@@ -33,26 +34,27 @@
 
 ## 安装
 
-1. 把 `components/transitions/tile-wipe/tile-wipe.html` 复制到视频工程的 `compositions/tile-wipe.html`。
+1. 把 `components/transitions/tile-wipe/tile-wipe.html` 和 `tile-wipe.mjs` 一起复制到视频工程的 `compositions/`。
 2. 在根节点加挂载点：
    - `data-composition-id="tile-wipe"`，`data-composition-src="compositions/tile-wipe.html"`；
    - `data-start="0"`，时长为整片；
    - `style="z-index: 10"`：在场景之上，在界面条和人物之下。
+3. 在工程里调 `init`：传入参数和切点数据，拿到暂停的 timeline 后按局部秒 seek。接线示例见 `modules.md` 的「模块初始化接口」。
 
-## 挂载参数
+## 参数（`init` 的 `params`）
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
 | `originX`, `originY` | 1504, 968 | 方格扩散的起点，单位 px。默认是讲解模式布局里人物笔记本的位置；人物移动了要跟着改（人物舞台左上角加上 0.5 倍和 0.775 倍边长） |
 | `top`, `bottom` | 72, 1080 | 方格铺设的上下范围，单位 px。默认从导航栏下沿开始 |
 | `cardX`, `cardY` | 240, 410 | 卡片左上角，单位 px |
-| `data` | `"cuts"` | 从 `window.VIDEO` 的哪个键读切点 |
+| `data` | `"cuts"` | 工程数据（`window.VIDEO`）里哪个键是切点，adapter 取出后作为 `init` 的 `data` |
 
-## 数据（`window.VIDEO.cuts`）
+## 数据（`init` 的 `data`，工程里通常来自 `window.VIDEO.cuts`）
 
 ```js
 cuts: [
-  { at: 20.7,                       // 切点，视频秒；等于下一个场景的 data-start
+  { at: 20.7,                       // 切点，视频秒（本组件常驻挂在 0 秒，即局部秒）；等于下一个场景的 data-start
     label: "#1",                    // 卡片左侧的大字；不填就不出卡片，只有方格
     title: "storytold / ",          // 标题（常规字重）
     emphasis: "artcraft",           // 接在标题后面的加粗部分

@@ -1,4 +1,10 @@
-"""Execute the actual template JS: absent spoken cues cannot become guessed times."""
+"""Execute the actual template modules: absent spoken cues cannot become guessed times.
+
+The templates initialise through the explicit init entry of their sibling
+.mjs (modules/modules.md). The driver below is a minimal non-rendering stub
+environment: it records every timeline call and which parts get hidden, so
+the cue contract is checked against the real module code without a browser.
+"""
 from __future__ import annotations
 
 import json
@@ -12,36 +18,58 @@ ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = ROOT / 'modules/templates/github'
 DRIVER = r'''
 const fs = require('fs'), vm = require('vm');
-const html = fs.readFileSync(process.argv[1], 'utf8');
-const script = html.match(/<script>\s*([\s\S]*?)\s*<\/script>/)[1];
+const source = fs.readFileSync(process.argv[1], 'utf8');
 const vars = JSON.parse(process.argv[2]), data = JSON.parse(process.argv[3]);
 const elements = {}, calls = [];
-function element(id) {
-  if (!elements[id]) elements[id] = {style: {}, append(){}, appendChild(){},
-    remove(){this.removed = true}, querySelector(selector){return element(id + selector)}};
-  return elements[id];
+let counter = 0;
+function makeElement(name) {
+  const el = {
+    __name: name, style: {},
+    append() {}, appendChild() {},
+    remove() { this.removed = true; },
+    querySelector(selector) {
+      return element(((this.__id || this.__name) + ' ' + selector).trim());
+    },
+  };
+  Object.defineProperty(el, 'id', {
+    get() { return this.__id || ''; },
+    set(value) { this.__id = value; },
+  });
+  return el;
 }
+function element(name) {
+  if (!elements[name]) elements[name] = makeElement(name);
+  return elements[name];
+}
+const root = element('');
 const tl = {};
 for (const method of ['fromTo','to','set']) tl[method] = (...args) => {
-  calls.push({method, target: typeof args[0] === 'string' ? args[0] : 'object',
-    at: args[method === 'fromTo' ? 3 : 2]}); return tl;
+  const target = args[0];
+  const name = Array.isArray(target) ? 'array'
+    : (target && (target.__id || target.__name)) || typeof target;
+  calls.push({method, target: name, at: args[method === 'fromTo' ? 3 : 2]});
+  return tl;
 };
 let error = null;
 try {
-  vm.runInNewContext(script, {gsap: {timeline(){return tl}},
-    window: {__hyperframes: {getVariables(){return vars}}, VIDEO: data, __timelines: {}},
-    document: {documentElement: {}, getElementById: element, createElement: element},
-    getComputedStyle(){return {getPropertyValue(){return '#222'}}},
-  });
+  const context = {
+    gsap: {timeline() {return tl}},
+    getComputedStyle() {return {getPropertyValue() {return '#222'}, fontFamily: 'sans'}},
+    document: {createElement(tag) {return element(tag + '#' + (++counter))}},
+  };
+  vm.createContext(context);
+  vm.runInContext(source.replace(/\bexport function init\b/, 'function init'), context);
+  context.init(root, {params: vars, data, duration: 6, gsap: context.gsap});
 } catch (e) {error = e.message;}
-console.log(JSON.stringify({error, calls, hidden: Object.keys(elements).filter(
-  id => elements[id].removed || elements[id].style.display === 'none')}));
+console.log(JSON.stringify({error, calls, hidden: Object.entries(elements)
+  .filter(([, el]) => el.removed || el.style.display === 'none')
+  .map(([name]) => name.split(' ').pop().replace(/^#/, ''))}));
 '''
 
 
 def execute(name: str, variables: dict, data: dict | None = None) -> dict:
     proc = subprocess.run(
-        ['node', '-e', DRIVER, str(TEMPLATES / f'{name}.html'),
+        ['node', '-e', DRIVER, str(TEMPLATES / f'{name}.mjs'),
          json.dumps(variables), json.dumps(data or {})],
         capture_output=True, text=True, check=True, timeout=10,
     )
@@ -81,21 +109,21 @@ def test_template_metadata_does_not_reintroduce_guessed_cue_defaults():
 
 
 def test_trending_overview_rejects_missing_repo_cues():
-    result = execute('trending-overview', {}, {'trending': {'repos': [
+    result = execute('trending-overview', {}, {'repos': [
         dict(owner='demo', repo='tool', readme='x.png'),
-    ]}})
+    ]})
     assert 'cue' in result['error']
     assert result['calls'] == []
 
 
 def test_trending_overview_uses_supplied_repo_cues():
-    result = execute('trending-overview', {}, {'trending': {'repos': [
+    result = execute('trending-overview', {}, {'repos': [
         dict(owner='demo', repo='tool', readme='x.png', cue=1.25),
         dict(owner='demo', repo='other', readme='y.png', cue=3.5),
-    ]}})
+    ]})
     assert result['error'] is None
-    assert any(c['target'] == '#to-row1 .tint' and c['at'] == 1.25 for c in result['calls'])
-    assert any(c['target'] == '#to-row2 .tint' and c['at'] == 3.5 for c in result['calls'])
+    assert any(c['target'] == 'to-row1 .tint' and c['at'] == 1.25 for c in result['calls'])
+    assert any(c['target'] == 'to-row2 .tint' and c['at'] == 3.5 for c in result['calls'])
 
 
 def test_machine_declaration_distinguishes_required_and_optional_cues():

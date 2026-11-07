@@ -22,7 +22,8 @@
 
 ## 文件
 
-- `templates/github/project-cover.html`：场景本体。图标已内联；logo 由参数指定。
+- `templates/github/project-cover.html`：场景本体，静态标记和样式。图标已内联；logo 由参数指定。
+- `templates/github/project-cover.mjs`：导出 `init`（接口见 `modules.md` 的「模块初始化接口」）。
 
 ## 依赖
 
@@ -31,17 +32,18 @@
 
 ## 安装与挂载
 
-1. 把 `templates/github/project-cover.html` 复制到视频工程的 `compositions/project-cover.html`。
+1. 把 `templates/github/project-cover.html` 和 `project-cover.mjs` 一起复制到视频工程的 `compositions/`。
 2. 每个项目挂一个挂载点：
    - `data-composition-id="project-cover"`，`data-composition-src="compositions/project-cover.html"`；
    - `data-start`：项目段开始的视频时间，等于转场的切点；
    - `data-duration`：至少到退场结束；
    - `style="z-index: 2"`；
-   - `data-variable-values`：这个项目的内容和时间点。
+   - `data-variable-values`：这个项目的内容和时间点（工程 adapter 读取后作为 `init` 的 `params`）。
+3. 在工程里调 `init` 并拿到暂停的 timeline，按场景秒 seek。接线示例见 `modules.md` 的「模块初始化接口」。
 
-同一个模板可以挂多次，每次填不同的参数。
+同一个模板可以挂多次，每次填不同的参数；每次克隆一份干净模板、各调一次 `init`，互不干扰。
 
-## 挂载参数（全部写在 `data-variable-values`）
+## 参数（`init` 的 `params`；HyperFrames 工程里写在 `data-variable-values`）
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
