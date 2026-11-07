@@ -2,9 +2,9 @@
 
 `scripts/prepare-handoff.py <ws> composition` 读取本文件里的 markdown 代码块，把 `{{name}}` 占位符换成实际值，写出 `{work_dir}/{topic_name}/composition-handoff.md`；同一次调用还会把委派包和 `modules/`（不含 `examples/`）物化到工作区，并按所选 design 预置字体。主 agent 不手写 handoff；有占位符没被替换时脚本报错退出。
 
-五个小节的标题固定不变；Additional Instructions 没有额外指令时写 `None`，但小节始终保留。
+五个小节固定为 `## Coding Agent`、`## Inputs`、`## Outputs`、`## Required References`、`## Additional Instructions`，标题不变；Additional Instructions 没有额外指令时写 `None`，但小节始终保留。
 
-占位符取值（路径全是绝对路径；命令里的 skill 脚本用 skill 根目录的绝对路径，design 指向工作区副本，视觉 scenes 指向本阶段产物）：
+占位符取值（命令里的 skill 脚本用 skill 根目录的绝对路径，design 指向工作区副本，视觉 scenes 指向本阶段产物）：
 
 | 占位符 | 取值 |
 |---|---|
