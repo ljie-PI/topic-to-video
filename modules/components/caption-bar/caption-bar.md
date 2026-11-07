@@ -73,7 +73,7 @@ window.VIDEO = {
 };
 ```
 
-`caption_segments[]` 由 `align-narration.py --mode subtitles --scenes composition/scenes.json` 生成。每一项的字段及组件行为如下：
+`caption_segments[]` 由 `align-narration.py --mode subtitles --scene-config composition/scene-config.json` 生成。每一项的字段及组件行为如下：
 
 | 字段 | 来源 | 组件行为 |
 |---|---|---|

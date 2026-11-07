@@ -60,13 +60,34 @@ def snapshot(scene_id: str, time: float, *, caption_font: int | None = None) -> 
     }
 
 
+def borrowed_layout(name: str) -> dict:
+    data = json.loads((ROOT / 'modules' / 'layouts' / f'{name}.json').read_text(encoding='utf-8'))
+    return {'preset': name, 'regions': data['regions'], 'caption': data['caption']}
+
+
+def visual_scene(scene_id: str, begin: float, end: float, layout: dict) -> dict:
+    return {
+        'scene_id': scene_id,
+        'source_scene_ids': ['scene_1'],
+        'begin_s': begin,
+        'end_s': end,
+        'template': None,
+        'layout': layout,
+    }
+
+
 def workspace(tmp_path: Path, snapshots: list[dict]) -> tuple[Path, Path]:
     ws = tmp_path / 'ws'
     write_json(ws / 'inputs.json', {'orientation': 'landscape'})
-    write_json(ws / 'composition/scenes.json', {'version': 1, 'scenes': [
-        {'scene_id': 'a', 'begin_s': 0, 'end_s': 5, 'layout': 'stage'},
-        {'scene_id': 'b', 'begin_s': 5, 'end_s': 10, 'layout': 'presenter'},
-    ]})
+    write_json(ws / 'composition/scene-config.json', {
+        'version': 1,
+        'canvas': {'width': 1920, 'height': 1080},
+        'total_s': 10,
+        'scenes': [
+            visual_scene('a', 0, 5, borrowed_layout('stage')),
+            visual_scene('b', 5, 10, borrowed_layout('presenter')),
+        ],
+    })
     (ws / 'voice_clone').mkdir(parents=True)
     subprocess.run([
         'ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono',
@@ -80,7 +101,7 @@ def workspace(tmp_path: Path, snapshots: list[dict]) -> tuple[Path, Path]:
 def run(ws: Path, snapshots: Path, *extra: str) -> tuple[subprocess.CompletedProcess, dict]:
     proc = subprocess.run([
         sys.executable, str(SCRIPT), str(ws / 'composition'),
-        '--scenes', str(ws / 'composition/scenes.json'),
+        '--scene-config', str(ws / 'composition/scene-config.json'),
         '--min-font-size', '22', '--snapshots-from', str(snapshots), *extra,
     ], capture_output=True, text=True)
     return proc, json.loads(proc.stdout)
@@ -159,3 +180,76 @@ def test_short_scene_sampling_stays_inside_its_range():
     times = module.scene_check_times({'begin_s': 2.0, 'end_s': 2.1})
     assert len(times) == 3
     assert all(2.0 < time < 2.1 for time in times)
+
+
+def free_layout() -> dict:
+    return {
+        'preset': None,
+        'regions': [
+            {'id': 'main', 'kind': 'content', 'rect': {'x': 96, 'y': 80, 'width': 1728, 'height': 820}},
+            {'id': 'caption', 'kind': 'reserved', 'component': 'caption-bar',
+             'rect': {'x': 96, 'y': 930, 'width': 1728, 'height': 120}},
+        ],
+        'caption': {'width_px': 1728, 'font_size_px': 36, 'max_lines': 2},
+    }
+
+
+def mixed_workspace(tmp_path: Path, snapshots: list[dict]) -> tuple[Path, Path]:
+    """模板场景 + 自由回退场景同片共存的工作区（验收要求的两种正常路径）。"""
+    ws = tmp_path / 'ws'
+    write_json(ws / 'inputs.json', {'orientation': 'landscape'})
+    write_json(ws / 'composition/scene-config.json', {
+        'version': 1,
+        'canvas': {'width': 1920, 'height': 1080},
+        'total_s': 10,
+        'scenes': [
+            {**visual_scene('tpl', 0, 5, borrowed_layout('presenter')),
+             'template': {'name': 'github', 'scene': 'project-cover'}},
+            visual_scene('free', 5, 10, free_layout()),
+        ],
+    })
+    (ws / 'voice_clone').mkdir(parents=True)
+    subprocess.run([
+        'ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono',
+        '-t', '10', '-c:a', 'libmp3lame', str(ws / 'voice_clone/narration.mp3'),
+    ], capture_output=True, check=True)
+    path = tmp_path / 'snapshots.json'
+    write_json(path, snapshots)
+    return ws, path
+
+
+def mixed_snapshot(scene_id: str, time: float, *, jay: bool) -> dict:
+    item = snapshot(scene_id, time, caption_font=36)
+    if scene_id == 'tpl':
+        # presenter 的 content 区：side (1184,100,640x522)
+        item['elements'][0]['rect'] = {'x': 1200, 'y': 120, 'width': 400, 'height': 100}
+    else:
+        # 自由布局的 main content 区 (96,80,1728x820)，caption 在 reserved caption-bar 区
+        item['elements'][0]['rect'] = {'x': 200, 'y': 120, 'width': 400, 'height': 100}
+        item['elements'][1]['rect'] = {'x': 96, 'y': 930, 'width': 200, 'height': 40}
+        item['captionDetails'][0]['rect'] = {'x': 96, 'y': 930, 'width': 200, 'height': 40}
+    item['jayVisible'] = jay
+    return item
+
+
+def test_template_and_free_fallback_scenes_pass_together(tmp_path: Path):
+    """采用模板的场景与自由回退场景在同一份 scene-config 里各自通过真实区域检查。
+
+    契约层（scene_config 公共读取）在 tests/test_scene_config.py 覆盖；这里验证
+    检查脚本按每个 scene 落盘的 regions / caption 检查并通过。真实渲染未在
+    测试中运行。
+    """
+    ws, snapshots = mixed_workspace(tmp_path, [
+        mixed_snapshot('tpl', 2, jay=True),
+        mixed_snapshot('free', 7, jay=False),
+    ])
+    units = tmp_path / 'units.json'
+    write_json(units, {'units': [{'text': '字幕', 'begin_s': 0, 'end_s': 10}]})
+
+    proc, result = run(ws, snapshots, '--subtitle-units', str(units))
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert result['verdict'] == 'pass', result['findings']
+    assert [(s['scene_id'], s['layout']) for s in result['scenes_checked']] == [
+        ('tpl', 'presenter'), ('free', None),
+    ]

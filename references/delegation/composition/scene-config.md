@@ -1,0 +1,137 @@
+# composition scene-config 数据契约
+
+`composition/scene-config.json` 是 Phase 8 视觉场景的**唯一机器配置来源**，由
+composition agent 产出：它存脚本需要的数据（`scripts/scene_config.py` 读取），
+`storyboard.md` 存设计说明与理由（人读）。状态验收（`pipeline-status.py`）、
+字幕（`align-narration.py --mode subtitles --scene-config`）和渲染前检查
+（`check-composition.py --scene-config`）都经同一个公共入口
+`scene_config.load_scene_config(path, *, expected_canvas=None, known_scene_ids=None, modules_root=None)`
+校验后消费，错误会定位到 `scene_id` 和字段。
+
+每个视觉场景**独立**按下面的顺序决定自己的方案，写进本文件：
+
+1. 先应用该场景的明确用户要求（`inputs.json` 的 `composition_requests`；
+   整片要求只在其作用范围内应用）；
+2. 用户指定 template 时先处理它；未指定时，只有非常匹配的 template 才采用；
+3. 采用模板后，根据它的 `preferred_layouts` 及用户要求确定本 scene 的布局；
+   没有模板才自由匹配现有 layout preset；
+4. 没有指定或非常匹配的 layout 时，自主构图——`template: null` 加自由布局是
+   正常完成路径，不是失败。
+
+## 根对象
+
+| 字段 | 规则 |
+|---|---|
+| `version` | 整数，当前必须为 `1`。 |
+| `canvas` | `{width, height}`，与已定 orientation 对应的尺寸完全一致（1920×1080 / 1080×1920 / 1080×1440）。 |
+| `total_s` | 正的有限秒数，以交付视频的配音时长为边界，包含语音前后的静音画面；不靠改 Phase 7 时间轴凑时长。 |
+| `scenes` | 非空列表，见下。 |
+
+## scene
+
+| 字段 | 规则 |
+|---|---|
+| `scene_id` | 非空字符串，全文件唯一。 |
+| `source_scene_ids` | 非空字符串列表，指向 Phase 6 `scene-plan.json` 的叙事 scene；合并 / 拆分的映射及理由写在 storyboard。 |
+| `begin_s` / `end_s` | 有限秒数，`0 <= begin_s < end_s`；主区间按 `[begin_s, end_s)` 归属并覆盖 `[0, total_s]`，有序、不重叠。视觉转场重叠由画面实现处理，不写进主区间。 |
+| `template` | `null`（本 scene 不用模板）或 `{"name": ..., "scene": ...}`：`name` 是模块库注册的模板名，`scene` 是该模板声明的场景部分（如 `github` 的 `project-cover` / `trending-overview`）。两者都必须真实存在。 |
+| `layout` | 见下。**实际的 regions / caption 必须完整落盘**：检查不从 `preset` 名猜坐标。 |
+
+## layout
+
+| 字段 | 规则 |
+|---|---|
+| `preset` | `null`（自由布局，无需注册）或借用的注册 layout 名（记录出处，便于复用与排查）。 |
+| `regions` | 非空列表，见下。自由布局不需要注册到 `modules/layouts/`，也不默认加人物、导航或固定分区。 |
+| `caption` | `{width_px, font_size_px, max_lines}`，三者都是正整数（`max_lines >= 1`）。 |
+
+## region
+
+| 字段 | 规则 |
+|---|---|
+| `id` | 非空字符串，同一 layout 内唯一。 |
+| `kind` | `content`（可自由放内容）或 `reserved`（只放指定组件）。 |
+| `rect` | `{x, y, width, height}`，全部为有限数值；`width` / `height` 为正，`x` / `y` 非负，且整个 rect 不超出 canvas。 |
+| `component` | `reserved` 区必填：明确该区域归属的组件（如 `caption-bar`、`jay`、`nav-bar`）。 |
+
+## 明确不要的东西
+
+不加入哈希、源文件修改时间、构建版本号或“是否最新”的追踪字段；读取接口对
+未知字段报错，而不是静默忽略。
+
+## 可验证示例
+
+下面两个示例覆盖了“采用模板的场景 + 预设布局”与“无模板 + 自由布局”两种正常
+路径，都经 `scripts/scene_config.py` 的公共读取接口测试（见
+`tests/test_scene_config.py`）：示例不是只给人看的，格式以读取接口的校验为准。
+
+采用模板（github 的 project-cover）并借用 presenter 预设的 scene，与无模板、
+自由布局的 scene 同片共存：
+
+```json
+{
+  "version": 1,
+  "canvas": {"width": 1920, "height": 1080},
+  "total_s": 12.0,
+  "scenes": [
+    {
+      "scene_id": "visual_001",
+      "source_scene_ids": ["scene_1"],
+      "begin_s": 0.0,
+      "end_s": 6.0,
+      "template": {"name": "github", "scene": "project-cover"},
+      "layout": {
+        "preset": "presenter",
+        "regions": [
+          {"id": "main", "kind": "content", "rect": {"x": 96, "y": 196, "width": 1048, "height": 788}},
+          {"id": "person", "kind": "reserved", "component": "jay", "rect": {"x": 1294, "y": 642, "width": 420, "height": 420}},
+          {"id": "caption-text", "kind": "reserved", "component": "caption-bar", "rect": {"x": 96, "y": 1008, "width": 1166, "height": 72}}
+        ],
+        "caption": {"width_px": 1166, "font_size_px": 36, "max_lines": 1}
+      }
+    },
+    {
+      "scene_id": "visual_002",
+      "source_scene_ids": ["scene_2"],
+      "begin_s": 6.0,
+      "end_s": 12.0,
+      "template": null,
+      "layout": {
+        "preset": null,
+        "regions": [
+          {"id": "main", "kind": "content", "rect": {"x": 96, "y": 80, "width": 1728, "height": 820}},
+          {"id": "caption", "kind": "reserved", "component": "caption-bar", "rect": {"x": 96, "y": 930, "width": 1728, "height": 120}}
+        ],
+        "caption": {"width_px": 1728, "font_size_px": 36, "max_lines": 2}
+      }
+    }
+  ]
+}
+```
+
+单个完整自由布局场景的最小形态（与计划文档 4.1 的结构示例一致）：
+
+```json
+{
+  "version": 1,
+  "canvas": {"width": 1920, "height": 1080},
+  "total_s": 8.0,
+  "scenes": [
+    {
+      "scene_id": "visual_001",
+      "source_scene_ids": ["scene_1"],
+      "begin_s": 0.0,
+      "end_s": 8.0,
+      "template": null,
+      "layout": {
+        "preset": null,
+        "regions": [
+          {"id": "main", "kind": "content", "rect": {"x": 96, "y": 80, "width": 1728, "height": 820}},
+          {"id": "caption", "kind": "reserved", "component": "caption-bar", "rect": {"x": 96, "y": 930, "width": 1728, "height": 120}}
+        ],
+        "caption": {"width_px": 1728, "font_size_px": 36, "max_lines": 2}
+      }
+    }
+  ]
+}
+```

@@ -16,28 +16,39 @@
 ## 全片画布固定，视觉 scene 的布局可变
 
 - **画布由 `inputs.json` 的 `orientation` 在全片固定**：`landscape` = 1920×1080，`portrait` = 1080×1920，`portrait-3:4` = 1080×1440。同一个视频不能逐 scene 改画布尺寸或朝向。
-- `composition/scenes.json` 中每个视觉 scene 用自己的 `layout`；因此**区域坐标、保留区域和字幕规格可以随视觉 scene 改变**，但所选 layout 的 `canvas` 必须与全片朝向完全一致。
-- 不要在 `inputs.json` 里再指定一个全片 `layout`。视觉 scene 的 `begin_s` / `end_s` 使用视频秒；合法声明必须从 0 开始并覆盖到配音实际结束。
+- `composition/scene-config.json` 中每个视觉 scene 落盘自己的 `layout`（可空 `preset` + 完整 `regions` / `caption`）；因此**区域坐标、保留区域和字幕规格可以随视觉 scene 改变**，rect 不得超出全片朝向固定的画布。
+- 不要回到 `inputs.json` 指定全片 `layout`：preset 是逐 scene 的可选借用，也可以自主设计自由布局（`preset: null`，无需注册）。视觉 scene 的 `begin_s` / `end_s` 使用视频秒；合法配置必须主区间有序、不重叠，从 0 覆盖到 `total_s`。
 - `stage`、`portrait` 和 `portrait-3x4` 没有人物区；只有 `presenter` 显示 Jay。字幕组件仍全片只挂一次，通过 `VIDEO.captionSegments` 在视觉 scene 边界切换区域和字幕规格。
 
 示例：
 
+schema 以 `references/delegation/composition/scene-config.md` 契约为准，每个
+scene 的 `layout` 必须落盘完整 `regions` / `caption`（下面是自由布局 scene 的
+骨架，区域坐标须落在画布内）：
+
 ```json
 {
-  "version": 1,
-  "scenes": [
-    {"scene_id": "demo", "begin_s": 0, "end_s": 4, "layout": "stage"},
-    {"scene_id": "host", "begin_s": 4, "end_s": 8, "layout": "presenter"}
-  ]
+  "scene_id": "demo",
+  "begin_s": 0,
+  "end_s": 4,
+  "template": null,
+  "layout": {
+    "preset": "stage",
+    "regions": [
+      {"id": "main", "kind": "content", "rect": {"x": 96, "y": 100, "width": 1728, "height": 820}},
+      {"id": "caption-text", "kind": "reserved", "component": "caption-bar", "rect": {"x": 96, "y": 1008, "width": 1728, "height": 72}}
+    ],
+    "caption": {"width_px": 1728, "font_size_px": 36, "max_lines": 1}
+  }
 }
 ```
 
 ## 数据产物与组件的对应关系
 
-用 `align-narration.py --mode subtitles --scenes composition/scenes.json` 生成 `composition/assets/subtitle-units.json`，不要在组装脚本里重新推导字幕边界或容量。产物直接映射到常驻组件数据：
+用 `align-narration.py --mode subtitles --scene-config composition/scene-config.json` 生成 `composition/assets/subtitle-units.json`，不要在组装脚本里重新推导字幕边界或容量。产物直接映射到常驻组件数据：
 
 - `subtitle-units.json` 的 `units[]` → `VIDEO.captions[]`：`begin_s` → `start`，`end_s` → `end`，`text` 原样复制；
 - `caption_segments[]` → `VIDEO.captionSegments[]`：整项原样复制，保留 `begin_s` / `end_s`、`caption_rect` 和 `caption`；
-- 上面的 `scenes[]` → `VIDEO.jay.placements[]`：`begin_s` / `end_s` 原样复制，仅 `presenter` 为 `visible: true`，其他 layout 为 `visible: false`。可见项的位置取 `presenter.json` 的 `person` 区域：`x = rect.x`、`y = rect.y`、`size = rect.width`。
+- scene-config 的 `scenes[]` → `VIDEO.jay.placements[]`：`begin_s` / `end_s` 原样复制，仅 regions 有人物区（`component` 为 `jay` 的 reserved 区）的 scene 为 `visible: true`，其余为 `visible: false`。可见项的位置取该 scene 人物区 rect：`x = rect.x`、`y = rect.y`、`size = rect.width`。
 
 完整字段、缺省行为和动画边界见 [caption-bar 组件文档](../components/caption-bar/caption-bar.md) 与 [Jay 组件文档](../components/jay/jay.md)。

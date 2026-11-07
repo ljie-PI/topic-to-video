@@ -472,7 +472,7 @@ COMPOSITION_PRODUCTS = {
 
 # 本阶段自己生成的产物：handoff 命令会写它们，所以生成前它们不该存在。
 COMPOSITION_GENERATED = {
-    'composition/scenes.json',
+    'composition/scene-config.json',
     'composition/assets/subtitle-units.json',
     'composition/assets/template-cues.json',
     'composition/assets/template-timeline.json',
@@ -521,9 +521,9 @@ class TestCompositionHandoff:
             assert path in tool_inputs
             assert path in sections['Outputs']  # existing tool commands still receive the files
         assert '正常流程不阅读或复述其全文' in tool_inputs
-        assert str(ws / 'composition/scenes.json') not in sections['Inputs']
-        assert str(ws / 'composition/scenes.json') in sections['Outputs']
-        assert '生成后读取这份结果' in sections['Outputs']
+        assert str(ws / 'composition/scene-config.json') not in sections['Inputs']
+        assert str(ws / 'composition/scene-config.json') in sections['Outputs']
+        assert '已有用户编辑是有效输入' in sections['Outputs']
         assert result['dispatch_prompt'] == f'读取 {ws}/composition-handoff.md 并按它执行；完成后报告产物路径。'
         base = (ws / 'references/delegation/composition/base-instructions.md').read_text(encoding='utf-8')
         assert '标为「仅供工具读取」' in base
@@ -537,7 +537,7 @@ class TestCompositionHandoff:
 
         assert f'cd {ws}/composition && npx hyperframes check' in text
         assert f'source {REPO_ROOT}/.venv/bin/activate && python3 {REPO_ROOT}/scripts/check-composition.py' in text
-        assert f'--scenes {ws}/composition/scenes.json' in text
+        assert f'--scene-config {ws}/composition/scene-config.json' in text
         assert f'--narration-audio {ws}/voice_clone/narration.mp3' in text
         assert f'--design {ws}/modules/designs/default/default.json' in text
         assert f'--output {ws}/composition/check-composition.json' in text
@@ -582,7 +582,8 @@ class TestCompositionHandoff:
             assert str(ws / 'material-catalog.json') in inputs
         else:
             assert '- material-catalog.json：无（' in inputs
-        assert f'design github、template 无（不使用模板）、orientation landscape' in inputs
+        assert 'design github、orientation landscape' in inputs
+        assert 'template 无' not in inputs and 'template 未选择' not in inputs  # 无全局模板决策
         assert 'layout presenter' not in inputs
 
     @pytest.mark.parametrize('template', ['github', None], ids=['selected-template', 'no-template'])
@@ -605,6 +606,7 @@ class TestCompositionHandoff:
 
         expected = [
             ['references/delegation/composition/base-instructions.md'],
+            ['references/delegation/composition/scene-config.md'],
             ['modules/modules.md'],
             [
                 'modules/designs/designs.md',
@@ -613,10 +615,8 @@ class TestCompositionHandoff:
             ],
             ['modules/layouts/layouts.md'],
             ['modules/templates/templates.md'],
+            ['modules/components'],
         ]
-        if template:
-            expected.append(['modules/templates/github/github.json', 'modules/templates/github/github.md'])
-        expected.append(['modules/components'])
 
         assert [rel(absolute_paths(item)) for item in items] == expected
         assert '组件目录：按需读要挂载的组件文档' in items[-1]
@@ -626,10 +626,10 @@ class TestCompositionHandoff:
         assert '查阅条件见基础指令第四部分' in optional
         assert all('modules/patterns' not in item and 'modules/motion.md' not in item for item in items)
         assert 'modules/examples' not in body
-        if template is None:
-            assert 'modules/templates/github' not in body
+        # 模板按场景借用：不预选任何具体模板文档。
+        assert 'modules/templates/github' not in body
 
-    def test_an_unset_template_is_dispatched_as_not_yet_chosen(self, tmp_path: Path):
+    def test_no_global_template_is_dispatched_at_all(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition')
         inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
         inputs.pop('template')
@@ -640,8 +640,8 @@ class TestCompositionHandoff:
         inputs_section = handoff_sections(
             (ws / 'composition-handoff.md').read_text(encoding='utf-8')
         )['Inputs']
-        assert 'template 未选择（由本阶段决定）' in inputs_section
-        assert 'template 无' not in inputs_section
+        assert 'template 未选择' not in inputs_section  # 模板逐场景决定，不是全局 handoff 内容
+        assert 'template 无（不使用模板）' not in inputs_section
 
 
 class TestCompositionMaterialization:
@@ -665,43 +665,42 @@ class TestCompositionMaterialization:
             str(modules),
         ]
 
-    def test_an_edited_workspace_layout_copy_is_what_gets_validated(self, tmp_path: Path):
-        """旧 layout 的校验仍用工作区实际副本，而不是库里的原文件。"""
+    def test_an_edited_workspace_layout_copy_is_not_a_gate(self, tmp_path: Path):
+        """preset 是逐 scene 的可选借用：工作区 layout 副本被改过不再阻止准备
+        handoff；--refresh 仍把副本换回库文件。"""
         ws = make_workspace(tmp_path, 'composition', layout='presenter')
         prepare(ws, 'composition')
         copy = ws / 'modules' / 'layouts' / 'presenter.json'
         data = json.loads(copy.read_text(encoding='utf-8'))
-        data['canvas'] = {'width': 1080, 'height': 1920}  # 正竖屏画布，与项目朝向不符
+        data['canvas'] = {'width': 1080, 'height': 1920}
         copy.write_text(json.dumps(data), encoding='utf-8')
 
-        proc, result = run_cli(str(ws), 'composition')
+        prepare(ws, 'composition')
 
-        assert proc.returncode == 1
-        assert '1080x1920' in result['error'] and 'landscape' in result['error']
-
-        # --refresh 把副本换回库文件后，同一个 workspace 又能生成 handoff。
         prepare(ws, 'composition', '--refresh')
+        assert json.loads(copy.read_text(encoding='utf-8'))['canvas'] == {'width': 1920, 'height': 1080}
 
-    def test_visual_scenes_override_an_unused_legacy_template_layout_default(self, tmp_path: Path):
+    def test_commands_use_the_scene_config_pipeline_entry(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition', template='github', layout='stage')
-        write(ws / 'composition/scenes.json', json.dumps({
+        write(ws / 'composition/scene-config.json', json.dumps({
             'version': 1,
-            'scenes': [{'scene_id': 'host', 'begin_s': 0, 'end_s': 5, 'layout': 'presenter'}],
+            'canvas': {'width': 1920, 'height': 1080},
+            'total_s': 5,
+            'scenes': [],
         }))
 
         prepare(ws, 'composition')
 
-        assert '--scenes' in (ws / 'composition-handoff.md').read_text(encoding='utf-8')
+        assert '--scene-config' in (ws / 'composition-handoff.md').read_text(encoding='utf-8')
 
-    def test_a_template_that_cannot_use_the_layout_is_rejected(self, tmp_path: Path):
-        """模板只支持 presenter，竖屏项目不能带着它生成矛盾的 handoff。"""
+    def test_legacy_template_layout_combos_are_not_validated(self, tmp_path: Path):
+        """旧全局 template/layout 组合不再是门槛：竖屏项目带着 github 模板名也能
+        生成 handoff——模板与布局由 agent 逐场景决定。"""
         ws = make_workspace(tmp_path, 'composition', template='github', layout='portrait', orientation='portrait')
 
-        proc, result = run_cli(str(ws), 'composition')
+        prepare(ws, 'composition')
 
-        assert proc.returncode == 1
-        assert "supports layouts presenter" in result['error']
-        assert not (ws / 'composition-handoff.md').exists()
+        assert (ws / 'composition-handoff.md').exists()
 
 
 class TestFonts:
@@ -810,21 +809,22 @@ class TestFailures:
 
         prepare(ws, 'script')
 
-    def test_composition_handoff_needs_neither_legacy_layout_nor_scenes_json(self, tmp_path: Path):
-        """Scene layouts are decided after dispatch, not a handoff precondition."""
+    def test_composition_handoff_needs_no_visual_decisions_nor_scene_config(self, tmp_path: Path):
+        """Scene template / layouts are decided after dispatch, not a handoff precondition."""
         ws = make_workspace(tmp_path, 'composition')
         inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
         inputs.pop('layout', None)
+        inputs.pop('template', None)
         write(ws / 'inputs.json', json.dumps(inputs, ensure_ascii=False))
-        assert not (ws / 'composition' / 'scenes.json').exists()
+        assert not (ws / 'composition' / 'scene-config.json').exists()
 
         prepare(ws, 'composition')
 
         text = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
         assert f'{ws}/modules/layouts/layouts.md' in text
-        assert f'--scenes {ws}/composition/scenes.json' in text
+        assert f'--scene-config {ws}/composition/scene-config.json' in text
         assert f'--narration-audio {ws}/voice_clone/narration.mp3' in text
-        assert not (ws / 'composition' / 'scenes.json').exists()
+        assert not (ws / 'composition' / 'scene-config.json').exists()
 
     @pytest.mark.parametrize('field', ['narration_requests', 'composition_requests'])
     @pytest.mark.parametrize('value', ['语气更口语', None, [''], ['ok', 3]])
@@ -855,20 +855,10 @@ class TestFailures:
         assert proc.returncode == 1
         assert str(ws / 'material-catalog.json') in result['error']
 
-    @pytest.mark.parametrize('layout, orientation', [
-        ('presenter', 'portrait'),
-        ('stage', 'portrait-3:4'),
-        ('portrait', 'landscape'),
-        ('portrait-3x4', 'landscape'),
-    ])
-    def test_layout_canvas_must_match_the_orientation(self, tmp_path: Path, layout: str, orientation: str):
-        ws = make_workspace(tmp_path, 'composition', layout=layout, orientation=orientation)
+    def test_legacy_layout_canvas_mismatch_is_not_a_gate(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'composition', layout='presenter', orientation='portrait')
 
-        proc, result = run_cli(str(ws), 'composition')
-
-        assert proc.returncode == 1
-        assert layout in result['error'] and orientation in result['error']
-        assert not (ws / 'composition-handoff.md').exists()
+        prepare(ws, 'composition')
 
     def test_an_unknown_orientation_exits_1(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition', orientation='vertical')
@@ -878,38 +868,13 @@ class TestFailures:
         assert proc.returncode == 1
         assert 'orientation' in result['error']
 
-    @pytest.mark.parametrize('layout, orientation', [
-        ('presenter', 'landscape'),
-        ('stage', 'landscape'),
-        ('portrait', 'portrait'),
-        ('portrait-3x4', 'portrait-3:4'),
-    ])
-    def test_matching_layout_and_orientation_is_accepted(self, tmp_path: Path, layout: str, orientation: str):
-        ws = make_workspace(tmp_path, 'composition', layout=layout, orientation=orientation)
+    def test_unknown_legacy_template_or_layout_names_are_not_gates(self, tmp_path: Path):
+        # 模板与 layout 在 Phase 8 逐场景决定；inputs.json 的旧全局名字不再校验。
+        ws = make_workspace(tmp_path, 'composition', template='no-such-template', layout='no-such-layout')
 
         prepare(ws, 'composition')
 
-    def test_unknown_template_exits_1(self, tmp_path: Path):
-        # 模板在 Phase 8 才确定，所以由 composition 步骤校验它的存在性。
-        ws = make_workspace(tmp_path, 'composition', template='no-such-template')
-
-        proc, result = run_cli(str(ws), 'composition')
-
-        assert proc.returncode == 1
-        assert 'no-such-template' in result['error']
-
-    def test_unknown_layout_exits_1_for_composition(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'composition', layout='no-such-layout')
-
-        proc, result = run_cli(str(ws), 'composition')
-
-        assert proc.returncode == 1
-        assert 'no-such-layout' in result['error']
-        assert not (ws / 'composition-handoff.md').exists()
-        # Sources are validated before anything is written.
-        assert not (ws / 'references').exists()
-        assert not (ws / 'modules').exists()
-        assert not (ws / 'composition').exists()
+        assert (ws / 'composition-handoff.md').exists()
 
     @pytest.mark.parametrize(
         'overrides, message',
@@ -932,8 +897,6 @@ class TestFailures:
     @pytest.mark.parametrize('field, value', [
         pytest.param('design', 'github\n', id='design-trailing-newline'),
         pytest.param('design', '../escape', id='design-path'),
-        pytest.param('layout', '../escape', id='layout-path'),
-        pytest.param('template', '../escape', id='template-path'),
     ])
     def test_names_in_inputs_reject_paths_and_trailing_newlines(self, tmp_path: Path, field: str, value: str):
         ws = make_workspace(tmp_path, 'composition', **{field: value})
@@ -1029,7 +992,7 @@ class TestReviewRoundFixes:
         prepare(ws, 'composition')
 
         text = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
-        assert f'--scenes {ws}/composition/scenes.json' in text
+        assert f'--scene-config {ws}/composition/scene-config.json' in text
         assert '--layout ' not in text
         body = handoff_sections(text)['Required References']
         assert f'{ws}/modules/layouts/layouts.md' in body
@@ -1054,7 +1017,7 @@ class TestReviewRoundFixes:
 
         composition = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
         assert f"cd '{ws}/composition' && npx hyperframes check" in composition
-        assert f"--scenes '{ws}/composition/scenes.json'" in composition
+        assert f"--scene-config '{ws}/composition/scene-config.json'" in composition
         assert f"--narration-audio '{ws}/voice_clone/narration.mp3'" in composition
         script = (ws / 'script-handoff.md').read_text(encoding='utf-8')
         assert f"--script '{ws}/script.txt'" in script

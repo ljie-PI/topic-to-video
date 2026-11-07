@@ -4,7 +4,7 @@
 
 五个小节固定为 `## Coding Agent`、`## Inputs`、`## Outputs`、`## Required References`、`## Additional Instructions`，标题不变；Additional Instructions 没有额外指令时写 `None`，但小节始终保留。
 
-占位符取值（命令里的 skill 脚本用 skill 根目录的绝对路径，design 指向工作区副本，视觉 scenes 指向本阶段产物）：
+占位符取值（命令里的 skill 脚本用 skill 根目录的绝对路径，design 指向工作区副本，scene-config 指向本阶段产物）：
 
 | 占位符 | 取值 |
 |---|---|
@@ -12,15 +12,15 @@
 | `{{ws_q}}` / `{{skill_root_q}}` | 上两者的 shell 引号版：**命令行里必须用这一对**（路径可能含空格），散文里不用 |
 | `{{skill_root}}` | skill 根目录的绝对路径 |
 | `{{coding_agent}}` / `{{coding_model_instruction}}` | 按 `inputs.json.delegation.composition` 与全局 `coding_agent` 解析的有效 agent / model；未指定 model 时模型说明为空 |
-| `{{design}}` / `{{template}}` / `{{orientation}}` | `inputs.json` 的对应字段；`template` 未选择时写“未选择（由本阶段决定）”，null 时写“无（不使用模板）” |
+| `{{design}}` / `{{orientation}}` | `inputs.json` 的对应字段，全片固定约束；全局 template / layout 不是准备前提，由本阶段逐视觉场景决定 |
 | `{{material_catalog}}` | catalog 适用时（联网抓素材，或论文模式）：catalog 的路径；否则“无（无素材，画面用纯排版）” |
-| `{{required_references}}` | 按叠加顺序编号：基础指令 → `modules.md` → design 文档与 `<design>.json` 机器契约 → layout 目录（`layouts.md`，供本阶段逐 scene 选择）→ 模板目录（`templates.md`，供本阶段选模板）→ 已选的模板文档与 `supported_layouts` 声明（未选时省略）→ 组件目录（按需读要挂载的组件文档）。全部指向工作区副本；patterns / motion 单独列为可选参考 |
-| `{{additional_instructions}}` | `inputs.json` 的 `composition_requests` 逐条列出；没有写 `None` |
+| `{{required_references}}` | 按叠加顺序编号：基础指令 → scene-config 数据契约 → `modules.md` → design 文档与 `<design>.json` 机器契约 → layout 目录（`layouts.md`，可借用的 preset）→ 模板目录（`templates.md`，按场景借用）→ 组件目录（按需读要挂载的组件文档）。全部指向工作区副本；patterns / motion 单独列为可选参考 |
+| `{{additional_instructions}}` | `inputs.json` 的 `composition_requests` 逐条列出；没有写 `None`。各条要求的作用范围以用户表述为准（某个叙事场景 / 某个视觉场景 / 整片），未说明时按整片应用 |
 | `{{transcript_q}}` / `{{narration_q}}` / `{{offsets_q}}` / `{{script_txt_q}}` | 确定性字幕生成的四个上游 |
 | `{{subtitle_units_q}}` | 字幕单元的最终位置：`{{ws}}/composition/assets/subtitle-units.json` |
 | `{{template_cues_q}}` / `{{template_timeline_q}}` | 模板时间锚点的 cue 声明与它的时间文件 |
 | `{{timeline_q}}` | Phase 7 的不可变时间轴 |
-| `{{check_report_q}}` / `{{composition_dir_q}}` / `{{scenes_json_q}}` / `{{narration_audio_q}}` / `{{design_json_q}}` | 视觉 scenes、字幕生成、自查与报告的路径 |
+| `{{check_report_q}}` / `{{composition_dir_q}}` / `{{scene_config_q}}` / `{{narration_audio_q}}` / `{{design_json_q}}` | scene-config、字幕生成、自查与报告的路径 |
 
 ```markdown
 # composition-handoff — {{topic_name}}
@@ -39,9 +39,9 @@
 - {{timeline_q}}：Phase 7 不可变的段落与 cue 时间轴（只提供真实语音锚点，不提供最终视觉 scene 切分）；本阶段不修改它
 - material-catalog.json：{{material_catalog}}
 - 素材 ref：图片 / 视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>`；按 slug 定位 entry 后，视频 clip 解析到该 entry 的 `selected_clips[].clip_path`（相对工作区根），不用视频的 `local_path`
-- {{ws}}/scene-plan.json：叙事层场景规划（仅作参考）：`intent` / `content_plan` 说明讲什么、怎样展开；可以合并 / 拆分 / 改选素材与演绎方式，最终视觉 scenes、各自 layout、构图与动效由你自主设计
+- {{ws}}/scene-plan.json：叙事层场景规划（仅作参考）：`intent` / `content_plan` 说明讲什么、怎样展开；可以合并 / 拆分 / 改选素材与演绎方式，最终视觉 scenes、逐场景 template / layout 与构图由你自主设计
 - {{ws}}/script.txt：显示稿（旁白与屏幕文字的文本来源，不能改）
-- {{ws}}/inputs.json：design {{design}}、template {{template}}、orientation {{orientation}}；orientation / design 是全片固定约束，旧 `layout` 字段若存在只作单 layout 默认值，不要求它存在
+- {{ws}}/inputs.json：design {{design}}、orientation {{orientation}}；orientation / design 是全片固定约束。`composition_requests` 的用户画面要求见 Additional Instructions，其作用范围以用户表述为准
 - 字体目录：{{ws}}/composition/assets/fonts/（已按所选 design 预置，只用它）
 
 ### 仅供工具读取
@@ -55,14 +55,14 @@
 
 写到工作区（{{ws}}/）：
 
-- {{scenes_json_q}}：最终视觉 scenes 声明，形状为 `{version: 1, scenes: [{scene_id, begin_s, end_s, layout}]}`；时间都是全片秒，scene 是实际视觉切分（可与叙事规划合并 / 拆分），每个 layout 都须注册且符合全片 orientation
-- {{subtitle_units_q}}：最终字幕单元。**在 scenes.json 与模板确定后，按各视觉 scene 的 layout 生成**（下面第一条命令），生成后读取这份结果并逐单元原样上屏；不要手改文本或边界
-- {{ws}}/composition/storyboard.md：storyboard，开头是「组件使用表」，每个视觉 scene 写明 intent、layout、所用的 content 区域、素材、构图、信息展开与动效安排，以及选定的模板与理由；参考库借用记录按基础指令第四部分处理；偏离场景规划处写明理由
+- {{scene_config_q}}：最终视觉场景机器配置，schema 见 Required References 里的 scene-config 契约文档（version / canvas / total_s / scenes；每个 scene 有唯一 scene_id、source_scene_ids、begin_s / end_s、template 与落盘完整 regions / caption 的 layout）；时间为全片秒，主区间覆盖整段视频。它由你与 storyboard 一起产出：先按「用户要求（其作用范围内）→ 指定 / 非常匹配的 template → 适合的 layout → 自主设计」的顺序逐视觉场景定方案，再落盘
+- {{subtitle_units_q}}：最终字幕单元。**在 scene-config 写出后，按各 scene 落盘的 caption 规格生成**（下面第一条命令）。默认脚本生成初稿；已有用户编辑是有效输入，仅改画面 / 重渲染不要覆盖它
+- {{ws}}/composition/storyboard.md：storyboard，开头是「组件使用表」，每个视觉 scene 写明 intent、template / layout 方案及理由、所用的 content 区域、素材、构图、信息展开与动效安排；必用素材覆盖表按基础指令第一部分处理
 - {{ws}}/composition/index.html + {{ws}}/composition/compositions/：HyperFrames 工程与子合成
 - {{ws}}/composition/check-composition.json：check-composition 的报告（下面命令的 `--output` 写出它；最后一次运行的 verdict 必须是 pass）
 - {{ws}}/composition/renders/final.mp4：渲染产物
 
-先写 {{scenes_json_q}}，并选定支持其中**每一个** layout 的模板（或不用模板），再生成字幕单元（排版参数由当前视觉 scene 的 layout 决定，分段由脚本完成）：
+先写 {{scene_config_q}}（逐视觉场景定方案），再生成字幕单元（排版参数由各 scene 落盘的 caption 决定，分段由脚本完成）：
 
 - source {{venv_activate_q}} && python3 {{skill_root_q}}/scripts/align-narration.py \
     --mode subtitles \
@@ -70,7 +70,7 @@
     --narration {{narration_q}} \
     --offsets {{offsets_q}} \
     --script {{script_txt_q}} \
-    --scenes {{scenes_json_q}} \
+    --scene-config {{scene_config_q}} \
     --narration-audio {{narration_audio_q}} \
     --units-output {{subtitle_units_q}}
 
@@ -89,7 +89,7 @@
 
 - cd {{composition_dir_q}} && npx hyperframes check
 - source {{venv_activate_q}} && python3 {{skill_root_q}}/scripts/check-composition.py {{composition_dir_q}} \
-    --scenes {{scenes_json_q}} \
+    --scene-config {{scene_config_q}} \
     --design {{design_json_q}} \
     --subtitle-units {{subtitle_units_q}} \
     --output {{check_report_q}}

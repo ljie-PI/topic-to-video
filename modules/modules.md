@@ -179,7 +179,7 @@ window.VIDEO = {
 
 每个组件和场景都有一个 `data` 参数，可以改成读别的键名。
 
-视觉 scene 的常驻组件数据不从零编写：`subtitle-units.json` 的 `units[]` 以 `begin_s → start`、`end_s → end`、`text → text` 映射为 `captions[]`，`caption_segments[]` 原样映射为 `captionSegments[]`；`scenes.json` 的每个 scene 以原起止时间映射为 `jay.placements[]`，仅 `presenter` 为 `visible: true`，位置取 presenter 的 `person` 区域。完整映射见 `layouts/layouts.md` 和两个组件文档。
+视觉 scene 的常驻组件数据不从零编写：`subtitle-units.json` 的 `units[]` 以 `begin_s → start`、`end_s → end`、`text → text` 映射为 `captions[]`，`caption_segments[]` 原样映射为 `captionSegments[]`；`scene-config.json` 的每个 scene 以原起止时间映射为 `jay.placements[]`，regions 有人物区（`component` 为 `jay` 的 reserved 区）时为 `visible: true`，位置取该人物区 rect。完整映射见 `layouts/layouts.md` 和两个组件文档。
 
 ## 时间约定
 

@@ -6,11 +6,10 @@
 本脚本生成，而不是让主 agent 手填散文模板。每次调用做三件事：
 
   0. 校验（在写任何东西之前）：composition 步骤要求 design 是当前库注册的；
-     旧 inputs.json 若仍带 layout / template，也校验 layout 的结构与画布尺寸、
-     模板声明及其兼容性。新流程不要求预选 layout，也不要求 scenes.json 已存在：
-     最终视觉 scenes 与各自 layout 由 composition agent 决定。校验的就是 handoff
-     之后会引用的那份文件（不 --refresh 时是工作区副本）。非法时就地失败，
-     workspace 完全未被改动。
+     不要求预选全局 template / layout——它们是 composition agent 逐视觉场景
+     的决定，scene-config.json 由该 agent 在本阶段产出，准备时还不存在。
+     校验的就是 handoff 之后会引用的那份文件（不 --refresh 时是工作区副本）。
+     非法时就地失败，workspace 完全未被改动。
   1. 落地：把 references/delegation/conventions.md 和
      references/delegation/<step>/ 复制到 <ws>/references/delegation/；
      composition 步骤还复制 modules/（不含 examples/）到 <ws>/modules/。workspace
@@ -123,9 +122,6 @@ def load_inputs(ws: Path, step: str) -> dict[str, Any]:
     if missing:
         raise ValueError(f'inputs.json is missing fields: {", ".join(missing)}')
     optional = [video_contract.STEP_REQUESTS_FIELD[step]]
-    if step == 'composition':
-        # 旧单 layout 工程可带 layout；新流程由 agent 写入 composition/scenes.json。
-        optional.extend(('layout', 'template'))
     selected = {name: data[name] for name in (*required, *optional) if name in data}
     for name, value in selected.items():
         problem = video_contract.input_field_problem(name, value)
@@ -139,18 +135,6 @@ def load_inputs(ws: Path, step: str) -> dict[str, Any]:
 
 def duration_text(duration: Any) -> str:
     return f'{duration} 分钟' if isinstance(duration, (int, float)) else str(duration)
-
-
-def template_text(inputs: dict[str, Any]) -> str:
-    """template 的三种状态：未选择 / 明确不用（null） / 具体模板名。
-
-    缺省不等于“不用”：模板选择是 composition agent 在自己的执行中作出的决定，
-    缺省时 handoff 必须告诉它还没选，而不是替它写 null。
-    """
-    if 'template' not in inputs:
-        return '未选择（由本阶段决定）'
-    template = inputs['template']
-    return str(template) if template is not None else '无（不使用模板）'
 
 
 # --- 落地包 -------------------------------------------------------------------
@@ -327,11 +311,11 @@ def script_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool = False) -> P
 # “哪个朝向对应哪个画布”只定义一份，字幕规格、handoff 与渲染检查都读它。
 
 
-def require_registered_visuals(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> None:
-    """校验固定 design，以及旧 inputs.json 中仍存在的单 layout 默认值。
+def require_registered_design(inputs: dict[str, Any]) -> None:
+    """校验固定 design；全局 template / layout 不再是准备 handoff 的门槛。
 
-    新流程没有 inputs.json.layout；最终 scene layout 在 agent 写出 scenes.json 后，
-    由字幕与检查工具校验。旧字段存在时仍按工作区实际使用的副本校验。
+    逐视觉场景的模板与布局（含自由布局）由 composition agent 决定并写进
+    scene-config.json，由字幕、检查与状态脚本在它产出后校验。
     """
     designs = video_contract.available_designs(SKILL_ROOT)
     if inputs['design'] not in designs:
@@ -339,60 +323,19 @@ def require_registered_visuals(ws: Path, inputs: dict[str, Any], *, refresh: boo
             f'inputs.json field design {inputs["design"]!r} is not an available design '
             f'(choose one of: {", ".join(designs)})'
         )
-    if 'layout' not in inputs or (ws / video_contract.VISUAL_SCENES_PATH).exists():
-        return
-    layout = inputs['layout']
-    problem = video_contract.layout_contract_problem(SKILL_ROOT, layout)
-    if problem:
-        raise ValueError(f'inputs.json {problem}')
-    effective = video_contract.effective_resource(
-        SKILL_ROOT, ws, f'modules/layouts/{layout}.json', refresh=refresh
-    )
-    problem = video_contract.layout_file_problem(effective, inputs['orientation'], layout)
-    if problem:
-        raise ValueError(problem)
-
-
-def require_compatible_template(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> None:
-    """校验已选模板；旧 layout 存在时也保留单 layout 兼容性检查。
-
-    新流程的实际 layout 集合要到 scenes.json 写出后才知道，composition agent 必须
-    确认模板支持每一个用到的 layout，状态与检查脚本再作确定性校验。
-    """
-    template = inputs.get('template')
-    problem = video_contract.template_contract_problem(SKILL_ROOT, template)
-    if problem:
-        raise ValueError(f'inputs.json {problem}')
-    if template is None:
-        return
-    supported = video_contract.template_layouts(SKILL_ROOT, template, ws=ws, refresh=refresh)
-    if supported is None:
-        raise ValueError(
-            f'template {template!r} has no supported_layouts declaration in '
-            f'modules/templates/{template}/{template}.json'
-        )
-    if (
-        'layout' in inputs
-        and not (ws / video_contract.VISUAL_SCENES_PATH).exists()
-        and inputs['layout'] not in supported
-    ):
-        raise ValueError(
-            f'template {template!r} supports layouts {", ".join(supported)}, not {inputs["layout"]!r}: '
-            'choose a compatible layout or write template: null'
-        )
 
 
 def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan:
-    design, template = inputs['design'], inputs.get('template')
+    design = inputs['design']
     delegation = ws / DELEGATION
     modules = ws / 'modules'
     base = delegation / 'composition' / 'base-instructions.md'
+    scene_config_doc = delegation / 'composition' / 'scene-config.md'
     modules_doc = modules / 'modules.md'
     design_doc = modules / 'designs' / design / f'{design}.md'
     design_json = modules / 'designs' / design / f'{design}.json'
     design_contract = modules / 'designs' / 'designs.md'
-    require_registered_visuals(ws, inputs, refresh=refresh)
-    require_compatible_template(ws, inputs, refresh=refresh)
+    require_registered_design(inputs)
     layouts_doc = modules / 'layouts' / 'layouts.md'
     templates_doc = modules / 'templates' / 'templates.md'
 
@@ -402,25 +345,17 @@ def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan
         SKILL_ROOT / 'modules',
     ]
     references: list[Reference] = [
-        (f'{base}（基础指令：输入契约、design、视觉 scenes 与 layout 区域、工作顺序）', [base]),
+        (f'{base}（基础指令：输入契约、design、逐场景选择顺序与工作顺序）', [base]),
+        (f'{scene_config_doc}（scene-config 数据契约：机器配置的唯一 schema 与可验证示例）', [scene_config_doc]),
         (f'{modules_doc}（模块库入口与组装约定）', [modules_doc]),
         (
             f'{design_doc} + {design_json}（所选 design；token 契约见 {design_contract}）',
             [design_doc, design_json, design_contract],
         ),
-        (f'{layouts_doc}（layout 目录：为每个视觉 scene 选择布局并读取对应 JSON / 文档）', [layouts_doc]),
-        # 模板由本阶段的 agent 自己选：目录始终要给出，已选模板的文档另外列。
-        (f'{templates_doc}（模板目录：读它决定用哪个模板或不用，并确认 supported_layouts 覆盖全部已用 layout）', [templates_doc]),
+        (f'{layouts_doc}（layout 目录：可借用的 preset 及对应 JSON / 文档；也可自主设计自由布局）', [layouts_doc]),
+        # 模板按场景借用：目录始终要给出，具体模板由 agent 在逐场景选择时读。
+        (f'{templates_doc}（模板目录：按场景决定是否借用某个模板场景）', [templates_doc]),
     ]
-    if template:
-        template_doc = modules / 'templates' / template / f'{template}.md'
-        template_json = modules / 'templates' / template / f'{template}.json'
-        references.append(
-            (f'{template_doc} + {template_json}（inputs.json 已选的模板；按内容与用户要求核对）',
-             [template_doc, template_json])
-        )
-        sources.append(SKILL_ROOT / 'modules' / 'templates' / template / f'{template}.md')
-        sources.append(SKILL_ROOT / 'modules' / 'templates' / template / f'{template}.json')
     sources.append(SKILL_ROOT / 'modules' / 'layouts' / 'layouts.md')
     sources.append(SKILL_ROOT / 'modules' / 'templates' / 'templates.md')
     components = modules / 'components'
@@ -435,7 +370,7 @@ def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan
         inputs=[
             ws / 'inputs.json',
             ws / 'voice_clone' / 'narration.mp3',
-            # 确定性字幕生成用的上游：agent 先写视觉 scenes，再按各 scene layout 现算。
+            # 确定性字幕生成用的上游：agent 先写 scene-config，再按各 scene 现算。
             ws / 'transcribe' / 'transcript.json',
             ws / 'transcribe' / 'timeline.json',
             ws / 'narration.txt',
@@ -497,7 +432,7 @@ def render_handoff(
         'skill_root_q': shlex.quote(str(SKILL_ROOT)),
         'venv_activate_q': shlex.quote(str(SKILL_ROOT / '.venv' / 'bin' / 'activate')),
         'composition_dir_q': shlex.quote(str(ws / 'composition')),
-        'scenes_json_q': shlex.quote(str(ws / 'composition' / 'scenes.json')),
+        'scene_config_q': shlex.quote(str(ws / 'composition' / 'scene-config.json')),
         'narration_audio_q': shlex.quote(str(ws / 'voice_clone' / 'narration.mp3')),
         'design_json_q': shlex.quote(
             str(ws / 'modules' / 'designs' / design / f'{design}.json')
@@ -525,7 +460,6 @@ def render_handoff(
         **({'duration': duration_text(inputs['duration'])} if 'duration' in inputs else {}),
         **({'language': str(inputs['language'])} if 'language' in inputs else {}),
         'input_mode': str(inputs['input_mode']),
-        'template': template_text(inputs),
         **plan.values,
     }
     return fill(read_template(step), values)

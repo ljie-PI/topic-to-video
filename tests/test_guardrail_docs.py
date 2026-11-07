@@ -126,7 +126,7 @@ def test_every_phase_has_guardrails_immediately_after_next_step(doc_path: Path):
     ('references/phases/08-composition.md', '预先 stage 确定性的 WOFF2 字体'),
     ('references/phases/08-composition.md', '字体实现归 HyperFrames'),
     ('references/phases/08-composition.md', 'Composition 委派给 coding agent'),
-    ('references/phases/08-composition.md', 'Scene 设计归 HyperFrames'),
+    ('references/phases/08-composition.md', 'Scene 设计由 composition agent 负责'),
 ])
 def test_phase_specific_rules_move_to_their_owning_phase(relpath: str, required: str):
     assert required in guardrails(relpath)
@@ -153,10 +153,10 @@ def test_every_phase_keeps_the_recovery_it_needs_when_a_tool_fails(relpath: str,
 def test_phase_8_assigns_scene_layouts_and_visual_timing_to_composition_agent():
     rules = guardrails('references/phases/08-composition.md')
 
-    assert 'composition/scenes.json' in rules
+    assert 'composition/scene-config.json' in rules
     assert '主 agent 只固定 orientation / design / 用户约束' in rules
-    assert '不预选 scene layout' in rules
-    assert '--scenes ... --narration-audio ...' in rules
+    assert '不预选任何 scene 方案' in rules
+    assert '--scene-config ... --narration-audio ...' in rules
 
 
 def test_phase7_recovery_says_how_to_resume_without_faking_audio():

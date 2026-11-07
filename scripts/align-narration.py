@@ -30,10 +30,12 @@
                  caption 规格取自其 `caption` 对象
                  （{width_px, font_size_px, max_lines}）。
                  --layout 与那三个显式参数二者必居其一。
-  --scenes       Phase 8 composition/scenes.json（仅 subtitles）：按最终视觉 scene
-                 的有效 layout 计算字幕预算；与 --layout / 显式参数互斥。
+  --scene-config   Phase 8 composition/scene-config.json（仅 subtitles）：按每个
+                 视觉 scene 落盘的 caption 规格计算字幕预算；与 --layout /
+                 显式参数互斥。
   --narration-audio
-                 视觉 scenes 的实际配音文件，用于校验全片覆盖（含尾部静音）。
+                 视觉 scene 配置的实际配音文件，用于校验 total_s 与实际配音
+                 时长一致（含语音前后静音画面）。
   --scene-plan   可选的场景规划 JSON；scene 带 `cues` 时，它们的秒数会写进
                  timeline.json。`scene_id` / `paragraphs` / `cues` 是全部被读取的
                  字段，所以 composition 自己的 cue 声明也能直接传给这个参数。已
@@ -95,6 +97,7 @@ from typing import Any, Callable
 
 import cli
 import media
+import scene_config
 import video_contract
 from script_text import paragraph_spans
 
@@ -193,9 +196,9 @@ def parse_args() -> argparse.Namespace:
         help='Optional scene plan JSON with per-scene cues; enables their seconds in timeline.json.',
     )
     parser.add_argument(
-        '--scenes',
+        '--scene-config',
         default=None,
-        help='Phase 8 composition/scenes.json; applies each visual scene layout to subtitles.',
+        help='Phase 8 composition/scene-config.json; applies each visual scene caption spec to subtitles.',
     )
     parser.add_argument(
         '--narration-audio',
@@ -203,7 +206,7 @@ def parse_args() -> argparse.Namespace:
         help='Narration media used for visual-scene coverage (default: <workspace>/voice_clone/narration.mp3).',
     )
     args = parser.parse_args()
-    caption_given = [args.width, args.font_size, args.max_lines, args.layout, args.scenes]
+    caption_given = [args.width, args.font_size, args.max_lines, args.layout, args.scene_config]
     explicit = [args.width, args.font_size, args.max_lines]
     if any(value is not None and value <= 0 for value in explicit[:2]) or (
         args.max_lines is not None and args.max_lines < 1
@@ -214,21 +217,21 @@ def parse_args() -> argparse.Namespace:
         # 接受这类参数，以免看起来像是按宽度算过时间轴。
         if any(value is not None for value in caption_given):
             parser.error(
-                '--mode timing takes no caption spec (--layout / --width / --font-size / --max-lines); '
-                'subtitle layout belongs to --mode subtitles'
+                '--mode timing takes no caption spec (--layout / --scene-config / --width / '
+                '--font-size / --max-lines); subtitle layout belongs to --mode subtitles'
             )
         if args.units_output is not None:
             parser.error('--mode timing writes the timeline only; drop --units-output')
         if args.narration_audio is not None:
-            parser.error('--narration-audio belongs to --mode subtitles --scenes')
+            parser.error('--narration-audio belongs to --mode subtitles --scene-config')
     else:
-        if args.scenes is not None:
+        if args.scene_config is not None:
             if args.layout is not None or any(value is not None for value in explicit):
-                parser.error('--scenes is mutually exclusive with --layout/--width/--font-size/--max-lines')
+                parser.error('--scene-config is mutually exclusive with --layout/--width/--font-size/--max-lines')
         elif args.layout is None and any(value is None for value in explicit):
-            parser.error('--mode subtitles needs a caption spec: pass --scenes, --layout <path.json> or all of --width/--font-size/--max-lines')
-        if args.scenes is None and args.narration_audio is not None:
-            parser.error('--narration-audio requires --scenes')
+            parser.error('--mode subtitles needs a caption spec: pass --scene-config, --layout <path.json> or all of --width/--font-size/--max-lines')
+        if args.scene_config is None and args.narration_audio is not None:
+            parser.error('--narration-audio requires --scene-config')
         if args.timeline_output is not None:
             parser.error(
                 '--mode subtitles writes subtitle units only; the timeline belongs to --mode timing'
@@ -1000,22 +1003,22 @@ def scene_clock(
 
 
 def load_scene_caption_segments(args: argparse.Namespace) -> list[dict[str, Any]]:
-    """读取 Phase 8 视觉声明，并派生字幕工具与组件共用的有效布局区间。"""
+    """读取 Phase 8 scene-config，并派生字幕工具与组件共用的有效布局区间。"""
     transcript_path = Path(args.transcript).resolve()
     ws = transcript_path.parent.parent
     audio_path = Path(args.narration_audio).resolve() if args.narration_audio else ws / 'voice_clone' / 'narration.mp3'
     duration_s = media.probe_duration(audio_path)
-    try:
-        inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f'cannot read {ws / "inputs.json"} for scene canvas validation: {exc}') from exc
-    if not isinstance(inputs, dict):
-        raise ValueError(f'{ws / "inputs.json"} root must be an object')
-    scenes = video_contract.load_visual_scenes(
-        Path(args.scenes).resolve(), Path(__file__).resolve().parent.parent,
-        inputs.get('orientation'), duration_s, ws=ws,
+    expected_canvas = scene_config.load_workspace_expected_canvas(ws)
+    config = scene_config.load_scene_config(
+        Path(args.scene_config).resolve(),
+        expected_canvas=expected_canvas,
+        known_scene_ids=scene_config.workspace_scene_ids(ws),
+        modules_root=Path(__file__).resolve().parent.parent,
     )
-    segments = video_contract.caption_layout_segments(scenes)
+    problem = scene_config.total_s_problem(config['total_s'], duration_s)
+    if problem:
+        raise ValueError(problem)
+    segments = scene_config.caption_layout_segments(config['scenes'])
     for segment in segments:
         caption = segment['layout_data']['caption']
         log(
@@ -1053,10 +1056,7 @@ def public_caption_segments(segments: list[dict[str, Any]]) -> list[dict[str, An
     result = []
     for segment in segments:
         layout = segment['layout_data']
-        caption_region = next(
-            (region for region in layout['regions'] if isinstance(region, dict) and region.get('id') == 'caption-text'),
-            None,
-        )
+        caption_region = scene_config.caption_region(layout)
         result.append({
             'scene_id': segment['scene_id'], 'begin_s': segment['begin_s'], 'end_s': segment['end_s'],
             'layout': segment['layout'], 'caption': dict(layout['caption']),
@@ -1110,7 +1110,7 @@ def align(args: argparse.Namespace) -> dict[str, Any]:
             },
         }
 
-    segments = load_scene_caption_segments(args) if args.scenes is not None else None
+    segments = load_scene_caption_segments(args) if args.scene_config is not None else None
     if segments is not None:
         cap: float | Callable[[int, int], float] = caption_budget(segments)
     else:

@@ -14,8 +14,8 @@
 
 用法：
   python3 make-contact-sheet.py --video composition/renders/final.mp4 \
-      --scenes composition/scenes.json --inputs inputs.json [--output-dir qa]
-  旧单 layout 工程可将 --scenes 换成 --timeline transcribe/timeline.json。
+      --timeline composition/scene-config.json --inputs inputs.json [--output-dir qa]
+  旧单 layout 工程可将 --timeline 换成 transcribe/timeline.json（叙事 scenes）。
 
 输出约定：
   stdout: 单个 JSON 对象
@@ -38,7 +38,6 @@ from pathlib import Path
 
 import cli
 import media
-import video_contract
 from timeline_scenes import normalize_scenes
 
 TOOL_NAME = 'make-contact-sheet'
@@ -73,9 +72,12 @@ log = cli.make_logger(TOOL_NAME)
 def parse_args() -> argparse.Namespace:
     parser = cli.JsonArgumentParser(TOOL_NAME, description='Extract per-scene frames and montage 2x2 contact sheets.')
     parser.add_argument('--video', required=True, help='Rendered video file.')
-    scene_input = parser.add_mutually_exclusive_group(required=True)
-    scene_input.add_argument('--timeline', help='Legacy timeline.json with narrative scenes.')
-    scene_input.add_argument('--scenes', help='Phase 8 composition/scenes.json with final visual scenes.')
+    parser.add_argument(
+        '--timeline',
+        required=True,
+        help='Scene list: Phase 8 composition/scene-config.json (final visual scenes) or legacy '
+             'timeline.json narrative scenes; only scene_id / begin_s / end_s are read.',
+    )
     parser.add_argument('--output-dir', default='qa', help='Output directory for sheets (default: qa).')
     parser.add_argument('--inputs', required=True, help='inputs.json; qa_level controls extraction and vision QA.')
     args = parser.parse_args()
@@ -83,7 +85,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_scenes(timeline_path: Path) -> list[dict[str, object]]:
-    """timeline.json 中的 scene 列表（共享的宽松读取器）。
+    """scene 列表（共享的宽松读取器）：scene-config.json 的最终视觉 scenes 或
+    timeline.json 的叙事 scenes，都只读 scene_id / begin_s / end_s。
 
     非法的 scene 会被跳过并给出警告；只有结果完全为空才算错误，因为没有东西可以
     用来生成 sheet。
@@ -97,19 +100,6 @@ def load_scenes(timeline_path: Path) -> list[dict[str, object]]:
     if not scenes:
         raise ValueError(f'{timeline_path} has no valid scenes; nothing to build sheets from')
     return scenes
-
-
-def load_visual_scenes(scenes_path: Path, inputs_path: Path) -> list[dict[str, object]]:
-    """按真实配音时长校验并读取最终视觉 scenes。"""
-    data = json.loads(inputs_path.read_text(encoding='utf-8'))
-    if not isinstance(data, dict):
-        raise ValueError(f'{inputs_path} is not a JSON object')
-    ws = inputs_path.parent
-    duration_s = media.probe_duration(ws / 'voice_clone' / 'narration.mp3')
-    return video_contract.load_visual_scenes(
-        scenes_path, Path(__file__).resolve().parent.parent,
-        data.get('orientation'), duration_s, ws=ws,
-    )
 
 
 def load_qa_level(inputs_path: Path) -> str:
@@ -260,7 +250,7 @@ def main() -> int:
     video_path = Path(args.video).expanduser()
     if not video_path.is_file():
         raise FileNotFoundError(f'video file not found: {args.video}')
-    scene_path = Path(args.scenes or args.timeline).expanduser()
+    scene_path = Path(args.timeline).expanduser()
     if not scene_path.is_file():
         raise FileNotFoundError(f'scene timing file not found: {scene_path}')
     inputs_path = Path(args.inputs).expanduser()
@@ -275,12 +265,9 @@ def main() -> int:
         stale.unlink()
 
     duration_s = media.probe_duration(video_path.resolve(), timeout=FFPROBE_TIMEOUT_SECONDS)
-    scenes = load_visual_scenes(scene_path.resolve(), inputs_path.resolve()) if args.scenes else load_scenes(scene_path.resolve())
+    scenes = load_scenes(scene_path.resolve())
     extraction_level = 'strict' if qa_level == 'strict' else 'standard'
-    specs = build_frame_specs(
-        scenes, extraction_level, duration_s,
-        transition_scenes=video_contract.caption_layout_segments(scenes) if args.scenes else None,
-    )
+    specs = build_frame_specs(scenes, extraction_level, duration_s)
     log(f'Extracting {len(specs)} frame(s) from {video_path} (qa_level={qa_level})...')
     for index, spec in enumerate(specs):
         frame_path = frames_dir / f'frame_{index + 1:03d}.jpg'
