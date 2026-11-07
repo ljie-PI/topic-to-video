@@ -503,10 +503,15 @@ class TestCompositionHandoff:
         ]
         if template:
             expected.append(['modules/templates/github/github.json', 'modules/templates/github/github.md'])
-        expected.append(['modules/components', 'modules/patterns'])
+        expected.append(['modules/components'])
 
         assert [rel(absolute_paths(item)) for item in items] == expected
-        assert items[-1].startswith('按 storyboard 需要，自行阅读 ')
+        assert '组件目录：按需读要挂载的组件文档' in items[-1]
+        assert '**可选参考（可跳过）**' in body
+        optional = body.split('**可选参考（可跳过）**', 1)[1]
+        assert absolute_paths(optional) == {ws / 'modules/patterns', ws / 'modules/motion.md'}
+        assert '查阅条件见基础指令第四部分' in optional
+        assert all('modules/patterns' not in item and 'modules/motion.md' not in item for item in items)
         assert 'modules/examples' not in body
         if template is None:
             assert 'modules/templates/github' not in body

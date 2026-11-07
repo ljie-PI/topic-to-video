@@ -652,7 +652,7 @@ def test_scene_plan_content_plan_and_opening_hook_contract():
     composition = doc_text('references/delegation/composition/base-instructions.md')
     # 模板与 pattern 归 composition，不再按上游节拍映射动作。
     assert '## 四、内容演绎与模板选择' in composition
-    assert '模板归你选' in composition and 'pattern 是建议' in composition
+    assert '模板归你选' in composition and '参考库按需' in composition
     assert 'beat → 画面' not in composition
     assert '语义节拍' not in composition
     assert '把 `template` 字段写回 `inputs.json`' in composition
@@ -660,3 +660,51 @@ def test_scene_plan_content_plan_and_opening_hook_contract():
     # 模板不再给旁白下指令：它由 composition 阶段选。
     assert not (REPO_ROOT / 'modules' / 'templates' / 'github' / 'narration.md').exists()
     assert '由 composition 阶段决定' in script_base
+
+
+def test_composition_defaults_to_original_design_and_only_records_borrowed_references():
+    composition = doc_text('references/delegation/composition/base-instructions.md')
+    design = composition.split('## 四、内容演绎与模板选择', 1)[1].split('## 五、', 1)[0]
+
+    assert '自主设计优先' in design
+    assert '自主构思构图、视觉隐喻、信息展开与动效' in design
+    assert '`modules/patterns/` 与 `modules/motion.md` 是可跳过的参考库' in design
+    assert '才定向查阅' in design
+    assert '内容关系、素材形态和区域约束高度吻合' in design
+    assert '全片不用参考库也完全合格' in design
+    assert '只在借用时' in design and '借用内容与匹配理由' in design
+    assert '无需填写 pattern 字段或未使用理由' in design
+
+    workflow = composition.split('## 工作顺序', 1)[1]
+    assert '**自主构思并写 storyboard**' in workflow
+    assert '素材、构图、信息展开与动效安排' in workflow
+    assert '先定模板与 pattern' not in workflow
+    assert '动效选择参考 `modules/motion.md`' not in workflow
+    # 自主发挥不放松 design、区域与真实语音的边界。
+    assert '默认时长、缓动与列表间隔跟随主题 token' in composition
+    assert 'reserved 区域只放各自对应的组件' in composition
+    assert '时间只取真实语音' in composition
+
+
+def test_pattern_and_motion_indexes_are_optional_and_not_a_fixed_design_sequence():
+    patterns = doc_text('modules/patterns/patterns.md')
+    motion = doc_text('modules/motion.md')
+    for text in (patterns, motion):
+        assert '**按需参考库**' in text
+        assert 'composition 基础指令第四部分' in text
+
+    assert '## 决定借用后怎么查' in patterns
+    assert '不要求继续查阅 `motion.md`' in patterns
+    assert '按 `motion.md` 的选择顺序定' not in patterns
+    assert '## 动效构思的参考维度' in motion
+    assert '没有固定顺序' in motion
+    assert '构思从表达目标与素材出发' in motion
+    assert '不要求每个 scene 有招牌机制或持续运动' in motion
+    assert '只 animate opacity / transform' not in motion
+
+    phase = doc_text('references/phases/08-composition.md')
+    handoff = doc_text('references/delegation/composition/handoff-template.md')
+    for text in (phase, handoff):
+        assert '可选参考' in text
+        assert '素材与 pattern 选择' not in text
+        assert '模板 / pattern 的选择与理由' not in text

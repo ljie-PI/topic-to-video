@@ -1,8 +1,8 @@
 # Patterns：画面形态建议库
 
-patterns 告诉 composition 常见的媒体和信息形态怎么摆、怎么动。它们只是**建议**，不是规则：每个 scene 最终以旁白语义、素材实际情况和所选 layout 的区域为准。
+patterns 是**按需参考库**，提供常见媒体和信息形态的摆法与动效候选，不是 scene 分类表或必选菜单。查阅条件与借用记录见 [composition 基础指令第四部分](../../references/delegation/composition/base-instructions.md#四内容演绎与模板选择)；每个 scene 最终以旁白语义、素材实际情况和所选 layout 的区域为准。
 
-每份 pattern 文档都有同样的小节：适用场景和触发信号 / 区域尺寸建议 / 横屏摆法 / 竖屏摆法 / 动效候选与应避免 / 用色 / 已有实现。动效的通用问题（能力发现、runtime 选择、全局节奏）见 `motion.md`；scene 之间的转场见 `components/transitions/tile-wipe/tile-wipe.md`。
+每份 pattern 文档都有同样的小节：适用场景和触发信号 / 区域尺寸建议 / 横屏摆法 / 竖屏摆法 / 动效候选与应避免 / 用色 / 已有实现。需要具体动效参考时可查 `motion.md`；使用转场组件时读 `components/transitions/tile-wipe/tile-wipe.md`。
 
 ## 媒体呈现（media/）
 
@@ -36,9 +36,9 @@ patterns 告诉 composition 常见的媒体和信息形态怎么摆、怎么动�
 | code-terminal | `patterns/info/code-terminal.md` | `code_block` / `terminal_block` / `file_tree` |
 | callout-quote | `patterns/info/callout-quote.md` | `callout` / `quote` / `definition` / `qa` |
 
-## 怎么用
+## 决定借用后怎么查
 
-1. 按 scene 的主语选 pattern：有素材先看 media/，纯信息先看 info/。
-2. 读对应文档的「适用场景和触发信号」确认选对，再按「横屏摆法」或「竖屏摆法」和所选 layout 的区域表（`layouts/`）落坐标。
-3. 「动效候选与应避免」给候选机制；最终选哪个、用什么 runtime，按 `motion.md` 的选择顺序定。
+1. 带着已经构思的画面或具体问题，从 media/ 或 info/ 定位相关文档，只读匹配的条目。
+2. 用「适用场景和触发信号」核对适用性；横 / 竖屏摆法与动效候选都可局部借用或改写，坐标仍以所选 layout 的区域表（`layouts/`）为准。
+3. 「动效候选与应避免」只是本 pattern 的参考，不要求继续查阅 `motion.md`，也不规定最终机制与 runtime。
 4. 「用色」里的分主题写法覆盖在主题 token 之上；没有特殊覆盖时全部颜色只用主题 token（`designs/designs.md`）。

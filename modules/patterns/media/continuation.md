@@ -31,7 +31,7 @@
 
 ## 用色
 
-- 外观全部来自所选主题的 token；本 scene 的焦点色随「当前正在讲的点」移动，与 `motion.md` 的「一个 scene 一个主打机制」配合。
+- 外观全部来自所选主题的 token；本 scene 的焦点色可随「当前正在讲的点」移动。
 - 本 pattern 没有按 visual_role 的特殊覆盖；局部高亮用 `--c-focus` / `--c-focus-tint` 或真实状态色。
 
 ## 已有实现

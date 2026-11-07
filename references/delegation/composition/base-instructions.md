@@ -4,7 +4,7 @@
 
 先读工作区里的输入（handoff 的 Inputs 一节列出的文件），再按下面的约束执行。指令冲突时，按 `references/delegation/conventions.md` 的叠加顺序处理：后读的（模板组装说明 → 用户在 `inputs.json` 的 `composition_requests` 里提出的要求）覆盖先读的。
 
-本指令只有五部分约束——输入契约、必须参考 design、必须遵守 layout 区域、内容演绎与模板选择、模板时间锚点——和一条工作顺序。除此之外你没有别的规则：scene 怎么切、用什么模板与 pattern、素材怎么摆、Jay 怎么演、动效怎么选，是你的设计空间。
+本指令只有五部分约束——输入契约、必须参考 design、必须遵守 layout 区域、内容演绎与模板选择、模板时间锚点——和一条工作顺序。除此之外你没有别的规则：scene 怎么切、构图与视觉隐喻、素材怎么摆、Jay 怎么演、动效怎么编排，是你的设计空间。
 
 ## 一、输入契约
 
@@ -17,7 +17,7 @@
 
 ## 二、必须参考 design
 
-- 颜色、字体、动效只取所选 design 的 token（token 契约见 `modules/designs/designs.md`、`modules/designs/<design>/<design>.md` 与同目录的 `<design>.json`）。
+- 颜色、字体只取所选 design 的 token；动效的默认时长、缓动与列表间隔跟随主题 token，具体运动方式与编排由你设计（token 契约见 `modules/designs/designs.md`、`modules/designs/<design>/<design>.md` 与同目录的 `<design>.json`）。
 - 字号守所选 design JSON 的 `min_font_px`：面板标题栏、按钮、小标签这类界面小字放在带 `data-text-role="ui"` 的元素里，按界面小字下限检查；其余文字都按阅读文字下限检查。
 - 选了模板时，模板的专属变量与覆盖值**写在 design 之后**，只能增补主题，不能替换 design 的语义。
 
@@ -33,7 +33,8 @@
 `scene-plan.json` 的 `intent` 与 `content_plan` 说每个 scene 要讲什么、怎样展开，`material_candidates` 给出候选素材。它们只是参考，不是画面指令。
 
 - **模板归你选。** 先读 `modules/templates/templates.md`：有适配这类视频的模板就读它的 `<t>.json`，确认 `supported_layouts` 包含当前 layout，能配就用；不命中就不用，不要为了套模板改主题、叙事、朝向或 design。决定后把 `template` 字段写回 `inputs.json`（模板名或 `null`），并在 storyboard 里写明选择与理由。用户 `composition_requests` 的要求优先于模板。
-- **pattern 是建议。** `modules/patterns/` 按 storyboard 需要自行阅读和选用；scene-plan 不再给 pattern 提示。
+- **自主设计优先。** 先根据旁白要表达的关系、素材实际内容和 layout 可用区域，自主构思构图、视觉隐喻、信息展开与动效，再写入 storyboard；简洁的静态呈现也是有效选择。
+- **参考库按需。** `modules/patterns/` 与 `modules/motion.md` 是可跳过的参考库。仅在已有构想对应某个非常匹配的模式 / 动效建议，或有具体的画面 / 动效问题需要参考时，才定向查阅；采用时须与内容关系、素材形态和区域约束高度吻合，并确实改善表达。可以局部借用或改写。默认自主设计，全片不用参考库也完全合格。storyboard 只在借用时用一句话记录借用内容与匹配理由；自主设计无需填写 pattern 字段或未使用理由。
 - **动作自己排。** Jay 按 `jay.md` 的通用演法，根据旁白内容从动作库挑动作；同一时间只做一个，后一个顺延。
 - **时间只取真实语音。** 需要卡准秒数时，从 `timeline.json` 的段落 / cue 取；模板需要额外锚点时按下节自己声明 cue 并跑 timing 模式，不按字数估算、不另建节拍表。
 - **偏离要有理由。** 合并 / 拆分 scene、换素材或换演绎方式都行；与 `intent` / `content_plan` 的偏离写在 storyboard 里。发现是叙事或素材本身对不上，报告建议回退到 Phase 6，不要改旁白。
@@ -51,11 +52,11 @@
 ## 工作顺序
 
 0. **生成最终字幕**。先跑 handoff 里的 `align-narration.py --mode subtitles` 命令，把字幕单元切到 `composition/assets/subtitle-units.json`。它只根据显示稿、朗读稿、偏移表和本轮 transcript 生成，不重做语音识别。
-1. **先定模板与 pattern，再写 storyboard**，分三小步：
+1. **自主构思并写 storyboard**，分三小步：
    1. **先决定模板**。读 `modules/templates/templates.md`，按内容、layout 与用户要求决定用哪个模板或不用；选中就读它的 `<t>.json` 确认 `supported_layouts`，把 `template`（模板名或 `null`）写回 `inputs.json`，再读模板文档。
    2. **再选组件**。读 `modules/components/components.md` 的组件目录，再读要用的组件文档。
-   3. **写 storyboard**。开头先写一张「组件使用表」：每个用到的组件一行，写明挂载参数、驱动它的 `window.VIDEO` 数据从哪来（例如 `captions` 来自 `composition/assets/subtitle-units.json`）。layout 的 reserved 区要求的组件必须出现在表里；常驻组件不用在每个 scene 里重复写，scene 里只写本 scene 额外用到的组件。然后以 `scene-plan.json` 的 `intent` / `content_plan` 为起点逐个 scene 写：可以合并或拆分视觉 scene、改选素材、pattern 与演绎方式；偏离场景规划的地方写明理由；**旁白不能改**（字幕与屏幕文字都以显示稿为准）。
-2. **组装和编写画面**。按 storyboard 用 modules 组装：读 `modules/modules.md` 入口、所选 design / layout 文档、需要的 pattern 文档（`modules/patterns/`，只作建议）与组件文档（`modules/components/`）；动效选择参考 `modules/motion.md`。按 storyboard 选定的 design textures、组件和模板资源，由你自己从工作区的 `modules/` 拷进 `composition/`，清单见各模块的文档。
+   3. **写 storyboard**。开头先写一张「组件使用表」：每个用到的组件一行，写明挂载参数、驱动它的 `window.VIDEO` 数据从哪来（例如 `captions` 来自 `composition/assets/subtitle-units.json`）。layout 的 reserved 区要求的组件必须出现在表里；常驻组件不用在每个 scene 里重复写，scene 里只写本 scene 额外用到的组件。然后以 `scene-plan.json` 的 `intent` / `content_plan` 为起点，为每个 scene 写明素材、构图、信息展开与动效安排；参考库的查阅与借用按第四部分处理。可以合并或拆分视觉 scene、改选素材与演绎方式；偏离场景规划的地方写明理由；**旁白不能改**（字幕与屏幕文字都以显示稿为准）。
+2. **组装和编写画面**。按 storyboard 用 modules 组装：读 `modules/modules.md` 入口、所选 design / layout 文档与要用的组件文档（`modules/components/`），实现自己确定的画面与动效。按 storyboard 选定的 design textures、组件和模板资源，由你自己从工作区的 `modules/` 拷进 `composition/`，清单见各模块的文档。
 3. **渲染前自查**，全部通过再渲染：
    - 运行 `npx hyperframes check`，修掉所有错误；
    - 运行 check-composition（命令见 handoff 的 Outputs 一节）：它按 layout 区域定义检查越界、侵入 reserved 区域、文字溢出、资源加载失败、字体未加载、字号低于 design 下限、字幕与字幕单元不一致；每条 finding 的形状为 `{scene_id, check, issue, time_s, frame}`，其中 `time_s` 是快照时刻、`frame` 为 null，只修相关 scene；handoff 的命令用 `--output` 把同一份报告写到 `composition/check-composition.json`（stdout 照常打印，findings 直接看输出）；改过画面就重跑，**最后一次的报告必须保存在这个路径且 verdict 为 pass**（主 agent 的状态脚本读它）；

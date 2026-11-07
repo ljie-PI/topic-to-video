@@ -14,7 +14,7 @@
 | `{{coding_agent}}` / `{{coding_model_instruction}}` | 按 `inputs.json.delegation.composition` 与全局 `coding_agent` 解析的有效 agent / model；未指定 model 时模型说明为空 |
 | `{{design}}` / `{{layout}}` / `{{template}}` / `{{orientation}}` | `inputs.json` 的对应字段；`template` 未选择时写“未选择（由本阶段决定）”，null 时写“无（不使用模板）” |
 | `{{material_catalog}}` | `fetch_materials` 为真：catalog 的路径；否则“无（无素材，画面用纯排版）” |
-| `{{required_references}}` | 按叠加顺序编号：基础指令 → `modules.md` → design 文档与 `<design>.json` 机器契约 → layout 的 json 与文档 → 模板目录（`templates.md`，供本阶段选模板）→ 已选的模板文档与 `supported_layouts` 声明（未选时省略）→ pattern / 组件目录（固定一句，按 storyboard 需要自行阅读）。全部指向工作区副本 |
+| `{{required_references}}` | 按叠加顺序编号：基础指令 → `modules.md` → design 文档与 `<design>.json` 机器契约 → layout 的 json 与文档 → 模板目录（`templates.md`，供本阶段选模板）→ 已选的模板文档与 `supported_layouts` 声明（未选时省略）→ 组件目录（按需读要挂载的组件文档）。全部指向工作区副本；patterns / motion 单独列为可选参考 |
 | `{{additional_instructions}}` | `inputs.json` 的 `composition_requests` 逐条列出；没有写 `None` |
 | `{{transcript_q}}` / `{{narration_q}}` / `{{offsets_q}}` / `{{script_txt_q}}` | 确定性字幕生成的四个上游 |
 | `{{subtitle_units_q}}` | 字幕单元的最终位置：`{{ws}}/composition/assets/subtitle-units.json` |
@@ -39,7 +39,7 @@
 - {{timeline_q}}：Phase 7 的段落与 cue 时间轴（scene 切分与 cue 锚点的依据）；本阶段不修改它
 - material-catalog.json：{{material_catalog}}
 - 素材 ref：图片 / 视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>`；按 slug 定位 entry 后，视频 clip 解析到该 entry 的 `selected_clips[].clip_path`（相对工作区根），不用视频的 `local_path`
-- {{ws}}/scene-plan.json：叙事层场景规划（仅作参考）：`intent` / `content_plan` 说明讲什么、怎样展开；可以合并 / 拆分 / 改选素材与演绎方式，模板与 pattern 由你决定
+- {{ws}}/scene-plan.json：叙事层场景规划（仅作参考）：`intent` / `content_plan` 说明讲什么、怎样展开；可以合并 / 拆分 / 改选素材与演绎方式，构图与动效由你自主设计
 - {{ws}}/script.txt：显示稿（旁白与屏幕文字的文本来源，不能改）
 - {{ws}}/inputs.json：design {{design}}、layout {{layout}}、template {{template}}、orientation {{orientation}}
 - 字体目录：{{ws}}/composition/assets/fonts/（已按所选 design 预置，只用它）
@@ -49,7 +49,7 @@
 写到工作区（{{ws}}/）：
 
 - {{subtitle_units_q}}：最终字幕单元。**在本阶段按选定 layout 生成**（下面第一条命令），之后逐单元原样上屏；不要手改文本或边界
-- {{ws}}/composition/storyboard.md：storyboard，开头是「组件使用表」，每个 scene 写明 intent、所用的 content 区域、素材与 pattern 选择，以及选定的模板与理由；偏离场景规划处写明理由
+- {{ws}}/composition/storyboard.md：storyboard，开头是「组件使用表」，每个 scene 写明 intent、所用的 content 区域、素材、构图、信息展开与动效安排，以及选定的模板与理由；参考库借用记录按基础指令第四部分处理；偏离场景规划处写明理由
 - {{ws}}/composition/index.html + {{ws}}/composition/compositions/：HyperFrames 工程与子合成
 - {{ws}}/composition/check-composition.json：check-composition 的报告（下面命令的 `--output` 写出它；最后一次运行的 verdict 必须是 pass）
 - {{ws}}/composition/renders/final.mp4：渲染产物
@@ -89,9 +89,11 @@
 
 ## Required References
 
-按顺序阅读（叠加顺序与冲突处理见 {{ws}}/references/delegation/conventions.md）：
+以下编号项按顺序阅读（叠加顺序与冲突处理见 {{ws}}/references/delegation/conventions.md）：
 
 {{required_references}}
+
+**可选参考（可跳过）**：{{ws}}/modules/patterns/、{{ws}}/modules/motion.md。查阅条件见基础指令第四部分。
 
 ## Additional Instructions
 

@@ -32,7 +32,7 @@
 - `composition/compositions/` 里至少有一个文件；
 - `composition/check-composition.json` 的 `verdict` 为 `pass`，且覆盖当前 composition——报告里的 `sources_sha256` 必须等于当前 `index.html` / `compositions/` / `assets/`（字体除外）的内容指纹；报告没有 `sources_sha256` 时直接判不合格（改过画面就要重跑 check-composition 并用 `--output` 保存报告）；
 - `composition/renders/final.mp4` 存在、非空，且不早于任一源文件（`index.html`、`compositions/`、`assets/`、`storyboard.md`）——比源文件旧的渲染不包含那次修改，要重新渲染；
-- 状态脚本不判定的两项由主 agent 抽查（见 8.4）：`npx hyperframes check` 无错误；storyboard 的每个 scene 都标注了所用的 content 区域，并写明了模板 / pattern 的选择与理由。
+- 状态脚本不判定的两项由主 agent 抽查（见 8.4）：`npx hyperframes check` 无错误；storyboard 的每个 scene 都标注了所用的 content 区域，并说明了表达设计，模板选择与参考库借用记录符合 composition 基础指令第四部分。
 
 ## 执行后自检
 
@@ -55,11 +55,11 @@ Phase 9（检查与混音）：渲染后 QA（`check-render.py` 确定性检查 
   ↳ DO NOT：自己合并、拆分、重排字幕单元，或手改 `composition/assets/subtitle-units.json`。
 - **Composition 委派给 coding agent。** 主 agent 只运行 `scripts/prepare-handoff.py <ws> composition`：它生成 `composition-handoff.md`，把 composition 委派包（`references/delegation/composition/`）与 modules（不含 `examples/`）物化到工作区，再按所选 design 预置字体；委派约定与指令叠加顺序见 `references/delegation/conventions.md`。
   ↳ DO NOT：手写 `composition/index.html`、挑选低层 animation / effect skill，或在本 session 里修 HyperFrames lint；除非用户明确指定，否则由 Phase 8 sub-agent 选择。
-- **Scene 设计归 HyperFrames。** 切分、构图、模板与 pattern 选择、素材映射、视觉层级、动画、lint/inspect 与渲染迭代都发生在 Phase 8；模板字段由被委派的 agent 写回 `inputs.json`。
+- **Scene 设计归 HyperFrames。** 切分、构图、模板选择、素材映射、视觉层级、动画、lint/inspect 与渲染迭代都发生在 Phase 8；模板字段由被委派的 agent 写回 `inputs.json`，参考库的使用由它按基础指令第四部分自行判断。
 
 ---
 
-本 phase 整体委派给 coding agent 完成：字幕生成、storyboard、画面组装、渲染前自查与渲染由 composition agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认 pi-coding-agent（命令 `pi`）；派发 prompt 只有一句话，让对方读 handoff）。composition agent 使用 `hyperframes`、`hyperframes-cli` 与 `hyperframes-animation` skills；主 agent 不读委派包里的基础指令。
+本 phase 整体委派给 coding agent 完成：字幕生成、storyboard、画面组装、渲染前自查与渲染由 composition agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认 pi-coding-agent（命令 `pi`）；派发 prompt 只有一句话，让对方读 handoff）。composition agent 使用 `hyperframes`、`hyperframes-cli`，按具体动画实现需要查阅 `hyperframes-animation` skill；主 agent 不读委派包里的基础指令。
 
 #### 8.0 — 选 layout
 
@@ -96,7 +96,7 @@ design textures、组件和模板资源不在这里拷：用哪些由 compositio
 
 #### 8.2 — handoff
 
-同一次调用还会生成 `{work_dir}/{topic_name}/composition-handoff.md`：Coding Agent（按 `inputs.json` 解析本阶段的 agent / model，默认 pi-coding-agent，命令 `pi`）、Inputs、Outputs（含生成字幕、check-composition 与渲染前自查的命令）、Required References（基础指令 → `modules/modules.md` → design 文档 → layout 的 json 与文档 → 模板目录 `templates.md`（供 agent 选模板）→ 已选模板的文档与 `supported_layouts` 声明 → pattern / 组件目录，全部指向 8.1 物化的工作区副本）、Additional Instructions（`composition_requests` 逐条列出；没有写 None）。路径全是绝对路径，命令里的 skill 脚本从 skill 根目录运行。主 agent 不手写 handoff。
+同一次调用还会生成 `{work_dir}/{topic_name}/composition-handoff.md`：Coding Agent（按 `inputs.json` 解析本阶段的 agent / model，默认 pi-coding-agent，命令 `pi`）、Inputs、Outputs（含生成字幕、check-composition 与渲染前自查的命令）、Required References（基础指令 → `modules/modules.md` → design 文档 → layout 的 json 与文档 → 模板目录 `templates.md`（供 agent 选模板）→ 已选模板的文档与 `supported_layouts` 声明 → 组件目录，全部指向 8.1 物化的工作区副本；patterns / motion 另列为可选参考）、Additional Instructions（`composition_requests` 逐条列出；没有写 None）。路径全是绝对路径，命令里的 skill 脚本从 skill 根目录运行。主 agent 不手写 handoff。
 
 `template` 缺省时 handoff 写“未选择（由本阶段决定）”，并仍给出模板目录；为 null 时写“无（不使用模板）”，不列具体模板文档；非法或不兼容的模板名会在写任何物化副本之前 exit 1。
 
@@ -108,7 +108,7 @@ design textures、组件和模板资源不在这里拷：用哪些由 compositio
 
 agent 的第一件事是跑 handoff 里的 `align-narration.py --mode subtitles`，把最终字幕生成到 `composition/assets/subtitle-units.json`。这份文件在 `assets/` 下，因此会被 composition 源指纹和渲染新鲜度检查覆盖。
 
-接着它读 `modules/templates/templates.md` 决定模板（或不用）、把选择写回 `inputs.json` 的 `template`，再读选中模板的文档与 `supported_layouts`，然后按基础指令的第四部分选择 pattern、动作与演绎方式。模板、pattern 与动作的选择都由它自己负责，主 agent 不代为决定。
+接着它读 `modules/templates/templates.md` 决定模板（或不用）、把选择写回 `inputs.json` 的 `template`，再读选中模板的文档与 `supported_layouts`，然后按基础指令第四部分自主设计构图、动作与动效。patterns / motion 的查阅和借用也按该部分处理，主 agent 不代为决定。
 
 #### 8.4 — 主 agent 校验
 
@@ -117,6 +117,6 @@ composition agent 报告完成后：
 0. catalog 阶段适用时抽查必用素材：storyboard 的覆盖表是否把 `required_material_refs` 每条都落到了具体 scene，实际画面里能不能看到；不能用“选为候选”冒充“已经展示”。
 1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`。
 2. `next_phase` 仍是 Phase 8 时分三种情况：`reason` 为 `missing` / `corrupt` 时，把 `next_phase.problems`（产物 → 原因，或 `inputs.json#layout` / `inputs.json#template` → 原因）原样反馈给 composition agent；`reason` 为 `stale` 时 `problems` 是空的，真正的原因在 `next_phase.changed_upstream`（变化的上游文件列表）里，把它交给 composition agent，让它重新生成受影响的部分。无论哪种情况都限定范围修复，修完再跑一次。不要自己改产物。
-3. Phase 8 不再是 `next_phase` 后，抽查状态脚本不判定的两项：agent 报告的 `npx hyperframes check` 无错误；storyboard 的每个 scene 都写明了所用的 content 区域，并记录了模板 / pattern 的选择与理由（模板选择是否合适看画面与内容是否对得上）。
+3. Phase 8 不再是 `next_phase` 后，抽查状态脚本不判定的两项：agent 报告的 `npx hyperframes check` 无错误；storyboard 的每个 scene 都写明了所用的 content 区域、构图、信息展开与动效安排，模板选择与参考库借用记录符合基础指令第四部分（设计是否合适看画面与内容是否对得上）。
 
 全部通过后进入 Phase 9。
