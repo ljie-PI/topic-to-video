@@ -21,7 +21,8 @@
 
 ## 文件
 
-- `templates/github/trending-overview.html`：场景本体。图标已内联，没有额外图片。
+- `templates/github/trending-overview.html`：场景本体，静态标记和样式。图标已内联，没有额外图片。
+- `templates/github/trending-overview.mjs`：导出 `init`（接口见 `modules.md` 的「模块初始化接口」）。
 
 ## 依赖
 
@@ -30,15 +31,16 @@
 
 ## 安装与挂载
 
-1. 把 `templates/github/trending-overview.html` 复制到视频工程的 `compositions/trending-overview.html`。
+1. 把 `templates/github/trending-overview.html` 和 `trending-overview.mjs` 一起复制到视频工程的 `compositions/`。
 2. 在根节点加挂载点：
    - `data-composition-id="trending-overview"`，`data-composition-src="compositions/trending-overview.html"`；
    - `data-start`：场景开始的视频时间；`data-duration`：场景时长；
    - `style="z-index: 2"`。
+3. 在工程里调 `init`：传入参数和 `trending` 数据，拿到暂停的 timeline 后按场景秒 seek。接线示例见 `modules.md` 的「模块初始化接口」。
 
 一支视频里一般只挂一次。
 
-## 挂载参数
+## 参数（`init` 的 `params`）
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
@@ -47,9 +49,9 @@
 | `range` | `"本周"` | 榜单标题栏里“日期范围：”后面的文字 |
 | `listAt` | 0.2 | 榜单入场时间（场景秒）。标题提前 0.2 秒，README 面板晚 0.1 秒 |
 | `scrollSpeed` | 60 | README 截图最快的滚动速度，单位 px/秒 |
-| `data` | `"trending"` | 从 `window.VIDEO` 的哪个键读数据 |
+| `data` | `"trending"` | 工程数据（`window.VIDEO`）里哪个键是数据，adapter 取出后作为 `init` 的 `data` |
 
-## 数据（`window.VIDEO.trending`）
+## 数据（`init` 的 `data`，工程里通常来自 `window.VIDEO.trending`）
 
 ```js
 trending: {

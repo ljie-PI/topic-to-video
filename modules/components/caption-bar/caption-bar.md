@@ -6,7 +6,8 @@
 
 ## 文件
 
-- `components/caption-bar/caption-bar.html`
+- `components/caption-bar/caption-bar.html`：静态标记和样式。
+- `components/caption-bar/caption-bar.mjs`：导出 `init`（接口见 `modules.md` 的「模块初始化接口」）。
 
 ## 依赖（全部来自设计主题，视频的 `index.html` 必须提供）
 
@@ -20,14 +21,15 @@
 
 ## 安装
 
-1. 把 `components/caption-bar/caption-bar.html` 复制到视频工程的 `compositions/caption-bar.html`。
+1. 把 `components/caption-bar/caption-bar.html` 和 `caption-bar.mjs` 一起复制到视频工程的 `compositions/`。
 2. 在根节点加挂载点：
    - `data-composition-id="caption-bar"`，`data-composition-src="compositions/caption-bar.html"`；
    - `data-start="0"`，时长为整片；
    - `data-track-kind="captions"`；
    - `style="z-index: 16"`。
+3. 在工程里调 `init`：传入挂载参数和 `{ captions, captionSegments }` 数据，拿到暂停的 timeline 后按局部秒 seek。接线示例见 `modules.md` 的「模块初始化接口」。
 
-## 挂载参数
+## 参数（`init` 的 `params`）
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
@@ -36,10 +38,10 @@
 | `y`, `height` | 1008, 72 | 深色条和文字区的位置和高度，单位 px |
 | `fontSize` | 36 | 字号，单位 px |
 | `bar` | `"on"` | 设为 `"off"` 时只显示文字，不画深色条 |
-| `data` | `"captions"` | 从 `window.VIDEO` 的哪个键读字幕 |
-| `layoutData` | `"captionSegments"` | 可选：从 `window.VIDEO` 的哪个键读视觉 scene 字幕布局；有非空数组时启用 scene 模式 |
+| `data` | `"captions"` | 工程数据（`window.VIDEO`）里哪个键是字幕，adapter 取出后作为 `init` 的 `data.captions` |
+| `layoutData` | `"captionSegments"` | 可选：哪个键是视觉 scene 字幕布局，adapter 取出后作为 `data.captionSegments`；有非空数组时启用 scene 模式 |
 
-## 数据（`window.VIDEO.captions`）
+## 数据（`init` 的 `data.captions`，工程里通常来自 `window.VIDEO.captions`）
 
 ```js
 captions: [
@@ -49,12 +51,12 @@ captions: [
 ]
 ```
 
-- 时间是视频时间（秒），一般直接取配音的逐句时间。
+- 时间是视频时间（秒，局部秒；本组件常驻挂在 0 秒，两者一致），一般直接取配音的逐句时间。
 - 以下是没有 `captionSegments` 时的**传统兼容行为**：一句话在 `start` 出现，最早不早于 0.15 秒；在 `end + 0.1` 秒或者下一句开始时消失，取较早的那个，并至少显示 0.3 秒。
 - 传统模式入场 0.18 秒（上移 8px 淡入），出场 0.12 秒。
 - 传统模式下，一句话比文字区宽时自动缩小字号，最小 28px，不换行。
 
-## 视觉 scene 数据（`window.VIDEO.captionSegments`）
+## 视觉 scene 数据（`init` 的 `data.captionSegments`，工程里通常来自 `window.VIDEO.captionSegments`）
 
 视觉 scene 模式使用 `subtitle-units.json` 的两个字段，映射是固定的，不要重排时间、重新计算矩形或另写字幕规格：
 

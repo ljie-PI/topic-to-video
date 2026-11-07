@@ -3,9 +3,8 @@
     Caption bar — the bottom chrome of the presenter layout: a bar with one subtitle line (docs: components/caption-bar/caption-bar.md).
     No content of its own: the lines are passed in when the video is assembled; colours and font come from the design
     theme's tokens (--c-chrome, --c-chrome-ink, --font-sans).
-    Mount once, full length: data-composition-id="caption-bar", data-start="0".
-    Host variables: x, width, y, height, fontSize (px), bar ("on" | "off"), data (key in window.VIDEO, default "captions").
-    Data: window.VIDEO.captions = [{ start, end, text }] in video seconds.
+    This file is static markup + styles only. Initialisation lives in the sibling caption-bar.mjs
+    (explicit init per modules/modules.md); the video project wires it into its own host/adapter.
   -->
   <style>
     #root {
@@ -45,74 +44,4 @@
   <div id="root" data-composition-id="caption-bar" data-width="1920" data-height="1080">
     <div id="cb-bar"></div>
   </div>
-  <script>
-    (() => {
-      const tl = gsap.timeline({ paused: true });
-      const V = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
-      const num = (v, d) => (v !== "" && v != null && Number.isFinite(Number(v)) ? Number(v) : d);
-      // position defaults are the presenter layout's caption region
-      const X = num(V.x, 96), WIDTH = num(V.width, 1166), Y = num(V.y, 1008), H = num(V.height, 72), FS = num(V.fontSize, 36);
-      const bar = document.getElementById("cb-bar");
-      const root = bar.parentElement;
-      bar.style.top = Y + "px";
-      bar.style.height = H + "px";
-      if (V.bar === "off") bar.remove();
-
-      const cues = ((window.VIDEO && window.VIDEO[V.data || "captions"]) || []).slice().sort((a, b) => a.start - b.start);
-      const segments = ((window.VIDEO && window.VIDEO[V.layoutData || "captionSegments"]) || []).slice().sort((a, b) => a.begin_s - b.begin_s);
-      const dynamic = segments.length > 0;
-      const segmentAt = (time) => segments.find((s) => time >= s.begin_s && time < s.end_s) || segments[segments.length - 1];
-      const ctx = document.createElement("canvas").getContext("2d");
-      const family = getComputedStyle(root).fontFamily;
-      cues.forEach((c, i) => {
-        const line = document.createElement("div");
-        line.className = "cb-line";
-        line.id = `cb-${i + 1}`;
-        Object.assign(line.style, { left: X + "px", top: Y + "px", width: WIDTH + "px", height: H + "px" });
-        const span = document.createElement("span");
-        span.textContent = c.text;
-        span.style.fontSize = FS + "px";
-        line.appendChild(span);
-        root.appendChild(line);
-
-        // Legacy callers retain the original single-line shrink-to-fit behavior.
-        // Scene-level captions instead use the deterministic layout contract verbatim.
-        if (!dynamic) {
-          ctx.font = `500 ${FS}px ${family}`;
-          const w = ctx.measureText(c.text).width * 1.02;
-          if (w > WIDTH) span.style.fontSize = Math.max(28, Math.floor((FS * WIDTH) / w)) + "px";
-        }
-
-        const start = dynamic ? c.start : Math.max(c.start, 0.15);
-        const next = cues[i + 1] ? cues[i + 1].start : c.end;
-        const end = dynamic ? Math.min(c.end, next) : Math.max(start + 0.3, Math.min(c.end + 0.1, next));
-        if (dynamic) {
-          for (const segment of segments) {
-            if (segment.end_s <= start || segment.begin_s >= end) continue;
-            const at = Math.max(start, segment.begin_s);
-            const rect = segment.caption_rect || {};
-            const spec = segment.caption;
-            const fontSize = num(spec.font_size_px, FS);
-            tl.set(line, {
-              left: num(rect.x, X) + "px", top: num(rect.y, Y) + "px",
-              width: num(rect.width, spec.width_px) + "px", height: num(rect.height, H) + "px",
-            }, at);
-            tl.set(span, {
-              fontSize: fontSize + "px", whiteSpace: spec.max_lines > 1 ? "normal" : "nowrap",
-              lineHeight: "1.15", width: "100%", overflow: "hidden",
-              maxHeight: (spec.max_lines * fontSize * 1.15) + "px",
-            }, at);
-          }
-        }
-        const fadeIn = dynamic ? Math.min(0.18, (end - start) / 3) : 0.18;
-        const fadeOut = dynamic ? Math.min(0.12, (end - start) / 3) : 0.12;
-        tl.fromTo(line, { opacity: 0 }, { opacity: 1, duration: Math.min(0.01, (end - start) / 3) }, start);
-        tl.fromTo(span, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: fadeIn, ease: "power2.out" }, start);
-        tl.to(span, { opacity: 0, duration: fadeOut, ease: "power2.in" }, end - fadeOut);
-        tl.set(line, { opacity: 0 }, end);
-      });
-
-      window.__timelines["caption-bar"] = tl;
-    })();
-  </script>
 </template>
