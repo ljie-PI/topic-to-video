@@ -12,7 +12,7 @@
      非法时就地失败，workspace 完全未被改动。
   1. 落地：把 references/delegation/conventions.md 和
      references/delegation/<step>/ 复制到 <ws>/references/delegation/；
-     composition 步骤还复制 modules/（不含 examples/）到 <ws>/modules/。workspace
+     composition 步骤还复制 modules/ 到 <ws>/modules/。workspace
      中已存在的文件会被保留（该副本可能被编辑过）；--refresh 会覆盖它。
   2. 字体（仅 composition）：用 scripts/fonts-download.sh --theme 把所选 design
      自带的 WOFF2 字体安装到 <ws>/composition/assets/fonts/。每次调用都执行。
@@ -140,10 +140,9 @@ def duration_text(duration: Any) -> str:
 # --- 落地包 -------------------------------------------------------------------
 
 
-def copy_missing(source: Path, target: Path, refresh: bool, skip: tuple[str, ...] = ()) -> bool:
+def copy_missing(source: Path, target: Path, refresh: bool) -> bool:
     """复制一个文件或目录树；已存在的文件除非 refresh 否则保留。
 
-    skip 指定目录源中不复制的一级条目。
     返回是否写了任何文件。
     """
     if source.is_file():
@@ -152,7 +151,7 @@ def copy_missing(source: Path, target: Path, refresh: bool, skip: tuple[str, ...
         pairs = [
             (file, target / file.relative_to(source))
             for file in sorted(source.rglob('*'))
-            if file.is_file() and file.relative_to(source).parts[0] not in skip
+            if file.is_file()
         ]
     wrote = False
     for file, destination in pairs:
@@ -168,15 +167,15 @@ def copy_missing(source: Path, target: Path, refresh: bool, skip: tuple[str, ...
 
 def materialize(ws: Path, step: str, refresh: bool) -> list[str]:
     """把该步骤的包复制进 workspace；返回写入了文件的那些路径。"""
-    units: list[tuple[Path, Path, tuple[str, ...]]] = [
-        (SKILL_ROOT / DELEGATION / 'conventions.md', ws / DELEGATION / 'conventions.md', ()),
-        (SKILL_ROOT / DELEGATION / step, ws / DELEGATION / step, ()),
+    units: list[tuple[Path, Path]] = [
+        (SKILL_ROOT / DELEGATION / 'conventions.md', ws / DELEGATION / 'conventions.md'),
+        (SKILL_ROOT / DELEGATION / step, ws / DELEGATION / step),
     ]
     if step == 'composition':
-        units.append((SKILL_ROOT / 'modules', ws / 'modules', ('examples',)))
+        units.append((SKILL_ROOT / 'modules', ws / 'modules'))
     written = []
-    for source, target, skip in units:
-        if copy_missing(source, target, refresh, skip):
+    for source, target in units:
+        if copy_missing(source, target, refresh):
             written.append(str(target))
             log(f'materialized {target}')
     return written

@@ -98,7 +98,7 @@
 }
 ```
 
-字体已经下载好放在仓库的 `resources/fonts/`（CSS 在 `github/`，WOFF2 在共用的 `files/`）。安装：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/github`，把 Noto Sans（英文和数字）、Noto Sans SC（中文）、Noto Sans Mono（代码、文件名）三种可变字重（100–900）的 WOFF2 和一份 `github-fonts.css` 拷进工程，不联网。
+字体已经下载好放在仓库的 `resources/fonts/`（CSS 在 `github/`，WOFF2 在共用的 `files/`）。安装：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/github`，把 Noto Sans（英文和数字）、Noto Sans SC（中文）、Noto Sans Mono（代码、文件名）三种可变字重（100–900）的 WOFF2 和一份 `github-fonts.css` 从仓库拷进工程。
 
 字体在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/github-fonts.css">` 引入，CSS 里的字体名就是上面变量用的 `Noto Sans` / `Noto Sans SC` / `Noto Sans Mono`。
 

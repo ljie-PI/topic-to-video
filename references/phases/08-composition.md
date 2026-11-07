@@ -13,7 +13,7 @@
 - `material-catalog.json`（catalog 适用时使用；JSON 对象，含 `entries` 与论文模式下的 `required_material_refs`；schema 见 `references/delegation/catalog/base-instructions.md`）；
 - `clips/`（`material-catalog.json` 中视频 `selected_clips[].clip_path` 引用的无音轨片段；相对工作区根目录；标准模式且 `fetch_materials = false` 时不使用，论文无视频素材时可以不创建）；
 - `scene-plan.json`（非空 JSON 列表；每个 scene 含 `scene_id`、1 起的段落号 `paragraphs`、非空 `intent` / `content_plan`，以及可选 `cues` / `material_candidates`；仅作参考）；
-- `script.txt`（显示稿，字幕与屏幕文字的文本来源，不能改）；
+- `script.txt`（显示稿，字幕、屏幕文字与 cue 的文本来源，不能改）；
 - `inputs.json`（读取固定的 `design` / `orientation` 与 `composition_requests`；用户画面要求的作用范围以用户表述为准：某个叙事场景、某个视觉场景或整片）；
 - `prepare-handoff.py` 生成的 `composition-handoff.md`，以及它物化到工作区的委派包、modules 副本和预置字体。
 
@@ -25,8 +25,6 @@
 这三份文件由 handoff 中的字幕 / cue 对齐命令读取；composition agent 正常流程不阅读或复述其全文，也不将它们当作另一份旁白。运行命令后读取最终 `composition/assets/subtitle-units.json` 与需要的 cue 时间即可。仅在工具报错且必须诊断时读取相关句子或时间窗口，不重复加载全部文本。文件格式、位置及工具参数保持不变；字幕仍在本阶段生成。
 
 素材路径的 base 不同：图片通过 `local_path` 解析，路径相对工作区的 `harvest_page/`；视频只使用 `selected_clips[].clip_path`，路径相对工作区根目录，不使用原视频的 `local_path`。
-
-**最终视觉 scenes 与逐场景 template / layout 都是本阶段才确定的**：它们不在上游阶段里，也不会让旁白或配音阶段重做。派发 handoff 的前置条件只有固定输入与 Phase 7 产物齐全，**不要求预先决定全局 template / layout，也不要求 `composition/scene-config.json` 已存在**；它是 composition agent 的本阶段产物。
 
 ## 输出
 
@@ -64,26 +62,24 @@ Phase 9（检查与混音）：渲染后 QA（`check-render.py` 确定性检查 
 
 ## 护栏
 
-- **预先 stage 确定性的 WOFF2 字体。** Phase 8 的 `scripts/prepare-handoff.py` 按所选 design 调用 `scripts/fonts-download.sh`，预置到 composition 工程的 `assets/fonts/`，handoff 指向该目录。
+- **预先 stage 确定性的 WOFF2 字体。** Phase 8 的 `scripts/prepare-handoff.py` 按所选 design 调用 `scripts/fonts-download.sh`，预置到 composition 工程的 `assets/fonts/`，handoff 指向该目录。项目字体由本 skill 的 design 清单、CSS 与本地 WOFF2 提供，composition agent 引入字体 CSS。
   ↳ DO NOT：让主 agent 处理 composition 的字体 CSS。
-- **字体实现归 HyperFrames。** Phase 8 sub-agent 使用本地字体，并按 `hyperframes` skill 中的排版规则处理。
 - **字幕默认脚本生成，编辑是正常制作行为。** 字幕单元由 `align-narration.py --mode subtitles --scene-config ... --narration-audio ...` 按各视觉 scene 落盘的 `caption` 规格切好；已有用户编辑是有效输入，仅改画面 / 重渲染不自动覆盖字幕，也没有编辑许可 gate。
   ↳ DO NOT：无必要地重新生成已编辑过的字幕，或让合并 / 拆分跨过不同 scene 的切点切断英文词与数字。
-- **Composition 委派给 coding agent。** 主 agent 只运行 `scripts/prepare-handoff.py <ws> composition`：它生成 `composition-handoff.md`，把 composition 委派包（`references/delegation/composition/`）与 modules（不含 `examples/`）物化到工作区，再按所选 design 预置字体；委派约定与指令叠加顺序见 `references/delegation/conventions.md`。
+- **Composition 委派给 coding agent。** 主 agent 只运行 `scripts/prepare-handoff.py <ws> composition`：它生成 `composition-handoff.md`，把 composition 委派包（`references/delegation/composition/`）与 modules 物化到工作区，再按所选 design 预置字体；委派约定与指令叠加顺序见 `references/delegation/conventions.md`。
   ↳ DO NOT：手写 `composition/index.html`、挑选低层 animation / effect skill，或在本 session 里修 HyperFrames lint；除非用户明确指定，否则由 Phase 8 sub-agent 选择。
 - **Scene 设计由 composition agent 负责。** 最终视觉切分、逐场景 template / layout（含自由布局）、构图、素材映射、视觉层级、动画、lint/inspect 与渲染迭代都发生在 Phase 8；`composition/scene-config.json` 与 storyboard 由 agent 写出。主 agent 只固定 orientation / design / 用户约束，不预选任何 scene 方案；参考库的使用由 composition agent 按基础指令第四部分自行判断。
 
 ---
 
-本 phase 整体委派给 coding agent 完成：字幕生成、storyboard、画面组装、渲染前自查与渲染由 composition agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认目标与模型解析只在该约定里维护；派发 prompt 只有一句话，让对方读 handoff）。composition agent 使用 `hyperframes`、`hyperframes-cli`，按具体动画实现需要查阅 `hyperframes-animation` skill；主 agent 不读委派包里的基础指令。
+本 phase 整体委派给 coding agent 完成：字幕生成、storyboard、画面组装、渲染前自查与渲染由 composition agent 按委派包独立完成。委派约定见 `references/delegation/conventions.md`（默认目标与模型解析只在该约定里维护；派发 prompt 只有一句话，让对方读 handoff）。composition agent 只使用 `hyperframes`、`hyperframes-cli` 两个 skill；主 agent 不读委派包里的基础指令。
 
 #### 8.0 — 确认全片约束与派发前置条件
 
 主 agent 只核对 `inputs.json` 的 `orientation` / `design` / `composition_requests`：
 
 - **`orientation` 和 `design` 是已经确定的事实**，本阶段不改它们；用户的新画面约束写入 `composition_requests`。
-- **视觉 scenes 与 layout 不在这一步决定。** 主 agent 不读 layout 来替 composition agent 做选择，也不预填 `inputs.json.layout`。composition agent 会按每个实际视觉 scene 的内容选择注册 preset 或自主设计自由布局，所有布局共用符合 orientation 的固定画布。
-- **模板与 layout 不在这一步决定。** 主 agent 不预选全局 template / layout，也不要求任何视觉产物已存在。`prepare-handoff.py composition` 只校验固定 design 与基础输入；agent 逐视觉场景按「用户要求（其作用范围内）→ 指定 / 非常匹配的 template → 适合的 layout → 自主设计」的顺序决定方案，写进 `composition/scene-config.json`。
+- **视觉 scenes、模板与 layout 不在这一步决定。** 主 agent 不读 layout 来替 composition agent 做选择，不要求预先决定全局 template / layout，也不要求 `composition/scene-config.json` 已存在——它由 composition agent 在本阶段产出。composition agent 按每个实际视觉 scene 的内容选择注册 preset 或自主设计自由布局，所有布局共用符合 orientation 的固定画布。
 - **旧输入不作门槛。** 旧工作区的 `inputs.json.layout` / `template` 原样保留、不做未经确认的数据删除，但准备与状态脚本不再拿它们当门槛；新流程的命令一律消费本阶段生成的 `composition/scene-config.json`。
 
 视觉 scenes 或实际使用的 layout 改变只会让本阶段及登记的下游重做：Phase 7 不依赖它们，音频、transcript 和时间轴都不重建。主 agent 核对影响范围后显式登记 `--redo 8-composition`，并按交付范围决定 Phase 9 的 QA / 混音是否重跑；标准无素材模式不读取残留 catalog。
@@ -101,10 +97,10 @@ source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topi
 脚本做三件事：
 
 1. **委派包**：复制 `references/delegation/conventions.md` 与 `references/delegation/composition/` → `{work_dir}/{topic_name}/references/delegation/`，保持相对路径不变。
-2. **modules 库**：复制整个 `modules/` 目录（**不含 `examples/`**）→ `{work_dir}/{topic_name}/modules/`。已存在的副本不覆盖；要用 skill 里的最新版覆盖，加 `--refresh`。
-3. **字体预置**（由 `inputs.json` 的 design 决定）：每次调用都运行 `fonts-download.sh --theme modules/designs/<design>`，把仓库 `resources/fonts/<design>/` 里的 CSS 和它引用的字体（在共用池 `resources/fonts/files/`）拷进 `composition/assets/fonts/`，不联网。失败时脚本 exit 1，输出里带 `fonts-download.sh` 的错误 JSON。
+2. **modules 库**：复制整个 `modules/` 目录 → `{work_dir}/{topic_name}/modules/`。已存在的副本不覆盖；要用 skill 里的最新版覆盖，加 `--refresh`。
+3. **字体预置**（由 `inputs.json` 的 design 决定）：每次调用都运行 `fonts-download.sh --theme modules/designs/<design>`，把仓库 `resources/fonts/<design>/` 里的 CSS 和它引用的字体（在共用池 `resources/fonts/files/`）拷进 `composition/assets/fonts/`。失败时脚本 exit 1，输出里带 `fonts-download.sh` 的错误 JSON。
 
-脚本在写任何副本之前先校验：design 是当前库里的。全局 template / layout 不是准备前提——它们是 composition agent 逐视觉场景的决定，scene-config.json 由该 agent 在本阶段产出、准备时还不存在；它的公共校验（`scripts/scene_config.py`）在状态验收、字幕与渲染前检查中使用。
+脚本在写任何副本之前先校验：design 是当前库里的。全局 template / layout 不是准备前提；`scene-config.json` 的公共校验（`scripts/scene_config.py`）在状态验收、字幕与渲染前检查中使用。
 
 design textures、组件和模板资源不在这里拷：用哪些由 composition agent 写完 storyboard 才知道，由它自己从工作区的 `modules/` 拷进 `composition/`。
 
@@ -112,7 +108,7 @@ design textures、组件和模板资源不在这里拷：用哪些由 compositio
 
 同一次调用还会生成 `{work_dir}/{topic_name}/composition-handoff.md`：Coding Agent（按 `inputs.json` 解析本阶段的 agent；有模型请求时同时展示请求与实际解析值，规则见 `references/delegation/conventions.md`）、Inputs、Outputs（含 `composition/scene-config.json`、用 `--scene-config` 生成字幕与运行 check-composition 的命令，以及渲染前自查）、Required References（基础指令 → scene-config 数据契约 → `modules/modules.md` → design 文档 → layout 目录 `modules/layouts/layouts.md`（可借用的 preset）→ 模板目录 `templates.md`（按场景借用）→ 组件目录，全部指向 8.1 物化的工作区副本；patterns / motion 另列为可选参考）、Additional Instructions（`composition_requests` 逐条列出并说明作用范围；没有写 None）。路径全是绝对路径，命令里的 skill 脚本从 skill 根目录运行。主 agent 不手写 handoff。
 
-全局 template / layout 不是 handoff 内容：模板与布局由 agent 逐视觉场景决定并写进 scene-config.json；非法的 design 名会在写任何物化副本之前 exit 1。
+非法的 design 名会在写任何物化副本之前 exit 1。
 
 #### 8.3 — 委派 composition agent
 

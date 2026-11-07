@@ -67,6 +67,45 @@ def test_recorded_snapshots_cover_three_findings_without_chrome(tmp_path: Path):
         assert finding['frame'] is None
 
 
+def test_snapshot_without_seek_driver_is_a_finding_not_a_pass(tmp_path: Path):
+    layout_path = tmp_path / 'layout.json'
+    layout_path.write_text(json.dumps(LAYOUT), encoding='utf-8')
+    snapshots_path = tmp_path / 'snapshots.json'
+    snapshots_path.write_text(json.dumps([
+        {
+            'scene_id': 'stale',
+            'time': 1.0,
+            'sought': False,
+            'fontsStatus': 'loaded',
+            'captionTexts': [],
+            'elements': [],
+        }
+    ]), encoding='utf-8')
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            str(tmp_path / 'composition-does-not-exist'),
+            '--layout', str(layout_path),
+            '--min-font-size', '22',
+            '--snapshots-from', str(snapshots_path),
+            '--chrome-path', '/definitely/no-chrome',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(proc.stdout)
+    assert result['verdict'] == 'fail'
+    assert [(finding['scene_id'], finding['check']) for finding in result['findings']] == [
+        ('stale', 'seek')
+    ]
+    assert 'not time-driven' in result['findings'][0]['issue']
+
+
 def test_snapshots_from_help_marks_test_debug_seam():
     proc = subprocess.run(
         [sys.executable, str(SCRIPT), '--help'],

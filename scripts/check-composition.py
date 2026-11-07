@@ -14,6 +14,9 @@ composition/index.html，seek 到该秒，然后测量 DOM。检查项：
     字幕文本不计入；它遵循 layout 的 caption 规格；
   - caption_mismatch        : 屏幕上的字幕与该秒生效的字幕单元不一致。
 
+seek 先走项目通用入口 window.__layoutQA.seek(videoSeconds)，再驱动页面里的
+video/audio 元素；两者都不存在时该快照报 seek finding，静态快照不算通过。
+
 输入：
   <composition>   composition 目录、包含 composition/ 的项目目录，
                   或 index.html 路径。
@@ -743,6 +746,17 @@ def build_report(
                 'issue': 'visual scene was not sampled', 'time_s': None, 'frame': None,
             })
         for snapshot in scene_snapshots:
+            # sought 是三态：False = 快照时确认没有任何 seek 驱动，必报；
+            # True = 正常 seek；键缺失 = 无此字段的旧录制快照，保持旧行为不判。
+            if snapshot.get('sought') is False:
+                findings.append({
+                    'scene_id': scene['scene_id'], 'check': 'seek',
+                    'issue': (
+                        f'no seek driver (window.__layoutQA.seek or media elements) at '
+                        f'{snapshot["time"]:.3f}s; snapshot is not time-driven'
+                    ),
+                    'time_s': float(snapshot['time']), 'frame': None,
+                })
             if visual_scenes and not any(
                 element.get('sceneId') == scene['scene_id'] for element in snapshot['elements']
             ):

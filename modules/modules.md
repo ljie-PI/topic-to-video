@@ -1,6 +1,6 @@
 # 视频模块库
 
-一套做 HyperFrames 视频用的可复用模块，分四类：
+一套做解说视频画面用的可复用模块，分四类：
 
 - **设计主题**：管外观；
 - **布局**：管版面；
@@ -100,12 +100,9 @@ templates/
   github/trending-overview.md, .html, .mjs      场景：榜单总览（已迁移到显式初始化）
   github/project-cover.md, .html, .mjs          场景：项目封面（已迁移到显式初始化）
   github/brand/                           github-mark-white.svg
-examples/
-  github-trending/                        完整示例工程（27.2 秒），只在 skill 仓库里，委派场景下工作区没有 examples/
-  jay-actions/                            人物动作演示：15 个动作加打字和瞥视逐个演一遍（59.9 秒）
 ```
 
-主题字体已经下载好放在仓库的 `resources/fonts/`（每个主题一份 CSS，WOFF2 在共用的 `resources/fonts/files/`），用 skill 根目录的 `scripts/fonts-download.sh` 拷进视频工程，不联网，例如 `bash scripts/fonts-download.sh <视频工程>/assets/fonts --theme modules/designs/github`。主题总是用 `--theme` 明确指定。
+主题字体已经下载好放在仓库的 `resources/fonts/`（每个主题一份 CSS，WOFF2 在共用的 `resources/fonts/files/`），用 skill 根目录的 `scripts/fonts-download.sh` 从仓库字体资源拷进视频工程，例如 `bash scripts/fonts-download.sh <视频工程>/assets/fonts --theme modules/designs/github`。主题总是用 `--theme` 明确指定。
 
 ## 读哪份文档
 
@@ -116,8 +113,7 @@ examples/
 | 安排版面、逐视觉 scene 选布局、确定区域坐标 | `layouts/layouts.md` → 每个所用 `layouts/<布局>.md` + 对应 `.json`（机器可读区域定义，字幕脚本读它的 `caption` 段） |
 | 挂某个组件、写它的数据 | `components/<组件>/<组件>.md` |
 | 已有画面构想，需要借用非常匹配的形态 / 动效建议 | 按需查 `patterns/<类>/<pattern>.md` 或 `motion.md`；查阅条件见 [composition 基础指令第四部分](../references/delegation/composition/base-instructions.md#四内容演绎与模板选择) |
-| 让人物做动作、配嘴型 | `components/jay/jay.md`；每个动作的样子见 `examples/jay-actions/`（示例只在 skill 仓库，工作区副本里没有） |
-| 看一个完整的成品怎么写 | `examples/github-trending/`（`index.html`、`data/video-data.js`、`tools/build-data.mjs`；示例只在 skill 仓库，工作区副本里没有） |
+| 让人物做动作、配嘴型 | `components/jay/jay.md`，动作库逐个列出每个动作的样子 |
 
 ## 分层
 
@@ -133,8 +129,7 @@ examples/
 
 1. **建工程**：
    - `npx hyperframes init` 不接受非空目录，而委派场景下 `composition/assets/fonts/` 已经预置——顺序必须是 init 先行：在工作区里 `npx hyperframes init composition-init/`，把生成的文件拷进 `composition/`（不要动 `assets/fonts/`），再删掉 `composition-init/`；
-   - 非委派场景（还没有 `composition/` 目录时）直接 `npx hyperframes init composition/`；
-   - `examples/` 只存在于 skill 仓库，工作区副本里没有；需要参考完整示例工程时从 skill 仓库的 `modules/examples/` 读。
+   - 非委派场景（还没有 `composition/` 目录时）直接 `npx hyperframes init composition/`。
 2. **主题**：
    - 把 `designs/<主题>/textures/` 复制到工程的 `assets/textures/`；
    - 用 skill 根目录的 `bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/<主题>` 把字体装进工程，并在 `index.html` 的 `<head>` 里引入装进去的 CSS；委派场景下字体已经由 `prepare-handoff.py` 预置在 `composition/assets/fonts/`，不用再装，直接引入其中的 CSS；
@@ -152,7 +147,7 @@ examples/
    - 在工程里按 [模块初始化接口](#模块初始化接口唯一约定) 接线：克隆模板、调 `init`、驱动 timeline；选用 HyperFrames 时由工程 adapter 接其核心协议。
 6. **数据**：
    - 写 `data/video-data.js`（`window.VIDEO = {…}`），在 `index.html` 的 `<head>` 里、GSAP 之后引入；adapter 从里面取各模块的 `data`；
-   - 数据最好用脚本从字幕和配音生成，参考示例里的 `tools/build-data.mjs`（示例只在 skill 仓库，工作区副本里没有）；
+   - 数据最好用脚本从字幕和配音生成；
    - 嘴型用 `node modules/components/jay/make-envelope.mjs <配音>` 生成。
 7. **检查**：
    - `npx hyperframes check` 和 check-composition 都通过后再 `render`，`check` 的错误都要修掉；
@@ -198,12 +193,3 @@ window.VIDEO = {
   - 转场放 `transitions/` 子目录。
 - **新模板**：一类视频一个目录。`templates/<类型>/<类型>.md` 写组装方法；每个场景一份 `<场景>.md`、同目录的 `<场景>.html` 和 `<场景>.mjs`。
 - **所有 HTML** 都是静态模板：用 `<template>` 包起来，根元素 `#root` 带固定的 `data-composition-id`；所有动画只由时间决定，动画编排写在同目录 `.mjs` 的 `init` 里。
-
-## 过渡入口清单（供 #153 删除）
-
-以下 HyperFrames 专用耦合是迁移期间的过渡入口，收口票（#153 及后续）按本清单删除。Jay 已在 #149 迁移，相关条目已移除：
-
-| 位置 | 内容 | 迁移后的去向 |
-|---|---|---|
-| `modules/examples/github-trending/compositions/*.html`、`modules/examples/jay-actions/compositions/caption-bar.html` | 示例工程内旧式内联脚本副本 | 示例工程随 WI-07 更新或删除 |
-| `data-variable-values` / `window.VIDEO` 读取 | 现由工程 adapter 负责（见模块初始化接口一节） | 成为工程 adapter 的固定写法，不再回写模块 |

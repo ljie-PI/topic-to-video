@@ -14,9 +14,9 @@ async ({ checks }) => {
     for (const media of Array.from(document.querySelectorAll('video,audio'))) {
       try {
         media.pause();
-        if (Number.isFinite(media.duration)) {
-          media.currentTime = Math.max(0, Math.min(time, media.duration || time));
-        }
+        // Not actually seekable without a finite duration: don't count it.
+        if (!Number.isFinite(media.duration)) continue;
+        media.currentTime = Math.max(0, Math.min(time, media.duration || time));
         didSeek = true;
       } catch (_) {}
     }
@@ -25,6 +25,7 @@ async ({ checks }) => {
     window.__checkTime = time;
     try { document.dispatchEvent(new CustomEvent('check-time', { detail: { time } })); } catch (_) {}
     await sleep(didSeek ? 80 : 120);
+    return didSeek;
   }
 
   function hasBox(rect) {
@@ -85,7 +86,7 @@ async ({ checks }) => {
     return el.tagName.toLowerCase();
   }
 
-  function collectSnapshot(time) {
+  function collectSnapshot(time, sought) {
     const elements = [];
     for (const el of Array.from(document.querySelectorAll('*'))) {
       if (el.nodeType !== Node.ELEMENT_NODE) continue;
@@ -149,6 +150,7 @@ async ({ checks }) => {
     const jayVisible = Boolean(jayStage ? visible(jayStage) : (jayHost && visible(jayHost)));
     return {
       time,
+      sought,
       fontsStatus: document.fonts ? document.fonts.status : 'loaded',
       jayVisible,
       elements,
@@ -159,9 +161,9 @@ async ({ checks }) => {
 
   const results = [];
   for (const check of checks) {
-    await seekTo(check.time);
+    const sought = await seekTo(check.time);
     await sleep(150);
-    results.push({ scene_id: check.scene_id, ...collectSnapshot(check.time) });
+    results.push({ scene_id: check.scene_id, ...collectSnapshot(check.time, sought) });
   }
   return results;
 }

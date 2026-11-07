@@ -41,18 +41,20 @@ BASE_CSS = """
   * { box-sizing: border-box; }
 """
 
-# Static fixtures toggle scene visibility from the check-time event the script
-# dispatches at every seek (see scripts/check-composition.py), so each scene's
-# check times only see that scene's elements.
+# Static fixtures expose the project-generic seek entry: the snapshot script
+# drives window.__layoutQA.seek(videoSeconds) before measuring DOM, and also
+# dispatches a check-time event (see scripts/check-composition.py), so each
+# scene's check times only see that scene's elements.
 SCENE_TOGGLE_JS = """
-  document.addEventListener('check-time', (event) => {
-    const time = event.detail.time;
+  const applyCheckTime = (time) => {
     document.querySelectorAll('[data-scene-id]').forEach((el) => {
       const start = parseFloat(el.getAttribute('data-scene-start') || '0');
       const end = parseFloat(el.getAttribute('data-scene-end') || '1e9');
       el.style.visibility = (time >= start && time <= end) ? 'visible' : 'hidden';
     });
-  });
+  };
+  document.addEventListener('check-time', (event) => applyCheckTime(event.detail.time));
+  window.__layoutQA = { seek: async (time) => applyCheckTime(time) };
 """
 
 SCENE_ATTRS = 'data-scene-id="{sid}" data-scene-start="{start}" data-scene-end="{end}"'
