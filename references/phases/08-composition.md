@@ -12,7 +12,7 @@
 - `transcribe/timeline.json`（含 `total_s` / `paragraphs`，以及可选 `scenes` / `cues` 的段落与 cue 时间；本阶段不改它）；
 - `material-catalog.json`（catalog 适用时使用；JSON 对象，含 `entries` 与论文模式下的 `required_material_refs`；schema 见 `references/delegation/catalog/base-instructions.md`）；
 - `clips/`（`material-catalog.json` 中视频 `selected_clips[].clip_path` 引用的无音轨片段；相对工作区根目录；标准模式且 `fetch_materials = false` 时不使用，论文无视频素材时可以不创建）；
-- `scene-plan.json`（非空 JSON 列表；每个 scene 含 `scene_id`、1 起的段落号 `paragraphs`、非空 `intent` / `content_plan`，以及可选 `facts` / `cues` / `material_candidates`；仅作参考）；
+- `scene-plan.json`（非空 JSON 列表；每个 scene 含 `scene_id`、1 起的段落号 `paragraphs`、非空 `intent` / `content_plan`，以及可选 `cues` / `material_candidates`；仅作参考）；
 - `script.txt`（显示稿，字幕与屏幕文字的文本来源，不能改）；
 - `inputs.json`（读取固定的 `design` / `orientation` 与 `composition_requests`，写回所选 `template`；旧 `layout` 字段若存在只作单 layout 工程的默认值，新流程不要求它存在）；
 - `prepare-handoff.py` 生成的 `composition-handoff.md`，以及它物化到工作区的委派包、modules 副本和预置字体。

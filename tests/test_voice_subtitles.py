@@ -26,7 +26,6 @@ SCENE_PLAN = [
         'paragraphs': [1, 2],
         'intent': '测试完整配音字幕流程',
         'content_plan': '按段落顺序讲完两个例子。',
-        'facts': [],
         'material_candidates': [],
         'cues': ['这个 cue 不在旁白里'],
     }

@@ -645,10 +645,20 @@ def test_composition_requires_jay_for_presenter():
 
 def test_scene_plan_content_plan_and_opening_hook_contract():
     script_base = doc_text('references/delegation/script/base-instructions.md')
-    # 场景规划只到叙事层：内容与演绎方式，不预设模板 / pattern / 动作。
+    phase_8 = doc_text('references/phases/08-composition.md')
+    # 场景规划只到叙事层：内容与演绎方式，不预设模板 / pattern / 动作，也不保留未消费的 facts 字段。
     assert '"content_plan": "用哪些内容、按什么顺序和方式讲，来达成 intent"' in script_base
     assert '**不包含** `template_scene` / `pattern_hints` / `beats`' in script_base
     assert '`content_plan`：这场景讲什么、怎样展开' in script_base
+    assert '"facts"' not in script_base and '`facts`' not in script_base
+    assert '`facts`' not in phase_8
+    # 解说角色定位与默认讲解风格（问题先行、直白易懂、日常例子与难点分步拆解），支持单次 narration_requests 覆盖。
+    assert '善于把复杂主题讲给非专业观众听懂的解说者' in script_base
+    assert '### 讲解方式与语言风格（所有模式共用）' in script_base
+    assert '先引出问题，再展开机制' in script_base
+    assert '拒绝空泛的 high-level 套话' in script_base
+    assert '多举日常例子，难点分步拆解' in script_base
+    assert '`narration_requests`' in script_base
     # 开场钩子：三句以内、方法可选、事实有据。
     assert '整个钩子不超过三句短句' in script_base
     assert '一种主钩子' in script_base
