@@ -305,3 +305,70 @@ def test_silent_scenes_at_head_and_tail_keep_caption_coverage(tmp_path: Path):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert {u['scene_id'] for u in units['units']} == {'mid'}
     assert [(s['begin_s'], s['end_s']) for s in units['caption_segments']] == [(0, 2), (2, 4), (4, 6)]
+
+
+def test_non_tail_merge_keeps_following_units_scene_id(tmp_path: Path):
+    """中间发生短字幕合并后，合并点之后的单元 scene_id 不得错位（回归）。"""
+    text = '第一句短。第二句也够短。第三句终于足够长了一些。'
+    transcript = words_transcript([
+        ('第一句短', 1000, 1300),
+        ('第二句也够短', 1500, 2000),
+        ('第三句终于足够长了一些', 3100, 3900),
+    ])
+    config = scene_config(tmp_path / 'scene-config.json',
+        visual_scene('a', 0, 3, layout_spec('stage')),
+        visual_scene('b', 3, 6, layout_spec('stage')),
+    )
+
+    proc, result, units, _ = make_workspace(tmp_path, text, {}, transcript, scene_config=config)
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert result['summary']['merged_units'] == 1
+    assert [(u['text'], u['scene_id']) for u in units['units']] == [
+        ('第一句短。第二句也够短', 'a'),
+        ('第三句终于足够长了一些', 'b'),
+    ]
+
+
+def test_empty_middle_scene_is_still_a_layout_cut_barrier(tmp_path: Path):
+    """中间 scene 没有 atoms 时仍是「不同版面」切点：A/C 同规格也不得跨它合并。"""
+    text = '上游收尾。下游起步。'
+    transcript = words_transcript([
+        ('上游', 2500, 2750), ('收尾', 2750, 2950),
+        ('下游', 4100, 4350), ('起步', 4350, 4550),
+    ])
+    config = scene_config(tmp_path / 'scene-config.json',
+        visual_scene('a', 0, 3, layout_spec('stage')),
+        visual_scene('empty_mid', 3, 4, layout_spec('presenter')),
+        visual_scene('c', 4, 6, layout_spec('stage')),
+    )
+
+    proc, result, units, _ = make_workspace(tmp_path, text, {}, transcript, scene_config=config)
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    by_scene: dict[str, list[str]] = {}
+    for unit in units['units']:
+        by_scene.setdefault(unit['scene_id'], []).append(unit['text'])
+    assert by_scene == {'a': ['上游收尾'], 'c': ['下游起步']}
+    assert any('layout cut point' in w for w in result['summary']['warnings'])
+
+
+def test_interior_punctuation_is_preserved_verbatim(tmp_path: Path):
+    """标点只允许在单元结尾省略；单元中间的标点必须逐字保留。"""
+    text = '宽场景里，逗号留在中间，切点后再继续。'
+    transcript = words_transcript([
+        ('宽场景里', 1000, 1600), ('逗号留在中间', 1600, 2200),
+        ('切点后再继续', 3100, 3900),
+    ])
+    config = scene_config(tmp_path / 'scene-config.json',
+        visual_scene('a', 0, 3, layout_spec('stage')),
+        visual_scene('b', 3, 6, layout_spec('presenter')),
+    )
+
+    proc, _, units, _ = make_workspace(tmp_path, text, {}, transcript, scene_config=config)
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert [(u['text'], u['scene_id']) for u in units['units']] == [
+        ('宽场景里，逗号留在中间', 'a'),  # 中间的「，」逐字保留，仅结尾「，」省略
+        ('切点后再继续', 'b'),
+    ]

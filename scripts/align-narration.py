@@ -760,13 +760,19 @@ def merge_short_units(
     warnings: list[str],
     *,
     respect_budget: bool = False,
-    segment_keys: list[Any] | None = None,
+    segment_owners: list[int] | None = None,
+    scene_keys: list[tuple[int, int, int]] | None = None,
 ) -> tuple[list[list[Atom]], int]:
     """把短于 MIN_UNIT_MS 的单元并入相邻单元（优先并入前一个）。
 
     旧单 layout 入口保留“最短显示时长优先”的历史兼容行为。视觉 scene 模式中
-    布局预算是硬约束：若合并会超预算，就保留较短的单元并给出诊断。传了
-    segment_keys 时，键不同的单元之间是「不同版面」的 scene 切点，绝不合并。
+    布局预算是硬约束：若合并会超预算，就保留较短的单元并给出诊断。
+
+    segment_owners（与 units 等长的 scene 下标）与 scene_keys（每个 scene
+    的版面键）同时给出时，合并只允许在「同一版面」内进行：两侧单元的 owner
+    之间（含）的所有 scene 版面键必须完全一致，否则视为不同版面的切点，
+    绝不合并——中间没有 atoms 的空 scene 也构成屏障。segment_owners 随合并
+    同步收缩，保证调用方的平行列表不错位。
     """
     merged_count = 0
     changed = True
@@ -777,13 +783,16 @@ def merge_short_units(
             atoms = units[index]
             if atoms and atoms[-1].end_ms - atoms[0].begin_ms < MIN_UNIT_MS and len(units) > 1:
                 target = index - 1 if index > 0 else index + 1
-                if segment_keys is not None and segment_keys[index] != segment_keys[target]:
-                    warnings.append(
-                        f'short subtitle unit stays on its side of a layout cut point: '
-                        f'{unit_text(atoms)[:40]!r}'
-                    )
-                    index += 1
-                    continue
+                if segment_owners is not None and scene_keys is not None:
+                    owner_lo = min(segment_owners[index], segment_owners[target])
+                    owner_hi = max(segment_owners[index], segment_owners[target])
+                    if any(key != scene_keys[owner_lo] for key in scene_keys[owner_lo:owner_hi + 1]):
+                        warnings.append(
+                            f'short subtitle unit stays on its side of a layout cut point: '
+                            f'{unit_text(atoms)[:40]!r}'
+                        )
+                        index += 1
+                        continue
                 candidate = units[target] + atoms if index > 0 else atoms + units[target]
                 if respect_budget and atoms_width(candidate) > atoms_budget(cap, candidate):
                     warnings.append(
@@ -794,8 +803,8 @@ def merge_short_units(
                     continue
                 lo, hi = min(index, target), max(index, target)
                 units[lo:hi + 1] = [candidate]
-                if segment_keys is not None:
-                    segment_keys[lo:hi + 1] = [segment_keys[lo]]
+                if segment_owners is not None:
+                    segment_owners[lo:hi + 1] = [segment_owners[lo]]
                 index = lo
                 merged_count += 1
                 changed = True
@@ -874,12 +883,9 @@ def raise_for_token_at_scene_cuts(
             first, last = atoms[index], atoms[end - 1]
             details = []
             for scene_index in sorted(set(owners)):
-                members = [
-                    atom for atom, owner in zip(atoms, attribution)
-                    if owner == scene_index and not atom.borrowed
-                ]
-                if not members:
-                    members = [atom for atom, owner in zip(atoms, attribution) if owner == scene_index]
+                scene_atoms = [atom for atom, owner in zip(atoms, attribution) if owner == scene_index]
+                # 真实可用边界以非借用 atoms 为准；该 scene 只有借用 atoms 时退回全部
+                members = [atom for atom in scene_atoms if not atom.borrowed] or scene_atoms
                 label = f"scene {segments[scene_index]['scene_id']!r}"
                 if members:
                     details.append(
@@ -1064,10 +1070,10 @@ def build_units(
         for owner, sentence_atoms in owner_sentences:
             pieces = split_sentence(sentence_atoms, cap, warnings, strict_tokens=scene_budgets)
             segments.extend(pieces)
-            segment_owners.extend(owner for _ in pieces)
-        segment_keys = [caption_keys[owner] for owner in segment_owners] if caption_keys is not None else None
+            segment_owners.extend([owner] * len(pieces))
         segments, merged = merge_short_units(
-            segments, cap, warnings, respect_budget=scene_budgets, segment_keys=segment_keys,
+            segments, cap, warnings, respect_budget=scene_budgets,
+            segment_owners=segment_owners, scene_keys=caption_keys,
         )
         merged_total += merged
         for owner, segment in zip(segment_owners, segments):
