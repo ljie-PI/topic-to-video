@@ -107,8 +107,6 @@ REASON_REDO = 'redo'
 INPUTS_REQUIRED_FIELDS = video_contract.INPUTS_BASE_FIELDS
 
 # 用户在对话里提出的长期要求，按阶段分开保存；缺省与 [] 等价。
-NARRATION_REQUESTS_FIELD = video_contract.NARRATION_REQUESTS_FIELD
-COMPOSITION_REQUESTS_FIELD = video_contract.COMPOSITION_REQUESTS_FIELD
 REQUESTS_FIELDS = video_contract.REQUESTS_FIELDS
 
 # qa_level 可选：缺省表示 standard 档。给出时必须是三个枚举值之一。
