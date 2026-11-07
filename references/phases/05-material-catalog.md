@@ -52,7 +52,7 @@ Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产
 
 ---
 
-**用户指定本阶段的 agent / model 时必须严格遵循；未指定时优先委派给 pi-coding-agent（命令 `pi`）。** 本阶段需要对多张图片 / 视频帧做视觉分析。按 `references/delegation/conventions.md` 的统一约定派发；素材理解 / 素材匹配的阶段级要求记入 `inputs.json.delegation.catalog`，不能被全局默认值或已有 VLM 配置覆盖。派发 prompt 保持一句话，被委派的 catalog agent 从 handoff 读取上述输入，并按 manifest 路径读取实际图片、视频、字幕与论文 metadata，不只看素材清单。主 agent 做四件事：
+**用户指定本阶段的 agent / model 时必须严格遵循；未指定 agent / model 时按 `references/delegation/conventions.md` 的统一约定处理（默认目标、模型解析与派发形态都只在约定里维护）。** 本阶段需要对多张图片 / 视频帧做视觉分析。按统一约定派发；素材理解 / 素材匹配的阶段级要求记入 `inputs.json.delegation.catalog`，不能被全局默认值或已有 VLM 配置覆盖。派发 prompt 保持一句话，被委派的 catalog agent 从 handoff 读取上述输入，并按 manifest 路径读取实际图片、视频、字幕与论文 metadata，不只看素材清单。主 agent 做四件事：
 
 1. **写话题 context 摘要。** 在开始视觉分析之前，主 agent 先从当前 context（研究 brief、用户输入、叙事角度）提炼一份**话题 context 摘要**，供所有视觉分析调用使用。摘要为自然语言，200 字以内，包含：
    - 视频的核心主题与叙事角度（"这是一段关于 X 的中文解说视频，重点讲解 Y 和 Z"）

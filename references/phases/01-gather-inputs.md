@@ -18,7 +18,7 @@
 | `language` | 解说语言，默认中文 |
 | `orientation` | `landscape`（横屏 1920×1080）/ `portrait`（竖屏 1080×1920，仅显式 9:16）/ `portrait-3:4`（1080×1440，默认竖屏） |
 | `design` | 所选 design：`default` / `github` / `producthunt`，对应 `modules/designs/<design>/<design>.md` |
-| `coding_agent` | 全局委派目标，默认 `pi-coding-agent`（命令 `pi`） |
+| `coding_agent` | 全局委派目标；默认值与命令以 `references/delegation/conventions.md` 的统一约定为准 |
 | `delegation` | 可选，阶段级 agent / model 要求。对象的键为 `catalog` / `script` / `composition`，各值只含 `agent` 和 / 或 `model`（非空字符串）；如 `{"catalog": {"agent": "pi-coding-agent", "model": "<provider>/<model-id>"}}`。未指定 agent 时继承 `coding_agent`，未指定 model 时使用目标 agent 自身的模型配置；用户点名时严格遵循，未提就不填 |
 | `fetch_materials` | 是否联网抓取视觉素材（布尔） |
 | `approval_gates` | 可选，默认 `[]`（全自动、不停下来审稿）；不主动询问是否审稿。用户要求审稿时按入口的表填：只看调研用 `["research-brief"]`，只看旁白用 `["script"]`，只说“中途让我审稿”就两处都填。续跑保留已有要求，用户明确改才动 |

@@ -23,18 +23,27 @@
      运行本 skill 的脚本。缺值或不存在的输入 / 引用文件，都算错误。
 
 用法：
-  python3 scripts/prepare-handoff.py <workspace_dir> <catalog|script|composition> [--refresh]
+  python3 scripts/prepare-handoff.py <workspace_dir> <catalog|script|composition>
+      [--refresh] [--resolved-model <实际原生标识>]
 
 输出：stdout 上的一份 JSON 文档，
-  {"success": true, "coding_agent": "...", "coding_model": null | "...",
-   "handoff_path": "...", "materialized": [...],
+  {"success": true, "coding_agent": "...", "coding_model": null | "<实际原生标识>",
+   "requested_model": null | "<原始请求>", "handoff_path": "...",
+   "materialized": [...],
    "fonts": null | {"success": true, "output_dir": "...", "installed": N},
    "dispatch_prompt": "读取 <handoff> 并按它执行；完成后报告产物路径。"}
 materialized 列出本次调用写入了文件的那些包路径。fonts 是一份摘要（文件清单有
 100 多条路径，对主 agent 没有用处；完整的 fonts-download JSON 会随 handoff 交给
 被委派的 agent）。主 agent 原样派发 dispatch_prompt。若 fonts-download 失败，输出
 为 {"success": false, "error": "...", "fonts": {fonts-download 的错误 JSON}}。
-退出码：0 = 成功，1 = 运行时错误，2 = 参数非法。
+退出码：0 = 成功，1 = 运行时错误（含请求了模型但未解析就传 --resolved-model），
+2 = 参数非法。
+
+模型请求与解析：inputs.json 里的 model 请求是原始请求，留在输入中。用户请求了
+模型时，主 agent 先按 references/delegation/conventions.md 经目标 coding agent 的
+CLI 查询、选出真实原生标识，再带 --resolved-model 调用本脚本；没有请求时不要传。
+handoff 的 Coding Agent 小节同时展示请求与实际值，JSON 的 coding_model 是实际值，
+requested_model 是原始请求；无请求时二者都是 null。
 """
 from __future__ import annotations
 
@@ -52,7 +61,7 @@ from typing import Any
 import cli
 import harvest_manifest
 import video_contract
-from delegation_config import STEPS, resolve_delegation, validate_delegation
+from delegation_config import STEPS, resolve_delegation, resolve_models, validate_delegation
 
 TOOL_NAME = 'prepare-handoff'
 
@@ -87,6 +96,11 @@ def parse_args() -> argparse.Namespace:
         '--refresh',
         action='store_true',
         help='Overwrite package files that already exist in the workspace.',
+    )
+    parser.add_argument(
+        '--resolved-model',
+        help='实际派发的原生模型标识：主 agent 按统一约定经目标 CLI 查询得到。'
+        '仅当本阶段在 inputs.json 里有 model 请求时才能传；未请求时省略。',
     )
     return parser.parse_args()
 
@@ -466,12 +480,15 @@ def fill(template: str, values: dict[str, str]) -> str:
     return PLACEHOLDER.sub(lambda match: values[match.group(1)], template)
 
 
-def render_handoff(ws: Path, step: str, inputs: dict[str, Any], plan: Plan) -> str:
+def render_handoff(
+    ws: Path, step: str, inputs: dict[str, Any], plan: Plan, *, resolved_model: str | None
+) -> str:
     # _q 开头的值是供命令中使用的、经 shell 引用的完整路径：带空格的 topic 名或
     # skill 根目录（例如 "AI Agents 2026"）不能把该行拆开。散文里仍用普通的
     # {{ws}} / {{skill_root}}。
     design = inputs.get('design') or ''
-    coding_agent, coding_model = resolve_delegation(inputs, step)
+    coding_agent, requested_model = resolve_delegation(inputs, step)
+    coding_model, requested_model = resolve_models(requested_model, resolved_model)
     values = {
         'topic_name': ws.name,
         'ws': str(ws),
@@ -500,7 +517,10 @@ def render_handoff(ws: Path, step: str, inputs: dict[str, Any], plan: Plan) -> s
         'output_dir_q': shlex.quote(str(ws)),
         'coding_agent': coding_agent,
         'coding_model_instruction': (
-            f'模型：{coding_model}（必须用于实际派发，不得仅作为 prompt 要求）' if coding_model else ''
+            f'请求模型：{requested_model}；实际模型：{coding_model}'
+            '（必须按实际模型派发，不得仅作为 prompt 要求）'
+            if coding_model
+            else ''
         ),
         **({'duration': duration_text(inputs['duration'])} if 'duration' in inputs else {}),
         **({'language': str(inputs['language'])} if 'language' in inputs else {}),
@@ -524,7 +544,7 @@ def main() -> int:
         raise NotADirectoryError(f'workspace is not a directory: {ws}')
     inputs = load_inputs(ws, args.step)
     plan = STEP_PLANS[args.step](ws, inputs, refresh=args.refresh)
-    text = render_handoff(ws, args.step, inputs, plan)
+    text = render_handoff(ws, args.step, inputs, plan, resolved_model=args.resolved_model)
     require_files(plan.inputs, f'inputs of the {args.step} step')
     if args.step == 'catalog':
         harvest_manifest.load(ws / 'harvest_page')
@@ -551,11 +571,13 @@ def main() -> int:
     handoff = ws / f'{args.step}-handoff.md'
     handoff.write_text(text, encoding='utf-8')
     log(f'wrote {handoff}')
-    coding_agent, coding_model = resolve_delegation(inputs, args.step)
+    coding_agent, requested_model = resolve_delegation(inputs, args.step)
+    coding_model, requested_model = resolve_models(requested_model, args.resolved_model)
     cli.print_json({
         'success': True,
         'coding_agent': coding_agent,
         'coding_model': coding_model,
+        'requested_model': requested_model,
         'handoff_path': str(handoff),
         'materialized': materialized,
         'fonts': fonts,

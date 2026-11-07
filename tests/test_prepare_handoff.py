@@ -95,13 +95,14 @@ class TestDelegationSelection:
             tmp_path, step, coding_agent='claude-code',
             delegation={step: {'agent': 'pi-coding-agent', 'model': 'provider/exact-model'}},
         )
-        result = prepare(ws, step)
+        result = prepare(ws, step, '--resolved-model', 'provider/exact-model')
         section = handoff_sections((ws / f'{step}-handoff.md').read_text(encoding='utf-8'))['Coding Agent']
 
         assert result['coding_agent'] == 'pi-coding-agent'
         assert result['coding_model'] == 'provider/exact-model'
+        assert result['requested_model'] == 'provider/exact-model'
         assert section.startswith('pi-coding-agent\n')
-        assert '模型：provider/exact-model' in section
+        assert '请求模型：provider/exact-model；实际模型：provider/exact-model' in section
         assert 'claude-code' not in section
 
     def test_catalog_selection_does_not_override_script(self, tmp_path: Path):
@@ -110,6 +111,7 @@ class TestDelegationSelection:
 
         assert result['coding_agent'] == 'pi-coding-agent'
         assert result['coding_model'] is None
+        assert result['requested_model'] is None
         assert handoff_sections((ws / 'script-handoff.md').read_text(encoding='utf-8'))['Coding Agent'] == 'pi-coding-agent'
 
     def test_invalid_model_is_rejected_before_writing_any_handoff(self, tmp_path: Path):
@@ -120,6 +122,78 @@ class TestDelegationSelection:
         assert 'delegation.catalog.model' in result['error']
         assert not (ws / 'script-handoff.md').exists()
         assert not (ws / 'references').exists()
+
+
+class TestResolvedModel:
+    """--resolved-model 传递目标 CLI 查询出的真实标识：请求留原样，实际值用于派发。
+
+    受控候选：本类测试用注入的 resolved 值模拟目标 CLI 的查询结果（精确、近似、
+    空结果），不调用真实 CLI 或付费模型；CLI 查询与近似判断本身是主 agent 按
+    references/delegation/conventions.md 执行的步骤。
+    """
+
+    def test_an_approximate_candidate_is_adopted_with_request_and_actual_shown(
+        self, tmp_path: Path,
+    ):
+        ws = make_workspace(tmp_path, 'script', delegation={'script': {'model': '模糊的请求名'}})
+
+        result = prepare(ws, 'script', '--resolved-model', 'provider/closest-real-id')
+
+        section = handoff_sections((ws / 'script-handoff.md').read_text(encoding='utf-8'))['Coding Agent']
+        assert result['coding_model'] == 'provider/closest-real-id'
+        assert result['requested_model'] == '模糊的请求名'
+        # handoff、JSON、实际派发的 coding_model 是同一个真实标识；请求与实际同时可见。
+        assert '请求模型：模糊的请求名；实际模型：provider/closest-real-id' in section
+        assert '模糊的请求名' not in result['dispatch_prompt']
+
+    @pytest.mark.parametrize('step', ['catalog', 'composition'])
+    def test_each_step_resolves_its_own_model_without_leaking(self, tmp_path: Path, step: str):
+        # 阶段覆盖：catalog 与 composition 分别指定不同模型，互不影响。
+        ws = make_workspace(
+            tmp_path, step,
+            delegation={'catalog': {'model': 'provider/catalog-model'},
+                        'composition': {'model': 'provider/composition-model'}},
+        )
+        resolved = {'catalog': 'provider/catalog-model', 'composition': 'provider/composition-model'}[step]
+
+        result = prepare(ws, step, '--resolved-model', resolved)
+
+        section = handoff_sections((ws / f'{step}-handoff.md').read_text(encoding='utf-8'))['Coding Agent']
+        assert result['coding_model'] == resolved
+        assert result['requested_model'] == resolved
+        assert f'实际模型：{resolved}' in section
+        other = 'provider/composition-model' if step == 'catalog' else 'provider/catalog-model'
+        assert other not in section
+
+    def test_a_requested_model_without_resolution_is_blocked_before_any_write(self, tmp_path: Path):
+        # 有请求但未解析（CLI 无候选 / 不可用 / 候选无法区分）：不生成 handoff。
+        ws = make_workspace(tmp_path, 'script', delegation={'script': {'model': '模糊的请求名'}})
+
+        proc, result = run_cli(str(ws), 'script')
+
+        assert proc.returncode == 1
+        assert 'requested but not resolved' in result['error']
+        assert not (ws / 'script-handoff.md').exists()
+        assert not (ws / 'references').exists()
+
+    def test_a_resolved_model_without_a_request_is_rejected(self, tmp_path: Path):
+        ws = make_workspace(tmp_path)
+
+        proc, result = run_cli(str(ws), 'script', '--resolved-model', 'provider/exact-model')
+
+        assert proc.returncode == 1
+        assert 'no model was requested' in result['error']
+        assert not (ws / 'script-handoff.md').exists()
+        assert not (ws / 'references').exists()
+
+    def test_a_model_request_stays_in_inputs_after_resolution(self, tmp_path: Path):
+        # 原始请求继续留在输入中，prepare-handoff 只读取、不改写它。
+        ws = make_workspace(tmp_path, delegation={'script': {'model': '模糊的请求名'}})
+
+        prepare(ws, 'script', '--resolved-model', 'provider/closest-real-id')
+
+        inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
+        assert inputs['delegation']['script']['model'] == '模糊的请求名'
 
 
 class TestRequestLists:
