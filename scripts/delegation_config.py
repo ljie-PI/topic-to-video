@@ -43,7 +43,12 @@ def resolve_models(requested: str | None, resolved: str | None) -> tuple[str | N
       标识，模糊请求不再冒充执行模型。
     - 有请求、无解析：阻塞。不生成把模糊名称当成执行模型的 handoff。
     - 无请求、有解析：参数矛盾，说明解析流程弄错了阶段或写错了输入。
+
+    空字符串与纯空白不算解析结果，一律按未解析处理（与 requested 的非空校验
+    对齐），因此有请求时它们同样落到阻塞分支。
     """
+    if resolved is not None and not resolved.strip():
+        resolved = None
     if requested is None:
         if resolved is not None:
             raise ValueError(

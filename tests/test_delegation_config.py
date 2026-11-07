@@ -73,6 +73,12 @@ class TestResolveModels:
         with pytest.raises(ValueError, match='requested but not resolved'):
             resolve_models('模糊的请求名', None)
 
+    @pytest.mark.parametrize('blank', ['', '   '])
+    def test_a_blank_resolution_counts_as_unresolved(self, blank: str):
+        # 空字符串 / 纯空白的 --resolved-model 不算解析结果：有请求时同样阻塞。
+        with pytest.raises(ValueError, match='requested but not resolved'):
+            resolve_models('模糊的请求名', blank)
+
     def test_a_resolution_without_a_request_is_rejected(self):
         with pytest.raises(ValueError, match='no model was requested'):
             resolve_models(None, 'provider/exact-model')

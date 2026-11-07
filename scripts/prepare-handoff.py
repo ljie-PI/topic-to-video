@@ -36,7 +36,7 @@ materialized 列出本次调用写入了文件的那些包路径。fonts 是一�
 100 多条路径，对主 agent 没有用处；完整的 fonts-download JSON 会随 handoff 交给
 被委派的 agent）。主 agent 原样派发 dispatch_prompt。若 fonts-download 失败，输出
 为 {"success": false, "error": "...", "fonts": {fonts-download 的错误 JSON}}。
-退出码：0 = 成功，1 = 运行时错误（含请求了模型但未解析就传 --resolved-model），
+退出码：0 = 成功，1 = 运行时错误（含请求了模型但未传 --resolved-model），
 2 = 参数非法。
 
 模型请求与解析：inputs.json 里的 model 请求是原始请求，留在输入中。用户请求了
