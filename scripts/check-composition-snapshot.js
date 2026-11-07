@@ -6,27 +6,10 @@ async ({ checks }) => {
 
   async function seekTo(seconds) {
     const time = Math.max(0, Number(seconds) || 0);
-    const timeMs = time * 1000;
     let didSeek = false;
 
     if (window.__layoutQA && typeof window.__layoutQA.seek === 'function') {
       try { await window.__layoutQA.seek(time); didSeek = true; } catch (_) {}
-    }
-    const timelines = window.__timelines ? Object.values(window.__timelines).filter(Boolean) : [];
-    for (const timeline of timelines) {
-      try {
-        if (typeof timeline.pause === 'function') timeline.pause();
-        if (typeof timeline.seek === 'function') { timeline.seek(time, false); didSeek = true; }
-        else if (typeof timeline.totalTime === 'function') { timeline.totalTime(time, false); didSeek = true; }
-      } catch (_) {}
-    }
-    const animeInstances = Array.isArray(window.__hfAnime) ? window.__hfAnime : [];
-    for (const entry of animeInstances) {
-      const animation = entry && (entry.animation || entry.instance || entry);
-      try {
-        if (typeof animation.pause === 'function') animation.pause();
-        if (typeof animation.seek === 'function') { animation.seek(timeMs); didSeek = true; }
-      } catch (_) {}
     }
     for (const media of Array.from(document.querySelectorAll('video,audio'))) {
       try {

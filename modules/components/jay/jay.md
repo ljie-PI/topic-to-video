@@ -8,7 +8,8 @@
 
 | 文件 | 说明 |
 |---|---|
-| `components/jay/jay.html` | 组件本体（HyperFrames 子合成） |
+| `components/jay/jay.html` | 组件本体：静态标记和样式（`<template>`），由工程的 adapter 克隆挂载 |
+| `components/jay/jay.mjs` | 初始化脚本：导出 `init(root, { params, data, duration, gsap })`，接口见 [modules.md](../modules.md) 的「模块初始化接口」 |
 | `components/jay/images/jay-base.png` | 基础图层：身体、头、五官、键盘上的左手、笔记本和杯子，以及所有动作的来源。2048×2048，透明背景 |
 | `components/jay/images/jay-wave.png` | 挥手部件：只取抬起的右手。和 `jay-base.png` 同一构图、同一尺寸，像素对齐 |
 | `components/jay/make-envelope.mjs` | 从配音生成嘴型数据（见下文） |
@@ -30,6 +31,8 @@
 
 ## 最小用法
 
+Jay 由视频工程的 adapter 接线（普通浏览器和 HyperFrames 工程都用同一个 `init` 入口，不需要任何厂商全局变量）：
+
 ```html
 <!-- index.html 根节点里：从 0 秒挂到片尾，最上层 -->
 <div id="jay" data-composition-id="jay" data-composition-src="compositions/jay.html"
@@ -38,7 +41,28 @@
 ```
 
 ```js
+// 工程 adapter：克隆模板、取参数和剧本、调 init、驱动 seek。
+// 选用 HyperFrames 时，把返回的 timeline 按核心协议注册进 scene host、
+// 在 hf-seek 里 seek(timeline) 后 await ready 再调 seek(t)——这段桥接住在工程里。
+import { init } from './compositions/jay.mjs';
+const host = document.querySelector('[data-composition-id="jay"]');
+// 从 compositions/jay.html 取出 <template> 克隆进 host，root 是里面的 #root 节点
+const root = host.querySelector('#root');
+const params = JSON.parse(host.dataset.variableValues || '{}');
+const instance = init(root, {
+  params,
+  data: window.VIDEO[params.data || 'jay'],   // 动作剧本，adapter 负责选键
+  duration: Number(host.dataset.duration) || 0,
+  gsap,
+});
+await instance.ready;              // 图层/WebGL 构建完成；失败会 reject
+instance.seek(12.5);               // 局部秒：data-start="0" 时就是视频秒
+// instance.timeline 暂停的 GSAP timeline，只声明时长；instance.destroy() 拆除驱动
+```
+
+```js
 // data/video-data.js（在 index.html 的 <head> 里引入），时间都是视频秒
+// （Jay 从 0 秒挂到片尾时，视频秒 = init/seek 的局部秒）
 window.VIDEO = { jay: {
   acts:     [[0.45, "wave", 3000], [25.0, "eureka", 2700]],
   typing:   [[19.85, 20.75]],
@@ -54,29 +78,29 @@ window.VIDEO = { jay: {
 
 ## 安装
 
-1. 把 `components/jay/jay.html` 复制到视频工程的 `compositions/jay.html`。
+1. 把 `components/jay/jay.html` 和 `components/jay/jay.mjs` 一起复制到视频工程的 `compositions/`（文件名不变）。
 2. 把 `components/jay/images/` 下的两张图复制到视频工程的 `assets/jay/`（组件按这个路径加载）。
 3. 在 `index.html` 根节点里加一个挂载点：
-   - `id="jay"`，`data-composition-id="jay"`（必须是 `jay`），`data-composition-src="compositions/jay.html"`；
+   - `id="jay"`，`data-composition-id="jay"`，`data-composition-src="compositions/jay.html"`；
    - `data-start="0"`，`data-duration` 等于整支视频时长；
    - `style="z-index: 20"`（最上层）；
    - `data-variable-values` 写位置参数（见下表）。
 4. 在视频的 `data/video-data.js` 里写 `window.VIDEO.jay` 动作剧本（见下文），并在 `index.html` 的 `<head>` 里用 `<script src="data/video-data.js">` 引入。
+5. 按上面的最小用法接线：调 `init`、等待 `ready`、用 `seek(t)` 驱动每一帧；选用 HyperFrames 时由工程 adapter 接其核心协议（hf-seek 桥接等）。
 
-一支视频只能挂一个 Jay（元素 id 是固定的）。
+一支视频只挂一个 Jay（组件用固定的元素 id）。组件不读 `window.__hyperframes`、host 的 data 属性或全局 `VIDEO`/`JAY_SCRIPT`，也不向 `window.__timelines` 注册；这些读取和桥接都属于工程 adapter。
 
-## 挂载参数（`data-variable-values`）
+## 挂载参数（`init` 的 `params`；HyperFrames 工程写在 `data-variable-values` 上，由 adapter 读出传入）
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
 | `x`, `y` | 1294, 642 | 人物舞台左上角，单位 px。默认就是讲解模式布局的人物区 |
 | `size` | 420 | 舞台边长，单位 px（原图 2048 等比缩放）。600 是 100%，420 是 70% |
 | `fxScale` | 1 | 思考气泡和“!”的额外放大倍数。人物缩小后可以设 1.2–1.4 |
-| `data` | `"jay"` | 从 `window.VIDEO` 里读哪一个键作为剧本 |
 
-## 视觉 scene 放置（`window.VIDEO.jay.placements`）
+## 视觉 scene 放置（剧本里的 `placements`）
 
-`placements` 是可选数组。提供非空数组后，Jay 仍然是**从 0 秒挂到整片结束的唯一一个挂载点**，只在一个组件实例里按视频秒切换显示与位置；不要按 scene 重复挂载 Jay。
+`placements` 是可选数组，时间在**局部秒**（挂载从 0 秒开始时就是视频秒）。提供非空数组后，Jay 仍然是**从 0 秒挂到整片结束的唯一一个挂载点**，只在一个组件实例里按局部秒切换显示与位置；不要按 scene 重复挂载 Jay。自由布局的几何与显示全部来自这些显式数据——组件不知道也不关心某个 layout 叫什么。
 
 每一项形状为：
 
@@ -110,9 +134,9 @@ window.VIDEO.jay.placements = visualScenes.scenes.map((scene) => {
 
 因此，非 `presenter` scene 的 Jay 必须在同一常驻实例中隐藏；进入下一个 `presenter` scene 时再显示。
 
-## 动作剧本（`window.VIDEO.jay`）
+## 动作剧本（`init` 的 `data`；adapter 从 `window.VIDEO` 选键传入）
 
-所有时间都是**视频时间（秒）**，因为 Jay 挂在 0 秒。
+所有时间都是**挂载的局部时间（秒）**：挂载点从 0 秒开始时就是视频时间。嘴型 `envelope` 按 `envelopeFps` 对局部秒采样（`envelope[Math.floor(t * envelopeFps)]`），和动作、placements 用同一个时间基准；scene 在非零时刻开始或只覆盖一部分配音时，由 adapter 把剧本时间换算成局部秒，组件不会自行偏移。
 
 ```js
 jay: {
@@ -128,7 +152,7 @@ jay: {
 
 ### 通用演法
 
-时间都是视频秒。以下演法适用于所有带 Jay 的视频；有模板时，再叠加模板专属的动作。
+时间都是视频秒（Jay 从 0 秒挂载时即组件的局部秒）。以下演法适用于所有带 Jay 的视频；有模板时，再叠加模板专属的动作。
 
 | 时刻 | 动作 |
 |---|---|
@@ -211,6 +235,6 @@ node components/jay/make-envelope.mjs 配音.wav > envelope.json
 
 ## 限制
 
-- 时间以挂载点从 0 开始为前提。如果必须从别的时间挂载，剧本里的时间要换算成挂载点内的时间。
+- 组件只认局部秒：挂载从 0 秒开始时局部秒 = 视频秒；若 Jay 挂进一个从其他时刻开始的 scene，剧本（动作、placements、envelope）里的时间要由 adapter 统一换算成 scene 局部秒，envelope 采样基准跟着局部秒走，不另设偏移。
 - 嘴的控制有两个：张合（`open`）和嘴角上扬（`grin`）。嘴角上扬是在嘴角附近把脸部网格往上、往外提，下唇和口腔跟着走，幅度适合微笑，不适合咧嘴大笑。
 - 现在的动作都只用到头、脸和右手挥动。需要手部动作的（指向、点赞、托腮、鼓掌等），要先画一张和 `jay-base.png` 对齐的姿势图。要新增姿势（比如指向），需要再画一张和 `jay-base.png` 对齐的姿势图，比如 `jay-point.png`，然后在 `jay.html` 里加一个对应的部件，做法同 `jay-wave.png`。

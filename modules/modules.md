@@ -13,7 +13,7 @@
 
 ## 模块初始化接口（唯一约定）
 
-五个已迁移模块（`caption-bar`、`nav-bar`、`tile-wipe`、`trending-overview`、`project-cover`）用同一个显式初始化约定；后续新模块和 Jay 的迁移也沿用它，不另建平行接口。接口名称以本节为准。
+六个已迁移模块（`caption-bar`、`nav-bar`、`tile-wipe`、`jay`、`trending-overview`、`project-cover`）用同一个显式初始化约定；后续新模块也沿用它，不另建平行接口。接口名称以本节为准。
 
 ```js
 // <模块名>.mjs
@@ -85,7 +85,7 @@ layouts/
   portrait.md, portrait.json, portrait-3x4.json   布局：竖屏（1080×1920 与 1080×1440，一文档两画布，各一份区域定义 JSON）
 components/
   components.md                           组件总览和共同约定
-  jay/jay.md, jay.html, images/           人物动作：组件和两张姿势图（尚未迁移，过渡中）
+  jay/jay.md, jay.html, jay.mjs, images/   人物动作：组件和两张姿势图（已迁移到显式初始化）
   nav-bar/nav-bar.md, nav-bar.html, nav-bar.mjs   顶部界面条（已迁移到显式初始化）
   caption-bar/caption-bar.md, caption-bar.html, caption-bar.mjs   底部字幕条（已迁移）
   transitions/tile-wipe/tile-wipe.md, tile-wipe.html, tile-wipe.mjs   方格转场（已迁移）
@@ -201,12 +201,9 @@ window.VIDEO = {
 
 ## 过渡入口清单（供 #153 删除）
 
-以下 HyperFrames 专用耦合是迁移期间的过渡入口，收口票（#153 及后续）按本清单删除：
+以下 HyperFrames 专用耦合是迁移期间的过渡入口，收口票（#153 及后续）按本清单删除。Jay 已在 #149 迁移，相关条目已移除：
 
 | 位置 | 内容 | 迁移后的去向 |
 |---|---|---|
-| `components/jay/jay.html` | 内联脚本读 `window.__hyperframes` / 注册 `window.__timelines`、`window.__hf` | Jay 迁移到 `.mjs` 的 `init`（`ready`/`seek`），见 #149 |
 | `modules/examples/github-trending/compositions/*.html`、`modules/examples/jay-actions/compositions/caption-bar.html` | 示例工程内旧式内联脚本副本 | 示例工程随 WI-07 更新或删除 |
-| `scripts/check-composition-snapshot.js` 对 `window.__timelines` / `window.__hfAnime` 的枚举 | 快照检查驱动动画 | Jay 迁移后只保留 `__layoutQA.seek` 通用入口 |
-| 测试 fixture `tests/test_scene_components_browser.py` 的 legacy 挂载路径 | 为未迁移的 jay 保留的内联脚本执行与 `__timelines` seek | 随 Jay 迁移删除 |
 | `data-variable-values` / `window.VIDEO` 读取 | 现由工程 adapter 负责（见模块初始化接口一节） | 成为工程 adapter 的固定写法，不再回写模块 |
