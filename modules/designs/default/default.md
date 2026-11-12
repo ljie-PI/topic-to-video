@@ -2,9 +2,7 @@
 
 一张暖燕麦色的棉纸，上面是低饱和的墨灰文字和一点灰薰衣草。画面里最显眼的是内容和论断，界面退到后面。不加阴影，用 2px 细线和卡片分层，看起来像一份安静、干净的编辑稿。没有指定风格时用这个主题，适合大多数讲解视频。
 
-这份文档只规定外观，任何类型的视频都能用。
-
-背景贴图在 `designs/default/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体已经放在仓库的 `resources/fonts/`（CSS 在 `default/`，WOFF2 在共用的 `files/`），安装方式见 1.4。
+背景贴图在 `designs/default/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体与主题变量代码见 1.3。
 
 | 文件 | 用途 |
 |---|---|
@@ -25,39 +23,7 @@
 
 信息蓝、琥珀、砖红只表达真实的 info / warning / danger 语义，不做装饰。
 
-### 1.2 主题变量值
-
-变量的含义见 `designs/designs.md`。
-
-| 变量 | 色值 |
-|---|---|
-| `--c-canvas` | `#F3F1EC` |
-| `--c-card` | `#FBFAF7` |
-| `--c-surface` | `#F1EEE8` |
-| `--c-border` | `#D9D4CC` |
-| `--c-ink` | `#25232A` |
-| `--c-ink2` | `#58545F` |
-| `--c-muted` | `#878290` |
-| `--c-focus` | `#5E559E` |
-| `--c-focus-tint` | `#ECE9F4` |
-| `--c-info` | `#3E6994` |
-| `--c-warning` | `#94661B` |
-| `--c-danger` | `#A4434A` |
-| `--c-positive` | `#3D7353` |
-| `--c-positive-solid` | `#4A8261` |
-| `--c-positive-tint` | `#E5EEE7` |
-| `--c-positive-text` | `#2C573F` |
-| `--c-highlight` | `#A3823F` |
-| `--c-done` | `#4C4583` |
-| `--c-chrome` | `#2A282F` |
-| `--c-chrome-ink` | `#F5F3EF` |
-| `--c-chrome-muted` | `#A6A1AD` |
-| `--c-chrome-active` | `#B2A6DE`（淡薰衣草） |
-| `--c-tile0`–`--c-tile4` | `#E8E4DD` `#D9D4E6` `#B8B0D5` `#8A80BD` `#5E559E`：从纸色到焦点薰衣草的色阶 |
-| `--font-sans` | `"NotoSansSC", sans-serif` |
-| `--font-mono` | `"IBMPlexMono", "NotoSansSC", monospace` |
-
-### 1.3 对比度
+### 1.2 对比度
 
 - 正文：`ink` 在卡片底上 14.9:1，`ink2` 7.1:1；`focus` 在卡片底上 6.2:1，在 `focus-tint` 上 5.4:1。
 - `--c-muted` 在卡片底上只有约 3.6:1，只能用在 34px 以上的数字上。
@@ -65,7 +31,9 @@
 - 界面条上的次要文字用 `--c-chrome-muted`，约 5.8:1。
 - 指标色标签里的文字用 `--c-positive-text`（在 `positive-tint` 上 7.0:1），不要直接用 `--c-positive`。
 
-### 1.4 变量代码（复制到视频 `index.html` 的 `:root`）
+### 1.3 变量代码（复制到视频 `index.html` 的 `:root`）
+
+共享变量语义见 [`../designs.md`](../designs.md)，机器契约与字体清单见同目录 `default.json`。
 
 ```css
 :root {
@@ -86,7 +54,7 @@
 }
 ```
 
-字体已经下载好放在仓库的 `resources/fonts/`（CSS 在 `default/`，WOFF2 在共用的 `files/`）。安装：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/default`，把 NotoSansSC（中文和正文）、IBMPlexMono（代码、数字、路径）的 WOFF2 和一份 `default-fonts.css` 从仓库拷进工程。在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/default-fonts.css">` 引入，CSS 里的字体名就是上面变量用的 `NotoSansSC` / `IBMPlexMono`。
+本主题使用 `NotoSansSC`（中文和正文）与 `IBMPlexMono`（代码、数字、路径），CSS 文件名为 `default-fonts.css`。在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/default-fonts.css">` 引入；委派场景下字体已预置在 `composition/assets/fonts/`，仓库字体结构与安装维护方式见 [`../designs.md`](../designs.md)。
 
 ---
 

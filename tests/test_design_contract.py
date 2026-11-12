@@ -101,3 +101,45 @@ def test_extension_docs_require_markdown_and_json_contracts():
         text = path.read_text(encoding='utf-8')
         assert '<名>.json' in text
         assert 'fonts.json' not in text
+
+
+def test_design_index_states_positive_responsibilities_without_negative_formula():
+    text = (DESIGNS_ROOT / 'designs.md').read_text(encoding='utf-8')
+    first_para = text.split('\n\n')[1]
+
+    for item in ('配色', '字体', '字号', '背景', '形状', '图标风格', '动效节奏'):
+        assert item in first_para
+    assert '不管内容，也不管版面' not in text
+
+
+@pytest.mark.parametrize('name', DESIGN_NAMES)
+def test_theme_docs_deduplicate_token_tables_and_link_font_maintenance_to_index(name: str):
+    doc_path = design_dir(name) / f'{name}.md'
+    text = doc_path.read_text(encoding='utf-8')
+    contract = load_contract(name)
+
+    assert '这份文档只规定外观' not in text
+    assert '主题变量值' not in text
+    assert f'{name}.json' in text
+    assert contract['fonts']['css_filename'] in text
+    assert 'fonts-download.sh' not in text
+    assert 'resources/fonts/' not in text
+    assert '预置在 `composition/assets/fonts/`' in text
+
+    headings = {
+        match.group(1)
+        for match in re.finditer(r'^#{2,3}\s+(\d+(?:\.\d+)?)', text, flags=re.MULTILINE)
+    }
+    for ref in re.findall(r'见\s*(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:节)?', text):
+        assert ref in headings, f'{name}: broken section reference {ref}'
+
+    links = re.findall(r'\[[^\]]+\]\(([^)]+)\)', text)
+    assert any(link.split('#', 1)[0] == '../designs.md' for link in links), name
+    for link in links:
+        rel_target = link.split('#', 1)[0]
+        if not rel_target:
+            continue
+        target = (doc_path.parent / rel_target).resolve()
+        assert target.is_file(), f'{name}: broken link {link}'
+
+

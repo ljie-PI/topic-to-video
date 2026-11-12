@@ -1,10 +1,8 @@
 # 设计主题：github（纸本）
 
-一张冷灰色的棉纸，上面是低饱和的 GitHub 配色：灰、蓝、绿，不加阴影，用 2px 细线和卡片分层。看起来像一张安静、干净的技术页面。
+一张冷灰色的棉纸，上面是低饱和的 GitHub 配色：灰、蓝、绿，不加阴影，用 2px 细线和卡片分层。看起来像一张安静、干净的技术页面。GitHub 专属的内容（Octocat 标志、语言色点、仓库卡片、Star 按钮、贡献图配色等）不在这里，在 `templates/github/github.md`。
 
-这份文档只规定外观，任何类型的视频都能用。GitHub 专属的内容（Octocat 标志、语言色点、仓库卡片、Star 按钮、贡献图配色等）不在这里，在 `templates/github/github.md`。
-
-背景贴图在 `designs/github/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体已经放在仓库的 `resources/fonts/`（CSS 在 `github/`，WOFF2 在共用的 `files/`），安装方式见 1.5。
+背景贴图在 `designs/github/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体与主题变量代码见 1.4。
 
 | 文件 | 用途 |
 |---|---|
@@ -26,39 +24,7 @@
 
 红色只在真正的失败或禁止时出现，目前还没有用到。
 
-### 1.2 主题变量值（默认：纸本 paper）
-
-变量的含义见 `designs/designs.md`。
-
-| 变量 | 色值 |
-|---|---|
-| `--c-canvas` | `#F2F4F6` |
-| `--c-card` | `#FBFCFD` |
-| `--c-surface` | `#F3F5F7` |
-| `--c-border` | `#D3D9DF` |
-| `--c-ink` | `#22272E` |
-| `--c-ink2` | `#57606A` |
-| `--c-muted` | `#818A94` |
-| `--c-focus` | `#2F6AA8` |
-| `--c-focus-tint` | `#E6EEF7` |
-| `--c-info` | `#0969DA`（Primer Blue） |
-| `--c-warning` | `#986400`（Primer Attention 加深，保证正文对比度） |
-| `--c-danger` | `#CF2230`（Primer Danger） |
-| `--c-positive` | `#337A4C` |
-| `--c-positive-solid` | `#3D8757` |
-| `--c-positive-tint` | `#E4F0E8` |
-| `--c-positive-text` | `#24563A` |
-| `--c-highlight` | `#A88831` |
-| `--c-done` | `#6F5BB5` |
-| `--c-chrome` | `#262B31` |
-| `--c-chrome-ink` | `#F6F8FA` |
-| `--c-chrome-muted` | `#9AA3AD` |
-| `--c-chrome-active` | `#E08A73`（柔珊瑚） |
-| `--c-tile0`–`--c-tile4` | `#E4E8EC` `#C9D6E3` `#9DB4CC` `#6F92B5` `#2F6AA8`：从纸色到焦点蓝的色阶 |
-| `--font-sans` | `"Noto Sans", "Noto Sans SC", sans-serif` |
-| `--font-mono` | `"Noto Sans Mono", "Noto Sans SC", monospace` |
-
-### 1.3 对比度
+### 1.2 对比度
 
 - 正文（26px 及以下）对背景至少 4.5:1；大字、图标、粗线至少 3:1。
 - `--c-muted` 在卡片底上只有约 3.4:1，只能用在 34px 以上的数字上。
@@ -67,7 +33,7 @@
 - 界面条上的次要文字用 `--c-chrome-muted`，约 4.8:1。
 - 指标色标签里的文字用 `--c-positive-text`，不要直接用 `--c-positive`。
 
-### 1.4 变体
+### 1.3 变体
 
 只换变量值和背景，组件和模板都不用改：
 
@@ -77,7 +43,9 @@
   - 界面条 `chrome #2C3A34`，当前项标记 `chrome-active #F0B56A`；
   - 方格从 `#E3E9E4` 到 `#2A6B88`。
 
-### 1.5 变量代码（复制到视频 `index.html` 的 `:root`）
+### 1.4 变量代码（复制到视频 `index.html` 的 `:root`）
+
+共享变量语义见 [`../designs.md`](../designs.md)，机器契约与字体清单见同目录 `github.json`。
 
 ```css
 :root {
@@ -98,9 +66,7 @@
 }
 ```
 
-字体已经下载好放在仓库的 `resources/fonts/`（CSS 在 `github/`，WOFF2 在共用的 `files/`）。安装：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/github`，把 Noto Sans（英文和数字）、Noto Sans SC（中文）、Noto Sans Mono（代码、文件名）三种可变字重（100–900）的 WOFF2 和一份 `github-fonts.css` 从仓库拷进工程。
-
-字体在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/github-fonts.css">` 引入，CSS 里的字体名就是上面变量用的 `Noto Sans` / `Noto Sans SC` / `Noto Sans Mono`。
+本主题使用 `Noto Sans`（英文和数字）、`Noto Sans SC`（中文）与 `Noto Sans Mono`（代码、文件名），CSS 文件名为 `github-fonts.css`。在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/github-fonts.css">` 引入；委派场景下字体已预置在 `composition/assets/fonts/`，仓库字体结构与安装维护方式见 [`../designs.md`](../designs.md)。
 
 ---
 
