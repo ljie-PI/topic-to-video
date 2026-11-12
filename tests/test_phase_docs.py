@@ -755,3 +755,26 @@ def test_composition_reference_links_resolve_from_the_markdown_file(doc):
     assert target.resolve() == (REPO_ROOT / 'references/delegation/composition/base-instructions.md').resolve()
     assert target.is_file()
     assert fragment == '四内容演绎与模板选择'
+
+
+def test_composition_base_instructions_opening_lists_five_constraint_categories():
+    composition = doc_text('references/delegation/composition/base-instructions.md')
+    opening = composition.split('## 一、输入契约', 1)[0]
+
+    for item in (
+        '1. 输入、真实语音与素材契约；',
+        '2. 所选 design 的 token 与字号约束；',
+        '3. 各视觉 scene 实际落盘的 layout regions/caption；',
+        '4. 逐场景内容演绎、template/layout 与自主设计；',
+        '5. 模板时间锚点只能来自真实朗读。',
+    ):
+        assert item in opening
+
+    assert '各视觉 scene' in opening
+    assert '逐场景' in opening
+    assert '工作顺序' in opening
+    assert '其余视觉设计由 composition agent 决定' in opening
+    assert '除此之外你没有别的规则' not in composition
+    assert '主 agent 已选定 layout' not in composition
+    assert '写回 inputs.json' not in opening
+
