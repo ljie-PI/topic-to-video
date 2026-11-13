@@ -273,7 +273,11 @@ def pointed_at_paths_that_do_not_exist(text: str) -> set[Path]:
     """
     return {
         path for path in absolute_paths(text)
-        if not path.exists() and path.parts[-3:] != ('.venv', 'bin', 'activate')
+        if (
+            not path.exists()
+            and path.parts[-3:] != ('.venv', 'bin', 'activate')
+            and '<design>' not in path.parts
+        )
     }
 
 
@@ -463,6 +467,7 @@ class TestCatalogHandoff:
 
 
 COMPOSITION_PRODUCTS = {
+    'composition/design.json',
     'composition/storyboard.md',
     'composition/index.html',
     'composition/compositions',
@@ -472,6 +477,8 @@ COMPOSITION_PRODUCTS = {
 
 # 本阶段自己生成的产物：handoff 命令会写它们，所以生成前它们不该存在。
 COMPOSITION_GENERATED = {
+    'composition',
+    'composition/assets/fonts',
     'composition/scene-config.json',
     'composition/assets/subtitle-units.json',
     'composition/assets/template-cues.json',
@@ -529,7 +536,7 @@ class TestCompositionHandoff:
         assert '标为「仅供工具读取」' in base
         assert '先读工作区里的输入（handoff 的 Inputs 一节列出的文件）' not in base
 
-    def test_commands_use_visual_scenes_and_the_workspace_design_copy(self, tmp_path: Path):
+    def test_commands_use_visual_scenes_and_the_composition_design_artifact(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition', design='default', layout='stage')
         prepare(ws, 'composition')
 
@@ -539,7 +546,7 @@ class TestCompositionHandoff:
         assert f'source {REPO_ROOT}/.venv/bin/activate && python3 {REPO_ROOT}/scripts/check-composition.py' in text
         assert f'--scene-config {ws}/composition/scene-config.json' in text
         assert f'--narration-audio {ws}/voice_clone/narration.mp3' in text
-        assert f'--design {ws}/modules/designs/default/default.json' in text
+        assert f'--design {ws}/composition/design.json' in text
         assert f'--output {ws}/composition/check-composition.json' in text
         assert '--layout ' not in text
         assert '--timeline ' not in text
@@ -608,11 +615,7 @@ class TestCompositionHandoff:
             ['references/delegation/composition/base-instructions.md'],
             ['references/delegation/composition/scene-config.md'],
             ['modules/modules.md'],
-            [
-                'modules/designs/designs.md',
-                'modules/designs/producthunt/producthunt.json',
-                'modules/designs/producthunt/producthunt.md',
-            ],
+            ['modules/designs/designs.md'],
             ['modules/layouts/layouts.md'],
             ['modules/templates/templates.md'],
             ['modules/components/components.md'],
@@ -718,46 +721,37 @@ class TestCompositionMaterialization:
         assert (ws / 'composition-handoff.md').exists()
 
 
-class TestFonts:
-    def test_installs_the_selected_designs_fonts_without_network(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'composition', design='producthunt')
-
-        result = prepare(ws, 'composition', env={'FONTS_CSS2_URL': 'http://127.0.0.1:9/css2'})
-
-        fonts = ws / 'composition' / 'assets' / 'fonts'
-        css = (fonts / 'producthunt-fonts.css').read_text(encoding='utf-8')
-        assert result['fonts']['success'] is True
-        assert result['fonts']['output_dir'] == str(fonts)
-        # A summary, not the ~100-file list: the main agent only dispatches the prompt.
-        assert result['fonts']['installed'] > 0
-        assert 'files' not in result['fonts']
-        for reference in re.findall(r'url\(([^)]+)\)', css):
-            assert (fonts / reference).is_file()
-
-    def test_every_run_installs_fonts_again_even_without_refresh(self, tmp_path: Path):
+class TestCompositionDesignDelegation:
+    def test_no_input_design_generates_handoff_without_preselecting_or_installing_fonts(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition')
-        prepare(ws, 'composition')
-        fonts = ws / 'composition' / 'assets' / 'fonts'
-        stale = next(fonts.glob('*.woff2'))
-        stale.unlink()
+        inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
+        inputs.pop('design')
+        write(ws / 'inputs.json', json.dumps(inputs, ensure_ascii=False))
 
-        prepare(ws, 'composition')
+        result = prepare(ws, 'composition', env={'FONTS_RESOURCES_DIR': str(tmp_path / 'missing-fonts')})
 
-        assert stale.is_file()
+        assert result['fonts'] is None
+        assert not (ws / 'composition' / 'assets' / 'fonts').exists()
+        sections = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))
+        assert 'design 未预选' in sections['Inputs']
+        assert 'design default' not in sections['Inputs']
+        assert f'--design {ws}/composition/design.json' in sections['Outputs']
+        assert 'fonts-download.sh' in sections['Outputs']
+        assert str(ws / 'modules/designs/designs.md') in sections['Required References']
+        assert str(ws / 'modules/designs/default/default.md') not in sections['Required References']
 
-    def test_fonts_failure_exits_1_with_the_fonts_error(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'composition')
-        empty_resources = tmp_path / 'no-fonts'
-        empty_resources.mkdir()
+    def test_explicit_github_design_remains_a_handoff_constraint_without_preinstalling_fonts(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'composition', design='github')
 
-        proc, result = run_cli(str(ws), 'composition', env={'FONTS_RESOURCES_DIR': str(empty_resources)})
+        result = prepare(ws, 'composition')
 
-        assert proc.returncode == 1, proc.stderr
-        assert result['success'] is False
-        assert result['fonts']['success'] is False
-        assert 'no vendored fonts for theme github' in result['fonts']['error']
-        assert result['error'] == result['fonts']['error']
-        assert not (ws / 'composition-handoff.md').exists()
+        assert result['fonts'] is None
+        assert not (ws / 'composition' / 'assets' / 'fonts').exists()
+        sections = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))
+        assert 'design github' in sections['Inputs']
+        assert '用户明确指定的全片 design 约束' in sections['Inputs']
+        assert str(ws / 'modules/designs/github/github.md') not in sections['Required References']
+        assert str(ws / 'modules/designs/designs.md') in sections['Required References']
 
 
 class TestFailures:
@@ -974,17 +968,17 @@ class TestTemplateErrors:
 
 
 class TestFontsFailureModes:
-    def test_a_fonts_script_that_prints_no_json_still_gives_a_json_error(self, tmp_path: Path, skill_copy: Path):
+    def test_fonts_script_is_not_called_before_design_selection(self, tmp_path: Path, skill_copy: Path):
         ws = make_workspace(tmp_path, 'composition')
         (skill_copy / 'scripts' / 'fonts-download.sh').write_text('echo "boom" >&2\nexit 3\n', encoding='utf-8')
 
         proc, result = run_cli(str(ws), 'composition', script=skill_copy / 'scripts' / 'prepare-handoff.py')
 
-        assert proc.returncode == 1
-        assert result['success'] is False
-        assert result['fonts'] == {'success': False, 'error': 'boom'}
-        assert result['error'] == 'boom'
-        assert not (ws / 'composition-handoff.md').exists()
+        assert proc.returncode == 0, proc.stderr + proc.stdout
+        assert result['success'] is True
+        assert result['fonts'] is None
+        assert (ws / 'composition-handoff.md').exists()
+        assert not (ws / 'composition' / 'assets' / 'fonts').exists()
 
 
 class TestInputsRendering:
@@ -1141,12 +1135,13 @@ class TestDelegationDocs:
         assert 'composition/assets/fonts/' in text
         assert '用 `npx hyperframes preview` 交给用户看' not in text
 
-    def test_modules_doc_initializes_a_fresh_dir_before_fonts_get_in_the_way(self):
+    def test_modules_doc_initializes_before_delegated_font_installation(self):
         text = (REPO_ROOT / 'modules' / 'modules.md').read_text(encoding='utf-8')
 
-        # The init-into-a-fresh-dir workaround comes before the pre-placed-fonts note.
-        assert 'composition-init/' in text
-        assert text.index('composition-init/') < text.index('不用再装')
+        assert 'composition-init/' not in text
+        assert '不预装字体' in text
+        assembly = text.split('## 组装一支视频', 1)[1]
+        assert assembly.index('npx hyperframes init composition/') < assembly.index('fonts-download.sh')
 
     def test_conventions_list_all_three_delegation_packages(self):
         text = (REPO_ROOT / 'references' / 'delegation' / 'conventions.md').read_text(encoding='utf-8')

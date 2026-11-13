@@ -531,7 +531,7 @@ def test_template_is_chosen_by_the_composition_agent():
     assert 'narration.md' not in phase_6
     # Phase 8 主 agent 只确认全片约束；视觉 scenes、模板与 layout 由被委派 agent 决定。
     assert text_index(phase_8, '#### 8.0 — 确认全片约束与派发前置条件') < text_index(
-        phase_8, '#### 8.1 — 物化与字体'
+        phase_8, '#### 8.1 — 物化委派包与 modules'
     )
     assert '视觉 scenes、模板与 layout 不在这一步决定' in phase_8
     assert '不要求预先决定全局 template / layout' in phase_8
@@ -749,6 +749,30 @@ def test_composition_defaults_to_original_design_and_only_records_borrowed_refer
     assert '默认时长、缓动与列表间隔跟随主题 token' in composition
     assert 'reserved 区域只放各自 `component` 声明的组件' in composition
     assert '时间只取真实语音' in composition
+
+
+def test_design_selection_and_custom_contract_are_delegated_to_composition():
+    phase_1 = doc_text('references/phases/01-gather-inputs.md')
+    phase_8 = doc_text('references/phases/08-composition.md')
+    phase_9 = doc_text('references/phases/09-check-mix.md')
+    base = doc_text('references/delegation/composition/base-instructions.md')
+    handoff = doc_text('references/delegation/composition/handoff-template.md')
+    designs = doc_text('modules/designs/designs.md')
+
+    assert '未指定时不填' in phase_1
+    assert '未指定时保持默认主题' not in phase_1
+    assert 'composition/design.json' in phase_8
+    assert 'composition/design.json' in base
+    assert 'composition/design.json' in handoff
+    assert 'fonts-download.sh' in base and 'fonts-download.sh' in handoff
+    assert 'custom' in base and 'preset' in base
+    assert '复用字体资源不等于采用该 preset 的视觉设计' in base
+    assert '系统字体' in base
+    assert 'scene 限定' in phase_9 and '外泄' in phase_9
+    assert '候选' in designs and '不是默认必选' in designs
+    for text in (phase_8, base, handoff):
+        assert '主 agent 预置' not in text
+        assert '已按所选 design 预置' not in text
 
 
 def test_pattern_and_motion_indexes_are_optional_and_not_a_fixed_design_sequence():

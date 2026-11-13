@@ -7,12 +7,11 @@ from pathlib import Path
 
 import pytest
 
+import video_contract
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DESIGNS_ROOT = REPO_ROOT / 'modules' / 'designs'
 DESIGN_NAMES = ['default', 'github', 'producthunt']
-TOKEN_PATTERN = re.compile(r'--c-[a-z0-9-]+|--font-[a-z]+|--motion-[a-z-]+|--ground')
-
-
 def design_dir(name: str) -> Path:
     return DESIGNS_ROOT / name
 
@@ -22,11 +21,7 @@ def load_contract(name: str) -> dict:
 
 
 def contract_tokens() -> set[str]:
-    text = (DESIGNS_ROOT / 'designs.md').read_text(encoding='utf-8')
-    tokens = set(TOKEN_PATTERN.findall(text))
-    if {'--c-tile0', '--c-tile4'} <= tokens:
-        tokens.update(f'--c-tile{index}' for index in range(5))
-    return tokens
+    return set(video_contract.DESIGN_TOKEN_NAMES)
 
 
 def markdown_tokens(name: str) -> dict[str, str]:

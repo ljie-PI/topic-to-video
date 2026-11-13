@@ -3,6 +3,7 @@
 ## 输入
 
 - Phase 8 产出的 `composition/renders/final.mp4`；
+- `composition/design.json`（Phase 8 落盘的 preset / custom 全片外观基线，QA 不看 `inputs.json` 猜设计）；
 - `composition/scene-config.json`（最终视觉场景机器配置与全片秒；本阶段 QA 的 scene_id、抽帧和反馈范围以它为准；旧单 layout 工程才沿用 `transcribe/timeline.json` 的可选叙事 scenes）；
 - `inputs.json`（`qa_level`、BGM 选择）；
 - `search-notes.md`（可选，Phase 4 记录的来源限制，用于交付说明）。
@@ -85,7 +86,7 @@ python3 scripts/make-contact-sheet.py \
 
 1. 渲染是否完整（无缺帧、无渲染中断导致的残帧）；
 2. 画面与旁白是否相符；
-3. 是否符合所选 design 的配色与观感；
+3. 是否符合 `composition/design.json` 的 preset 或 custom 配色与观感；scene 限定的 token 覆盖是否只作用于声明的 scene，没有外泄到其他 scene；
 4. 有没有明显的空洞或错位。
 
 除此之外不做别的视觉判断；动效与转场的观感默认交给用户在预览中判断。
@@ -104,7 +105,7 @@ python3 scripts/make-contact-sheet.py \
 所有 finding 统一为 `{"scene_id": str, "check": str, "issue": str, "time_s": float|null, "frame": str|null}`。确定性检查（check-render / check-composition）的 finding 原样拷进 qa-report；vision 检查的 finding 由主 agent 按同样形状写。`time_s` 填检测或快照时刻，没有对应时刻填 `null`；vision finding 的 `frame` 填相关 sheet 路径，确定性检查的 `frame` 为 `null`。`verdict` 为 `fail` 时进入修复轮，规则：
 
 1. 把 findings 反馈给 composition agent（Phase 8 委派约定），**只改受影响的 scene**；
-2. 修复若改了 composition 的源文件或视觉契约（`scene-config.json`、`index.html`、`compositions/`、`assets/`、`storyboard.md`），必须重跑 check-composition 用 `--output` 保存新报告，并**重新渲染** `final.mp4`——只重跑 check-render 会让报告和渲染比源文件旧，`pipeline-status` 会回退 Phase 8、卡住 Phase 9；然后确定性检查全片重跑；vision 只看受影响视觉 scene 的帧（单独抽帧看即可，不必重拼整组 sheet）；
+2. 修复若改了 composition 的源文件或视觉契约（`design.json`、`scene-config.json`、`index.html`、`compositions/`、`assets/`、`storyboard.md`），必须重跑 check-composition 用 `--output` 保存新报告，并**重新渲染** `final.mp4`——只重跑 check-render 会让报告和渲染比源文件旧，`pipeline-status` 会回退 Phase 8、卡住 Phase 9；然后确定性检查全片重跑；vision 只看受影响视觉 scene 的帧（单独抽帧看即可，不必重拼整组 sheet）；
 3. **最多 2 轮**；finding 数不再下降就停止，把报告标为 `handed_off` 连同 sheet 一起交还用户定夺。
 
 修复轮结束（verdict 为 `pass`，或 `handed_off` 交给用户）后 `pipeline-status` 才会放行进 BGM 混音。
