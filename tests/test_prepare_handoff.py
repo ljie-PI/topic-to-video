@@ -628,6 +628,23 @@ class TestCompositionHandoff:
         # 模板按场景借用：不预选任何具体模板文档。
         assert 'modules/templates/github' not in body
 
+    def test_handoff_orders_selection_from_user_requests_to_special_match_to_on_the_spot_generation(
+        self, tmp_path: Path,
+    ):
+        ws = make_workspace(tmp_path, 'composition')
+        prepare(ws, 'composition')
+
+        handoff = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
+        outputs = handoff_sections(handoff)['Outputs']
+        refs = handoff_sections(handoff)['Required References']
+
+        assert '用户要求 → 特别匹配模块 → 即时生成' in outputs
+        # Required References 提供模块发现入口，不把列出目录当成必须采用清单。
+        assert '发现入口，不是采用清单' in refs
+        assert '必须采用' not in refs
+        assert '每个 scene 都必须' not in refs
+
+
     def test_no_global_template_is_dispatched_at_all(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition')
         inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))

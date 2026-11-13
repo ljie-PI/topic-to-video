@@ -8,14 +8,14 @@ composition agent 产出：它存脚本需要的数据（`scripts/scene_config.p
 `scene_config.load_scene_config(path, *, expected_canvas=None, known_scene_ids=None, modules_root=None)`
 校验后消费，错误会定位到 `scene_id` 和字段。
 
-每个视觉场景**独立**按下面的顺序决定自己的方案，写进本文件：
+每个视觉场景**独立**按「用户要求 → 特别匹配模块 → 即时生成」的统一顺序（完整规则见 `base-instructions.md` 第四部分）决定自己的方案，写进本文件：
 
 1. 先应用该场景的明确用户要求（`inputs.json` 的 `composition_requests`；
    整片要求只在其作用范围内应用）；
-2. 用户指定 template 时先处理它；未指定时，只有非常匹配的 template 才采用；
-3. 采用模板后，根据它的 `preferred_layouts` 及用户要求确定本 scene 的布局；
-   没有模板才自由匹配现有 layout preset；
-4. 没有指定或非常匹配的 layout 时，自主构图——`template: null` 加自由布局是
+2. 用户指定 template / layout 时先处理它；未指定时，只有非常匹配（特别匹配）的预定义 template 或 layout preset 才采用；
+3. 采用模板后，根据它的 `preferred_layouts`（建议而非门槛）及用户要求确定本 scene 的布局；
+   没有模板时，只在现有 layout preset 与该 scene 特别匹配时才借用；
+4. 没有指定或非常匹配的预定义模块时，即时生成自主构图——`template: null`、`preset: null` 加自由布局是
    正常完成路径，不是失败。
 
 ## 根对象

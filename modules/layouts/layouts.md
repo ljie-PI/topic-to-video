@@ -1,6 +1,6 @@
 # 布局目录
 
-布局规定画布、区域（`regions`）和字幕规格（`caption`）。**先逐个视觉 scene 选布局，再读对应的文档与 JSON**；JSON 是脚本和组件共用的机器契约，不能只凭示意图手算坐标。
+布局规定画布、区域（`regions`）和字幕规格（`caption`）。每个视觉 scene 按 [composition 基础指令第四部分](../../references/delegation/composition/base-instructions.md#四内容演绎与模板选择) 决定布局：只在用户明确指定，或某个 preset 的区域划分、保留区域与当前 scene 的素材比例、信息密度**特别匹配**时才借用该 preset（模板的 `preferred_layouts` 只作建议），选中后再读对应的文档与 JSON；JSON 是脚本和组件共用的机器契约，不能只凭示意图手算坐标。无特别匹配时写 `preset: null`，即时设计本 scene 的 `regions` / `caption`。
 
 ## 可选布局
 
