@@ -5,18 +5,17 @@
 步骤委派给 coding agent，由后者读取一份 handoff 文件。handoff 是确定性的，因此由
 本脚本生成，而不是让主 agent 手填散文模板。每次调用做三件事：
 
-  0. 校验（在写任何东西之前）：composition 步骤要求 design 是当前库注册的；
-     不要求预选全局 template / layout——它们是 composition agent 逐视觉场景
-     的决定，scene-config.json 由该 agent 在本阶段产出，准备时还不存在。
+  0. 校验（在写任何东西之前）：composition 步骤只在校验出现的设计约束时
+     要求 design 是当前库注册的；缺省不预选。不要求预选全局 template / layout——
+     它们是 composition agent 逐视觉场景的决定，design.json / scene-config.json
+     由该 agent 在本阶段产出，准备时还不存在。
      校验的就是 handoff 之后会引用的那份文件（不 --refresh 时是工作区副本）。
      非法时就地失败，workspace 完全未被改动。
   1. 落地：把 references/delegation/conventions.md 和
      references/delegation/<step>/ 复制到 <ws>/references/delegation/；
      composition 步骤还复制 modules/ 到 <ws>/modules/。workspace
      中已存在的文件会被保留（该副本可能被编辑过）；--refresh 会覆盖它。
-  2. 字体（仅 composition）：用 scripts/fonts-download.sh --theme 把所选 design
-     自带的 WOFF2 字体安装到 <ws>/composition/assets/fonts/。每次调用都执行。
-  3. Handoff：读取 references/delegation/<step>/handoff-template.md 中的 markdown
+  2. Handoff：读取 references/delegation/<step>/handoff-template.md 中的 markdown
      代码块，给模板自己声明的 {{name}} 占位符填值（一次替换，不扫描写入的值），
      写出 <ws>/<step>-handoff.md。其中所有路径都是绝对路径；命令从 skill 根目录
      运行本 skill 的脚本。缺值或不存在的输入 / 引用文件，都算错误。
@@ -29,12 +28,11 @@
   {"success": true, "coding_agent": "...", "coding_model": null | "<实际原生标识>",
    "requested_model": null | "<原始请求>", "handoff_path": "...",
    "materialized": [...],
-   "fonts": null | {"success": true, "output_dir": "...", "installed": N},
+   "fonts": null,
    "dispatch_prompt": "读取 <handoff> 并按它执行；完成后报告产物路径。"}
-materialized 列出本次调用写入了文件的那些包路径。fonts 是一份摘要（文件清单有
-100 多条路径，对主 agent 没有用处；完整的 fonts-download JSON 会随 handoff 交给
-被委派的 agent）。主 agent 原样派发 dispatch_prompt。若 fonts-download 失败，输出
-为 {"success": false, "error": "...", "fonts": {fonts-download 的错误 JSON}}。
+materialized 列出本次调用写入了文件的那些包路径。fonts 保留 null 兼容形状；
+composition agent 选定 preset / custom design 后才按 handoff 安装字体。
+主 agent 原样派发 dispatch_prompt。
 退出码：0 = 成功，1 = 运行时错误（含请求了模型但未传 --resolved-model），
 2 = 参数非法。
 
@@ -51,8 +49,6 @@ import json
 import re
 import shlex
 import shutil
-import subprocess
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -74,14 +70,6 @@ TEMPLATE_BLOCK = re.compile(r'^```markdown\n(.*?)^```$', re.MULTILINE | re.DOTAL
 STEP_INPUTS_FIELDS = video_contract.STEP_INPUTS_FIELDS
 
 log = cli.make_logger(TOOL_NAME)
-
-
-class FontsError(Exception):
-    """fonts-download.sh 失败；payload 是它的 JSON（或它的替身）。"""
-
-    def __init__(self, payload: dict[str, Any]) -> None:
-        super().__init__(str(payload.get('error') or 'fonts-download failed'))
-        self.payload = payload
 
 
 def parse_args() -> argparse.Namespace:
@@ -122,6 +110,8 @@ def load_inputs(ws: Path, step: str) -> dict[str, Any]:
     if missing:
         raise ValueError(f'inputs.json is missing fields: {", ".join(missing)}')
     optional = [video_contract.STEP_REQUESTS_FIELD[step]]
+    if step == 'composition':
+        optional.append('design')
     selected = {name: data[name] for name in (*required, *optional) if name in data}
     for name, value in selected.items():
         problem = video_contract.input_field_problem(name, value)
@@ -179,42 +169,6 @@ def materialize(ws: Path, step: str, refresh: bool) -> list[str]:
             written.append(str(target))
             log(f'materialized {target}')
     return written
-
-
-def install_fonts(ws: Path, design: str) -> dict[str, Any]:
-    """为所选 design 运行 fonts-download.sh；返回一份摘要。
-
-    theme 只能是当前库里的 design 目录：从库里删掉的 design 不再靠工作区里的旧
-    副本继续装字体。
-    """
-    target = ws / 'composition' / 'assets' / 'fonts'
-    theme = SKILL_ROOT / 'modules' / 'designs' / design
-    proc = subprocess.run(
-        [
-            'bash',
-            str(SKILL_ROOT / 'scripts' / 'fonts-download.sh'),
-            str(target),
-            '--theme',
-            str(theme),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if proc.stderr:
-        print(proc.stderr, end='', file=sys.stderr)
-    try:
-        payload = json.loads(proc.stdout.strip().splitlines()[-1])
-    except (IndexError, json.JSONDecodeError):
-        payload = {'success': False, 'error': proc.stderr.strip()[-500:] or 'fonts-download printed no JSON'}
-    if proc.returncode != 0 or payload.get('success') is not True:
-        raise FontsError(payload)
-    files = payload.get('files')
-    return {
-        'success': True,
-        'output_dir': payload.get('output_dir', str(target)),
-        'installed': len(files) if isinstance(files, list) else None,
-    }
 
 
 # --- handoff -------------------------------------------------------------------
@@ -311,11 +265,9 @@ def script_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool = False) -> P
 
 
 def require_registered_design(inputs: dict[str, Any]) -> None:
-    """校验固定 design；全局 template / layout 不再是准备 handoff 的门槛。
-
-    逐视觉场景的模板与布局（含自由布局）由 composition agent 决定并写进
-    scene-config.json，由字幕、检查与状态脚本在它产出后校验。
-    """
+    """用户明确给出的 design 约束必须仍注册；缺省表示由子 agent 选择。"""
+    if 'design' not in inputs:
+        return
     designs = video_contract.available_designs(SKILL_ROOT)
     if inputs['design'] not in designs:
         raise ValueError(
@@ -325,14 +277,12 @@ def require_registered_design(inputs: dict[str, Any]) -> None:
 
 
 def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan:
-    design = inputs['design']
+    design = inputs.get('design')
     delegation = ws / DELEGATION
     modules = ws / 'modules'
     base = delegation / 'composition' / 'base-instructions.md'
     scene_config_doc = delegation / 'composition' / 'scene-config.md'
     modules_doc = modules / 'modules.md'
-    design_doc = modules / 'designs' / design / f'{design}.md'
-    design_json = modules / 'designs' / design / f'{design}.json'
     design_contract = modules / 'designs' / 'designs.md'
     require_registered_design(inputs)
     layouts_doc = modules / 'layouts' / 'layouts.md'
@@ -348,8 +298,8 @@ def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan
         (f'{scene_config_doc}（scene-config 数据契约：机器配置的唯一 schema 与可验证示例）', [scene_config_doc]),
         (f'{modules_doc}（模块库入口与组装约定）', [modules_doc]),
         (
-            f'{design_doc} + {design_json}（所选 design；token 契约见 {design_contract}）',
-            [design_doc, design_json, design_contract],
+            f'{design_contract}（design 目录与共享 token 契约；具体 preset 文档 / JSON 选定后按需阅读）',
+            [design_contract],
         ),
         (f'{layouts_doc}（layout 目录：可借用的 preset 及对应 JSON / 文档；也可自主设计自由布局）', [layouts_doc]),
         # 模板按场景借用：目录始终要给出，具体模板由 agent 在逐场景选择时读。
@@ -364,7 +314,7 @@ def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan
         values={
             'required_references': numbered([text for text, _ in references]),
             'additional_instructions': request_list(inputs, 'composition'),
-            'design': design,
+            'design': design or '未预选',
             'orientation': str(inputs['orientation']),
         },
         inputs=[
@@ -380,7 +330,6 @@ def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan
         ],
         references=[
             delegation / 'conventions.md',
-            ws / 'composition' / 'assets' / 'fonts',
             *(path for _, paths in references for path in paths),
         ],
         sources=sources,
@@ -421,7 +370,6 @@ def render_handoff(
     # _q 开头的值是供命令中使用的、经 shell 引用的完整路径：带空格的 topic 名或
     # skill 根目录（例如 "AI Agents 2026"）不能把该行拆开。散文里仍用普通的
     # {{ws}} / {{skill_root}}。
-    design = inputs.get('design') or ''
     coding_agent, requested_model = resolve_delegation(inputs, step)
     coding_model, requested_model = resolve_models(requested_model, resolved_model)
     values = {
@@ -434,9 +382,7 @@ def render_handoff(
         'composition_dir_q': shlex.quote(str(ws / 'composition')),
         'scene_config_q': shlex.quote(str(ws / 'composition' / 'scene-config.json')),
         'narration_audio_q': shlex.quote(str(ws / 'voice_clone' / 'narration.mp3')),
-        'design_json_q': shlex.quote(
-            str(ws / 'modules' / 'designs' / design / f'{design}.json')
-        ),
+        'design_json_q': shlex.quote(str(ws / 'composition' / 'design.json')),
         'transcript_q': shlex.quote(str(ws / 'transcribe' / 'transcript.json')),
         'subtitle_units_q': shlex.quote(str(ws / 'composition' / 'assets' / 'subtitle-units.json')),
         'template_cues_q': shlex.quote(str(ws / 'composition' / 'assets' / 'template-cues.json')),
@@ -488,19 +434,13 @@ def main() -> int:
         problem = harvest_manifest.paths_problem(catalog, base=ws / 'harvest_page')
         if problem:
             raise ValueError(f'material-catalog.json: {problem}; regenerate Phase 5')
-    # 在任何东西被写出之前校验 skill 侧的源文件：非法的 layout 或 design 名必须
+    # 在任何东西被写出之前校验 skill 侧的源文件：非法的显式 design 约束必须
     # 在 workspace 完全未被改动时就失败，就像缺少输入那样 —— 而不是等 modules/
     # 已被复制进去之后才失败。
     require_files(plan.sources, f'skill files the {args.step} handoff is built from')
     materialized = materialize(ws, args.step, args.refresh)
+    # 兼容 CLI JSON 形状；composition agent 选定 design 后才安装字体。
     fonts = None
-    if args.step == 'composition':
-        try:
-            fonts = install_fonts(ws, inputs['design'])
-        except FontsError as exc:
-            log(f'error: {exc}')
-            cli.print_json({'success': False, 'error': str(exc), 'fonts': exc.payload})
-            return 1
     require_files(plan.references, f'files the {args.step} handoff points at')
     handoff = ws / f'{args.step}-handoff.md'
     handoff.write_text(text, encoding='utf-8')

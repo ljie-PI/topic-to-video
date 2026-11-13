@@ -362,6 +362,14 @@ def complete_through_composition(ws: Path, **inputs_overrides) -> None:
     write_text(ws / 'composition' / 'index.html', '<html></html>')
     write_text(ws / 'composition' / 'compositions' / 'scene_1.html', '<template></template>')
     write_scene_config(ws)
+    preset = json.loads((REPO_ROOT / 'modules' / 'designs' / 'default' / 'default.json').read_text(encoding='utf-8'))
+    write_json(ws / 'composition' / 'design.json', {
+        'version': 1,
+        'source': 'preset',
+        'preset': 'default',
+        'tokens': preset['tokens'],
+        'min_font_px': preset['min_font_px'],
+    })
     write_json(ws / 'composition' / 'check-composition.json', pass_report(ws))
     write_blob(ws / 'composition' / 'renders' / 'final.mp4')
 
@@ -1474,7 +1482,7 @@ def test_no_fetch_full_run(tmp_path: Path):
 def test_inputs_json_missing_required_field_falls_back(tmp_path: Path):
     complete_through_research(tmp_path)
     inputs = dict(INPUTS)
-    del inputs['design']
+    del inputs['language']
     write_json(tmp_path / 'inputs.json', inputs)
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
@@ -1500,6 +1508,29 @@ def test_removed_design_keeps_mode_flags(tmp_path: Path):
     assert result['input_mode'] == 'paper'
     assert result['fetch_materials'] is False
     assert '4-material-harvest' in result['skipped_phases']
+
+
+def test_missing_design_is_an_unconstrained_input_not_a_phase_1_failure(tmp_path: Path):
+    complete_through_research(tmp_path)
+    inputs = json.loads((tmp_path / 'inputs.json').read_text(encoding='utf-8'))
+    inputs.pop('design')
+    write_json(tmp_path / 'inputs.json', inputs)
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '4-material-harvest'
+    assert 'inputs.json' not in result['corrupt_products']
+
+
+def test_existing_old_workspace_design_is_preserved(tmp_path: Path):
+    complete_through_research(tmp_path, design='github')
+    before = (tmp_path / 'inputs.json').read_bytes()
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '4-material-harvest'
+    assert json.loads((tmp_path / 'inputs.json').read_text(encoding='utf-8'))['design'] == 'github'
+    assert (tmp_path / 'inputs.json').read_bytes() == before
 
 
 def test_a_design_removed_from_the_library_is_rejected_even_with_a_workspace_copy(tmp_path: Path):
@@ -1960,6 +1991,16 @@ def test_what_make_narration_writes_is_accepted(tmp_path: Path, newline: str):
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase']['id'] == '7-voice-subtitles', result['next_phase']
     assert statuses(result)['6-script-scene-plan'] == 'completed'
+
+
+def test_missing_composition_design_is_a_phase_8_product(tmp_path: Path):
+    complete_all(tmp_path)
+    (tmp_path / 'composition' / 'design.json').unlink()
+
+    result = parse_result(run_cli(str(tmp_path)))
+
+    assert result['next_phase']['id'] == '8-composition'
+    assert 'composition/design.json' in result['missing_products']
 
 
 # --- phase 8 check: the saved check-composition report ----------------------

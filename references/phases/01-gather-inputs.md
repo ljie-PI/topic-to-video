@@ -17,7 +17,7 @@
 | `duration` | 目标时长，单位分钟，写成数字（默认 `3`）；也接受数字加分钟单位的字符串（`"5min"`、`"5 分钟"`）。用户说了就照他说的，不自行设上下限。`"90秒"`、`"1h"`、`"3-5分钟"` 这类写法不接受，会被判为损坏 |
 | `language` | 解说语言，默认中文 |
 | `orientation` | `landscape`（横屏 1920×1080）/ `portrait`（竖屏 1080×1920，仅显式 9:16）/ `portrait-3:4`（1080×1440，默认竖屏） |
-| `design` | 所选 design：`default` / `github` / `producthunt`，对应 `modules/designs/<design>/<design>.md` |
+| `design` | 可选的用户明确全片 design 约束：只有用户点名注册 design 且未限定到单个叙事 / 视觉 scene 时才填 `default` / `github` / `producthunt`；限定到单个 scene 的要求原话记入 `composition_requests`，不写入 `design`；未指定时不填，由 Phase 8 的 composition agent 选择 preset 或生成 custom design |
 | `coding_agent` | 全局委派目标；默认值与命令以 `references/delegation/conventions.md` 的统一约定为准 |
 | `delegation` | 可选，阶段级 agent / model 要求。对象的键为 `catalog` / `script` / `composition`，各值只含 `agent` 和 / 或 `model`（非空字符串）；如 `{"catalog": {"agent": "pi-coding-agent", "model": "<provider>/<model-id>"}}`。未指定 agent 时继承 `coding_agent`，未指定 model 时使用目标 agent 自身的模型配置；用户点名时严格遵循，未提就不填 |
 | `fetch_materials` | 是否联网抓取视觉素材（布尔） |
@@ -29,7 +29,7 @@
 
 ## 完成判据
 
-`inputs.json` 存在、非空、JSON 可解析，且上表字段齐全（`design` 必须是 `modules/designs/` 下现有的主题，旧项目里已删除的主题会被判为不合格、回到本 phase 重选；`fetch_materials` 必须是布尔；`duration` 必须是分钟数；`orientation` 必须是三个规范朝向之一；`qa_level`、`approval_gates`、`narration_requests`、`composition_requests`、`material_search_requests` 和 `delegation` 都可缺省，填写时按上表类型校验）。
+`inputs.json` 存在、非空、JSON 可解析，且上表非可选字段齐全（`design` 出现时必须仍是 `modules/designs/` 下注册的主题，旧项目里已删除的主题会被判为不合格、回到本 phase 重选；`fetch_materials` 必须是布尔；`duration` 必须是分钟数；`orientation` 必须是三个规范朝向之一；`design`、`qa_level`、`approval_gates`、`narration_requests`、`composition_requests`、`material_search_requests` 和 `delegation` 都可缺省，填写时按上表类型校验）。旧工作区已有的 `design` 原样保留为用户约束，不自动删除。
 
 ## 执行后自检
 
@@ -60,13 +60,11 @@
 
 1. 来源：要抓取的 URL、粘贴的文本，或仅一个主题。
 2. 朝向：默认横屏 `1920×1080`。用户说“竖屏”但没给比例时用 `1080×1440`（`orientation` 写 `portrait-3:4`）；明确要 9:16 时才用 `1080×1920`（`portrait`）。
-3. 风格：只确定 `design` 的值。
-   - 三个主题都在 `modules/designs/` 里（契约见 `modules/designs/designs.md`）：
-   - 默认：`default`——燕麦纸，安静的编辑风（`modules/designs/default/default.md`）
-   - 主题是 GitHub trending / repo launch / open source 项目介绍 → **github**（`modules/designs/github/github.md`）
-   - 主题是 Product Hunt 周榜 / SaaS launch / 新产品发布 → **producthunt**（`modules/designs/producthunt/producthunt.md`）
-   - 用户要求手绘、深色等现有主题都没有的风格 → 告诉用户目前没有对应主题，`design` 写 **default**，并把这条要求记进 `composition_requests`；Phase 8 按 `modules/designs/designs.md` 的草案覆盖配色前会先和用户确认
-   - 未指定时保持默认主题。
+3. 风格：只记录用户明确点名注册 design 的全片约束，不替 Phase 8 预选。
+   - 用户明确说全片用 `default` / `github` / `producthunt`（未限定到单个叙事 / 视觉 scene）时，`design` 写对应注册名。
+   - 用户把某个 preset 限定到单个叙事 / 视觉 scene 时，不写入 `design`，把原话记入 `composition_requests`；Phase 8 只在该 scene 根作用域覆盖相应 token，不自动传播到其他 scene。
+   - 未指定时不填 `design`；不要根据主题或“没有现有风格”映射成 `default`。
+   - 手绘、深色等其他风格要求记入 `composition_requests`，由 Phase 8 选择特别匹配的 preset 或生成 custom design。
 4. 时长：用户说了就用他的值，不设上下限；没说用 3 分钟。
 5. 语言：默认中文；用户要其他语言时照他说的写。
 6. 视觉素材：默认联网搜索。用户说不要就用 `fetch_materials = false`；论文模式即使不联网搜索，论文自己的关键图也照样进视频。用户点名要在某个平台找素材（图片搜索、视频网站等）时，把原话记进 `material_search_requests`；没提就不加。
@@ -77,6 +75,6 @@
    - 来源是以 `.pdf` 结尾的 URL（例如 arXiv） → 置 `input_mode = "paper"`，并将该 URL 保留用于 `parse-pdf.py --url`
    - 否则 → 置 `input_mode = "standard"`（默认；后续所有 "paper mode" 段落都跳过）
 
-**如果用户要求沿用另一个项目的风格**（例如“用和 `xxx-video/` 一样的风格”），去那个项目读它实际保存的 `inputs.json`，采用相同的 `design`；它自己的主题相关要求不要照搬，只把与本项目主题相关的部分按第 7 条记进本项目的列表。外观 token 只从所选 design 的文档取，不要复制任何 DESIGN.md。
+**如果用户要求沿用另一个项目的风格**（例如“用和 `xxx-video/` 一样的风格”），去那个项目读它实际保存的 `inputs.json`：其中有明确的注册 `design` 时，把相同名字作为本项目约束；没有时不补默认，只把与本项目相关的风格要求按第 7 条记进 `composition_requests`。外观基线由 Phase 8 落盘为 `composition/design.json`。
 
 把结果落盘为 `inputs.json`，再运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}` 进入下一个 phase。续跑 / 回退永远以状态脚本的输出为准，不要自己扫描工作区猜进度。

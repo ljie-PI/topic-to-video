@@ -123,7 +123,7 @@ def test_every_phase_has_guardrails_immediately_after_next_step(doc_path: Path):
     ('references/phases/06-script-scene-plan.md', '素材 catalog / vision 分析在 Phase 5，不是 Phase 6'),
     ('references/phases/07-voice-subtitles.md', 'TTS 后端由环境变量选择'),
     ('references/phases/07-voice-subtitles.md', 'ASR 后端由环境变量选择'),
-    ('references/phases/08-composition.md', '预先 stage 确定性的 WOFF2 字体'),
+    ('references/phases/08-composition.md', '选定 design 后 stage 确定性的 WOFF2 字体'),
     ('references/phases/08-composition.md', 'Composition 委派给 coding agent'),
     ('references/phases/08-composition.md', 'Scene 设计由 composition agent 负责'),
 ])
@@ -153,8 +153,10 @@ def test_phase_8_assigns_scene_layouts_and_visual_timing_to_composition_agent():
     rules = guardrails('references/phases/08-composition.md')
 
     assert 'composition/scene-config.json' in rules
-    assert '主 agent 只固定 orientation / design / 用户约束' in rules
-    assert '不预选任何 scene 方案' in rules
+    assert '主 agent 只固定 orientation、用户明确指定的 design 与其他约束' in rules
+    assert '不预选默认 design' in rules
+    assert '任何 scene 方案' in rules
+    assert 'prepare-handoff.py` 不预装字体' in rules
     assert '--scene-config ... --narration-audio ...' in rules
 
 

@@ -79,6 +79,7 @@ from typing import Any, Callable
 
 import cli
 import clip_paths
+import composition_design
 import harvest_manifest
 import media
 import scene_config
@@ -727,12 +728,12 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
             'field duration must be the target length in minutes (分钟数): a positive number '
             f'such as 5, or a number with a minutes unit such as "5min", got {data["duration"]!r}',
         ), data
-    problem = design_problem(data['design'])
-    if problem:
-        # 例如一个在某主题被移除之前创建的项目：退回 Phase 1
-        # 选一个仍然存在的。inputs.json 的其余部分是有效的，因此
-        # 它也会被返回，阶段适用性（paper / fetch）依然成立。
-        return CheckResult(STATUS_CORRUPT, problem), data
+    if 'design' in data:
+        problem = design_problem(data['design'])
+        if problem:
+            # 例如一个在某主题被移除之前创建的项目：退回 Phase 1
+            # 选一个仍然存在的。未写 design 则表示没有用户预选约束。
+            return CheckResult(STATUS_CORRUPT, problem), data
     if 'qa_level' in data and data['qa_level'] not in QA_LEVELS:
         return CheckResult(
             STATUS_CORRUPT,
@@ -799,6 +800,20 @@ def load_workspace_scene_config(ws: Path) -> tuple[dict[str, Any] | None, str | 
     except (ValueError, OSError, media.MediaToolMissing, media.MediaProbeError) as exc:
         return None, str(exc)
     return config, None
+
+
+def check_composition_design_product(ws: Path, relpath: str) -> CheckResult:
+    """Phase 8 的 preset / custom design 共用这一份公共机器契约。"""
+    path = ws / relpath
+    if not path.exists():
+        return CheckResult(STATUS_MISSING, 'composition design contract is required before Phase 8 can complete')
+    if not path.is_file():
+        return CheckResult(STATUS_CORRUPT, 'composition design contract is not a file')
+    try:
+        composition_design.load_composition_design(path, skill_root=SKILL_ROOT)
+    except ValueError as exc:
+        return CheckResult(STATUS_CORRUPT, str(exc))
+    return OK
 
 
 def check_scene_config_product(ws: Path, relpath: str) -> CheckResult:
@@ -1260,6 +1275,7 @@ PHASES: list[dict[str, Any]] = [
         'doc': 'references/phases/08-composition.md',
         'applies': 'always',
         'products': {
+            'composition/design.json': check_composition_design_product,
             'composition/scene-config.json': check_scene_config_product,
             'composition/assets/subtitle-units.json': check_subtitle_units,
             'composition/storyboard.md': check_text_product,
