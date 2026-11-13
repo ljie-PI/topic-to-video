@@ -446,7 +446,7 @@ def test_migrated_modules_init_and_seek_without_vendor_globals(tmp_path: Path):
     mounts = [
         ('components/caption-bar', None),
         ('components/nav-bar', {'logo': '', 'path': 'github / trending'}),
-        ('components/transitions/tile-wipe', None),
+        ('transitions/tile-wipe', None),
         ('templates/github/trending-overview', None),
         ('templates/github/project-cover',
          {'owner': 'demo', 'repo': 'tool', 'nameAt': 0.5, 'taglineAt': 1.0,

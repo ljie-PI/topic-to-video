@@ -46,7 +46,7 @@
 默认即时生成，预定义模块是例外；阅读模块目录不等于采用模块。逐场景选择，顺序固定——对每个视觉 scene 按以下统一顺序与规则执行（用户要求 → 特别匹配模块 → 即时生成）：
 
 1. **先应用用户要求及其作用范围。** 用户在 `composition_requests` 中指定某 scene 或全片使用某个模块时，在该作用范围内采用；与朝向、事实或另一条明确要求冲突时报告冲突，不要静默换掉要求。
-2. **未指定时评估“特别匹配”，不是“勉强可用”。** 预定义模块（template、layout preset、component、pattern、motion）只在与目标 scene 特别匹配时才采用，至少同时满足：
+2. **未指定时评估“特别匹配”，不是“勉强可用”。** 预定义模块（template、layout preset、component、transition、pattern、motion）只在与目标 scene 特别匹配时才采用，至少同时满足：
    - 模块表达的内容关系与 scene 的叙事目标一致；
    - 素材形态、数据、画布、可读性和交互需求适合该模块；
    - 不需要改旁白、视觉 scene、orientation 或用户要求来迁就模块；
@@ -55,7 +55,7 @@
 3. **没有特别匹配就即时生成。** 自主设计优先：先根据旁白要表达的关系、素材实际内容和各 scene 的可用区域，自主构思构图、视觉隐喻、信息展开与动效，根据 scene 要求自行设计 DOM/CSS/SVG/JS、图表、视觉机制或组件，不为使用库而使用库，再写入 storyboard；遇到旁白或 `content_plan` 做了日常类比、多步拆解的难点时，优先用分步揭示或阶段演进的动画把每一步的变化可视化讲清楚（`composition_requests` 另有要求时按用户要求处理）；简洁的静态呈现也是有效选择。
 4. **按实际采用落盘。** 不用 template 时写 `template: null`；不借 layout preset 时写 `preset: null` 并落盘完整实际 `regions` / `caption`；不借 pattern / motion 时不产生借用记录；自绘组件仍须满足区域、字幕、确定性、事实和检查契约。模板选择及理由写进 storyboard，不写回 `inputs.json`。
 5. **保持模块内部依赖完整。** 一个特别匹配且被采用的 template / layout 所声明的必要组件，属于该方案的一部分；若这些组件不适合，应判定整个方案不够匹配，而不是破坏它的 reserved 区约定。
-6. **只记录实际采用。** 参考库按需：`modules/patterns/` 与 `modules/motion.md` 是可跳过的参考库。仅在已有构想对应某个非常匹配的模式 / 动效建议，或有具体的画面 / 动效问题需要参考时，才定向查阅；采用时须与内容关系、素材形态和区域约束高度吻合，并确实改善表达。可以局部借用或改写。默认自主设计，全片不用参考库也完全合格。storyboard 只记录实际借用的模块、用户指定依据或特别匹配理由（只在借用时用一句话记录借用内容与匹配理由）；即时生成不需要“未使用其他模块”的清单，无需填写 pattern 字段或未使用理由。
+6. **只记录实际采用。** 参考库按需：`modules/patterns/`、`modules/motion.md` 与 `modules/transitions/` 都是可跳过的参考入口。仅在已有构想对应某个非常匹配的模式 / 动效建议，或有具体的画面 / 动效问题需要参考时，才定向查阅；采用时须与内容关系、素材形态和区域约束高度吻合，并确实改善表达。可以局部借用或改写。需要转场时读 `modules/transitions/transitions.md`，选定后再读具体转场文档；简单接缝已经合适时不采用转场，自由布局也不强制使用转场。默认自主设计，全片不用参考库也完全合格，不使用转场也同样合格。storyboard 只记录实际借用的模块、用户指定依据或特别匹配理由（只在借用时用一句话记录借用内容与匹配理由）；即时生成不需要“未使用其他模块”的清单，无需填写 pattern 字段或未使用理由。
 
 ### 表达与事实边界
 
@@ -74,15 +74,15 @@
 1. 在 `script.txt` 里找到模板需要的字段对应的原文（项目名、tagline、star 数等），确认它确实属于某个 scene 的 `paragraphs`。
 2. 把要卡点的原句按 cue 声明的形状（`scene_id` / `paragraphs` / `cues`）写进 `composition/assets/template-cues.json`。cue 必须原样摘自显示稿；这个文件不是完整的场景规划，只需这三个字段。
 3. 跑 handoff 里的 `align-narration.py --mode timing --scene-plan composition/assets/template-cues.json --timeline-output composition/assets/template-timeline.json`，用同一套对齐拿到真实秒数。
-4. 把结果换算成组件参数：全片组件（`nav-bar` / `caption-bar` / `tile-wipe`）用视频秒；scene 内的参数（`nameAt` / `taglineAt` / `starsAt` 等）用相对该 scene `data-start` 的秒数。
+4. 把结果换算成组件与转场参数：全片组件与转场（`nav-bar` / `caption-bar` / `tile-wipe`）用视频秒；scene 内的参数（`nameAt` / `taglineAt` / `starsAt` 等）用相对该 scene `data-start` 的秒数。
 5. 没念到的字段不编时间：`project-cover` 可省略 `taglineAt` / `starsAt`，组件会隐藏相关部分并跳过动画；`nameAt` 和榜单每个项目的 `cue` 是必需锚点，缺失就不用对应场景 / 项目，不采用默认秒数。事实资料缺失也不编造值，更不回去改旁白迁就模板。
 
 ## 工作顺序
 
 0. **决定视觉 scenes，逐场景定方案，写 scene-config。** 先读 `script.txt`、`scene-plan.json`、timeline 与素材目录，按实际画面需要合并 / 拆分叙事 scene。对每个视觉场景按第四部分的固定顺序选择方案；可以借用 `modules/layouts/` 的 preset（读 `layouts.md` 目录与对应 JSON / 文档），也可以自主设计自由布局。把最终结果写进 `composition/scene-config.json`（schema 见契约文档），并选定 storyboard 的骨架。
 1. **生成字幕初稿**。跑 handoff 里的 `align-narration.py --mode subtitles --scene-config ... --narration-audio ...` 命令，把字幕单元切到 `composition/assets/subtitle-units.json`。已有用户编辑过的字幕是有效输入：只有缺失或当前任务明确要求重新生成时才重新生成，仅改画面 / 重渲染不要覆盖它。
-2. **自主构思并写 storyboard**：先读 `modules/components/components.md` 的组件目录，再读要用的组件文档。storyboard 开头先写一张「组件使用表」：每个用到的组件一行，写明挂载参数、驱动它的 `window.VIDEO` 数据从哪来（例如 `captions` 来自 `composition/assets/subtitle-units.json`）。各 reserved 区要求的组件必须出现在表里；常驻组件不用在每个 scene 里重复写，scene 里只写本 scene 额外用到的组件。然后按 scene-config 逐个视觉 scene 写，记录对应的叙事 `intent` / `content_plan`、template / layout 方案（preset 或自主设计）及理由、content 区域，以及素材、构图、信息展开与动效安排；参考库的查阅与借用按第四部分处理。可以改选素材与演绎方式；偏离场景规划的地方写明理由；**旁白不能改**（字幕以显示稿为准，新增屏幕文字与标注守第四部分事实边界）。
-3. **组装和编写画面**。按 storyboard 用 modules 组装：读 `modules/modules.md` 入口、所选 design、契约要求遵守的区域与要用的组件文档（先看 `modules/components/components.md`），实现自己确定的画面与动效。按 storyboard 选定的 design textures、组件和模板资源，由你自己从工作区的 `modules/` 拷进 `composition/`，清单见各模块的文档。
+2. **自主构思并写 storyboard**：先读 `modules/components/components.md` 的组件目录，再读要用的组件文档；需要转场时按第四部分读 `modules/transitions/transitions.md` 与所选转场文档。storyboard 开头先写一张「组件与转场使用表」：每个用到的组件或转场一行，写明挂载参数、驱动它的 `window.VIDEO` 数据从哪来（例如 `captions` 来自 `composition/assets/subtitle-units.json`，`cuts` 来自 scene-config 的实际视觉 scene 切点）。各 reserved 区要求的组件必须出现在表里；常驻组件或转场不用在每个 scene 里重复写，scene 里只写本 scene 额外用到的组件或转场。然后按 scene-config 逐个视觉 scene 写，记录对应的叙事 `intent` / `content_plan`、template / layout 方案（preset 或自主设计）及理由、content 区域，以及素材、构图、信息展开与动效安排；参考库的查阅与借用按第四部分处理。可以改选素材与演绎方式；偏离场景规划的地方写明理由；**旁白不能改**（字幕以显示稿为准，新增屏幕文字与标注守第四部分事实边界）。
+3. **组装和编写画面**。按 storyboard 用 modules 组装：读 `modules/modules.md` 入口、所选 design、契约要求遵守的区域与要用的组件文档（先看 `modules/components/components.md`）；采用转场时还要读它的具体文档，实现自己确定的画面与动效。按 storyboard 选定的 design textures、组件、转场和模板资源，由你自己从工作区的 `modules/` 拷进 `composition/`，清单见各模块的文档。
 4. **渲染前自查**，全部通过再渲染：
    - 运行 `npx hyperframes check`，修掉所有错误；
    - 运行 check-composition（命令见 handoff 的 Outputs 一节）：它按 `scene-config` 在各 scene 落盘的 regions / caption 下检查越界、侵入 reserved 区域、文字溢出、资源加载失败、字体未加载、字号低于 design 下限、字幕与字幕单元不一致；每条 finding 的形状为 `{scene_id, check, issue, time_s, frame}`，其中 `time_s` 是快照时刻、`frame` 为 null，只修相关 scene；handoff 的命令用 `--scene-config` 指定配置，并用 `--output` 把同一份报告写到 `composition/check-composition.json`（stdout 照常打印，findings 直接看输出）；改过 scene-config 或画面就重跑，**最后一次的报告必须保存在这个路径且 verdict 为 pass**（主 agent 的状态脚本读它）；

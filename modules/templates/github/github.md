@@ -2,7 +2,7 @@
 
 一类视频：人物 Jay 主持，盘点 GitHub 上的一批项目（例如本周 Trending Top 5）。整支视频看起来像在浏览 GitHub 页面。
 
-这里写的是**这类视频怎么组装**：用哪个布局、哪些组件、给组件什么参数、GitHub 专属的配色和元素、数据怎么填，以及人物怎么演。
+这里写的是**这类视频怎么组装**：用哪个布局、哪些组件与转场、给组件与转场什么参数、GitHub 专属的配色和元素、数据怎么填，以及人物怎么演。
 
 ## 1. 组成
 
@@ -12,7 +12,7 @@
 | 布局 | `layouts/presenter.md`（讲解模式） | 区域位置固定 |
 | 顶部导航 | 组件 `nav-bar` | 参数和标签写法见第 3 节 |
 | 底部字幕 | 组件 `caption-bar` | 字幕取配音的逐句时间 |
-| 场景转场 | 组件 `transitions/tile-wipe` | 方格改成贡献图配色，卡片写法见第 3 节 |
+| 场景转场 | 转场 `tile-wipe`（`transitions/tile-wipe/`） | 方格改成贡献图配色，卡片写法见第 3 节 |
 | 主持人 | 组件 `jay` | 动作写法见第 5 节 |
 | 场景 | `trending-overview`、`project-cover`（文档 `templates/github/<场景>.md`，代码 `templates/github/<场景>.html` + `<场景>.mjs`） | 后面可以继续加：项目演示、注意事项、结尾 |
 
@@ -59,9 +59,9 @@
 - **Trending 标签**：指标色的药丸标签，写作“Trending #名次 · 本周”。
 - **“README.md” 面板**：标题栏是书本图标加等宽的 `README.md`，右侧是仓库名。
 
-## 3. 组件参数
+## 3. 组件与转场参数
 
-| 组件 | 参数（`init` 的 `params`；HyperFrames 工程写在 `data-variable-values`） | `window.VIDEO` 数据（adapter 取出后作为 `init` 的 `data`） |
+| 组件或转场 | 参数（`init` 的 `params`；HyperFrames 工程写在 `data-variable-values`） | `window.VIDEO` 数据（adapter 取出后作为 `init` 的 `data`） |
 |---|---|---|
 | `nav-bar` | `{"logo": "assets/brand/github-mark-white.svg", "path": "github / trending"}` | `tabs`：`概览`（0 秒）、`#1`…`#5`（每个项目段开始的时间）、`趋势`（结尾开始的时间） |
 | `caption-bar` | 不用填，默认就是讲解模式布局的字幕区 | `captions`：配音逐句 `{ start, end, text }` |

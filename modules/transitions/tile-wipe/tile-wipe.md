@@ -1,4 +1,4 @@
-# 组件：transitions/tile-wipe（方格转场）
+# 转场：tile-wipe（方格转场）
 
 **用在两个场景交接的地方。**
 
@@ -9,7 +9,7 @@
 
 方格从顶部导航栏和底部字幕条的下面穿过，这两条一直可见。
 
-**组件本身没有任何具体内容**：
+**转场本身没有任何具体内容**：
 - 切点和卡片文字在拼视频时传入。
 - 方格颜色读主题的 `--c-tile0`–`--c-tile4`，卡片配色和字体也都读主题变量。
 
@@ -17,8 +17,9 @@
 
 ## 文件
 
-- `components/transitions/tile-wipe/tile-wipe.html`：静态标记和样式。
-- `components/transitions/tile-wipe/tile-wipe.mjs`：导出 `init`（接口见 `modules.md` 的「模块初始化接口」）。
+- `transitions/tile-wipe/tile-wipe.md`：本文档。
+- `transitions/tile-wipe/tile-wipe.html`：静态标记和样式。
+- `transitions/tile-wipe/tile-wipe.mjs`：导出 `init`（接口见 `modules.md` 的「模块初始化接口」）。
 
 ## 依赖（来自设计主题，视频的 `index.html` 必须提供）
 
@@ -34,7 +35,7 @@
 
 ## 安装
 
-1. 把 `components/transitions/tile-wipe/tile-wipe.html` 和 `tile-wipe.mjs` 一起复制到视频工程的 `compositions/`。
+1. 把 `transitions/tile-wipe/tile-wipe.html` 和 `transitions/tile-wipe/tile-wipe.mjs` 一起复制到视频工程的 `compositions/`，工程内仍使用 `compositions/tile-wipe.html` 和 `compositions/tile-wipe.mjs`。
 2. 在根节点加挂载点：
    - `data-composition-id="tile-wipe"`，`data-composition-src="compositions/tile-wipe.html"`；
    - `data-start="0"`，时长为整片；
@@ -54,7 +55,7 @@
 
 ```js
 cuts: [
-  { at: 20.7,                       // 切点，视频秒（本组件常驻挂在 0 秒，即局部秒）；等于下一个场景的 data-start
+  { at: 20.7,                       // 切点，视频秒（本转场常驻挂在 0 秒，即局部秒）；等于下一个场景的 data-start
     label: "#1",                    // 卡片左侧的大字；不填就不出卡片，只有方格
     title: "storytold / ",          // 标题（常规字重）
     emphasis: "artcraft",           // 接在标题后面的加粗部分
