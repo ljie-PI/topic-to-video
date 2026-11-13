@@ -740,6 +740,8 @@ def test_composition_defaults_to_original_design_and_only_records_borrowed_refer
 
     workflow = composition.split('## 工作顺序', 1)[1]
     assert '**自主构思并写 storyboard**' in workflow
+    assert '字幕以显示稿为准，新增屏幕文字与标注守第四部分事实边界' in workflow
+    assert '字幕与屏幕文字都以显示稿为准' not in workflow
     assert '素材、构图、信息展开与动效安排' in workflow
     assert '先定模板与 pattern' not in workflow
     assert '动效选择参考 `modules/motion.md`' not in workflow
