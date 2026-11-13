@@ -63,7 +63,7 @@
 - {{ws}}/composition/check-composition.json：check-composition 的报告（下面命令的 `--output` 写出它；最后一次运行的 verdict 必须是 pass）
 - {{ws}}/composition/renders/final.mp4：渲染产物
 
-先决定 preset / custom design，若 `composition/` 目录不存在先运行 `npx hyperframes init composition/`，再安装字体并写 {{design_json_q}}，然后逐场景选择模块、写 {{scene_config_q}} 并生成字幕单元。preset 使用对应 `modules/designs/<design>` 字体包；custom 可复用现有字体包作为资源，但 token 字体名必须匹配实际 CSS，复用字体资源不等于采用该 preset 的视觉设计。禁止系统字体。初始化与通用安装命令（选定后把 `<design>` 换成实际字体资源包名）：
+先读旁白与叙事规划（`script.txt`、`scene-plan.json`、timeline 与素材目录），再决定 preset / custom design；若 `composition/` 目录不存在先运行 `npx hyperframes init composition/`，再安装字体并写 {{design_json_q}}，然后逐场景选择模块、写 {{scene_config_q}} 并生成字幕单元。preset 使用对应 `modules/designs/<design>` 字体包；custom 可复用现有字体包作为资源，但 token 字体名必须匹配实际 CSS，复用字体资源不等于采用该 preset 的视觉设计。禁止系统字体。初始化与通用安装命令（选定后把 `<design>` 换成实际字体资源包名）：
 
 - cd {{ws_q}} && npx hyperframes init composition/（仅当 `composition/` 目录不存在时）
 - bash {{skill_root_q}}/scripts/fonts-download.sh {{composition_dir_q}}/assets/fonts --theme {{ws_q}}/modules/designs/<design>

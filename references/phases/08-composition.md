@@ -103,7 +103,7 @@ source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topi
 
 脚本只在 `design` 出现时校验它是当前库里的注册名；缺省不预选。全局 template / layout 不是准备前提；`design.json` 与 `scene-config.json` 的公共校验在状态验收中使用。
 
-composition agent 先决定 preset / custom，按 handoff 运行 `fonts-download.sh --theme modules/designs/<design>` 安装字体并写 `composition/design.json`。具体 design textures、组件和模板资源由它选定后自己从工作区的 `modules/` 拷进 `composition/`。
+composition agent 先读旁白与叙事规划（`script.txt`、`scene-plan.json`、timeline 与素材目录），再决定 preset / custom，运行 `npx hyperframes init composition/`（仅当 `composition/` 目录不存在时），按 handoff 运行 `fonts-download.sh --theme modules/designs/<design>` 安装字体并写 `composition/design.json`。具体 design textures、组件和模板资源由它选定后自己从工作区的 `modules/` 拷进 `composition/`。
 
 #### 8.2 — handoff
 

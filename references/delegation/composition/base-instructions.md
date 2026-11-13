@@ -1,6 +1,6 @@
 # composition 委派包 — 基础指令（画面组装与渲染）
 
-你负责为一个解说视频设计并实现**全部画面**：先确定全片 preset / custom design、安装字体并写 `composition/design.json`，再以旁白与叙事场景规划为起点，逐视觉场景独立决定 template / layout（允许自由布局），写 `composition/scene-config.json` 和 storyboard，用 modules 组装画面并渲染成 `final.mp4`。主 agent 只固定全片 orientation、用户明确指定的 design 约束与其他用户要求，不替你预选默认 design 或任何 scene 方案；你独立完成并落盘全部产物。
+你负责为一个解说视频设计并实现**全部画面**：先读旁白与叙事规划，确定全片 preset / custom design、初始化工程、安装字体并写 `composition/design.json`，再逐视觉场景独立决定 template / layout（允许自由布局），写 `composition/scene-config.json` 和 storyboard，用 modules 组装画面并渲染成 `final.mp4`。主 agent 只固定全片 orientation、用户明确指定的 design 约束与其他用户要求，不替你预选默认 design 或任何 scene 方案；你独立完成并落盘全部产物。
 
 先读 handoff 的 Inputs 中标为「Agent 阅读与画面资源」的文件，再按下面的约束执行。标为「仅供工具读取」的 transcript、朗读稿与偏移表只传给字幕 / cue 对齐命令，正常流程不阅读或复述其全文；仅在工具报错且必须诊断时读相关句子或时间窗口。旁白理解以 `script.txt` 为准。指令冲突时，按 `references/delegation/conventions.md` 的叠加顺序处理：后读的（scene-config 契约 → 模块文档 → 模板场景说明 → 用户在 `inputs.json` 的 `composition_requests` 里提出的要求）覆盖先读的。
 
@@ -28,7 +28,7 @@
 
 ## 二、必须选择并落盘 design
 
-- 先读 `modules/designs/designs.md` 与 scene 需求。用户明确指定注册 preset 时按约束采用；未指定时，只有某个 preset 与全片视觉需求特别匹配才采用，否则生成 custom design。库内 preset 是候选，不是默认必选。
+- 先读 `script.txt`、`scene-plan.json`、timeline 与素材目录了解旁白、叙事和各 scene 需求，再读 `modules/designs/designs.md`。用户明确指定注册 preset 时按约束采用；未指定时，只有某个 preset 与全片视觉需求特别匹配才采用，否则生成 custom design。库内 preset 是候选，不是默认必选。
 - 无论哪条路径都先写 `composition/design.json`，根字段恰好为 `version: 1` / `source` / `preset` / `tokens` / `min_font_px`。`source: "preset"` 时记录注册名，tokens 与字号下限必须和该 preset JSON 完全一致；`source: "custom"` 时 `preset: null`，自行生成完整共享 token 集合与正整数 `reading` / `ui` 下限（`ui` 不低于 22px）。`fonts` 维护清单不写入这份产物。
 - 选定 preset 后再按需阅读 `modules/designs/<design>/<design>.md` 与 `<design>.json` 并安装对应字体；custom 也要写完整 tokens / min font，并确保实际 CSS 的字体名与 token 一致。
 - 颜色、字体只取落盘 design 的 token；动效的默认时长、缓动与列表间隔跟随主题 token，具体运动方式与编排由你设计。字号守 `composition/design.json` 的 `min_font_px`：面板标题栏、按钮、小标签这类界面小字放在带 `data-text-role="ui"` 的元素里，按界面小字下限检查；其余文字都按阅读文字下限检查。
@@ -81,8 +81,8 @@
 
 ## 工作顺序
 
-0. **先决定 preset / custom design，初始化工程，安装字体并写 design 契约。** 按第二部分选择全片基线；`composition/` 目录不存在时先运行 `npx hyperframes init composition/`，再运行 handoff 的通用字体安装命令，把实际 tokens 与字号下限写进 `composition/design.json`；完成这些之后再逐场景选择其他模块。
-1. **决定视觉 scenes，逐场景定方案，写 scene-config。** 先读 `script.txt`、`scene-plan.json`、timeline 与素材目录，按实际画面需要合并 / 拆分叙事 scene。对每个视觉场景按第四部分的固定顺序选择方案；可以借用 `modules/layouts/` 的 preset（读 `layouts.md` 目录与对应 JSON / 文档），也可以自主设计自由布局。把最终结果写进 `composition/scene-config.json`（schema 见契约文档），并选定 storyboard 的骨架。
+0. **先读旁白与叙事规划，决定 preset / custom design，初始化工程，安装字体并写 design 契约。** 先读 `script.txt`、`scene-plan.json`、timeline 与素材目录，再按第二部分选择全片基线；`composition/` 目录不存在时先运行 `npx hyperframes init composition/`，再运行 handoff 的通用字体安装命令，把实际 tokens 与字号下限写进 `composition/design.json`；完成这些之后再逐场景选择其他模块。
+1. **决定视觉 scenes，逐场景定方案，写 scene-config。** 根据上一步读取的旁白、叙事规划、timeline 与素材目录，按实际画面需要合并 / 拆分叙事 scene。对每个视觉场景按第四部分的固定顺序选择方案；可以借用 `modules/layouts/` 的 preset（读 `layouts.md` 目录与对应 JSON / 文档），也可以自主设计自由布局。把最终结果写进 `composition/scene-config.json`（schema 见契约文档），并选定 storyboard 的骨架。
 2. **生成字幕初稿**。跑 handoff 里的 `align-narration.py --mode subtitles --scene-config ... --narration-audio ...` 命令，把字幕单元切到 `composition/assets/subtitle-units.json`。已有用户编辑过的字幕是有效输入：只有缺失或当前任务明确要求重新生成时才重新生成，仅改画面 / 重渲染不要覆盖它。
 3. **自主构思并写 storyboard**：先读 `modules/components/components.md` 的组件目录，再读要用的组件文档。storyboard 开头先写一张「组件使用表」：每个用到的组件一行，写明挂载参数、驱动它的 `window.VIDEO` 数据从哪来（例如 `captions` 来自 `composition/assets/subtitle-units.json`）。各 reserved 区要求的组件必须出现在表里；常驻组件不用在每个 scene 里重复写，scene 里只写本 scene 额外用到的组件。然后按 scene-config 逐个视觉 scene 写，记录对应的叙事 `intent` / `content_plan`、template / layout 方案（preset 或自主设计）及理由、content 区域，以及素材、构图、信息展开与动效安排；参考库的查阅与借用按第四部分处理。可以改选素材与演绎方式；偏离场景规划的地方写明理由；**旁白不能改**（字幕以显示稿为准，新增屏幕文字与标注守第四部分事实边界）。
 4. **组装和编写画面**。按 storyboard 用 modules 组装：读 `modules/modules.md` 入口、落盘 design、契约要求遵守的区域与要用的组件文档（先看 `modules/components/components.md`），实现自己确定的画面与动效。按 storyboard 选定的 design textures、组件和模板资源，由你自己从工作区的 `modules/` 拷进 `composition/`，清单见各模块的文档。
