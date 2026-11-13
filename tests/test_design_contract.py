@@ -53,16 +53,18 @@ def test_token_values_match_the_markdown_css(name: str):
 
 
 @pytest.mark.parametrize('name', DESIGN_NAMES)
-def test_font_floors_and_caption_size_match_the_markdown(name: str):
+def test_font_floors_match_the_markdown_and_omit_caption_font_px(name: str):
     text = (design_dir(name) / f'{name}.md').read_text(encoding='utf-8')
     floor_line = next(line for line in text.splitlines() if '字号下限' in line and '阅读文字不小于' in line)
     reading = int(re.search(r'阅读文字不小于\s*(\d+)px', floor_line).group(1))
     ui = int(re.search(r'界面小字不小于\s*(\d+)px', floor_line).group(1))
-    caption = int(re.search(r'字幕\s*(\d+)px', floor_line).group(1))
     contract = load_contract(name)
 
     assert contract['min_font_px'] == {'reading': reading, 'ui': ui}
-    assert contract['caption_font_px'] == caption
+    assert 'caption_font_px' not in contract
+    assert '字幕 36px' not in floor_line
+    assert '字幕（36px' not in text
+    assert 'layout.caption.font_size_px' in floor_line
 
 
 @pytest.mark.parametrize('name, fonts', [
@@ -101,6 +103,7 @@ def test_extension_docs_require_markdown_and_json_contracts():
         text = path.read_text(encoding='utf-8')
         assert '<名>.json' in text
         assert 'fonts.json' not in text
+        assert 'caption_font_px' not in text
 
 
 def test_design_index_states_positive_responsibilities_without_negative_formula():
