@@ -106,7 +106,7 @@ design textures、组件和模板资源不在这里拷：用哪些由 compositio
 
 #### 8.2 — handoff
 
-同一次调用还会生成 `{work_dir}/{topic_name}/composition-handoff.md`：Coding Agent（按 `inputs.json` 解析本阶段的 agent；有模型请求时同时展示请求与实际解析值，规则见 `references/delegation/conventions.md`）、Inputs、Outputs（含 `composition/scene-config.json`、用 `--scene-config` 生成字幕与运行 check-composition 的命令，以及渲染前自查）、Required References（基础指令 → scene-config 数据契约 → `modules/modules.md` → design 文档 → layout 目录 `modules/layouts/layouts.md`（可借用的 preset）→ 模板目录 `templates.md`（按场景借用）→ 组件目录，全部指向 8.1 物化的工作区副本；patterns / motion 另列为可选参考）、Additional Instructions（`composition_requests` 逐条列出并说明作用范围；没有写 None）。路径全是绝对路径，命令里的 skill 脚本从 skill 根目录运行。主 agent 不手写 handoff。
+同一次调用还会生成 `{work_dir}/{topic_name}/composition-handoff.md`：Coding Agent（按 `inputs.json` 解析本阶段的 agent；有模型请求时同时展示请求与实际解析值，规则见 `references/delegation/conventions.md`）、Inputs、Outputs（含 `composition/scene-config.json`、用 `--scene-config` 生成字幕与运行 check-composition 的命令，以及渲染前自查）、Required References（基础指令 → scene-config 数据契约 → `modules/modules.md` → design 文档 → layout 目录 `modules/layouts/layouts.md`（可借用的 preset）→ 模板目录 `templates.md`（按场景借用）→ 组件索引 `modules/components/components.md`（按需读要挂载的组件文档），全部指向 8.1 物化的工作区副本；patterns / motion 另列为可选参考）、Additional Instructions（`composition_requests` 逐条列出并说明作用范围；没有写 None）。路径全是绝对路径，命令里的 skill 脚本从 skill 根目录运行。主 agent 不手写 handoff。
 
 非法的 design 名会在写任何物化副本之前 exit 1。
 

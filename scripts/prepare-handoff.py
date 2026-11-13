@@ -357,8 +357,9 @@ def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan
     ]
     sources.append(SKILL_ROOT / 'modules' / 'layouts' / 'layouts.md')
     sources.append(SKILL_ROOT / 'modules' / 'templates' / 'templates.md')
-    components = modules / 'components'
-    references.append((f'{components}/（组件目录：按需读要挂载的组件文档）', [components]))
+    sources.append(SKILL_ROOT / 'modules' / 'components' / 'components.md')
+    components_doc = modules / 'components' / 'components.md'
+    references.append((f'{components_doc}（组件索引：按需读要挂载的组件文档）', [components_doc]))
     plan = Plan(
         values={
             'required_references': numbered([text for text, _ in references]),

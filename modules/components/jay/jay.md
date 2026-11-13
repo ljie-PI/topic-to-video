@@ -9,7 +9,7 @@
 | 文件 | 说明 |
 |---|---|
 | `components/jay/jay.html` | 组件本体：静态标记和样式（`<template>`），由工程的 adapter 克隆挂载 |
-| `components/jay/jay.mjs` | 初始化脚本：导出 `init(root, { params, data, duration, gsap })`，接口见 [modules.md](../modules.md) 的「模块初始化接口」 |
+| `components/jay/jay.mjs` | 初始化脚本：导出 `init(root, { params, data, duration, gsap })`，接口见 [modules.md](../../modules.md) 的「模块初始化接口」 |
 | `components/jay/images/jay-base.png` | 基础图层：身体、头、五官、键盘上的左手、笔记本和杯子，以及所有动作的来源。2048×2048，透明背景 |
 | `components/jay/images/jay-wave.png` | 挥手部件：只取抬起的右手。和 `jay-base.png` 同一构图、同一尺寸，像素对齐 |
 | `components/jay/make-envelope.mjs` | 从配音生成嘴型数据（见下文） |
@@ -230,9 +230,15 @@ jay: {
 node components/jay/make-envelope.mjs 配音.wav > envelope.json
 ```
 
+在仓库根目录（仓库本身就是工作区，或者已物化 `modules/` 的工作区根目录）为 composition 生成时，可运行：
+
+```bash
+node modules/components/jay/make-envelope.mjs voice_clone/narration.mp3 > composition/assets/jay-envelope.json
+```
+
 - 输出是一个数组，每秒 30 个值，0–100。
 - 静音阈值为 -45 dBFS；有声部分的 95 百分位响度记为 100。
-- 把数组粘贴到 `jay.envelope`。没有配音时可以留空数组，Jay 就不动嘴。
+- 把生成数组放入 `VIDEO.jay.envelope`，`envelopeFps` 与生成参数保持一致（默认 `30`）；`composition/assets/jay-envelope.json` 只是示例保存路径，不是新增的阶段产物门槛。没有配音时可以留空数组，Jay 就不动嘴。
 
 **换了配音，就要重新生成 envelope，并且按新配音的时间重排剧本。**
 
