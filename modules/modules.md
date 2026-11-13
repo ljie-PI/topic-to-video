@@ -1,10 +1,11 @@
 # 视频模块库
 
-一套做解说视频画面用的可复用模块，分四类：
+一套做解说视频画面用的可复用模块，按职责划分：
 
 - **设计主题**：管外观；
 - **布局**：管版面；
-- **组件**：通用部件；
+- **组件**：通用内容部件；
+- **转场**：scene 之间的交接；
 - **模板**：某一类视频的组装方法和场景。
 
 用模块拼视频，比每次从零写场景更快，风格也更统一。
@@ -88,7 +89,9 @@ components/
   jay/jay.md, jay.html, jay.mjs, images/   人物动作：组件和两张姿势图（已迁移到显式初始化）
   nav-bar/nav-bar.md, nav-bar.html, nav-bar.mjs   顶部界面条（已迁移到显式初始化）
   caption-bar/caption-bar.md, caption-bar.html, caption-bar.mjs   底部字幕条（已迁移）
-  transitions/tile-wipe/tile-wipe.md, tile-wipe.html, tile-wipe.mjs   方格转场（已迁移）
+transitions/
+  transitions.md                           转场总览：采用条件、目录、接入与时间约定
+  tile-wipe/tile-wipe.md, tile-wipe.html, tile-wipe.mjs   方格转场（已迁移到显式初始化）
 patterns/
   patterns.md                             patterns 总览：两类 pattern 的索引和使用方式
   media/                                  媒体呈现类：media-first、video-first、viewport-reveal、band、detail-callout、comparison、continuation
@@ -112,6 +115,7 @@ templates/
 | 选外观 / 新建主题 | `designs/designs.md`，再看具体主题的 `<主题>.md` + `<主题>.json`（机器可读 token、字号与字体契约） |
 | 安排版面、逐视觉 scene 选布局、确定区域坐标 | `layouts/layouts.md` → 每个所用 `layouts/<布局>.md` + 对应 `.json`（机器可读区域定义，字幕脚本读它的 `caption` 段） |
 | 挂某个组件、写它的数据 | `components/<组件>/<组件>.md` |
+| 需要转场、写它的切点数据 | `transitions/transitions.md`，选定后再读 `transitions/<转场>/<转场>.md`（如 `transitions/tile-wipe/tile-wipe.md`） |
 | 已有画面构想，需要借用非常匹配的形态 / 动效建议 | 按需查 `patterns/<类>/<pattern>.md` 或 `motion.md`；查阅条件见 [composition 基础指令第四部分](../references/delegation/composition/base-instructions.md#四内容演绎与模板选择) |
 | 让人物做动作、配嘴型 | `components/jay/jay.md`，动作库逐个列出每个动作的样子 |
 
@@ -122,6 +126,7 @@ templates/
 | 设计主题 | `designs/<主题>/` | **通用**：配色、字体、字号、背景、形状、动效。只管外观 |
 | 布局 | `layouts/` | **通用**：区域的位置、尺寸、层级。只管版面 |
 | 组件 | `components/<组件>/` | **通用**：不带具体内容；配色和字体只读主题变量；位置默认按布局 |
+| 转场 | `transitions/<转场>/` | **通用交接层**：连接 scene；只在用户指定或特别匹配时采用，自由布局可以使用简单接缝 |
 | patterns / motion | `patterns/<类>/`、`motion.md` | **按需参考（可跳过）**：画面形态与动效建议，不承担 scene 分类或设计流程 |
 | 模板 | `templates/<类型>/` | **专用于一类视频**：选布局，组合组件并定好参数，加入专属配色和元素，提供可填内容的场景 |
 
@@ -140,10 +145,10 @@ templates/
    - 复制模板资源（如 `templates/github/brand/` → 工程 `assets/brand/`）；
    - 选用它的场景。
 4. **布局**：按 `layouts/<布局>.md` 的区域表和层级表排列挂载点。
-5. **组件和场景**：
-   - 把 `.html` 和 `.mjs` 一起复制到工程的 `compositions/`，文件名不变；
+5. **组件、转场和场景**：
+   - 把实际采用的组件、转场和场景的 `.html` 与 `.mjs` 一起复制到工程的 `compositions/`，文件名不变；
    - 组件自带的图片按各自文档复制，例如 `components/jay/images/*` → 工程 `assets/jay/`；
-   - 挂载点的 `data-composition-id` 用组件名或场景名；
+   - 挂载点的 `data-composition-id` 用组件名、转场名或场景名；
    - 在工程里按 [模块初始化接口](#模块初始化接口唯一约定) 接线：克隆模板、调 `init`、驱动 timeline；选用 HyperFrames 时由工程 adapter 接其核心协议。
 6. **数据**：
    - 写 `data/video-data.js`（`window.VIDEO = {…}`），在 `index.html` 的 `<head>` 里、GSAP 之后引入；adapter 从里面取各模块的 `data`；
@@ -172,14 +177,14 @@ window.VIDEO = {
 };
 ```
 
-每个组件和场景都有一个 `data` 参数，可以改成读别的键名。
+每个组件、转场和场景都有一个 `data` 参数，可以改成读别的键名。
 
 视觉 scene 的常驻组件数据不从零编写：`subtitle-units.json` 的 `units[]` 以 `begin_s → start`、`end_s → end`、`text → text` 映射为 `captions[]`，`caption_segments[]` 原样映射为 `captionSegments[]`；`scene-config.json` 的每个 scene 以原起止时间映射为 `jay.placements[]`，regions 有人物区（`component` 为 `jay` 的 reserved 区）时为 `visible: true`，位置取该人物区 rect。完整映射见 `layouts/layouts.md` 和两个组件文档。
 
 ## 时间约定
 
-- 常驻组件（`nav-bar`、`caption-bar`、`tile-wipe`、`jay`）挂在 0 秒、覆盖整片，**数据用视频秒**。
-- 场景挂在它开始的时间，**场景里的时间是场景秒**（相对场景的 `data-start`）。
+- 常驻组件（`nav-bar`、`caption-bar`、`jay`）和常驻转场（`tile-wipe`）挂在 0 秒、覆盖整片，**数据用视频秒**。
+- 场景挂在它开始的时间，**场景里的时间是场景秒**（相对场景的 `data-start`）；其他非零 `data-start` 的挂载也使用相对各自起点的局部秒。
 - 场景交接：`cuts[].at` = `tabs[].at` = 下一个场景的 `data-start`。新场景开头的 0.55 秒被转场盖着，场景里第一个元素放在 0.55 秒之后出现。
 - 所有时间点都取自配音：字幕的逐句时间，以及每句话的开始时间。
 
@@ -189,7 +194,7 @@ window.VIDEO = {
 - **新布局**：写清每个区域的坐标、尺寸、层级，以及哪个组件填哪个区域；再放一份同名 `.json` 区域定义（`canvas` / `regions` / `caption`），数值与文档一致。放 `layouts/<名>.md`。
 - **新组件**：
   - 不带内容，只读主题变量，位置默认按某个布局；
-  - 文档和代码都放 `components/<名>/`：`<名>.md`、`<名>.html`（静态标记 + 样式）加同目录 `<名>.mjs`（导出 `init`，接口见 [模块初始化接口](#模块初始化接口唯一约定)）；
-  - 转场放 `transitions/` 子目录。
+  - 文档和代码都放 `components/<名>/`：`<名>.md`、`<名>.html`（静态标记 + 样式）加同目录 `<名>.mjs`（导出 `init`，接口见 [模块初始化接口](#模块初始化接口唯一约定)）。
+- **新转场**：负责 scene 交接，文档和代码放顶级 `transitions/<名>/`，文件形式与 `init` 接口同上；采用规则和时间语义见 `transitions/transitions.md`。
 - **新模板**：一类视频一个目录。`templates/<类型>/<类型>.md` 写组装方法；每个场景一份 `<场景>.md`、同目录的 `<场景>.html` 和 `<场景>.mjs`。
 - **所有 HTML** 都是静态模板：用 `<template>` 包起来，根元素 `#root` 带固定的 `data-composition-id`；所有动画只由时间决定，动画编排写在同目录 `.mjs` 的 `init` 里。

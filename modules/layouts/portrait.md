@@ -70,7 +70,7 @@
 |---|---|---|
 | 背景 | — | `#ground`，在根节点最底层 |
 | 场景 | 2 | 模板里的场景，按时间先后排在同一轨 |
-| 转场 | 10 | 组件 `transitions/tile-wipe` |
+| 转场 | 10 | 转场 `tile-wipe`（`transitions/tile-wipe/`） |
 | 字幕 | 16 | 组件 `caption-bar` |
 
 ## 竖屏摆法与信息密度

@@ -622,9 +622,16 @@ class TestCompositionHandoff:
         assert '组件索引：按需读要挂载的组件文档' in items[-1]
         assert '**可选参考（可跳过）**' in body
         optional = body.split('**可选参考（可跳过）**', 1)[1]
-        assert absolute_paths(optional) == {ws / 'modules/patterns', ws / 'modules/motion.md'}
+        assert absolute_paths(optional) == {
+            ws / 'modules/patterns', ws / 'modules/motion.md', ws / 'modules/transitions',
+        }
         assert '查阅条件见基础指令第四部分' in optional
-        assert all('modules/patterns' not in item and 'modules/motion.md' not in item for item in items)
+        assert all(
+            'modules/patterns' not in item
+            and 'modules/motion.md' not in item
+            and 'modules/transitions' not in item
+            for item in items
+        )
         # 模板按场景借用：不预选任何具体模板文档。
         assert 'modules/templates/github' not in body
 
@@ -1123,9 +1130,13 @@ class TestDelegationDocs:
     def test_composition_instructions_choose_components_before_writing_the_storyboard(self):
         text = (REPO_ROOT / 'references' / 'delegation' / 'composition' / 'base-instructions.md').read_text(encoding='utf-8')
 
-        assert text.index('modules/components/components.md') < text.index('组件使用表')
+        assert text.index('modules/components/components.md') < text.index('组件与转场使用表')
         assert 'reserved 区要求的组件必须出现在表里' in text
+        assert '每个用到的组件或转场一行' in text
+        assert '`window.VIDEO`' in text and '`cuts`' in text
+        assert 'modules/transitions/transitions.md' in text
         assert '由你自己从工作区的 `modules/` 拷进 `composition/`' in text
+        assert '组件使用表' not in text
 
     def test_script_instructions_report_all_five_products(self):
         text = (REPO_ROOT / 'references' / 'delegation' / 'script' / 'base-instructions.md').read_text(encoding='utf-8')

@@ -12,7 +12,7 @@
 | 布局 | `layouts/presenter.md`（讲解模式） | 区域位置固定 |
 | 顶部导航 | 组件 `nav-bar` | 参数和标签写法见第 3 节 |
 | 底部字幕 | 组件 `caption-bar` | 字幕取配音的逐句时间 |
-| 场景转场 | 组件 `transitions/tile-wipe` | 方格改成贡献图配色，卡片写法见第 3 节 |
+| 场景转场 | 转场 `tile-wipe`（`transitions/tile-wipe/`） | 方格改成贡献图配色，卡片写法见第 3 节 |
 | 主持人 | 组件 `jay` | 动作写法见第 5 节 |
 | 场景 | `trending-overview`、`project-cover`（文档 `templates/github/<场景>.md`，代码 `templates/github/<场景>.html` + `<场景>.mjs`） | 后面可以继续加：项目演示、注意事项、结尾 |
 

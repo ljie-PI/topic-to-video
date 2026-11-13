@@ -715,7 +715,7 @@ def test_composition_defaults_to_original_design_and_only_records_borrowed_refer
 
     assert '自主设计优先' in design
     assert '自主构思构图、视觉隐喻、信息展开与动效' in design
-    assert '`modules/patterns/` 与 `modules/motion.md` 是可跳过的参考库' in design
+    assert '`modules/patterns/`、`modules/motion.md` 与 `modules/transitions/` 都是可跳过的参考入口' in design
     assert '才定向查阅' in design
     assert '内容关系、素材形态和区域约束高度吻合' in design
     assert '全片不用参考库也完全合格' in design
@@ -771,8 +771,36 @@ def test_pattern_and_motion_indexes_are_optional_and_not_a_fixed_design_sequence
     handoff = doc_text('references/delegation/composition/handoff-template.md')
     for text in (phase, handoff):
         assert '可选参考' in text
+        assert 'transitions' in text
         assert '素材与 pattern 选择' not in text
         assert '模板 / pattern 的选择与理由' not in text
+
+
+def test_transitions_are_a_top_level_module_category_without_stale_paths():
+    modules = doc_text('modules/modules.md')
+    components = doc_text('modules/components/components.md')
+    transitions = doc_text('modules/transitions/transitions.md')
+    tile_wipe = doc_text('modules/transitions/tile-wipe/tile-wipe.md')
+
+    assert 'transitions/transitions.md' in modules
+    assert 'transitions/tile-wipe/tile-wipe.md' in modules
+    assert 'transitions/tile-wipe/tile-wipe.md' in tile_wipe
+    assert 'VIDEO.cuts' in transitions
+    assert '自由布局不强制使用转场' in transitions
+    old_transition_path = 'components' + '/transitions'
+    assert old_transition_path not in modules
+    assert old_transition_path not in components
+    assert old_transition_path not in tile_wipe
+
+    for doc in (
+        'references/delegation/composition/base-instructions.md',
+        'references/delegation/composition/handoff-template.md',
+        'references/phases/08-composition.md',
+    ):
+        text = doc_text(doc)
+        assert '组件与转场使用表' in text
+        assert '组件使用表' not in text
+        assert '`cuts`' in text
 
 
 def test_module_path_conventions_distinguish_prose_links_and_commands():

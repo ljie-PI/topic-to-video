@@ -2,7 +2,7 @@
 
 这是一份**按需参考库**，提供动画能力查询入口、构思维度、runtime 候选与编排建议，不是每个 scene 的动效设计流程。统一采用规则、查阅条件与借用记录见 [composition 基础指令第四部分](../references/delegation/composition/base-instructions.md#四内容演绎与模板选择)：只在用户明确指定，或具体运动问题与参考建议**特别匹配**时才查阅或借用；无特别匹配时不查阅/不借用，自主设计运动或保持静态，每个 scene 最终以旁白语义和素材实际情况为准。
 
-转场（scene 之间的交接）不在这份指南里，见组件文档 `components/transitions/tile-wipe/tile-wipe.md`（目前唯一的转场组件）。
+转场（scene 之间的交接）不在这份指南里，按需见 `transitions/transitions.md`；选定转场后再读具体文档，例如 `transitions/tile-wipe/tile-wipe.md`（目前唯一的转场模块）。
 
 ## 需要核对实现能力时
 
@@ -40,7 +40,7 @@ HTML-as-texture、shader、Three.js、TypeGPU 这类 hero treatment 通常只值
 以下是可选的编排建议，不要求每个 scene 有招牌机制或持续运动：
 
 - **运动词汇与变化**：可以用相近的节奏保持全片连贯，再按内容关系调整具体机制。
-- **转场分级**：接缝可以稳定，话题切换或高潮可以强调；采用转场组件时，其参数见 `components/transitions/tile-wipe/tile-wipe.md`。
+- **转场分级**：接缝可以稳定，话题切换或高潮可以强调；采用转场时，其参数见所选模块文档，例如 `transitions/tile-wipe/tile-wipe.md`。
 - **焦点与编排**：需要视觉焦点时，可围绕一个主要变化组织动效；极简静态或多阶段演绎也同样成立。
 - **素材与理解**：持续运动适合遍历重点、逐步揭示或解释变化；素材已经清楚时，可以保持静止。
 
