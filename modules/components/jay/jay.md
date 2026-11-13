@@ -9,7 +9,7 @@
 | 文件 | 说明 |
 |---|---|
 | `components/jay/jay.html` | 组件本体：静态标记和样式（`<template>`），由工程的 adapter 克隆挂载 |
-| `components/jay/jay.mjs` | 初始化脚本：导出 `init(root, { params, data, duration, gsap })`，接口见 [modules.md](../modules.md) 的「模块初始化接口」 |
+| `components/jay/jay.mjs` | 初始化脚本：导出 `init(root, { params, data, duration, gsap })`，接口见 [modules.md](../../modules.md) 的「模块初始化接口」 |
 | `components/jay/images/jay-base.png` | 基础图层：身体、头、五官、键盘上的左手、笔记本和杯子，以及所有动作的来源。2048×2048，透明背景 |
 | `components/jay/images/jay-wave.png` | 挥手部件：只取抬起的右手。和 `jay-base.png` 同一构图、同一尺寸，像素对齐 |
 | `components/jay/make-envelope.mjs` | 从配音生成嘴型数据（见下文） |
@@ -230,7 +230,7 @@ jay: {
 node components/jay/make-envelope.mjs 配音.wav > envelope.json
 ```
 
-在仓库根目录为 composition 生成时，可运行：
+在仓库根目录（仓库本身就是工作区，或者已物化 `modules/` 的工作区根目录）为 composition 生成时，可运行：
 
 ```bash
 node modules/components/jay/make-envelope.mjs voice_clone/narration.mp3 > composition/assets/jay-envelope.json
