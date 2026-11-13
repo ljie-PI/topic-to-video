@@ -806,6 +806,8 @@ def test_transitions_are_a_top_level_module_category_without_stale_paths():
     assert '常驻组件和转场' not in presenter
     assert '常驻组件和转场' not in stage
     assert '## 3. 组件与转场参数' in github
+    assert '| 组件或转场 | 参数（`init` 的 `params`；HyperFrames 工程写在 `data-variable-values`） |' in github
+    assert '哪些组件与转场、给组件与转场什么参数' in github
     assert '全片组件与转场（`nav-bar` / `caption-bar` / `tile-wipe`）' in composition
 
     for doc in (
