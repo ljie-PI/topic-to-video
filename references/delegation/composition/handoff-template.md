@@ -55,16 +55,17 @@
 
 写到工作区（{{ws}}/）：
 
-- {{design_json_q}}：全片 design 机器契约；根字段恰好为 version / source / preset / tokens / min_font_px。preset 与注册 JSON 完全一致；custom 的 preset 为 null，也必须有完整 tokens 和正整数 reading / ui 字号下限；不含 fonts 维护清单
+- {{design_json_q}}：全片 design 机器契约；根字段恰好为 version / source / preset / tokens / min_font_px。source 为 preset 时 preset 为注册名，tokens / min_font_px 与注册 preset JSON 完全一致；custom 的 preset 为 null，也必须有完整 tokens、正整数 reading 下限与不低于 22px 的 ui 下限；不含 fonts 维护清单
 - {{scene_config_q}}：最终视觉场景机器配置，schema 见 Required References 里的 scene-config 契约文档（version / canvas / total_s / scenes；每个 scene 有唯一 scene_id、source_scene_ids、begin_s / end_s、template 与落盘完整 regions / caption 的 layout）；时间为全片秒，主区间覆盖整段视频。它由你与 storyboard 一起产出：先按「用户要求 → 特别匹配模块 → 即时生成」的顺序逐视觉场景定方案，再落盘
-- {{subtitle_units_q}}：最终字幕单元。**在 scene-config 写出后，按各 scene 落盘的 caption 规格生成**（下面第一条命令）。默认脚本生成初稿；已有用户编辑是有效输入，仅改画面 / 重渲染不要覆盖它
+- {{subtitle_units_q}}：最终字幕单元。**在 scene-config 写出后，按各 scene 落盘的 caption 规格生成**（下面的 `align-narration.py --mode subtitles` 命令）。默认脚本生成初稿；已有用户编辑是有效输入，仅改画面 / 重渲染不要覆盖它
 - {{ws}}/composition/storyboard.md：storyboard，开头是「组件使用表」，每个视觉 scene 写明 intent、template / layout 方案及理由、所用的 content 区域、素材、构图、信息展开与动效安排；必用素材覆盖表按基础指令第一部分处理
 - {{ws}}/composition/index.html + {{ws}}/composition/compositions/：HyperFrames 工程与子合成
 - {{ws}}/composition/check-composition.json：check-composition 的报告（下面命令的 `--output` 写出它；最后一次运行的 verdict 必须是 pass）
 - {{ws}}/composition/renders/final.mp4：渲染产物
 
-先决定 preset / custom design，安装字体并写 {{design_json_q}}，再逐场景选择模块、写 {{scene_config_q}} 并生成字幕单元。preset 使用对应 `modules/designs/<design>` 字体包；custom 可复用现有字体包作为资源，但 token 字体名必须匹配实际 CSS，复用字体资源不等于采用该 preset 的视觉设计。禁止系统字体。通用安装命令（选定后把 `<design>` 换成实际字体资源包名）：
+先决定 preset / custom design，若 `composition/` 目录不存在先运行 `npx hyperframes init composition/`，再安装字体并写 {{design_json_q}}，然后逐场景选择模块、写 {{scene_config_q}} 并生成字幕单元。preset 使用对应 `modules/designs/<design>` 字体包；custom 可复用现有字体包作为资源，但 token 字体名必须匹配实际 CSS，复用字体资源不等于采用该 preset 的视觉设计。禁止系统字体。初始化与通用安装命令（选定后把 `<design>` 换成实际字体资源包名）：
 
+- cd {{ws_q}} && npx hyperframes init composition/（仅当 `composition/` 目录不存在时）
 - bash {{skill_root_q}}/scripts/fonts-download.sh {{composition_dir_q}}/assets/fonts --theme {{ws_q}}/modules/designs/<design>
 
 然后写 {{scene_config_q}}，再生成字幕单元（排版参数由各 scene 落盘的 caption 决定，分段由脚本完成）：

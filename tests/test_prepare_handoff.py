@@ -753,6 +753,32 @@ class TestCompositionDesignDelegation:
         assert str(ws / 'modules/designs/github/github.md') not in sections['Required References']
         assert str(ws / 'modules/designs/designs.md') in sections['Required References']
 
+    def test_scene_scoped_design_request_stays_in_composition_requests_not_global_design(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'composition')
+        inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
+        scoped_request = '仅叙事 scene 2 使用 github 风格，其他 scene 不传播'
+        inputs.pop('design')
+        inputs['composition_requests'] = [scoped_request]
+        write(ws / 'inputs.json', json.dumps(inputs, ensure_ascii=False))
+
+        result = prepare(ws, 'composition')
+
+        assert result['fonts'] is None
+        assert not (ws / 'composition' / 'assets' / 'fonts').exists()
+        sections = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))
+        assert 'design 未预选' in sections['Inputs']
+        assert scoped_request in sections['Additional Instructions']
+        assert 'design github' not in sections['Inputs']
+
+    def test_phase_1_and_base_instructions_distinguish_scoped_design_requests(self):
+        phase_1 = (REPO_ROOT / 'references/phases/01-gather-inputs.md').read_text(encoding='utf-8')
+        base = (REPO_ROOT / 'references/delegation/composition/base-instructions.md').read_text(encoding='utf-8')
+        assert '限定到单个 scene 的要求原话记入 `composition_requests`，不写入 `design`' in phase_1
+        assert '用户明确说全片用' in phase_1
+        assert '限定到单个叙事 / 视觉 scene' in phase_1
+        assert '只在该 scene 根作用域覆盖相应 token' in base
+        assert '不自动传播到其他 scene' in base
+
 
 class TestFailures:
     def test_unknown_step_is_a_bad_argument(self, tmp_path: Path):

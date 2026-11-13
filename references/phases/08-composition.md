@@ -117,7 +117,7 @@ composition agent 先决定 preset / custom，按 handoff 运行 `fonts-download
 
 被委派的 agent 自己从磁盘读 handoff、Inputs 中标为「Agent 阅读与画面资源」的文件与 Required References（含工作区的委派包与 modules 副本）；「仅供工具读取」的文件只传给现有命令，不要求全文阅读。主 agent 不在 prompt 里复述指令或重复文本，也**不要**在主 agent 的会话里驱动 composition authoring 或手工 patch `composition/index.html`。
 
-agent 先根据全片与各 scene 需求决定 preset / custom design，安装字体并写 `composition/design.json`；然后读旁白与叙事规划，决定实际视觉切分，对每个视觉场景按固定顺序（用户要求 → 特别匹配模块 → 即时生成）定方案，写出 `composition/scene-config.json` 与 storyboard。模板与 preset 按场景借用：只在用户明确指定或与目标 scene 特别匹配时才采用，`template: null` 与 `preset: null` 的即时生成自由布局是正常路径。
+agent 先读旁白与叙事规划（`script.txt`、`scene-plan.json`、timeline 与素材目录），再根据全片与各 scene 需求决定 preset / custom design；`composition/` 目录不存在时先运行 `npx hyperframes init composition/`，再安装字体并写 `composition/design.json`；然后决定实际视觉切分，对每个视觉场景按固定顺序（用户要求 → 特别匹配模块 → 即时生成）定方案，写出 `composition/scene-config.json` 与 storyboard。模板与 preset 按场景借用：只在用户明确指定或与目标 scene 特别匹配时才采用，`template: null` 与 `preset: null` 的即时生成自由布局是正常路径。
 
 scene-config 写出后，agent 跑 handoff 里的 `align-narration.py --mode subtitles --scene-config ... --narration-audio ...`，把字幕生成到 `composition/assets/subtitle-units.json`（已有用户编辑是有效输入）。然后按基础指令第四部分自主设计构图、动作与动效，选择组件并完成 storyboard 和画面；patterns / motion 的查阅和借用也按该部分处理。scene、layout、模板与画面设计都由它自己负责，主 agent 不代为决定。
 

@@ -24,12 +24,12 @@
 - **时间**：段落与 cue 的起止秒来自 `transcribe/timeline.json`；视觉 scene 的真实配音边界与 cue 锚点以它和 narration 音频为准。本阶段不修改这份时间轴。
 - **必用素材**：catalog 阶段适用时，catalog 的 `required_material_refs`（论文模式的关键图 / 表）必须都出现在成片里。在 storyboard 里另起一张覆盖表：每条必用 ref 一行，写明展示它的 scene 与大致秒数；确实无法展示时写原因并报告，不要默默丢掉。
 - **素材**：画面素材只来自 `material-catalog.json`。图片 / 视频 ref 用 `<slug>/<id>`，先定位 `entries[*].slug` 对应的 entry，再在该 entry 内按 id 找素材；裸 id 无效。图片解析到该 entry 的 `local_path`：所有相对 `local_path` 都以 `{work_dir}/{topic_name}/harvest_page/` 为 base（不是 `composition/` 或当前目录）。视频 clip 用 `<slug>/<video_id>:<start>-<end>`，一律解析到该 entry 对应的 `selected_clips[].clip_path`（Phase 5 已切好的无音轨片段文件，相对工作区根 `{work_dir}/{topic_name}/`），不使用视频的 `local_path`、不嵌入整段原视频；场景规划只引用了 `<slug>/<video_id>` 时，从该 entry 的视频 `selected_clips` 里挑片段。同一个 video id 出现在多个 entry 时，slug 决定使用哪一个 entry 的片段，不能跨 entry 匹配窗口。读取或复制进 composition 前先按此规则解析。视频仍然静音播放（`<video>` 带 `muted playsinline`）。
-- **字体**：确定 design 后再安装到 `composition/assets/fonts/`，不依赖系统字体。preset 用对应 `modules/designs/<design>` 字体包；custom 可以复用库内某个现有字体包作为资源，但 token 的字体名必须与实际 CSS 一致。复用字体资源不等于采用该 preset 的视觉设计。通用命令：`bash scripts/fonts-download.sh <ws>/composition/assets/fonts --theme <ws>/modules/designs/<design>`；handoff Outputs 也给出带实际根路径的命令。
+- **字体**：先跑 `npx hyperframes init composition/`（仅当 `composition/` 目录不存在时），确定 design 后再安装到 `composition/assets/fonts/`，不依赖系统字体。preset 用对应 `modules/designs/<design>` 字体包；custom 可以复用库内某个现有字体包作为资源，但 token 的字体名必须与实际 CSS 一致。复用字体资源不等于采用该 preset 的视觉设计。通用命令：`bash scripts/fonts-download.sh <ws>/composition/assets/fonts --theme <ws>/modules/designs/<design>`；handoff Outputs 也给出带实际根路径的命令。
 
 ## 二、必须选择并落盘 design
 
 - 先读 `modules/designs/designs.md` 与 scene 需求。用户明确指定注册 preset 时按约束采用；未指定时，只有某个 preset 与全片视觉需求特别匹配才采用，否则生成 custom design。库内 preset 是候选，不是默认必选。
-- 无论哪条路径都先写 `composition/design.json`，根字段恰好为 `version: 1` / `source` / `preset` / `tokens` / `min_font_px`。`source: "preset"` 时记录注册名，tokens 与字号下限必须和该 preset JSON 完全一致；`source: "custom"` 时 `preset: null`，自行生成完整共享 token 集合与正整数 `reading` / `ui` 下限。`fonts` 维护清单不写入这份产物。
+- 无论哪条路径都先写 `composition/design.json`，根字段恰好为 `version: 1` / `source` / `preset` / `tokens` / `min_font_px`。`source: "preset"` 时记录注册名，tokens 与字号下限必须和该 preset JSON 完全一致；`source: "custom"` 时 `preset: null`，自行生成完整共享 token 集合与正整数 `reading` / `ui` 下限（`ui` 不低于 22px）。`fonts` 维护清单不写入这份产物。
 - 选定 preset 后再按需阅读 `modules/designs/<design>/<design>.md` 与 `<design>.json` 并安装对应字体；custom 也要写完整 tokens / min font，并确保实际 CSS 的字体名与 token 一致。
 - 颜色、字体只取落盘 design 的 token；动效的默认时长、缓动与列表间隔跟随主题 token，具体运动方式与编排由你设计。字号守 `composition/design.json` 的 `min_font_px`：面板标题栏、按钮、小标签这类界面小字放在带 `data-text-role="ui"` 的元素里，按界面小字下限检查；其余文字都按阅读文字下限检查。
 - 选了模板场景时，模板的专属变量与覆盖值**写在 design 之后**，只能增补主题，不能替换 design 的语义；用户把某 preset 限定到单个 scene 时，只在该 scene 根作用域覆盖相应 token 并在 storyboard 记录，不自动传播到其他 scene。模板的专属配色、人物、导航和转场同样只作用于采用它的 scene。
@@ -81,7 +81,7 @@
 
 ## 工作顺序
 
-0. **先决定 preset / custom design，安装字体并写 design 契约。** 按第二部分选择全片基线，运行 handoff 的通用字体安装命令，把实际 tokens 与字号下限写进 `composition/design.json`；完成这些之后再逐场景选择其他模块。
+0. **先决定 preset / custom design，初始化工程，安装字体并写 design 契约。** 按第二部分选择全片基线；`composition/` 目录不存在时先运行 `npx hyperframes init composition/`，再运行 handoff 的通用字体安装命令，把实际 tokens 与字号下限写进 `composition/design.json`；完成这些之后再逐场景选择其他模块。
 1. **决定视觉 scenes，逐场景定方案，写 scene-config。** 先读 `script.txt`、`scene-plan.json`、timeline 与素材目录，按实际画面需要合并 / 拆分叙事 scene。对每个视觉场景按第四部分的固定顺序选择方案；可以借用 `modules/layouts/` 的 preset（读 `layouts.md` 目录与对应 JSON / 文档），也可以自主设计自由布局。把最终结果写进 `composition/scene-config.json`（schema 见契约文档），并选定 storyboard 的骨架。
 2. **生成字幕初稿**。跑 handoff 里的 `align-narration.py --mode subtitles --scene-config ... --narration-audio ...` 命令，把字幕单元切到 `composition/assets/subtitle-units.json`。已有用户编辑过的字幕是有效输入：只有缺失或当前任务明确要求重新生成时才重新生成，仅改画面 / 重渲染不要覆盖它。
 3. **自主构思并写 storyboard**：先读 `modules/components/components.md` 的组件目录，再读要用的组件文档。storyboard 开头先写一张「组件使用表」：每个用到的组件一行，写明挂载参数、驱动它的 `window.VIDEO` 数据从哪来（例如 `captions` 来自 `composition/assets/subtitle-units.json`）。各 reserved 区要求的组件必须出现在表里；常驻组件不用在每个 scene 里重复写，scene 里只写本 scene 额外用到的组件。然后按 scene-config 逐个视觉 scene 写，记录对应的叙事 `intent` / `content_plan`、template / layout 方案（preset 或自主设计）及理由、content 区域，以及素材、构图、信息展开与动效安排；参考库的查阅与借用按第四部分处理。可以改选素材与演绎方式；偏离场景规划的地方写明理由；**旁白不能改**（字幕以显示稿为准，新增屏幕文字与标注守第四部分事实边界）。

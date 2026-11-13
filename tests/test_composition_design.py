@@ -96,6 +96,17 @@ def test_custom_preset_must_be_null(tmp_path: Path):
         load(tmp_path / 'composition' / 'design.json', payload)
 
 
+def test_custom_ui_floor_must_be_at_least_22px(tmp_path: Path):
+    payload = custom_design()
+    payload['min_font_px']['ui'] = 21
+
+    with pytest.raises(ValueError, match='ui must be at least 22px'):
+        load(tmp_path / 'composition' / 'design.json', payload)
+
+    payload['min_font_px']['ui'] = 22
+    assert load(tmp_path / 'composition' / 'design.json', payload) == payload
+
+
 @pytest.mark.parametrize('source', ['preset', 'custom'])
 @pytest.mark.usefixtures('require_ffmpeg')
 def test_phase_8_accepts_both_design_sources(tmp_path: Path, source: str):

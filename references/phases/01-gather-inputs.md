@@ -17,7 +17,7 @@
 | `duration` | 目标时长，单位分钟，写成数字（默认 `3`）；也接受数字加分钟单位的字符串（`"5min"`、`"5 分钟"`）。用户说了就照他说的，不自行设上下限。`"90秒"`、`"1h"`、`"3-5分钟"` 这类写法不接受，会被判为损坏 |
 | `language` | 解说语言，默认中文 |
 | `orientation` | `landscape`（横屏 1920×1080）/ `portrait`（竖屏 1080×1920，仅显式 9:16）/ `portrait-3:4`（1080×1440，默认竖屏） |
-| `design` | 可选的用户明确约束：只有用户点名注册 design 时才填 `default` / `github` / `producthunt`；未指定时不填，由 Phase 8 的 composition agent 选择 preset 或生成 custom design |
+| `design` | 可选的用户明确全片 design 约束：只有用户点名注册 design 且未限定到单个叙事 / 视觉 scene 时才填 `default` / `github` / `producthunt`；限定到单个 scene 的要求原话记入 `composition_requests`，不写入 `design`；未指定时不填，由 Phase 8 的 composition agent 选择 preset 或生成 custom design |
 | `coding_agent` | 全局委派目标；默认值与命令以 `references/delegation/conventions.md` 的统一约定为准 |
 | `delegation` | 可选，阶段级 agent / model 要求。对象的键为 `catalog` / `script` / `composition`，各值只含 `agent` 和 / 或 `model`（非空字符串）；如 `{"catalog": {"agent": "pi-coding-agent", "model": "<provider>/<model-id>"}}`。未指定 agent 时继承 `coding_agent`，未指定 model 时使用目标 agent 自身的模型配置；用户点名时严格遵循，未提就不填 |
 | `fetch_materials` | 是否联网抓取视觉素材（布尔） |
@@ -60,8 +60,9 @@
 
 1. 来源：要抓取的 URL、粘贴的文本，或仅一个主题。
 2. 朝向：默认横屏 `1920×1080`。用户说“竖屏”但没给比例时用 `1080×1440`（`orientation` 写 `portrait-3:4`）；明确要 9:16 时才用 `1080×1920`（`portrait`）。
-3. 风格：只记录用户明确点名注册 design 的约束，不替 Phase 8 预选。
-   - 用户明确说用 `default` / `github` / `producthunt` 时，`design` 写对应注册名。
+3. 风格：只记录用户明确点名注册 design 的全片约束，不替 Phase 8 预选。
+   - 用户明确说全片用 `default` / `github` / `producthunt`（未限定到单个叙事 / 视觉 scene）时，`design` 写对应注册名。
+   - 用户把某个 preset 限定到单个叙事 / 视觉 scene 时，不写入 `design`，把原话记入 `composition_requests`；Phase 8 只在该 scene 根作用域覆盖相应 token，不自动传播到其他 scene。
    - 未指定时不填 `design`；不要根据主题或“没有现有风格”映射成 `default`。
    - 手绘、深色等其他风格要求记入 `composition_requests`，由 Phase 8 选择特别匹配的 preset 或生成 custom design。
 4. 时长：用户说了就用他的值，不设上下限；没说用 3 分钟。
