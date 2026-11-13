@@ -34,9 +34,4 @@ templates/<类型>/
 不从模板文档猜。
 
 **模板按场景借用，不是全片锁定。** Phase 6 / 7 不选模板；Phase 8 委派的
-composition agent 读 `modules/templates/templates.md`，对每个视觉场景独立决定
-是否借用某个模板场景（顺序：用户要求 → 指定 / 非常匹配的 template → 适合的
-layout → 自主设计），选中时把 `{"name": "<模板>", "scene": "<场景>"}` 写进该
-场景的 `scene-config.json`。相邻 scene 可以一个用模板、一个自主设计；模板场景
-的专属配色、人物演法与导航只作用于采用它的 scene。没有匹配就写 `template:
-null`，不要为了套模板改朝向、design 或用户明确要求。
+composition agent 读 `modules/templates/templates.md`，按 [composition 基础指令第四部分](../../references/delegation/composition/base-instructions.md#四内容演绎与模板选择) 的统一规则对每个视觉场景独立判断是否借用：只在用户明确指定，或模板场景与当前 scene 的内容关系、真实朗读锚点和布局需求**特别匹配**时才采用，选中后再读 `<类型>.md`、`<类型>.json` 与对应 `<场景>.md`，并把 `{"name": "<模板>", "scene": "<场景>"}` 写进该场景的 `scene-config.json`。相邻 scene 可以一个用模板、一个自主设计；模板场景的专属配色、人物演法与导航只作用于采用它的 scene。无特别匹配时写 `template: null`，即时设计并自主实现场景，不要为了套模板改朝向、design、旁白或用户明确要求。

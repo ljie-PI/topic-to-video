@@ -744,6 +744,9 @@ def test_module_path_conventions_distinguish_prose_links_and_commands():
 
 @pytest.mark.parametrize('doc', [
     'modules/modules.md',
+    'modules/templates/templates.md',
+    'modules/layouts/layouts.md',
+    'modules/components/components.md',
     'modules/motion.md',
     'modules/patterns/patterns.md',
 ])
@@ -755,6 +758,62 @@ def test_composition_reference_links_resolve_from_the_markdown_file(doc):
     assert target.resolve() == (REPO_ROOT / 'references/delegation/composition/base-instructions.md').resolve()
     assert target.is_file()
     assert fragment == '四内容演绎与模板选择'
+
+
+def test_scene_module_adoption_rule_is_unified_across_base_handoff_phase_and_indexes():
+    composition = doc_text('references/delegation/composition/base-instructions.md')
+    section4 = composition.split('## 四、内容演绎与模板选择', 1)[1].split('## 五、', 1)[0]
+
+    assert '默认即时生成，预定义模块是例外' in section4
+    for required in (
+        '先应用用户要求及其作用范围',
+        '未指定时评估“特别匹配”，不是“勉强可用”',
+        '模块表达的内容关系与 scene 的叙事目标一致',
+        '素材形态、数据、画布和可读性适合该模块',
+        '不需要改旁白、视觉 scene、orientation 或用户要求来迁就模块',
+        '采用它比即时生成更清楚或更可靠，而不只是少写代码',
+        '没有特别匹配就即时生成',
+        '按实际采用落盘',
+        'template: null',
+        'preset: null',
+        '保持模块内部依赖完整',
+        '只记录实际采用',
+    ):
+        assert required in section4
+
+    for text in (
+        composition.split('## 一、输入契约', 1)[1].split('## 二、', 1)[0],
+        doc_text('references/delegation/composition/handoff-template.md'),
+        doc_text('references/phases/08-composition.md'),
+    ):
+        assert '用户要求 → 特别匹配模块 → 即时生成' in text
+
+    modules = doc_text('modules/modules.md')
+    assert '发现入口，不是采用清单' in modules
+    assert '阅读模块目录不等于采用模块' in modules
+
+    templates = doc_text('modules/templates/templates.md')
+    assert '特别匹配' in templates
+    assert '`template: null`' in templates
+    assert 'preferred_layouts' in templates
+
+    layouts = doc_text('modules/layouts/layouts.md')
+    assert '特别匹配' in layouts
+    assert '`preset: null`' in layouts
+
+    components = doc_text('modules/components/components.md')
+    assert '特别匹配' in components
+    assert '自绘所需部件' in components
+    assert '不为了目录完整而挂 Jay/nav/转场' in components
+
+    patterns = doc_text('modules/patterns/patterns.md')
+    assert '特别匹配' in patterns
+    assert '不借用' in patterns
+
+    motion = doc_text('modules/motion.md')
+    assert '特别匹配' in motion
+    assert '保持静态' in motion
+
 
 
 def test_composition_base_instructions_opening_lists_five_constraint_categories():

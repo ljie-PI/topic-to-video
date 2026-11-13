@@ -8,6 +8,8 @@
 
 某一类视频专用的东西（品牌标志、专属配色、专属卡片）放在模板里（`templates/`），由模板组合这些组件来实现。
 
+“可复用”不等于每个 scene 都应该挂载。按 [composition 基础指令第四部分](../../references/delegation/composition/base-instructions.md#四内容演绎与模板选择)，只在用户明确指定、被已采用的 template / layout 声明为 reserved 必要组件，或组件本身与当前需求**特别匹配**时才采用并阅读对应组件文档；无特别匹配时用普通 HTML/CSS/SVG/JS 自绘所需部件，不为了目录完整而挂 Jay/nav/转场等。
+
 ## 目录
 
 | 组件 | 文档 / 文件 | 作用 | 层级 | 读的数据 |

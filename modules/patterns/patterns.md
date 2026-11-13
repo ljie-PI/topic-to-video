@@ -1,6 +1,6 @@
 # Patterns：画面形态建议库
 
-patterns 是**按需参考库**，提供常见媒体和信息形态的摆法与动效候选，不是 scene 分类表或必选菜单。查阅条件与借用记录见 [composition 基础指令第四部分](../../references/delegation/composition/base-instructions.md#四内容演绎与模板选择)；每个 scene 最终以旁白语义、素材实际情况和所选 layout 的区域为准。
+patterns 是**按需参考库**，提供常见媒体和信息形态的摆法与动效候选，不是 scene 分类表或必选菜单。统一采用规则、查阅条件与借用记录见 [composition 基础指令第四部分](../../references/delegation/composition/base-instructions.md#四内容演绎与模板选择)：只在用户明确指定，或已有画面构想与某个 pattern 的形态和触发信号**特别匹配**时才借用；无特别匹配时不借用、自主构图，每个 scene 最终以旁白语义、素材实际情况和所选 layout 的区域为准。
 
 每份 pattern 文档都有同样的小节：适用场景和触发信号 / 区域尺寸建议 / 横屏摆法 / 竖屏摆法 / 动效候选与应避免 / 用色 / 已有实现。需要具体动效参考时可查 `motion.md`；使用转场组件时读 `components/transitions/tile-wipe/tile-wipe.md`。
 

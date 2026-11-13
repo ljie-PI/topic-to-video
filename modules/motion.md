@@ -1,6 +1,6 @@
 # 动效参考
 
-这是一份**按需参考库**，提供动画能力查询入口、构思维度、runtime 候选与编排建议，不是每个 scene 的动效设计流程。查阅条件与借用记录见 [composition 基础指令第四部分](../references/delegation/composition/base-instructions.md#四内容演绎与模板选择)；每个 scene 最终以旁白语义和素材实际情况为准。
+这是一份**按需参考库**，提供动画能力查询入口、构思维度、runtime 候选与编排建议，不是每个 scene 的动效设计流程。统一采用规则、查阅条件与借用记录见 [composition 基础指令第四部分](../references/delegation/composition/base-instructions.md#四内容演绎与模板选择)：只在用户明确指定，或具体运动问题与参考建议**特别匹配**时才查阅或借用；无特别匹配时不查阅/不借用，自主设计运动或保持静态，每个 scene 最终以旁白语义和素材实际情况为准。
 
 转场（scene 之间的交接）不在这份指南里，见组件文档 `components/transitions/tile-wipe/tile-wipe.md`（目前唯一的转场组件）。
 

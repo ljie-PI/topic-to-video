@@ -14,7 +14,7 @@
 | `{{coding_agent}}` / `{{coding_model_instruction}}` | 按 `inputs.json.delegation.composition` 与全局 `coding_agent` 解析的有效 agent / model；未指定 model 时模型说明为空 |
 | `{{design}}` / `{{orientation}}` | `inputs.json` 的对应字段，全片固定约束；全局 template / layout 不是准备前提，由本阶段逐视觉场景决定 |
 | `{{material_catalog}}` | catalog 适用时（联网抓素材，或论文模式）：catalog 的路径；否则“无（无素材，画面用纯排版）” |
-| `{{required_references}}` | 按叠加顺序编号：基础指令 → scene-config 数据契约 → `modules.md` → design 文档与 `<design>.json` 机器契约 → layout 目录（`layouts.md`，可借用的 preset）→ 模板目录（`templates.md`，按场景借用）→ 组件目录（按需读要挂载的组件文档）。全部指向工作区副本；patterns / motion 单独列为可选参考 |
+| `{{required_references}}` | 按叠加顺序编号：基础指令 → scene-config 数据契约 → `modules.md` → design 文档与 `<design>.json` 机器契约 → layout 目录（`layouts.md`，可借用的 preset）→ 模板目录（`templates.md`，按场景借用）→ 组件目录（按需读要挂载的组件文档）。它们是发现入口，不是采用清单；全部指向工作区副本；patterns / motion 单独列为可选参考 |
 | `{{additional_instructions}}` | `inputs.json` 的 `composition_requests` 逐条列出；没有写 `None`。各条要求的作用范围以用户表述为准（某个叙事场景 / 某个视觉场景 / 整片），未说明时按整片应用 |
 | `{{transcript_q}}` / `{{narration_q}}` / `{{offsets_q}}` / `{{script_txt_q}}` | 确定性字幕生成的四个上游 |
 | `{{subtitle_units_q}}` | 字幕单元的最终位置：`{{ws}}/composition/assets/subtitle-units.json` |
@@ -55,7 +55,7 @@
 
 写到工作区（{{ws}}/）：
 
-- {{scene_config_q}}：最终视觉场景机器配置，schema 见 Required References 里的 scene-config 契约文档（version / canvas / total_s / scenes；每个 scene 有唯一 scene_id、source_scene_ids、begin_s / end_s、template 与落盘完整 regions / caption 的 layout）；时间为全片秒，主区间覆盖整段视频。它由你与 storyboard 一起产出：先按「用户要求（其作用范围内）→ 指定 / 非常匹配的 template → 适合的 layout → 自主设计」的顺序逐视觉场景定方案，再落盘
+- {{scene_config_q}}：最终视觉场景机器配置，schema 见 Required References 里的 scene-config 契约文档（version / canvas / total_s / scenes；每个 scene 有唯一 scene_id、source_scene_ids、begin_s / end_s、template 与落盘完整 regions / caption 的 layout）；时间为全片秒，主区间覆盖整段视频。它由你与 storyboard 一起产出：先按「用户要求 → 特别匹配模块 → 即时生成」的顺序逐视觉场景定方案，再落盘
 - {{subtitle_units_q}}：最终字幕单元。**在 scene-config 写出后，按各 scene 落盘的 caption 规格生成**（下面第一条命令）。默认脚本生成初稿；已有用户编辑是有效输入，仅改画面 / 重渲染不要覆盖它
 - {{ws}}/composition/storyboard.md：storyboard，开头是「组件使用表」，每个视觉 scene 写明 intent、template / layout 方案及理由、所用的 content 区域、素材、构图、信息展开与动效安排；必用素材覆盖表按基础指令第一部分处理
 - {{ws}}/composition/index.html + {{ws}}/composition/compositions/：HyperFrames 工程与子合成
