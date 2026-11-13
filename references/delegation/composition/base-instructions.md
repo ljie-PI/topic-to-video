@@ -74,7 +74,7 @@
 1. 在 `script.txt` 里找到模板需要的字段对应的原文（项目名、tagline、star 数等），确认它确实属于某个 scene 的 `paragraphs`。
 2. 把要卡点的原句按 cue 声明的形状（`scene_id` / `paragraphs` / `cues`）写进 `composition/assets/template-cues.json`。cue 必须原样摘自显示稿；这个文件不是完整的场景规划，只需这三个字段。
 3. 跑 handoff 里的 `align-narration.py --mode timing --scene-plan composition/assets/template-cues.json --timeline-output composition/assets/template-timeline.json`，用同一套对齐拿到真实秒数。
-4. 把结果换算成组件参数：全片组件（`nav-bar` / `caption-bar` / `tile-wipe`）用视频秒；scene 内的参数（`nameAt` / `taglineAt` / `starsAt` 等）用相对该 scene `data-start` 的秒数。
+4. 把结果换算成组件与转场参数：全片组件与转场（`nav-bar` / `caption-bar` / `tile-wipe`）用视频秒；scene 内的参数（`nameAt` / `taglineAt` / `starsAt` 等）用相对该 scene `data-start` 的秒数。
 5. 没念到的字段不编时间：`project-cover` 可省略 `taglineAt` / `starsAt`，组件会隐藏相关部分并跳过动画；`nameAt` 和榜单每个项目的 `cue` 是必需锚点，缺失就不用对应场景 / 项目，不采用默认秒数。事实资料缺失也不编造值，更不回去改旁白迁就模板。
 
 ## 工作顺序

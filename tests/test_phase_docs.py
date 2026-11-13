@@ -791,6 +791,22 @@ def test_transitions_are_a_top_level_module_category_without_stale_paths():
     assert old_transition_path not in modules
     assert old_transition_path not in components
     assert old_transition_path not in tile_wipe
+    assert '转场本身没有任何具体内容' in tile_wipe
+    assert '组件本身没有任何具体内容' not in tile_wipe
+    assert '本转场常驻挂在 0 秒' in tile_wipe
+    assert '本组件常驻挂在 0 秒' not in tile_wipe
+
+    presenter = doc_text('modules/layouts/presenter.md')
+    stage = doc_text('modules/layouts/stage.md')
+    github = doc_text('modules/templates/github/github.md')
+    composition = doc_text('references/delegation/composition/base-instructions.md')
+    assert '采用转场时，常驻转场挂一次' in presenter
+    assert '采用方格转场 `tile-wipe` 时' in presenter
+    assert '采用转场时，常驻转场挂一次' in stage
+    assert '常驻组件和转场' not in presenter
+    assert '常驻组件和转场' not in stage
+    assert '## 3. 组件与转场参数' in github
+    assert '全片组件与转场（`nav-bar` / `caption-bar` / `tile-wipe`）' in composition
 
     for doc in (
         'references/delegation/composition/base-instructions.md',

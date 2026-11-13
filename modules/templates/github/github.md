@@ -59,7 +59,7 @@
 - **Trending 标签**：指标色的药丸标签，写作“Trending #名次 · 本周”。
 - **“README.md” 面板**：标题栏是书本图标加等宽的 `README.md`，右侧是仓库名。
 
-## 3. 组件参数
+## 3. 组件与转场参数
 
 | 组件 | 参数（`init` 的 `params`；HyperFrames 工程写在 `data-variable-values`） | `window.VIDEO` 数据（adapter 取出后作为 `init` 的 `data`） |
 |---|---|---|
