@@ -1,10 +1,8 @@
 # 设计主题：producthunt（亚麻纸）
 
-一张带一点粉调的亚麻纸，上面是低饱和的墨蓝文字和陶土橙。看起来像产品发布日的看板：温暖、有对话感，但颜色收着用。不加阴影，用 2px 细线和圆润的卡片分层。适合新产品发布、Product Hunt 周榜、SaaS 发布这类视频。
+一张带一点粉调的亚麻纸，上面是低饱和的墨蓝文字和陶土橙。看起来像产品发布日的看板：温暖、有对话感，但颜色收着用。不加阴影，用 2px 细线和圆润的卡片分层。适合新产品发布、Product Hunt 周榜、SaaS 发布这类视频。Product Hunt 自己的品牌元素（P 字标、猫、Logotype）不在这里，需要时放进模板。
 
-这份文档只规定外观，任何类型的视频都能用。Product Hunt 自己的品牌元素（P 字标、猫、Logotype）不在这里，需要时放进模板。
-
-背景贴图在 `designs/producthunt/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体已经放在仓库的 `resources/fonts/`（CSS 在 `producthunt/`，WOFF2 在共用的 `files/`），安装方式见 1.4。
+背景贴图在 `designs/producthunt/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体与主题变量代码见 1.3。
 
 | 文件 | 用途 |
 |---|---|
@@ -25,39 +23,7 @@
 
 信息蓝用于注册、链接和流量类信息。琥珀只表达真实的 warning。砖红极少使用，需要时配 ⚠ 或「注意」前缀；限制类信息优先用中性小标签加 ⚠。
 
-### 1.2 主题变量值
-
-变量的含义见 `designs/designs.md`。
-
-| 变量 | 色值 |
-|---|---|
-| `--c-canvas` | `#F4F0EC` |
-| `--c-card` | `#FCFAF8` |
-| `--c-surface` | `#F2EDE8` |
-| `--c-border` | `#DBD3CC` |
-| `--c-ink` | `#242A36` |
-| `--c-ink2` | `#535B6A` |
-| `--c-muted` | `#8A8580` |
-| `--c-focus` | `#A84B37` |
-| `--c-focus-tint` | `#F7EAE4` |
-| `--c-info` | `#3D6793` |
-| `--c-warning` | `#94661B` |
-| `--c-danger` | `#9E3B3B` |
-| `--c-positive` | `#2E7360` |
-| `--c-positive-solid` | `#3B836E` |
-| `--c-positive-tint` | `#E1EDE8` |
-| `--c-positive-text` | `#235747` |
-| `--c-highlight` | `#BF6F58` |
-| `--c-done` | `#3B836E` |
-| `--c-chrome` | `#262B36` |
-| `--c-chrome-ink` | `#F7F4F1` |
-| `--c-chrome-muted` | `#A8ADB7` |
-| `--c-chrome-active` | `#E0957F`（柔珊瑚） |
-| `--c-tile0`–`--c-tile4` | `#EAE2DB` `#EFD5CB` `#DDAE9F` `#C47E69` `#A84B37`：从纸色到陶土橙的色阶 |
-| `--font-sans` | `"NotoSansSC", sans-serif` |
-| `--font-mono` | `"IBMPlexMono", "NotoSansSC", monospace` |
-
-### 1.3 对比度
+### 1.2 对比度
 
 - 正文：`ink` 在卡片底上 13.8:1，`ink2` 6.6:1；`focus` 在卡片底上 5.4:1，在 `focus-tint` 上 4.8:1。
 - `--c-muted` 在卡片底上只有约 3.5:1，只能用在 34px 以上的数字上。
@@ -65,7 +31,9 @@
 - 界面条上的次要文字用 `--c-chrome-muted`，约 6.3:1。
 - 指标色标签里的文字用 `--c-positive-text`（在 `positive-tint` 上 6.9:1），不要直接用 `--c-positive`。
 
-### 1.4 变量代码（复制到视频 `index.html` 的 `:root`）
+### 1.3 变量代码（复制到视频 `index.html` 的 `:root`）
+
+共享变量语义见 [`../designs.md`](../designs.md)，机器契约与字体清单见同目录 `producthunt.json`。
 
 ```css
 :root {
@@ -86,7 +54,7 @@
 }
 ```
 
-字体已经下载好放在仓库的 `resources/fonts/`（CSS 在 `producthunt/`，WOFF2 在共用的 `files/`）。安装：`bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/producthunt`，把 NotoSansSC（中文和正文）、IBMPlexMono（数字、upvote、英文数据）的 WOFF2 和一份 `producthunt-fonts.css` 从仓库拷进工程。在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/producthunt-fonts.css">` 引入，CSS 里的字体名就是上面变量用的 `NotoSansSC` / `IBMPlexMono`。
+本主题使用 `NotoSansSC`（中文和正文）与 `IBMPlexMono`（数字、upvote、英文数据），CSS 文件名为 `producthunt-fonts.css`。在 `index.html` 的 `<head>` 里用 `<link rel="stylesheet" href="assets/fonts/producthunt-fonts.css">` 引入；委派场景下字体已预置在 `composition/assets/fonts/`，仓库字体结构与安装维护方式见 [`../designs.md`](../designs.md)。
 
 ---
 
