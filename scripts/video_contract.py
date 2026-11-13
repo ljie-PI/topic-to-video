@@ -23,7 +23,6 @@ INPUTS_BASE_FIELDS = (
     'duration',
     'language',
     'orientation',
-    'design',
     'coding_agent',
     'fetch_materials',
 )
@@ -34,7 +33,7 @@ STEP_INPUTS_FIELDS: dict[str, tuple[str, ...]] = {
     'catalog': ('coding_agent', 'input_mode', 'fetch_materials'),
     'script': ('coding_agent', 'duration', 'language', 'input_mode', 'fetch_materials'),
     'composition': ('coding_agent', 'duration', 'language', 'input_mode', 'fetch_materials',
-                    'design', 'orientation'),
+                    'orientation'),
 }
 
 # 用户在对话里提出的长期要求，按阶段分开保存；catalog 没有要求列表。
@@ -174,6 +173,18 @@ def request_items(data: dict[str, Any], field: str | None) -> list[str]:
 #
 # “库里有什么”与“用哪个副本校验”只能有一套规则：状态脚本、handoff 准备和
 # 渲染检查都从这里取，否则它们会对同一份项目给出互相矛盾的结论。
+
+# design preset 与 composition/design.json 共用的机器 token 集合。文档负责解释
+# 语义，不以 Markdown 表格反推校验规则。
+DESIGN_TOKEN_NAMES = frozenset({
+    '--c-canvas', '--c-card', '--c-surface', '--c-border', '--c-ink', '--c-ink2',
+    '--c-muted', '--c-focus', '--c-focus-tint', '--c-info', '--c-warning', '--c-danger',
+    '--c-positive', '--c-positive-solid', '--c-positive-tint', '--c-positive-text',
+    '--c-highlight', '--c-done', '--c-chrome', '--c-chrome-ink', '--c-chrome-muted',
+    '--c-chrome-active', '--c-tile0', '--c-tile1', '--c-tile2', '--c-tile3', '--c-tile4',
+    '--ground', '--font-sans', '--font-mono', '--motion-enter-duration',
+    '--motion-easing', '--motion-list-interval',
+})
 
 LAYOUTS_PATH = 'modules/layouts'
 TEMPLATES_PATH = 'modules/templates'

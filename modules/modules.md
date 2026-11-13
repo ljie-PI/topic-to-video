@@ -112,7 +112,7 @@ templates/
 | 要做的事 | 先读 |
 |---|---|
 | 做一类已有模板的视频（如 GitHub 热榜） | `templates/<类型>/<类型>.md`，再看它用到的场景和组件文档 |
-| 选外观 / 新建主题 | `designs/designs.md`，再看具体主题的 `<主题>.md` + `<主题>.json`（机器可读 token、字号与字体契约） |
+| 选择 preset / custom 外观或新建主题 | 先读 `designs/designs.md`；preset 是候选而非默认必选，选中后再看具体 `<主题>.md` + `<主题>.json`。实际选择写入 `composition/design.json` |
 | 安排版面、逐视觉 scene 选布局、确定区域坐标 | `layouts/layouts.md` → 每个所用 `layouts/<布局>.md` + 对应 `.json`（机器可读区域定义，字幕脚本读它的 `caption` 段） |
 | 挂某个组件、写它的数据 | `components/<组件>/<组件>.md` |
 | 需要转场、写它的切点数据 | `transitions/transitions.md`，选定后再读 `transitions/<转场>/<转场>.md`（如 `transitions/tile-wipe/tile-wipe.md`） |
@@ -132,13 +132,11 @@ templates/
 
 ## 组装一支视频
 
-1. **建工程**：
-   - `npx hyperframes init` 不接受非空目录，而委派场景下 `composition/assets/fonts/` 已经预置——顺序必须是 init 先行：在工作区里 `npx hyperframes init composition-init/`，把生成的文件拷进 `composition/`（不要动 `assets/fonts/`），再删掉 `composition-init/`；
-   - 非委派场景（还没有 `composition/` 目录时）直接 `npx hyperframes init composition/`。
+1. **建工程**：还没有 `composition/` 目录时直接 `npx hyperframes init composition/`。`prepare-handoff.py` 只物化 modules，不预装字体，因此无需为 `composition/assets/fonts/` 绕过 init。
 2. **主题**：
-   - 把 `designs/<主题>/textures/` 复制到工程的 `assets/textures/`；
-   - 用 skill 根目录的 `bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/<主题>` 把字体装进工程，并在 `index.html` 的 `<head>` 里引入装进去的 CSS；委派场景下字体已经由 `prepare-handoff.py` 预置在 `composition/assets/fonts/`，不用再装，直接引入其中的 CSS；
-   - 把主题文档里的变量代码放进 `index.html` 的 `:root`；
+   - 先决定 preset / custom design，把完整 tokens 与 `min_font_px` 写入 `composition/design.json`；preset 的值必须与对应 JSON 一致，custom 的 `preset` 为 `null`；
+   - 选定后用 skill 根目录的 `bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/<主题>` 把字体装进工程，并在 `index.html` 的 `<head>` 里引入实际 CSS。custom 可复用已有字体包，但 token 字体名必须与 CSS 一致，复用字体资源不等于采用该 preset 的视觉设计；
+   - preset 使用其 textures / tokens；custom 按实际需求自配资源与完整 tokens，再放入 `index.html` 的 `:root`；
    - 根节点放一个铺满全屏的 `#ground`，背景用 `var(--ground)`。
 3. **模板**：按 `templates/<类型>/<类型>.md`：
    - 在主题变量之后加上模板的专属变量；

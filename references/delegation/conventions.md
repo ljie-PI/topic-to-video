@@ -80,6 +80,6 @@ Pi 已核实的 flag（`pi --help`）：
 4. Required References
 5. Additional Instructions
 
-handoff 由 `scripts/prepare-handoff.py <ws> <step> [--refresh] [--resolved-model <实际标识>]` 生成，主 agent 不手写：脚本把本约定和 `references/delegation/<step>/` 拷进 `<ws>/references/delegation/`（composition 另外把 `modules/` 拷进 `<ws>/modules/`，并按所选 design 预置字体），再按模板填出 `<ws>/<step>-handoff.md`。已存在的副本不覆盖，`--refresh` 才覆盖：委派包里的规则更新后，已有工作区要显式 refresh 才会读到新规则（先确认那份副本没有被本地改过）。派发的 prompt 只有上面那一句。
+handoff 由 `scripts/prepare-handoff.py <ws> <step> [--refresh] [--resolved-model <实际标识>]` 生成，主 agent 不手写：脚本把本约定和 `references/delegation/<step>/` 拷进 `<ws>/references/delegation/`（composition 另外把 `modules/` 拷进 `<ws>/modules/`），再按模板填出 `<ws>/<step>-handoff.md`。composition 不预选默认 design、不在派发前安装字体；子 agent 选定 preset / custom 后安装字体并写 `composition/design.json`。已存在的副本不覆盖，`--refresh` 才覆盖：委派包里的规则更新后，已有工作区要显式 refresh 才会读到新规则（先确认那份副本没有被本地改过）。派发的 prompt 只有上面那一句。
 
 handoff 里的路径全是绝对路径，命令里的 skill 脚本写成 `source <skill_root>/.venv/bin/activate && python3 <skill_root>/scripts/<x>.py ...`，不依赖当前目录。委派包文档里的相对路径：`scripts/` 与 `references/phases/` 相对 skill 根目录；`references/delegation/` 相对工作区（那里有物化的副本）；`modules/` 在 composition 步骤相对工作区副本，在 script 步骤相对 skill 根目录（script 与 catalog 步骤都不拷 modules）。

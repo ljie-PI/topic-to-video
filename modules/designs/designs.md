@@ -2,6 +2,8 @@
 
 设计主题规定全片或场景的外观基线：配色、字体、字号、背景、形状、图标风格与动效节奏。
 
+库内 preset 是候选，不是默认必选。Phase 1 只在用户明确点名时记录 `inputs.json.design`；否则 composition agent 根据全片与各 scene 需求选择特别匹配的 preset，或生成 custom design。两者都落盘 `composition/design.json`：preset 的 tokens / `min_font_px` 与对应 `<名>.json` 完全一致；custom 的 `preset` 为 `null`，仍写完整共享 tokens 与正整数 reading / ui 下限。该产物不包含 `fonts` 维护清单。
+
 组件和模板不认识具体的颜色和字体，只读下面这套**主题变量**。每个主题都要把这套变量定义完整；换主题，就是换一组变量值和背景资源。
 
 ## 主题变量约定
@@ -109,20 +111,9 @@ bash scripts/fonts-download.sh <目标目录> --theme modules/designs/<主题>
 
 三个主题是同一套做法：纸纹背景（各自目录下的 `textures/paper.jpg`）、低饱和配色、无阴影、2px 线和卡片分层，字号阶梯和字号下限也相同。区别在纸色、焦点色和动效节奏。
 
-## 备选配色
+## Custom design 配色草案
 
-默认是 **default**（暖燕麦纸、安静、克制的编辑风）。用户想换风格时按上表选择；也可以从下面的 mood 描述反查：
-
-| 用户说 | 选 |
-|--------|----|
-| "安静"、"明亮"、"编辑"、"暖色"、"纸感"、"克制"、没说风格 | default |
-| "github trending"、"repo"、"开源" | github |
-| "product hunt"、"周榜"、"launch"、"新产品" | producthunt |
-| "杂志"、"复古"、"质感" | design 写 default，配色按下面的 Warm Editorial 草案覆盖（见下） |
-| "深色"、"暗黑"、"科技"、"未来"、"premium" | design 写 default，配色按下面的 Dark Premium 草案覆盖（见下） |
-| "手绘"、"手写" | 目前没有手绘主题：告诉用户，并用 default |
-
-以下两套配色已有完整 token 草案，还没有迁入主题目录，所以**不能**写进 `inputs.json` 的 `design`（状态脚本只接受 `modules/designs/` 下现有的主题）。用户点名时：`design` 写 `default`，先和用户确认，再把草案的配色换算成 `--c-*` 变量，作为对 default 变量的覆盖；字体仍用 default 的字体（草案列出的字体没有放进仓库）。用户认可这个风格后，把这条要求记进 `inputs.json` 的 `composition_requests`，Phase 8 的 composition 按它做覆盖。正式迁入主题目录时，写好 `<名>.md` 和 `<名>.json`，按上面的方法 `--refresh` 并提交字体。
+以下草案是 custom design 的配色参考，不是注册 preset，不能写进 `inputs.json.design`。composition agent 采用时应换算成完整的共享 `--c-*` / `--font-*` / `--motion-*` / `--ground` token 集合并写入 `composition/design.json`，不能只做散文描述或局部覆盖。字体必须复用仓库已有资源且与实际 CSS 一致；草案中未入库的字体名不能直接当作可用依赖。若将来正式迁入主题目录，写好 `<名>.md` 和 `<名>.json`，按上面的方法 `--refresh` 并提交字体。
 
 ### Warm Editorial（杂志跨页、精致、新闻感）
 
