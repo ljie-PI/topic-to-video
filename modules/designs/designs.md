@@ -60,7 +60,7 @@
 
 - **阅读文字**（正文、列表、说明）不小于 N；
 - **界面小字**（面板标题栏、按钮、小标签）不小于 M，只适用于放在 `data-text-role="ui"` 元素里的文字，任何主题的 M 都不得低于 **22px**；
-- **字幕**字号由所选 layout 的字幕规格决定（见 `layouts/*.json` 的 `caption`），不占主题的下限额度；
+- **字幕**字号由各 scene 的 `layout.caption.font_size_px` 决定（借用布局预设时见对应 `layouts/*.json` 的 `caption`），不占主题的下限额度；
 - 大号的弱化数字（`--c-muted`）只允许 34px 以上。
 
 用法：
@@ -70,14 +70,13 @@
 
 ## 机器契约与字体清单（<名>.json）
 
-每个主题都有 `<名>.md` 和 `<名>.json`：文档供人和 LLM 阅读，同名 JSON 是脚本读取的机器契约。JSON 的 `tokens` 必须完整定义上面的变量，值与文档 CSS 代码块一致；`min_font_px` 和 `caption_font_px` 与文档的字号下限一致。结构如下：
+每个主题都有 `<名>.md` 和 `<名>.json`：文档供人和 LLM 阅读，同名 JSON 是脚本读取的机器契约。JSON 的 `tokens` 必须完整定义上面的变量，值与文档 CSS 代码块一致；`min_font_px` 与文档的字号下限一致（字幕字号不属于 design JSON，由各 scene 的 `layout.caption.font_size_px` 或借用的布局预设 JSON 决定）。结构如下：
 
 ```json
 {
   "design": "<主题>",
   "tokens": {"--c-canvas": "...", "--font-sans": "...", "--motion-easing": "..."},
   "min_font_px": {"reading": 26, "ui": 22},
-  "caption_font_px": 36,
   "fonts": {
     "css_filename": "<主题>-fonts.css",
     "rename": {"Google 家族名": "主题字体别名"},

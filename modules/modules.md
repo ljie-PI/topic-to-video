@@ -185,7 +185,7 @@ window.VIDEO = {
 
 ## 扩展约定
 
-- **新主题**：按 `designs/designs.md` 定义全部变量（颜色 + 字体 + 运动 token + 字号下限），同时写 `<名>.md` 和 `<名>.json`，都放在 `designs/<名>/`。JSON 是机器契约：`tokens` 与文档 CSS 一致，另含 `min_font_px`、`caption_font_px` 和 `fonts` 字体清单。
+- **新主题**：按 `designs/designs.md` 定义全部变量（颜色 + 字体 + 运动 token + 字号下限），同时写 `<名>.md` 和 `<名>.json`，都放在 `designs/<名>/`。JSON 是机器契约：`tokens` 与文档 CSS 一致，另含 `min_font_px` 和 `fonts` 字体清单。
 - **新布局**：写清每个区域的坐标、尺寸、层级，以及哪个组件填哪个区域；再放一份同名 `.json` 区域定义（`canvas` / `regions` / `caption`），数值与文档一致。放 `layouts/<名>.md`。
 - **新组件**：
   - 不带内容，只读主题变量，位置默认按某个布局；
