@@ -721,9 +721,27 @@ def test_composition_defaults_to_original_design_and_only_records_borrowed_refer
     assert '全片不用参考库也完全合格' in design
     assert '只在借用时' in design and '借用内容与匹配理由' in design
     assert '无需填写 pattern 字段或未使用理由' in design
+    assert '简洁的静态呈现也是有效选择' in design
+
+    # 表达与事实边界：自主表现机制、创意边界、新增屏幕事实来源、示意与证据边界。
+    assert '### 表达与事实边界' in design
+    boundary = design.split('### 表达与事实边界', 1)[1]
+    assert 'DOM/SVG/CSS/Canvas/WebGL' in boundary
+    assert 'modules/motion.md' in boundary
+    assert '视觉创意服务于理解' in boundary
+    assert '不得破坏所选 design token、各 scene 实际落盘的 regions、可读性、真实语音同步或事实含义' in boundary
+    assert '`script.txt`' in boundary
+    assert '`scene-plan.json`' in boundary
+    assert '`material-catalog.json`' in boundary
+    assert '`composition_requests`' in boundary
+    assert '需要新增上游事实时向主 agent 报告并建议回退，不得自行编造' in boundary
+    assert '图示、类比和示意可用于解释概念或关系，但不得伪装成真实数据或证据' in boundary
+    assert '会改变事实含义的构图、标注与动画不使用' in boundary
 
     workflow = composition.split('## 工作顺序', 1)[1]
     assert '**自主构思并写 storyboard**' in workflow
+    assert '字幕以显示稿为准，新增屏幕文字与标注守第四部分事实边界' in workflow
+    assert '字幕与屏幕文字都以显示稿为准' not in workflow
     assert '素材、构图、信息展开与动效安排' in workflow
     assert '先定模板与 pattern' not in workflow
     assert '动效选择参考 `modules/motion.md`' not in workflow
