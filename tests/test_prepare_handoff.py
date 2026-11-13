@@ -615,11 +615,11 @@ class TestCompositionHandoff:
             ],
             ['modules/layouts/layouts.md'],
             ['modules/templates/templates.md'],
-            ['modules/components'],
+            ['modules/components/components.md'],
         ]
 
         assert [rel(absolute_paths(item)) for item in items] == expected
-        assert '组件目录：按需读要挂载的组件文档' in items[-1]
+        assert '组件索引：按需读要挂载的组件文档' in items[-1]
         assert '**可选参考（可跳过）**' in body
         optional = body.split('**可选参考（可跳过）**', 1)[1]
         assert absolute_paths(optional) == {ws / 'modules/patterns', ws / 'modules/motion.md'}

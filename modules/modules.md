@@ -148,7 +148,7 @@ templates/
 6. **数据**：
    - 写 `data/video-data.js`（`window.VIDEO = {…}`），在 `index.html` 的 `<head>` 里、GSAP 之后引入；adapter 从里面取各模块的 `data`；
    - 数据最好用脚本从字幕和配音生成；
-   - 嘴型用 `node modules/components/jay/make-envelope.mjs <配音>` 生成。
+   - 用到 Jay 时，动作演法与嘴型 `envelope` 生成方式见 `components/jay/jay.md`。
 7. **检查**：
    - `npx hyperframes check` 和 check-composition 都通过后再 `render`，`check` 的错误都要修掉；
    - 只有人直接操作时才用 `npx hyperframes preview` 给人看，确认后再渲染；委派场景下由 sub-agent 直接渲染。

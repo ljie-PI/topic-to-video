@@ -14,7 +14,7 @@
 | `{{coding_agent}}` / `{{coding_model_instruction}}` | 按 `inputs.json.delegation.composition` 与全局 `coding_agent` 解析的有效 agent / model；未指定 model 时模型说明为空 |
 | `{{design}}` / `{{orientation}}` | `inputs.json` 的对应字段，全片固定约束；全局 template / layout 不是准备前提，由本阶段逐视觉场景决定 |
 | `{{material_catalog}}` | catalog 适用时（联网抓素材，或论文模式）：catalog 的路径；否则“无（无素材，画面用纯排版）” |
-| `{{required_references}}` | 按叠加顺序编号：基础指令 → scene-config 数据契约 → `modules.md` → design 文档与 `<design>.json` 机器契约 → layout 目录（`layouts.md`，可借用的 preset）→ 模板目录（`templates.md`，按场景借用）→ 组件目录（按需读要挂载的组件文档）。它们是发现入口，不是采用清单；全部指向工作区副本；patterns / motion 单独列为可选参考 |
+| `{{required_references}}` | 按叠加顺序编号：基础指令 → scene-config 数据契约 → `modules.md` → design 文档与 `<design>.json` 机器契约 → layout 目录（`layouts.md`，可借用的 preset）→ 模板目录（`templates.md`，按场景借用）→ 组件索引（`components.md`，按需读要挂载的组件文档）。它们是发现入口，不是采用清单；全部指向工作区副本；patterns / motion 单独列为可选参考 |
 | `{{additional_instructions}}` | `inputs.json` 的 `composition_requests` 逐条列出；没有写 `None`。各条要求的作用范围以用户表述为准（某个叙事场景 / 某个视觉场景 / 整片），未说明时按整片应用 |
 | `{{transcript_q}}` / `{{narration_q}}` / `{{offsets_q}}` / `{{script_txt_q}}` | 确定性字幕生成的四个上游 |
 | `{{subtitle_units_q}}` | 字幕单元的最终位置：`{{ws}}/composition/assets/subtitle-units.json` |

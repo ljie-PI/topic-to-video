@@ -230,9 +230,15 @@ jay: {
 node components/jay/make-envelope.mjs 配音.wav > envelope.json
 ```
 
+在仓库根目录为 composition 生成时，可运行：
+
+```bash
+node modules/components/jay/make-envelope.mjs voice_clone/narration.mp3 > composition/assets/jay-envelope.json
+```
+
 - 输出是一个数组，每秒 30 个值，0–100。
 - 静音阈值为 -45 dBFS；有声部分的 95 百分位响度记为 100。
-- 把数组粘贴到 `jay.envelope`。没有配音时可以留空数组，Jay 就不动嘴。
+- 把生成数组放入 `VIDEO.jay.envelope`，`envelopeFps` 与生成参数保持一致（默认 `30`）；`composition/assets/jay-envelope.json` 只是示例保存路径，不是新增的阶段产物门槛。没有配音时可以留空数组，Jay 就不动嘴。
 
 **换了配音，就要重新生成 envelope，并且按新配音的时间重排剧本。**
 

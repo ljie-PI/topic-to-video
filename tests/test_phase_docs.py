@@ -624,6 +624,18 @@ def test_jay_generic_performance_and_github_specific_overlay():
     assert '对应 beat' not in jay
     for action in ('`question`', '`idea`', '`think`', '`eureka`', '`shake`', '`nod-small`'):
         assert action in action_library
+    assert '同一时间只做一个动作' in action_library
+
+    envelope = jay.split('### 嘴型数据（`envelope`）', 1)[1].split('## 限制', 1)[0]
+    assert 'node components/jay/make-envelope.mjs 配音.wav > envelope.json' in envelope
+    assert (
+        'node modules/components/jay/make-envelope.mjs voice_clone/narration.mp3 '
+        '> composition/assets/jay-envelope.json'
+    ) in envelope
+    assert 'VIDEO.jay.envelope' in envelope
+    assert 'envelopeFps' in envelope
+    assert '不是新增的阶段产物门槛' in envelope
+    assert '换了配音，就要重新生成 envelope，并且按新配音的时间重排剧本' in envelope
 
     github = doc_text('modules/templates/github/github.md')
     overlay = github.split('## 5. 人物怎么演')[1]
@@ -638,13 +650,25 @@ def test_jay_generic_performance_and_github_specific_overlay():
 
 def test_composition_requires_jay_for_presenter():
     composition = doc_text('references/delegation/composition/base-instructions.md')
-    layout_rules = composition.split('## 三、必须遵守各 scene 的 layout 区域')[1].split('## 工作顺序')[0]
+    layout_rules = composition.split('## 三、必须遵守各 scene 的 layout 区域')[1].split('## 四、', 1)[0]
+    section4 = composition.split('## 四、内容演绎与模板选择', 1)[1].split('## 五、', 1)[0]
+    modules = doc_text('modules/modules.md')
+    handoff_template = doc_text('references/delegation/composition/handoff-template.md')
+    phase_8 = doc_text('references/phases/08-composition.md')
 
+    assert 'reserved 区域只放各自 `component` 声明的组件' in layout_rules
     assert 'scene 的 regions 有人物区' in layout_rules
+    assert '唯一常驻实例' in layout_rules
     assert '没有人物区的 scene 不强制显示 Jay' in layout_rules
-    assert '`VIDEO.jay` 按 `jay.md` 的通用演法编排' in layout_rules
+    assert 'placements' in layout_rules
+    assert '`modules/components/jay/jay.md`' in layout_rules or '`jay.md`' in layout_rules
     assert '有模板时再叠加模板的演法' in layout_rules
-    assert 'node modules/components/jay/make-envelope.mjs voice_clone/narration.mp3' in layout_rules
+    assert 'make-envelope.mjs' not in composition
+    assert '动作自己排' not in section4
+    assert 'make-envelope.mjs' not in modules
+    assert 'components/jay/jay.md' in modules
+    assert 'components.md' in handoff_template and '组件索引' in handoff_template and '按需读要挂载的组件文档' in handoff_template
+    assert 'components.md' in phase_8 and '组件索引' in phase_8 and '按需读要挂载的组件文档' in phase_8
 
 
 def test_scene_plan_content_plan_and_opening_hook_contract():
