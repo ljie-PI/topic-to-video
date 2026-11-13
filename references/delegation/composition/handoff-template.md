@@ -97,7 +97,7 @@
 
 ## Required References
 
-以下编号项按顺序阅读（叠加顺序与冲突处理见 {{ws}}/references/delegation/conventions.md）：
+以下编号项按顺序阅读（模块目录是发现入口，不是采用清单；叠加顺序与冲突处理见 {{ws}}/references/delegation/conventions.md）：
 
 {{required_references}}
 

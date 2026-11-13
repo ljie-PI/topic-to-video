@@ -48,7 +48,7 @@
 1. **先应用用户要求及其作用范围。** 用户在 `composition_requests` 中指定某 scene 或全片使用某个模块时，在该作用范围内采用；与朝向、事实或另一条明确要求冲突时报告冲突，不要静默换掉要求。
 2. **未指定时评估“特别匹配”，不是“勉强可用”。** 预定义模块（template、layout preset、component、pattern、motion）只在与目标 scene 特别匹配时才采用，至少同时满足：
    - 模块表达的内容关系与 scene 的叙事目标一致；
-   - 素材形态、数据、画布和可读性适合该模块；
+   - 素材形态、数据、画布、可读性和交互需求适合该模块；
    - 不需要改旁白、视觉 scene、orientation 或用户要求来迁就模块；
    - 采用它比即时生成更清楚或更可靠，而不只是少写代码。
    采用模板后按它的 `preferred_layouts` 与用户要求确定本 scene 布局（`preferred_layouts` 是建议不是门槛）；先读 `modules/templates/templates.md` 目录，选中某个模板场景时读它的 `<t>.json`（场景与真实朗读锚点声明）和场景文档；不命中就不用，不要为了套模板改主题、叙事、朝向、design 或视觉 scenes。

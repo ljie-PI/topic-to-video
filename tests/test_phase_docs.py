@@ -769,7 +769,7 @@ def test_scene_module_adoption_rule_is_unified_across_base_handoff_phase_and_ind
         '先应用用户要求及其作用范围',
         '未指定时评估“特别匹配”，不是“勉强可用”',
         '模块表达的内容关系与 scene 的叙事目标一致',
-        '素材形态、数据、画布和可读性适合该模块',
+        '素材形态、数据、画布、可读性和交互需求适合该模块',
         '不需要改旁白、视觉 scene、orientation 或用户要求来迁就模块',
         '采用它比即时生成更清楚或更可靠，而不只是少写代码',
         '没有特别匹配就即时生成',

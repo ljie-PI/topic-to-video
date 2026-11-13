@@ -640,6 +640,7 @@ class TestCompositionHandoff:
 
         assert '用户要求 → 特别匹配模块 → 即时生成' in outputs
         # Required References 提供模块发现入口，不把列出目录当成必须采用清单。
+        assert '发现入口，不是采用清单' in refs
         assert '必须采用' not in refs
         assert '每个 scene 都必须' not in refs
 
