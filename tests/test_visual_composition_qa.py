@@ -1,7 +1,6 @@
 """Scene-level composition QA through the recorded-snapshot CLI seam."""
 from __future__ import annotations
 
-import importlib.util
 import json
 import subprocess
 import sys
@@ -9,7 +8,8 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.usefixtures('require_ffmpeg')
+from cli_helpers import load_script_module, parse_stdout, write_silent_mp3
+
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / 'scripts/check-composition.py'
 
@@ -88,11 +88,7 @@ def workspace(tmp_path: Path, snapshots: list[dict]) -> tuple[Path, Path]:
             visual_scene('b', 5, 10, borrowed_layout('landscape-presenter')),
         ],
     })
-    (ws / 'voice_clone').mkdir(parents=True)
-    subprocess.run([
-        'ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono',
-        '-t', '10', '-c:a', 'libmp3lame', str(ws / 'voice_clone/narration.mp3'),
-    ], capture_output=True, check=True)
+    write_silent_mp3(ws / 'voice_clone/narration.mp3', 10.0)
     path = tmp_path / 'snapshots.json'
     write_json(path, snapshots)
     return ws, path
@@ -104,23 +100,11 @@ def run(ws: Path, snapshots: Path, *extra: str) -> tuple[subprocess.CompletedPro
         '--scene-config', str(ws / 'composition/scene-config.json'),
         '--min-font-size', '22', '--snapshots-from', str(snapshots), *extra,
     ], capture_output=True, text=True)
-    return proc, json.loads(proc.stdout)
+    return proc, parse_stdout(proc)
 
 
-def test_same_element_is_checked_against_each_actual_scene_layout(tmp_path: Path):
-    ws, snapshots = workspace(tmp_path, [snapshot('a', 2), snapshot('b', 7)])
-
-    proc, result = run(ws, snapshots)
-
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert result['verdict'] == 'fail'
-    assert {(f['scene_id'], f['check']) for f in result['findings']} == {
-        ('b', 'outside_content_regions'), ('b', 'reserved_region_intrusion'),
-    }
-    assert [s['layout'] for s in result['scenes_checked']] == ['landscape', 'landscape-presenter']
-
-
-def test_active_scene_caption_font_and_lines_are_checked(tmp_path: Path):
+@pytest.mark.usefixtures('require_ffmpeg')
+def test_scene_layouts_and_active_caption_specs_are_checked_per_scene(tmp_path: Path):
     ws, snapshots = workspace(tmp_path, [snapshot('a', 2, caption_font=36), snapshot('b', 7, caption_font=30)])
     units = tmp_path / 'units.json'
     write_json(units, {'units': [{'text': '字幕', 'begin_s': 0, 'end_s': 10}]})
@@ -128,12 +112,20 @@ def test_active_scene_caption_font_and_lines_are_checked(tmp_path: Path):
     proc, result = run(ws, snapshots, '--subtitle-units', str(units))
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert result['verdict'] == 'fail'
+    assert {(f['scene_id'], f['check']) for f in result['findings']} == {
+        ('b', 'outside_content_regions'),
+        ('b', 'reserved_region_intrusion'),
+        ('b', 'caption_mismatch'),
+    }
+    assert [s['layout'] for s in result['scenes_checked']] == ['landscape', 'landscape-presenter']
     mismatch = [f for f in result['findings'] if f['check'] == 'caption_mismatch']
     assert len(mismatch) == 1
     assert mismatch[0]['scene_id'] == 'b'
     assert '30px' in mismatch[0]['issue'] and '36px' in mismatch[0]['issue']
 
 
+@pytest.mark.usefixtures('require_ffmpeg')
 def test_missing_visual_scene_snapshot_cannot_pass(tmp_path: Path):
     ws, snapshots = workspace(tmp_path, [snapshot('a', 2)])
     proc, result = run(ws, snapshots)
@@ -142,6 +134,7 @@ def test_missing_visual_scene_snapshot_cannot_pass(tmp_path: Path):
     assert any(f['check'] == 'scene_coverage' and f['scene_id'] == 'b' for f in result['findings'])
 
 
+@pytest.mark.usefixtures('require_ffmpeg')
 def test_scene_mount_must_exist_at_each_start_middle_and_end_snapshot(tmp_path: Path):
     start = snapshot('a', 0.2)
     middle = snapshot('a', 2.5)
@@ -157,6 +150,7 @@ def test_scene_mount_must_exist_at_each_start_middle_and_end_snapshot(tmp_path: 
     assert [f['time_s'] for f in missing] == [0.2, 4.8]
 
 
+@pytest.mark.usefixtures('require_ffmpeg')
 def test_adjacent_subtitle_units_and_scene_mode_exact_bounds_do_not_false_positive(tmp_path: Path):
     before_switch = snapshot('a', 4.98, caption_font=36)
     after_unit_end = snapshot('b', 5.1)
@@ -174,9 +168,7 @@ def test_adjacent_subtitle_units_and_scene_mode_exact_bounds_do_not_false_positi
 
 
 def test_short_scene_sampling_stays_inside_its_range():
-    spec = importlib.util.spec_from_file_location('check_composition', SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    module = load_script_module('check-composition.py', 'check_composition')
     times = module.scene_check_times({'begin_s': 2.0, 'end_s': 2.1})
     assert len(times) == 3
     assert all(2.0 < time < 2.1 for time in times)
@@ -208,11 +200,7 @@ def mixed_workspace(tmp_path: Path, snapshots: list[dict]) -> tuple[Path, Path]:
             visual_scene('free', 5, 10, free_layout()),
         ],
     })
-    (ws / 'voice_clone').mkdir(parents=True)
-    subprocess.run([
-        'ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono',
-        '-t', '10', '-c:a', 'libmp3lame', str(ws / 'voice_clone/narration.mp3'),
-    ], capture_output=True, check=True)
+    write_silent_mp3(ws / 'voice_clone/narration.mp3', 10.0)
     path = tmp_path / 'snapshots.json'
     write_json(path, snapshots)
     return ws, path
@@ -232,31 +220,9 @@ def mixed_snapshot(scene_id: str, time: float, *, presenter: bool) -> dict:
     return item
 
 
-def test_template_and_free_fallback_scenes_pass_together(tmp_path: Path):
-    """采用模板的场景与自由回退场景在同一份 scene-config 里各自通过真实区域检查。
-
-    契约层（scene_config 公共读取）在 tests/test_scene_config.py 覆盖；这里验证
-    检查脚本按每个 scene 落盘的 regions / caption 检查并通过。真实渲染未在
-    测试中运行。
-    """
-    ws, snapshots = mixed_workspace(tmp_path, [
-        mixed_snapshot('tpl', 2, presenter=True),
-        mixed_snapshot('free', 7, presenter=False),
-    ])
-    units = tmp_path / 'units.json'
-    write_json(units, {'units': [{'text': '字幕', 'begin_s': 0, 'end_s': 10}]})
-
-    proc, result = run(ws, snapshots, '--subtitle-units', str(units))
-
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert result['verdict'] == 'pass', result['findings']
-    assert [(s['scene_id'], s['layout']) for s in result['scenes_checked']] == [
-        ('tpl', 'landscape-presenter'), ('free', None),
-    ]
-
-
-def test_hand_edited_subtitle_units_are_the_checked_truth(tmp_path: Path):
-    """用户手改过的字幕文本与边界就是检查基准：按当前文件核对，不还原初稿。"""
+@pytest.mark.usefixtures('require_ffmpeg')
+def test_template_and_free_scenes_pass_and_check_current_subtitle_units(tmp_path: Path):
+    """模板场景与自由回退场景同片通过区域检查，且以当前（含手改）字幕文件为准。"""
     ws, snapshots_path = mixed_workspace(tmp_path, [
         mixed_snapshot('tpl', 2, presenter=True),
         mixed_snapshot('free', 7, presenter=False),
@@ -266,7 +232,6 @@ def test_hand_edited_subtitle_units_are_the_checked_truth(tmp_path: Path):
         snap['captionTexts'] = ['改过的字幕']
         snap['captionDetails'][0]['text'] = '改过的字幕'
     units = tmp_path / 'units.json'
-    # 文本与边界都被改过；没有锁文件 / 指纹 / 编辑审批，检查直接消费当前内容
     write_json(units, {'units': [{'text': '改过的字幕', 'begin_s': 0, 'end_s': 10}]})
     edited_path = tmp_path / 'edited-snapshots.json'
     write_json(edited_path, snapshots)
@@ -274,14 +239,13 @@ def test_hand_edited_subtitle_units_are_the_checked_truth(tmp_path: Path):
     proc, result = run(ws, edited_path, '--subtitle-units', str(units))
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert [f for f in result['findings'] if f['check'] == 'caption_mismatch'] == []
+    assert result['verdict'] == 'pass', result['findings']
+    assert [(s['scene_id'], s['layout']) for s in result['scenes_checked']] == [
+        ('tpl', 'landscape-presenter'), ('free', None),
+    ]
 
     # 反向对照：屏幕若仍是初稿文本，与当前（已编辑）单元不符，必须报 mismatch
-    for snap in snapshots:
-        snap['captionTexts'] = ['字幕']
-    original_path = tmp_path / 'original-snapshots.json'
-    write_json(original_path, snapshots)
-    proc, result = run(ws, original_path, '--subtitle-units', str(units))
+    proc, result = run(ws, snapshots_path, '--subtitle-units', str(units))
 
     assert proc.returncode == 0
     mismatch = [f for f in result['findings'] if f['check'] == 'caption_mismatch']
@@ -289,6 +253,7 @@ def test_hand_edited_subtitle_units_are_the_checked_truth(tmp_path: Path):
     assert all('改过的字幕' in f['issue'] for f in mismatch)
 
 
+@pytest.mark.usefixtures('require_ffmpeg')
 def test_presenter_visibility_mismatch_against_person_region_is_reported(tmp_path: Path):
     ws, snapshots = mixed_workspace(tmp_path, [
         mixed_snapshot('tpl', 2, presenter=False),

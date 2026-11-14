@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from cli_helpers import parse_stdout
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'parse-pdf.py'
 
@@ -52,27 +54,32 @@ def install_fake_mineru(
     return pdf, harvest_dir, env
 
 
-def test_local_mineru_upserts_v2_manifest_with_dimensions_and_relative_paths(tmp_path: Path):
+def test_local_mineru_upserts_v2_manifest_with_bare_ids_dimensions_and_relative_paths(tmp_path: Path):
     pdf, harvest_dir, env = install_fake_mineru(tmp_path)
+    base_cmd = [sys.executable, str(SCRIPT), '--pdf', str(pdf), '--output-dir', str(harvest_dir)]
 
-    proc = subprocess.run(
-        [sys.executable, str(SCRIPT), '--pdf', str(pdf), '--output-dir', str(harvest_dir)],
-        capture_output=True, text=True, env=env, timeout=60, check=False,
-    )
-
+    proc = subprocess.run(base_cmd, capture_output=True, text=True, env=env, timeout=60, check=False)
     assert proc.returncode == 0, proc.stderr
-    result = json.loads(proc.stdout)
+    result = parse_stdout(proc)
     assert result['backend'] == 'local_pipeline'
+
+    related = subprocess.run(
+        base_cmd + ['--slug', 'related-foo'], capture_output=True, text=True, env=env, timeout=60, check=False
+    )
+    assert related.returncode == 0, related.stderr
+    assert parse_stdout(related)['success'] is True
+
     manifest = json.loads((harvest_dir / 'manifest.json').read_text(encoding='utf-8'))
     assert manifest['version'] == 2
-    assert len(manifest['entries']) == 1
-    entry = manifest['entries'][0]
-    assert entry['slug'] == 'paper'
-    assert entry['paper_metadata']['full_markdown_path'] == 'paper/mineru/full.md'
-    assert entry['images'][0]['local_path'] == 'paper/images/img_001.png'
-    assert entry['images'][0]['width'] == 1
-    assert entry['images'][0]['height'] == 1
-    assert json.loads((harvest_dir / 'paper' / 'metadata.json').read_text(encoding='utf-8')) == entry
+    entries = {entry['slug']: entry for entry in manifest['entries']}
+    assert set(entries) == {'paper', 'related-foo'}
+    for slug, entry in entries.items():
+        assert entry['paper_metadata']['full_markdown_path'] == f'{slug}/mineru/full.md'
+        assert entry['paper_metadata']['figure_captions'] == {'img_001': 'Figure 1'}
+        assert entry['images'][0]['id'] == 'img_001'
+        assert entry['images'][0]['local_path'] == f'{slug}/images/img_001.png'
+        assert (entry['images'][0]['width'], entry['images'][0]['height']) == (1, 1)
+        assert json.loads((harvest_dir / slug / 'metadata.json').read_text(encoding='utf-8')) == entry
     assert (harvest_dir / 'paper' / 'mineru' / 'full.md').is_file()
     assert (harvest_dir / 'paper' / 'mineru' / 'images' / 'fig1.png').is_file()
     assert not (harvest_dir / 'manifest_papers.json').exists()
@@ -90,27 +97,6 @@ def test_local_mineru_upserts_v2_manifest_with_dimensions_and_relative_paths(tmp
     check_paths(manifest)
 
 
-def test_main_and_related_paper_material_ids_remain_bare(tmp_path: Path):
-    pdf, harvest_dir, env = install_fake_mineru(tmp_path)
-    base_cmd = [sys.executable, str(SCRIPT), '--pdf', str(pdf), '--output-dir', str(harvest_dir)]
-
-    main = subprocess.run(base_cmd + ['--slug', 'main-paper'], capture_output=True, text=True, env=env, timeout=60)
-    assert main.returncode == 0, main.stderr
-    related = subprocess.run(
-        base_cmd + ['--slug', 'related-foo'], capture_output=True, text=True, env=env, timeout=60
-    )
-    assert related.returncode == 0, related.stderr
-
-    manifest = json.loads((harvest_dir / 'manifest.json').read_text(encoding='utf-8'))
-    entries = {entry['slug']: entry for entry in manifest['entries']}
-    assert entries['main-paper']['images'][0]['id'] == 'img_001'
-    assert entries['main-paper']['images'][0]['local_path'] == 'main-paper/images/img_001.png'
-    assert entries['main-paper']['paper_metadata']['figure_captions'] == {'img_001': 'Figure 1'}
-    assert entries['related-foo']['images'][0]['id'] == 'img_001'
-    assert entries['related-foo']['images'][0]['local_path'] == 'related-foo/images/img_001.png'
-    assert entries['related-foo']['paper_metadata']['figure_captions'] == {'img_001': 'Figure 1'}
-
-
 def test_nested_mineru_full_markdown_keeps_a_resolvable_relative_path(tmp_path: Path):
     pdf, harvest_dir, env = install_fake_mineru(tmp_path, FAKE_MINERU_NESTED='1')
 
@@ -120,7 +106,7 @@ def test_nested_mineru_full_markdown_keeps_a_resolvable_relative_path(tmp_path: 
     )
 
     assert proc.returncode == 0, proc.stderr
-    result = json.loads(proc.stdout)
+    result = parse_stdout(proc)
     relative = result['manifest_entry']['paper_metadata']['full_markdown_path']
     assert relative == 'paper/mineru/nested/full.md'
     assert (harvest_dir / relative).is_file()

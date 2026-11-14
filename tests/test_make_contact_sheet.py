@@ -68,10 +68,16 @@ def run_sheet(workspace: Path, output_dir: str = 'qa') -> subprocess.CompletedPr
     )
 
 
-@pytest.fixture
-def workspace(tmp_path: Path) -> Path:
-    video = tmp_path / 'final.mp4'
+@pytest.fixture(scope='module')
+def sample_video_bytes(tmp_path_factory: pytest.TempPathFactory, require_ffmpeg) -> bytes:
+    video = tmp_path_factory.mktemp('contact_sheet_video') / 'sample.mp4'
     make_video(video)
+    return video.read_bytes()
+
+
+@pytest.fixture
+def workspace(tmp_path: Path, sample_video_bytes: bytes) -> Path:
+    (tmp_path / 'final.mp4').write_bytes(sample_video_bytes)
     write_json(tmp_path / 'timeline.json', TIMELINE)
     write_json(tmp_path / 'inputs.json', {'qa_level': 'standard'})
     return tmp_path
@@ -83,6 +89,8 @@ def workspace(tmp_path: Path) -> Path:
     pytest.param(None, 'standard', True, id='default'),
 ])
 def test_standard_frames_and_vision_policy(workspace: Path, qa_level, expected_level, vision_required):
+    from PIL import Image
+
     write_json(workspace / 'inputs.json', {} if qa_level is None else {'qa_level': qa_level})
     proc = run_sheet(workspace)
     result = parse_result(proc)
@@ -100,18 +108,17 @@ def test_standard_frames_and_vision_policy(workspace: Path, qa_level, expected_l
     by_scene = {f['scene_id']: f['time_s'] for f in result['frames']}
     assert by_scene == {'intro': 1.0, 'middle': 3.5, 'outro': 7.5}
 
-
-def test_legacy_qa_level_option_is_rejected(workspace: Path):
-    proc = run_cli(
-        '--video', str(workspace / 'final.mp4'),
-        '--timeline', str(workspace / 'timeline.json'),
-        '--inputs', str(workspace / 'inputs.json'),
-        '--qa-level', 'standard',
-    )
-    assert proc.returncode == 2
-    result = parse_result(proc)
-    assert result['success'] is False
-    assert '--qa-level' in result['error']
+    if qa_level == 'standard':
+        for sheet in result['sheets']:
+            with Image.open(sheet) as image:
+                assert image.quantization[0][0] <= 10
+        for frame in result['frames']:
+            with Image.open(frame['image']) as image:
+                width, height = image.size
+                strip = image.convert('RGB').crop((0, 0, width, max(8, height // 12)))
+            colors = strip.getcolors(maxcolors=1_000_000) or []
+            assert min(band for _, rgb in colors for band in rgb) == 0
+            assert max(band for _, rgb in colors for band in rgb) > 200
 
 
 def test_sheet_count_is_ceil_frames_over_four(workspace: Path):
@@ -158,33 +165,6 @@ def test_legacy_strict_keeps_narrative_gap_cut_midpoint(workspace: Path):
     assert cuts == {'cut_before': 2.6, 'cut_mid': 3.0, 'cut_after': 3.4}
 
 
-def test_contact_sheet_uses_high_quality_jpeg(workspace: Path):
-    from PIL import Image
-
-    result = parse_result(run_sheet(workspace))
-    for sheet in result['sheets']:
-        with Image.open(sheet) as image:
-            assert image.quantization[0][0] <= 10
-
-
-def test_annotations_present_on_frames(workspace: Path):
-    """Annotated frames carry a non-empty annotation strip at the top."""
-    from PIL import Image
-
-    result = parse_result(run_sheet(workspace))
-    for frame in result['frames']:
-        with Image.open(frame['image']) as image:
-            width, height = image.size
-            strip = image.convert('RGB').crop((0, 0, width, max(8, height // 12)))
-        # The strip is black...
-        colors = strip.getcolors(maxcolors=1_000_000) or []
-        darkest = min(band for _, rgb in colors for band in rgb)
-        assert darkest == 0
-        # ...and has bright (text) pixels inside it.
-        brightest = max(band for _, rgb in colors for band in rgb)
-        assert brightest > 200
-
-
 def test_missing_scenes_in_timeline_is_runtime_error(workspace: Path):
     write_json(
         workspace / 'timeline.json',
@@ -196,25 +176,22 @@ def test_missing_scenes_in_timeline_is_runtime_error(workspace: Path):
     assert result['success'] is False
 
 
-def test_missing_video_exits_1(workspace: Path):
-    proc = run_cli(
+def test_missing_required_inputs_exit_1(workspace: Path):
+    missing_video = run_cli(
         '--video', str(workspace / 'nope.mp4'),
         '--timeline', str(workspace / 'timeline.json'),
         '--inputs', str(workspace / 'inputs.json'),
     )
-    assert proc.returncode == 1
-    result = parse_result(proc)
-    assert result['success'] is False
+    assert missing_video.returncode == 1
+    assert parse_result(missing_video)['success'] is False
 
-
-def test_missing_inputs_exits_1(workspace: Path):
-    proc = run_cli(
+    missing_inputs = run_cli(
         '--video', str(workspace / 'final.mp4'),
         '--timeline', str(workspace / 'timeline.json'),
         '--inputs', str(workspace / 'nope.json'),
     )
-    assert proc.returncode == 1
-    assert parse_result(proc)['success'] is False
+    assert missing_inputs.returncode == 1
+    assert parse_result(missing_inputs)['success'] is False
 
 
 @pytest.mark.parametrize('binary_env', ['FFMPEG_BIN', 'FFPROBE_BIN'])

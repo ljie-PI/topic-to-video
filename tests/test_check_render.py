@@ -119,7 +119,7 @@ def workspace(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_clean_video_passes(workspace: Path):
+def test_clean_video_passes_landscape_and_reports_orientation_mismatch(workspace: Path):
     video = workspace / 'clean.mp4'
     make_clean_video(video)
     proc = run_cli(
@@ -133,8 +133,19 @@ def test_clean_video_passes(workspace: Path):
     assert result['verdict'] == 'pass'
     assert result['findings'] == []
 
+    portrait_inputs = workspace / 'inputs_portrait.json'
+    write_json(portrait_inputs, {'orientation': 'portrait'})
+    mismatch = parse_result(run_cli(
+        '--video', str(video),
+        '--inputs', str(portrait_inputs),
+        '--timeline', str(workspace / 'timeline.json'),
+    ))
+    orientation = [f for f in mismatch['findings'] if f['check'] == 'orientation']
+    assert len(orientation) == 1
+    assert 'portrait' in orientation[0]['issue']
 
-def test_black_segment_found_and_mapped_to_scene(workspace: Path):
+
+def test_black_segment_maps_to_timeline_scene_or_null_without_timeline(workspace: Path):
     video = workspace / 'black.mp4'
     make_black_video(video)
     proc = run_cli(
@@ -154,6 +165,14 @@ def test_black_segment_found_and_mapped_to_scene(workspace: Path):
     # findings carry frame null alongside time_s.
     assert black[0]['frame'] is None
 
+    no_timeline = parse_result(run_cli(
+        '--video', str(video),
+        '--inputs', str(workspace / 'inputs.json'),
+    ))
+    black_without_timeline = [f for f in no_timeline['findings'] if f['check'] == 'black_screen']
+    assert len(black_without_timeline) == 1
+    assert black_without_timeline[0]['scene_id'] is None
+
 
 def test_black_tail_found(workspace: Path):
     video = workspace / 'tail.mp4'
@@ -169,7 +188,7 @@ def test_black_tail_found(workspace: Path):
     assert 'black_tail' in checks
 
 
-def test_freeze_found_with_configurable_threshold(workspace: Path):
+def test_freeze_threshold_and_nearest_scene_mapping(workspace: Path):
     video = workspace / 'freeze.mp4'
     make_freeze_video(video)
     # Default 4s threshold: the 4s cloned segment is reported.
@@ -184,19 +203,14 @@ def test_freeze_found_with_configurable_threshold(workspace: Path):
     assert freezes[0]['scene_id'] == 'intro'
     assert freezes[0]['time_s'] == pytest.approx(2.0, abs=0.2)
     # Raising the threshold above the freeze length: nothing reported.
-    proc = run_cli(
+    raised = parse_result(run_cli(
         '--video', str(video),
         '--inputs', str(workspace / 'inputs.json'),
         '--timeline', str(workspace / 'timeline.json'),
         '--freeze-threshold', '5',
-    )
-    result = parse_result(proc)
-    assert [f for f in result['findings'] if f['check'] == 'freeze'] == []
+    ))
+    assert [f for f in raised['findings'] if f['check'] == 'freeze'] == []
 
-
-def test_freeze_maps_to_nearest_scene_without_exact_containment(workspace: Path):
-    video = workspace / 'freeze.mp4'
-    make_freeze_video(video)
     # Shift scenes so the freeze at ~2s falls in a gap: nearest midpoint wins.
     timeline = json.loads(json.dumps(TIMELINE))
     timeline['scenes'] = [
@@ -205,14 +219,12 @@ def test_freeze_maps_to_nearest_scene_without_exact_containment(workspace: Path)
     ]
     timeline_path = workspace / 'timeline_gap.json'
     write_json(timeline_path, timeline)
-    proc = run_cli(
+    gap_result = parse_result(run_cli(
         '--video', str(video),
         '--inputs', str(workspace / 'inputs.json'),
         '--timeline', str(timeline_path),
-    )
-    result = parse_result(proc)
-    freezes = [f for f in result['findings'] if f['check'] == 'freeze']
-    assert freezes[0]['scene_id'] == 'b'
+    ))
+    assert [f['scene_id'] for f in gap_result['findings'] if f['check'] == 'freeze'] == ['b']
 
 
 def test_missing_audio_track_found(workspace: Path):
@@ -229,67 +241,34 @@ def test_missing_audio_track_found(workspace: Path):
     assert audio[0]['scene_id'] is None
 
 
-def test_orientation_mismatch_found(workspace: Path):
-    video = workspace / 'clean.mp4'
-    make_clean_video(video)
-    portrait_inputs = workspace / 'inputs_portrait.json'
-    write_json(portrait_inputs, {'orientation': 'portrait'})
-    proc = run_cli(
-        '--video', str(video),
-        '--inputs', str(portrait_inputs),
-        '--timeline', str(workspace / 'timeline.json'),
-    )
-    result = parse_result(proc)
-    orientation = [f for f in result['findings'] if f['check'] == 'orientation']
-    assert len(orientation) == 1
-    assert 'portrait' in orientation[0]['issue']
-
-
-def test_exact_three_by_four_canvas_is_accepted(tmp_path: Path):
-    video = tmp_path / 'portrait.mp4'
+def test_exact_three_by_four_and_nine_by_sixteen_canvases_do_not_interchange(tmp_path: Path):
+    three_by_four = tmp_path / 'portrait_3x4.mp4'
     ffmpeg(
-        '-f', 'lavfi', '-i', 'testsrc=duration=3:size=1080x1440:rate=10',
-        '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3',
-        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
-        str(video),
+        '-f', 'lavfi', '-i', 'testsrc2=duration=1:size=1080x1440:rate=10',
+        '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
+        str(three_by_four),
     )
     write_json(tmp_path / 'inputs.json', {'orientation': 'portrait-3:4'})
-    proc = run_cli('--video', str(video), '--inputs', str(tmp_path / 'inputs.json'))
-    result = parse_result(proc)
-    assert result['verdict'] == 'pass'
-    # 同一个 3:4 视频不能被当成 9:16 成片。
+    assert parse_result(run_cli('--video', str(three_by_four), '--inputs', str(tmp_path / 'inputs.json')))['verdict'] == 'pass'
     write_json(tmp_path / 'inputs.json', {'orientation': 'portrait'})
-    mismatch = parse_result(run_cli('--video', str(video), '--inputs', str(tmp_path / 'inputs.json')))
-    assert mismatch['verdict'] == 'fail'
-    assert any('1080x1920' in f['issue'] and '1080x1440' in f['issue'] for f in mismatch['findings'])
+    mismatch_3x4 = parse_result(run_cli('--video', str(three_by_four), '--inputs', str(tmp_path / 'inputs.json')))
+    assert mismatch_3x4['verdict'] == 'fail'
+    assert any('1080x1920' in f['issue'] and '1080x1440' in f['issue'] for f in mismatch_3x4['findings'])
 
-
-def test_nine_by_sixteen_video_cannot_pass_three_by_four_inputs(tmp_path: Path):
-    video = tmp_path / 'portrait.mp4'
+    nine_by_sixteen = tmp_path / 'portrait_9x16.mp4'
     ffmpeg(
         '-f', 'lavfi', '-i', 'testsrc2=duration=1:size=1080x1920:rate=10',
         '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1',
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', str(video),
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
+        str(nine_by_sixteen),
     )
     write_json(tmp_path / 'inputs.json', {'orientation': 'portrait'})
-    assert parse_result(run_cli('--video', str(video), '--inputs', str(tmp_path / 'inputs.json')))['verdict'] == 'pass'
+    assert parse_result(run_cli('--video', str(nine_by_sixteen), '--inputs', str(tmp_path / 'inputs.json')))['verdict'] == 'pass'
     write_json(tmp_path / 'inputs.json', {'orientation': 'portrait-3:4'})
-    result = parse_result(run_cli('--video', str(video), '--inputs', str(tmp_path / 'inputs.json')))
-    assert result['verdict'] == 'fail'
-    assert any('1080x1440' in f['issue'] and '1080x1920' in f['issue'] for f in result['findings'])
-
-
-def test_no_timeline_falls_back_to_null_scene_id(workspace: Path):
-    video = workspace / 'black.mp4'
-    make_black_video(video)
-    proc = run_cli(
-        '--video', str(video),
-        '--inputs', str(workspace / 'inputs.json'),
-    )
-    result = parse_result(proc)
-    black = [f for f in result['findings'] if f['check'] == 'black_screen']
-    assert len(black) == 1
-    assert black[0]['scene_id'] is None
+    mismatch_9x16 = parse_result(run_cli('--video', str(nine_by_sixteen), '--inputs', str(tmp_path / 'inputs.json')))
+    assert mismatch_9x16['verdict'] == 'fail'
+    assert any('1080x1440' in f['issue'] and '1080x1920' in f['issue'] for f in mismatch_9x16['findings'])
 
 
 def test_missing_video_exits_1(workspace: Path):

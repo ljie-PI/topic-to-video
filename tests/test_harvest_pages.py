@@ -15,6 +15,7 @@ from types import SimpleNamespace
 
 import chrome_cdp
 import harvest_manifest
+from cli_helpers import parse_stdout
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -297,93 +298,27 @@ def test_local_page_harvests_media_with_available_recording_backend(
             _close_test_chrome(cdp_url)
 
 
-def test_reharvesting_same_direct_video_preserves_applied_download(tmp_path: Path):
-    harvest_dir = tmp_path / 'harvest_page'
-    url = 'https://www.youtube.com/watch?v=shared123'
-    command = [
-        sys.executable, str(SCRIPT), '--urls', url,
-        '--output-dir', str(harvest_dir), '--profile-dir', str(tmp_path / 'unused-profile'),
-    ]
-    first = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
-    assert first.returncode == 0, first.stderr
-    slug = harvest_manifest.slug_for_url(url)
-    video_path = harvest_dir / slug / 'videos' / 'shared123.mp4'
-    subtitle_path = harvest_dir / slug / 'videos' / 'shared123.en.srt'
-    harvest_manifest.apply_download(harvest_dir, url, {
-        'files': [str(video_path), str(subtitle_path)],
-        'videos': [{
-            'path': str(video_path), 'width': 1280, 'height': 720, 'duration_seconds': 2.5,
-        }],
-    })
-
-    second = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
-
-    assert second.returncode == 0, second.stderr
-    batch = json.loads(second.stdout)
-    downloaded = batch['entries'][0]['videos'][0]
-    assert downloaded['download_required'] is False
-    assert downloaded['downloaded'] is True
-    assert downloaded['local_path'] == f'{slug}/videos/shared123.mp4'
-    assert downloaded['subtitle_path'] == f'{slug}/videos/shared123.en.srt'
-    assert downloaded['id'] == 'shared123'
-    assert downloaded['width'] == 1280
-    assert downloaded['height'] == 720
-    assert downloaded['duration_seconds'] == 2.5
-    assert 'pending_downloads' not in batch
-    manifest = json.loads((harvest_dir / 'manifest.json').read_text(encoding='utf-8'))
-    assert len(manifest['entries']) == 1
-    assert manifest['entries'][0] == batch['entries'][0]
-    assert manifest['pending_downloads'] == []
-    assert len(manifest['harvest_batches']) == 2
+DIRECT_A = 'https://www.youtube.com/watch?v=file000001'
+DIRECT_B = 'https://www.youtube.com/watch?v=file000002'
 
 
-def test_direct_video_batches_upsert_without_erasing_papers(tmp_path: Path):
+def test_direct_video_batches_preserve_papers_applied_downloads_and_urls_file_order(tmp_path: Path):
     harvest_dir = tmp_path / 'harvest_page'
     harvest_manifest.upsert_entries(harvest_dir, [{
         'slug': 'main-paper', 'success': True, 'source_type': 'paper_pdf',
         'paper_metadata': {'full_markdown_path': 'main-paper/mineru/full.md'},
         'images': [], 'videos': [],
     }])
-    urls = [
-        'https://www.youtube.com/watch?v=first123',
-        'https://www.youtube.com/watch?v=second123',
-    ]
-    for url in urls:
-        proc = subprocess.run([
-            sys.executable, str(SCRIPT), '--urls', url,
-            '--output-dir', str(harvest_dir), '--profile-dir', str(tmp_path / 'unused-profile'),
-        ], capture_output=True, text=True, timeout=30, check=False)
-        assert proc.returncode == 0, proc.stderr
-        batch = json.loads(proc.stdout)
-        assert [entry['url'] for entry in batch['entries']] == [url]
-        assert batch['succeeded'] == 1
 
-    manifest = json.loads((harvest_dir / 'manifest.json').read_text(encoding='utf-8'))
-    assert {entry['slug'] for entry in manifest['entries']} == {
-        'main-paper', harvest_manifest.slug_for_url(urls[0]), harvest_manifest.slug_for_url(urls[1]),
-    }
-    assert len(manifest['harvest_batches']) == 2
-    assert [batch['urls'] for batch in manifest['harvest_batches']] == [[urls[0]], [urls[1]]]
-    assert len(manifest['pending_downloads']) == 2
-    for entry in manifest['entries']:
-        for video in entry['videos']:
-            assert not Path(video['suggested_output_dir']).is_absolute()
-
-
-DIRECT_A = 'https://www.youtube.com/watch?v=file000001'
-DIRECT_B = 'https://www.youtube.com/watch?v=file000002'
-
-
-def test_urls_file_matches_urls_argument_and_keeps_order(tmp_path: Path):
+    # 1. --urls-file normalizes BOM, blank lines, whitespace and duplicates in order, matching --urls.
     urls_file = tmp_path / 'harvest-urls.txt'
-    # BOM、空行、重复项、行首尾空白：都应归一到与 --urls 相同的结果。
     urls_file.write_text(
         f'\ufeff{DIRECT_A}\n\n   \n{DIRECT_A}\n  {DIRECT_B}  \n',
         encoding='utf-8',
     )
-    from_file = _run_harvest(
+    first = _run_harvest(
         '--urls-file', str(urls_file),
-        '--output-dir', str(tmp_path / 'from-file'),
+        '--output-dir', str(harvest_dir),
         '--profile-dir', str(tmp_path / 'unused-profile'),
     )
     from_args = _run_harvest(
@@ -391,15 +326,51 @@ def test_urls_file_matches_urls_argument_and_keeps_order(tmp_path: Path):
         '--output-dir', str(tmp_path / 'from-args'),
         '--profile-dir', str(tmp_path / 'unused-profile'),
     )
-
-    assert from_file.returncode == 0, from_file.stderr
+    assert first.returncode == 0, first.stderr
     assert from_args.returncode == 0, from_args.stderr
-    file_batch = json.loads(from_file.stdout)
-    args_batch = json.loads(from_args.stdout)
+    file_batch = parse_stdout(first)
+    args_batch = parse_stdout(from_args)
     assert [entry['url'] for entry in file_batch['entries']] == [DIRECT_A, DIRECT_B]
     assert [entry['url'] for entry in args_batch['entries']] == [DIRECT_A, DIRECT_B]
     assert file_batch['batch_size'] == args_batch['batch_size'] == 2
     assert len(file_batch['pending_downloads']) == 2
+
+    # 2. Apply download to DIRECT_A, then re-harvest DIRECT_A: applied download and paper entry survive.
+    slug_a = harvest_manifest.slug_for_url(DIRECT_A)
+    slug_b = harvest_manifest.slug_for_url(DIRECT_B)
+    video_path = harvest_dir / slug_a / 'videos' / 'file000001.mp4'
+    subtitle_path = harvest_dir / slug_a / 'videos' / 'file000001.en.srt'
+    harvest_manifest.apply_download(harvest_dir, DIRECT_A, {
+        'files': [str(video_path), str(subtitle_path)],
+        'videos': [{
+            'path': str(video_path), 'width': 1280, 'height': 720, 'duration_seconds': 2.5,
+        }],
+    })
+
+    second = _run_harvest(
+        '--urls', DIRECT_A,
+        '--output-dir', str(harvest_dir),
+        '--profile-dir', str(tmp_path / 'unused-profile'),
+    )
+    assert second.returncode == 0, second.stderr
+    batch = parse_stdout(second)
+    downloaded = batch['entries'][0]['videos'][0]
+    assert downloaded['download_required'] is False
+    assert downloaded['downloaded'] is True
+    assert downloaded['local_path'] == f'{slug_a}/videos/file000001.mp4'
+    assert downloaded['subtitle_path'] == f'{slug_a}/videos/file000001.en.srt'
+    assert downloaded['id'] == 'file000001'
+    assert (downloaded['width'], downloaded['height'], downloaded['duration_seconds']) == (1280, 720, 2.5)
+    assert 'pending_downloads' not in batch
+
+    manifest = json.loads((harvest_dir / 'manifest.json').read_text(encoding='utf-8'))
+    assert {entry['slug'] for entry in manifest['entries']} == {'main-paper', slug_a, slug_b}
+    assert len(manifest['harvest_batches']) == 2
+    assert [b['urls'] for b in manifest['harvest_batches']] == [[DIRECT_A, DIRECT_B], [DIRECT_A]]
+    assert [item['url'] for item in manifest['pending_downloads']] == [DIRECT_B]
+    for entry in manifest['entries']:
+        for video in entry['videos']:
+            assert not Path(video['suggested_output_dir']).is_absolute()
 
 
 def test_urls_file_errors_are_reported_before_chrome_and_output_dir(tmp_path: Path):

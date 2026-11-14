@@ -252,37 +252,14 @@ def test_explicit_spec_table_covers_all_registered_layouts():
 
 
 @pytest.mark.parametrize('spec', LAYOUT_DOC_SPECS, ids=lambda s: s.layout)
-def test_markdown_region_table_matches_json_regions_item_by_item(spec: LayoutDocSpec):
+def test_markdown_region_table_and_canvas_invariants_match_json(spec: LayoutDocSpec):
     contract = load_layout_json(spec)
     markdown_rows = parse_region_table(spec)
     problems = compare_layout_regions(spec.layout, contract['regions'], markdown_rows)
     assert not problems, '\n'.join(problems)
 
-
-def test_all_region_kinds_are_covered_across_the_layout_specs():
-    covered_ids = {
-        region['id']
-        for spec in LAYOUT_DOC_SPECS
-        for region in load_layout_json(spec)['regions']
-    }
-    assert covered_ids == {
-        'ground',
-        'nav-bar',
-        'header',
-        'main',
-        'side',
-        'person',
-        'caption-bar',
-        'caption-text',
-    }
-
-
-@pytest.mark.parametrize('spec', LAYOUT_DOC_SPECS, ids=lambda s: s.layout)
-def test_canvas_ground_and_caption_width_invariants_match(spec: LayoutDocSpec):
-    contract = load_layout_json(spec)
     canvas = contract['canvas']
     regions_by_id = {region['id']: region['rect'] for region in contract['regions']}
-
     doc_w, doc_h = parse_doc_canvas(spec)
     assert (canvas['width'], canvas['height']) == (doc_w, doc_h), (
         f'layout={spec.layout} region=canvas field=width/height '
@@ -304,6 +281,24 @@ def test_canvas_ground_and_caption_width_invariants_match(spec: LayoutDocSpec):
         f'layout={spec.layout} region=caption-text field=width_px '
         f'json_caption={caption_width_px} json_region_width={caption_text["width"]}'
     )
+
+
+def test_all_region_kinds_are_covered_across_the_layout_specs():
+    covered_ids = {
+        region['id']
+        for spec in LAYOUT_DOC_SPECS
+        for region in load_layout_json(spec)['regions']
+    }
+    assert covered_ids == {
+        'ground',
+        'nav-bar',
+        'header',
+        'main',
+        'side',
+        'person',
+        'caption-bar',
+        'caption-text',
+    }
 
 
 def test_layouts_index_summary_table_matches_every_preset_json():

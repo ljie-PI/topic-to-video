@@ -58,38 +58,26 @@ def vendored_css(design: str) -> str:
     return (FONTS / design / load_fonts(design)['css_filename']).read_text()
 
 
-def test_every_design_has_complete_vendored_fonts():
+def test_vendored_font_pool_and_design_dirs_are_complete_and_deduplicated():
+    referenced: set[str] = set()
+    by_source: dict[str, list[list[str]]] = {}
     for design in DESIGNS:
+        manifest = load_fonts(design)
+        assert [p.name for p in (FONTS / design).iterdir()] == [manifest['css_filename']]
         refs = css_references(vendored_css(design))
         assert refs, design
         for ref in refs:
             assert re.fullmatch(r'[0-9a-f]{12}\.woff2', ref), (design, ref)
             assert (POOL / ref).is_file(), (design, ref)
+        referenced.update(refs)
+        source = json.dumps({k: manifest[k] for k in ('css2_families', 'rename')}, sort_keys=True)
+        by_source.setdefault(source, []).append(refs)
 
-
-def test_a_design_directory_holds_only_its_css():
-    for design in DESIGNS:
-        assert [p.name for p in (FONTS / design).iterdir()] == [load_fonts(design)['css_filename']]
-
-
-def test_shared_pool_has_no_unreferenced_or_duplicate_files():
-    referenced = {ref for design in DESIGNS for ref in css_references(vendored_css(design))}
-    pooled = {p.name for p in POOL.iterdir()}
-    assert pooled == referenced
-
+    assert {p.name for p in POOL.iterdir()} == referenced
     by_content: dict[str, list[str]] = {}
     for font in POOL.iterdir():
         by_content.setdefault(hashlib.sha256(font.read_bytes()).hexdigest(), []).append(font.name)
     assert [names for names in by_content.values() if len(names) > 1] == []
-
-
-def test_designs_with_the_same_font_source_share_the_same_pool_files():
-    by_source: dict[str, list[list[str]]] = {}
-    for design in DESIGNS:
-        manifest = load_fonts(design)
-        source = json.dumps({k: manifest[k] for k in ('css2_families', 'rename')}, sort_keys=True)
-        by_source.setdefault(source, []).append(css_references(vendored_css(design)))
-
     for refs in by_source.values():
         assert all(r == refs[0] for r in refs)
 
@@ -312,15 +300,22 @@ def refresh_env(resources: Path, server: ThreadingHTTPServer) -> dict[str, str]:
     }
 
 
-def test_refresh_downloads_into_the_pool_and_replaces_the_theme_dir(tmp_path: Path, google_fonts):
+def test_refresh_downloads_replaces_reuses_and_prunes_pool(tmp_path: Path, google_fonts):
     resources = tmp_path / 'resources'
     (resources / 'default').mkdir(parents=True)
     (resources / 'default' / 'stale.woff2').write_bytes(b'old')
+    (resources / 'files').mkdir(parents=True)
+    (resources / 'files' / 'orphan.woff2').write_bytes(b'unused')
+    (resources / 'files' / 'other.woff2').write_bytes(b'used by another theme')
+    (resources / 'other').mkdir()
+    (resources / 'other' / 'other-fonts.css').write_text('@font-face { src: url(other.woff2); }')
+    env = refresh_env(resources, google_fonts)
 
-    proc, result = run('--refresh', '--theme', 'default', env=refresh_env(resources, google_fonts))
+    proc, result = run('--refresh', '--theme', 'default', env=env)
 
     assert proc.returncode == 0, proc.stderr
     assert result['mode'] == 'refresh'
+    assert len(google_fonts.font_requests) == 2
     out = resources / 'default'
     assert [p.name for p in out.iterdir()] == ['default-fonts.css']
     css = (out / 'default-fonts.css').read_text()
@@ -329,39 +324,15 @@ def test_refresh_downloads_into_the_pool_and_replaces_the_theme_dir(tmp_path: Pa
     assert len(refs) == 2
     for ref in refs:
         assert (resources / 'files' / ref).read_bytes() == FakeGoogleFonts.font_bytes
-    assert sorted(p.name for p in (resources / 'files').iterdir()) == sorted(refs)
-    assert sorted(result['files']) == sorted(str(p.resolve()) for p in [out / 'default-fonts.css', *(resources / 'files' / r for r in refs)])
-    assert sorted(p.name for p in resources.iterdir()) == ['default', 'files']  # no staging debris
-
-
-def test_refresh_reuses_pool_files_across_designs(tmp_path: Path, google_fonts):
-    resources = tmp_path / 'resources'
-    env = refresh_env(resources, google_fonts)
-
-    run('--refresh', '--theme', 'default', env=env)
-    assert len(google_fonts.font_requests) == 2
-    proc, _ = run('--refresh', '--theme', 'producthunt', env=env)
-
-    assert proc.returncode == 0, proc.stderr
-    assert len(google_fonts.font_requests) == 2  # producthunt downloaded nothing new
-    assert css_references((resources / 'default' / 'default-fonts.css').read_text()) == css_references(
-        (resources / 'producthunt' / 'producthunt-fonts.css').read_text()
+    assert {p.name for p in (resources / 'files').iterdir()} == {*refs, 'other.woff2'}
+    assert sorted(result['files']) == sorted(
+        str(p.resolve()) for p in [out / 'default-fonts.css', *(resources / 'files' / r for r in refs)]
     )
-    assert len(list((resources / 'files').iterdir())) == 2
+    assert sorted(p.name for p in resources.iterdir()) == ['default', 'files', 'other']  # no staging debris
 
+    proc2, _ = run('--refresh', '--theme', 'producthunt', env=env)
 
-def test_refresh_prunes_pool_files_no_design_references(tmp_path: Path, google_fonts):
-    resources = tmp_path / 'resources'
-    (resources / 'files').mkdir(parents=True)
-    (resources / 'files' / 'orphan.woff2').write_bytes(b'unused')
-    (resources / 'files' / 'other.woff2').write_bytes(b'used by another theme')
-    (resources / 'other').mkdir()
-    (resources / 'other' / 'other-fonts.css').write_text('@font-face { src: url(other.woff2); }')
-
-    proc, _ = run('--refresh', '--theme', 'default', env=refresh_env(resources, google_fonts))
-
-    assert proc.returncode == 0, proc.stderr
-    pooled = {p.name for p in (resources / 'files').iterdir()}
-    assert 'orphan.woff2' not in pooled
-    assert 'other.woff2' in pooled
-    assert len(pooled) == 3  # the two new fonts plus the other theme's
+    assert proc2.returncode == 0, proc2.stderr
+    assert len(google_fonts.font_requests) == 2  # producthunt downloaded nothing new
+    assert css_references((resources / 'producthunt' / 'producthunt-fonts.css').read_text()) == refs
+    assert {p.name for p in (resources / 'files').iterdir()} == {*refs, 'other.woff2'}

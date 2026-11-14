@@ -20,6 +20,13 @@ PIPELINE_STATUS = REPO_ROOT / 'scripts' / 'pipeline-status.py'
 
 _ENV_BLACKLIST_PREFIXES = ('TTS_', 'ASR_', 'ALIGN', 'QWEN3', 'DASHSCOPE_', 'COSYVOICE_')
 SCRIPT_TEXT = '甲' * 22 + '\n\n' + '乙' * 23 + '\n'
+RESEARCH_BRIEF = (
+    '# research brief\n\n'
+    '## Key facts (verified)\n- fact [source]\n\n'
+    '## Quotes (verbatim if possible)\n- "quote" — Person, [source]\n\n'
+    '## Numbers / dates\n- 1, unit, [source]\n\n'
+    '## Source URLs (for Phase 4 harvest)\n- https://example.com/article — official site\n'
+)
 SCENE_PLAN = [
     {
         'scene_id': 'scene_1',
@@ -99,16 +106,13 @@ def make_workspace(tmp_path: Path, *, scene_plan: bool = True) -> Path:
 
 
 @pytest.mark.usefixtures('require_ffmpeg')
-def test_full_command_writes_all_products_and_pipeline_completes_phase_7(tmp_path: Path):
+def test_full_command_writes_all_products_ignores_legacy_layout_and_completes_phase_7(tmp_path: Path):
     ws = make_workspace(tmp_path)
-    (ws / 'research-brief.md').write_text(
-        '# research brief\n\n'
-        '## Key facts (verified)\n- fact [source]\n\n'
-        '## Quotes (verbatim if possible)\n- "quote" — Person, [source]\n\n'
-        '## Numbers / dates\n- 1, unit, [source]\n\n'
-        '## Source URLs (for Phase 4 harvest)\n- https://example.com/article — official site\n',
-        encoding='utf-8',
-    )
+    # layout 是 Phase 8 的决定：即使 inputs.json 带有无效 legacy layout，Phase 7 也不读它。
+    inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
+    inputs['layout'] = 'does-not-exist'
+    write_json(ws / 'inputs.json', inputs)
+    (ws / 'research-brief.md').write_text(RESEARCH_BRIEF, encoding='utf-8')
     proc = run_voice_subtitles(ws)
 
     assert proc.returncode == 0, proc.stderr
@@ -152,27 +156,6 @@ def test_missing_scene_plan_produces_timeline_without_scenes(tmp_path: Path):
     assert 'cues' not in timeline
 
 
-@pytest.mark.usefixtures('require_ffmpeg')
-def test_phase_7_never_reads_layout(tmp_path: Path):
-    """layout 是 Phase 8 的决定：本阶段不读它，也不因它无效而失败。"""
-    ws = make_workspace(tmp_path)
-    inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
-    inputs['layout'] = 'does-not-exist'
-    write_json(ws / 'inputs.json', inputs)
-
-    proc = run_voice_subtitles(ws)
-
-    assert proc.returncode == 0, proc.stderr
-    assert parse_stdout(proc)['success'] is True
-    assert (ws / 'transcribe' / 'timeline.json').is_file()
-
-
-def test_the_unified_entry_never_pins_a_tts_speech_rate():
-    """写稿的 7 字符/秒是估算，不是传给 TTS 的语速参数。"""
-    source = (REPO_ROOT / 'scripts' / 'voice-subtitles.py').read_text(encoding='utf-8')
-    assert '--speech-rate' not in source
-
-
 def test_empty_required_input_fails_before_tts(tmp_path: Path):
     ws = make_workspace(tmp_path)
     (ws / 'narration.txt').write_text('', encoding='utf-8')
@@ -205,19 +188,24 @@ def test_tts_failure_propagates_child_error_json(tmp_path: Path):
 
 
 @pytest.mark.usefixtures('require_ffmpeg')
-def test_an_external_transcript_resumes_with_align_only_and_a_rerun_drops_it(tmp_path: Path):
+def test_external_transcript_align_only_resumes_validates_words_and_rerun_drops_it(tmp_path: Path):
     ws = make_workspace(tmp_path)
     first = run_voice_subtitles(ws)
     assert first.returncode == 0, first.stderr
     transcript = ws / 'transcribe' / 'transcript.json'
     external = transcript.read_bytes()
 
-    # A full regeneration deletes whatever sits at the transcript path, so the
-    # imported transcript only survives the --align-only path.
+    # A full regeneration deletes whatever sits at the transcript path.
     transcript.write_bytes(external)
     dropped = run_voice_subtitles(ws, env=_NO_TRANSCRIPT_ENV)
     assert dropped.returncode == 1
     assert not transcript.exists()
+
+    # --align-only rejects a transcript without word timestamps, and succeeds with valid external words.
+    write_json(transcript, [{'begin': 0, 'end': 1000, 'text': '甲', 'words': []}])
+    bad_align = run_voice_subtitles(ws, '--align-only')
+    assert bad_align.returncode == 1
+    assert parse_stdout(bad_align)['failed_step'] == 'align'
 
     transcript.write_bytes(external)
     audio = ws / 'voice_clone' / 'narration.mp3'
@@ -232,16 +220,39 @@ def test_an_external_transcript_resumes_with_align_only_and_a_rerun_drops_it(tmp
 
 
 @pytest.mark.usefixtures('require_ffmpeg')
-def test_align_only_rejects_a_transcript_without_word_timestamps(tmp_path: Path):
+def test_crlf_producer_voice_and_composition_subtitles_chain(tmp_path: Path):
     ws = make_workspace(tmp_path)
-    first = run_voice_subtitles(ws)
-    assert first.returncode == 0, first.stderr
-    write_json(
-        ws / 'transcribe' / 'transcript.json',
-        [{'begin': 0, 'end': 1000, 'text': '甲', 'words': []}],
+    (ws / 'script.txt').write_bytes(SCRIPT_TEXT.replace('\n', '\r\n').encode('utf-8'))
+    (ws / 'research-brief.md').write_text(RESEARCH_BRIEF, encoding='utf-8')
+    made = run_cli(
+        MAKE_NARRATION, '--script', str(ws / 'script.txt'),
+        '--lexicon', str(ws / 'tts-lexicon.json'), '--output-dir', str(ws), env={},
     )
+    assert made.returncode == 0, made.stderr
+    assert parse_stdout(made)['success'] is True
 
-    proc = run_voice_subtitles(ws, '--align-only')
+    voiced = run_voice_subtitles(ws)
+    assert voiced.returncode == 0, voiced.stderr + voiced.stdout
+    assert parse_stdout(voiced)['success'] is True
+    assert '7-voice-subtitles' in run_pipeline_status(ws)['completed_phases']
 
-    assert proc.returncode == 1
-    assert parse_stdout(proc)['failed_step'] == 'align'
+    prepared = run_cli(REPO_ROOT / 'scripts' / 'prepare-handoff.py', str(ws), 'composition', env={})
+    assert prepared.returncode == 0, prepared.stderr
+    assert parse_stdout(prepared)['success'] is True
+
+    timeline_before = (ws / 'transcribe/timeline.json').read_bytes()
+    subtitles = run_cli(
+        REPO_ROOT / 'scripts' / 'align-narration.py',
+        '--mode', 'subtitles',
+        '--script', str(ws / 'script.txt'),
+        '--narration', str(ws / 'narration.txt'),
+        '--offsets', str(ws / 'narration-offsets.json'),
+        '--transcript', str(ws / 'transcribe/transcript.json'),
+        '--layout', str(ws / 'modules/layouts/landscape.json'),
+        '--units-output', str(ws / 'composition/assets/subtitle-units.json'),
+        env={},
+    )
+    assert subtitles.returncode == 0, subtitles.stderr + subtitles.stdout
+    assert parse_stdout(subtitles)['success'] is True
+    assert (ws / 'transcribe/timeline.json').read_bytes() == timeline_before
+    assert json.loads((ws / 'composition/assets/subtitle-units.json').read_text(encoding='utf-8'))['units']

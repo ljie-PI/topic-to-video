@@ -66,10 +66,11 @@ def problem(data: dict, **kwargs) -> str | None:
     return scene_config.scene_config_problem(data, **kwargs)
 
 
-def test_valid_config_loads_and_snaps_boundaries(tmp_path: Path):
+def test_valid_config_loads_snaps_boundaries_and_supports_split_merge_and_free_layout(tmp_path: Path):
     path = tmp_path / 'scene-config.json'
     path.write_text(json.dumps(config(
-        scene('intro', 0.02, 10.0, sources=['scene_1']),
+        scene('intro_1', 0.02, 6.0, sources=['scene_1']),
+        scene('intro_2', 6.0, 10.0, sources=['scene_1']),
         scene('demo', 10.0, 19.98, sources=['scene_2', 'scene_3'], template={'name': 'github-trending', 'scene': 'project-cover'}),
     )), encoding='utf-8')
 
@@ -79,15 +80,17 @@ def test_valid_config_loads_and_snaps_boundaries(tmp_path: Path):
     )
 
     assert loaded['total_s'] == 20.0
-    assert [(s['scene_id'], s['begin_s'], s['end_s']) for s in loaded['scenes']] == [
-        ('intro', 0.0, 10.0), ('demo', 10.0, 20.0),
+    assert [(s['scene_id'], s['begin_s'], s['end_s'], s['source_scene_ids']) for s in loaded['scenes']] == [
+        ('intro_1', 0.0, 6.0, ['scene_1']),
+        ('intro_2', 6.0, 10.0, ['scene_1']),
+        ('demo', 10.0, 20.0, ['scene_2', 'scene_3']),
     ]
-    assert loaded['scenes'][1]['source_scene_ids'] == ['scene_2', 'scene_3']
-    assert loaded['scenes'][1]['template'] == {'name': 'github-trending', 'scene': 'project-cover'}
+    assert loaded['scenes'][2]['template'] == {'name': 'github-trending', 'scene': 'project-cover'}
+    assert loaded['scenes'][0]['template'] is None
     assert loaded['scenes'][0]['layout']['preset'] is None  # 自由布局无需注册
 
 
-def test_caption_layout_segments_project_one_interval_per_scene():
+def test_caption_layout_segments_and_region_lookup():
     data = config(scene('a', 0, 8), scene('b', 8, 20))
     assert problem(data) is None
     segments = scene_config.caption_layout_segments(data['scenes'])
@@ -96,8 +99,6 @@ def test_caption_layout_segments_project_one_interval_per_scene():
     ]
     assert segments[0]['layout_data']['caption'] == {'width_px': 1728, 'font_size_px': 36, 'max_lines': 2}
 
-
-def test_caption_region_prefers_caption_text_and_accepts_component_prefix():
     assert scene_config.caption_region(caption_layout())['id'] == 'caption'
     renamed = caption_layout()
     renamed['regions'][1]['id'] = 'caption-text'
@@ -107,96 +108,70 @@ def test_caption_region_prefers_caption_text_and_accepts_component_prefix():
     assert scene_config.caption_region(no_caption) is None
 
 
-def test_narrative_split_and_merge_mappings_are_both_valid(tmp_path: Path):
-    """一个叙事 scene 拆成多个视觉 scene、多个叙事 scene 并成一个视觉 scene，
-    都是有效映射；区间有序、无歧义并覆盖 total_s。"""
-    path = tmp_path / 'scene-config.json'
-    path.write_text(json.dumps(config(
-        scene('split_first', 0, 8, sources=['scene_1']),
-        scene('split_second', 8, 14, sources=['scene_1']),
-        scene('merged', 14, 20, sources=['scene_2', 'scene_3']),
-    )), encoding='utf-8')
+def test_invalid_configs_tracking_sources_and_canvas_fail_with_located_errors():
+    for mutate, expected in (
+        (lambda c: c.pop('version'), 'version'),
+        (lambda c: c.update(version=2), 'version'),
+        (lambda c: c.pop('canvas'), 'root must contain exactly'),
+        (lambda c: c.update(total_s=float('inf')), 'total_s'),
+        (lambda c: c.update(total_s=-1), 'total_s'),
+        (lambda c: c.update(scenes=[]), 'non-empty'),
+        (lambda c: c['scenes'][0].update(scene_id='x') or c['scenes'][1].update(scene_id='x'), 'duplicate'),
+        (lambda c: c['scenes'][0].update(source_scene_ids=[]), 'source_scene_ids'),
+        (lambda c: c['scenes'][0].update(begin_s=-1), 'begin_s'),
+        (lambda c: c['scenes'][0].update(end_s=0), 'begin_s'),
+        (lambda c: c['scenes'][0].update(end_s=21), 'beyond total_s'),
+        (lambda c: c['scenes'][0].pop('layout'), 'must contain exactly'),
+        (lambda c: c['scenes'][0]['layout'].update(preset='missing-layout'), 'not an available layout'),
+        (lambda c: c['scenes'][0].update(content_sha256='deadbeef'), 'tracking'),
+    ):
+        data = config(scene('a', 0, 10), scene('b', 10, 20))
+        mutate(data)
+        detail = problem(data, expected_canvas=LANDSCAPE, modules_root=ROOT)
+        assert detail is not None and expected in detail, detail
 
-    loaded = scene_config.load_scene_config(
-        path, expected_canvas=LANDSCAPE,
-        known_scene_ids={'scene_1', 'scene_2', 'scene_3'},
-        modules_root=ROOT,
-    )
-
-    assert [(s['scene_id'], s['source_scene_ids']) for s in loaded['scenes']] == [
-        ('split_first', ['scene_1']),
-        ('split_second', ['scene_1']),
-        ('merged', ['scene_2', 'scene_3']),
-    ]
-    ranges = [(s['begin_s'], s['end_s']) for s in loaded['scenes']]
-    assert ranges == [(0.0, 8.0), (8.0, 14.0), (14.0, 20.0)]
-
-
-@pytest.mark.parametrize('mutate, expected', [
-    (lambda c: c.pop('version'), 'version'),
-    (lambda c: c.update(version=2), 'version'),
-    (lambda c: c.pop('canvas'), 'root must contain exactly'),
-    (lambda c: c.update(total_s=float('inf')), 'total_s'),
-    (lambda c: c.update(total_s=-1), 'total_s'),
-    (lambda c: c.update(scenes=[]), 'non-empty'),
-    (lambda c: c['scenes'][0].update(scene_id='x') or c['scenes'][1].update(scene_id='x'), 'duplicate'),
-    (lambda c: c['scenes'][0].update(source_scene_ids=[]), 'source_scene_ids'),
-    (lambda c: c['scenes'][0].update(begin_s=-1), 'begin_s'),
-    (lambda c: c['scenes'][0].update(end_s=0), 'begin_s'),
-    (lambda c: c['scenes'][0].update(end_s=21), 'beyond total_s'),
-    (lambda c: c['scenes'][0].pop('layout'), 'must contain exactly'),
-    (lambda c: c['scenes'][0]['layout'].update(preset='missing-layout'), 'not an available layout'),
-])
-def test_invalid_configs_fail_with_located_errors(mutate, expected: str):
-    data = config(scene('a', 0, 10), scene('b', 10, 20))
-    mutate(data)
-    detail = problem(data, expected_canvas=LANDSCAPE, modules_root=ROOT)
-    assert detail is not None and expected in detail
-
-
-def test_tracking_fields_are_rejected():
-    data = config(scene('a', 0, 20))
-    data['scenes'][0]['content_sha256'] = 'deadbeef'
-    assert 'tracking' in problem(data)
-
-
-def test_unknown_source_scene_ids_are_rejected():
     data = config(scene('a', 0, 20))
     assert problem(data, known_scene_ids={'scene_1'}) is None
-    detail = problem(data, known_scene_ids={'other'})
-    assert detail is not None and 'scene_1' in detail
+    assert 'scene_1' in problem(data, known_scene_ids={'other'})
 
-
-def test_canvas_must_match_expected_orientation():
     portrait_region = region('main', 'content', {'x': 48, 'y': 60, 'width': 984, 'height': 1000})
-    data = config(
+    portrait_cfg = config(
         scene('a', 0, 20, layout={'preset': None, 'regions': [portrait_region], 'caption': {'width_px': 984, 'font_size_px': 40, 'max_lines': 2}}),
         canvas={'width': 1080, 'height': 1920},
     )
-    detail = problem(data, expected_canvas=LANDSCAPE)
-    assert '1080x1920' in detail
-    assert problem(data, expected_canvas=(1080, 1920)) is None
+    assert '1080x1920' in problem(portrait_cfg, expected_canvas=LANDSCAPE)
+    assert problem(portrait_cfg, expected_canvas=(1080, 1920)) is None
 
 
-@pytest.mark.parametrize('mutate, expected', [
-    (lambda l: l.update(regions=[]), 'regions must be a non-empty list'),
-    (lambda l: l['regions'][0].update(id='caption'), 'duplicate region id'),
-    (lambda l: l['regions'][0].pop('rect'), 'must contain id, kind, rect'),
-    (lambda l: l['regions'][0].update(kind='floating'), 'kind must be one of'),
-    (lambda l: l['regions'][1].pop('component'), 'must declare its component'),
-    (lambda l: l['regions'][0]['rect'].update(width=0), 'width / height must be positive'),
-    (lambda l: l['regions'][0]['rect'].update(x=-1), 'x / y must be >= 0'),
-    (lambda l: l['regions'][0]['rect'].update(width=3000), 'beyond the 1920x1080 canvas'),
-    (lambda l: l['regions'][0]['rect'].update(width=float('nan')), 'finite'),
-    (lambda l: l.update(caption={'width_px': 0, 'font_size_px': 36, 'max_lines': 2}), 'positive integers'),
-    (lambda l: l.update(caption={'width_px': 1728, 'font_size_px': 36}), 'caption must be exactly'),
-])
-def test_region_geometry_and_caption_specs_are_validated(mutate, expected: str):
-    data = config(scene('a', 0, 20))
-    mutate(data['scenes'][0]['layout'])
-    detail = problem(data, expected_canvas=LANDSCAPE)
-    assert detail is not None and expected in detail, detail
-    assert "'a'" in detail
+def test_region_geometry_caption_specs_and_template_resources_are_validated():
+    for mutate, expected in (
+        (lambda l: l.update(regions=[]), 'regions must be a non-empty list'),
+        (lambda l: l['regions'][0].update(id='caption'), 'duplicate region id'),
+        (lambda l: l['regions'][0].pop('rect'), 'must contain id, kind, rect'),
+        (lambda l: l['regions'][0].update(kind='floating'), 'kind must be one of'),
+        (lambda l: l['regions'][1].pop('component'), 'must declare its component'),
+        (lambda l: l['regions'][0]['rect'].update(width=0), 'width / height must be positive'),
+        (lambda l: l['regions'][0]['rect'].update(x=-1), 'x / y must be >= 0'),
+        (lambda l: l['regions'][0]['rect'].update(width=3000), 'beyond the 1920x1080 canvas'),
+        (lambda l: l['regions'][0]['rect'].update(width=float('nan')), 'finite'),
+        (lambda l: l.update(caption={'width_px': 0, 'font_size_px': 36, 'max_lines': 2}), 'positive integers'),
+        (lambda l: l.update(caption={'width_px': 1728, 'font_size_px': 36}), 'caption must be exactly'),
+    ):
+        data = config(scene('a', 0, 20))
+        mutate(data['scenes'][0]['layout'])
+        detail = problem(data, expected_canvas=LANDSCAPE)
+        assert detail is not None and expected in detail and "'a'" in detail, detail
+
+    for template, expected in (
+        ('not-a-dict', 'template must be null or exactly'),
+        ({'name': 'github-trending'}, 'template must be null or exactly'),
+        ({'name': 'nope', 'scene': 'project-cover'}, 'must be null or one of'),
+        ({'name': 'github-trending', 'scene': 'nope'}, 'has no scene'),
+    ):
+        detail = problem(config(scene('a', 0, 20, template=template)), modules_root=ROOT)
+        assert detail is not None and expected in detail, detail
+        if isinstance(template, dict) and set(template) == {'name', 'scene'}:
+            assert problem(config(scene('a', 0, 20, template=template))) is None
 
 
 def test_scene_ranges_must_be_ordered_disjoint_and_covering():
@@ -219,26 +194,6 @@ def test_scene_ranges_must_be_ordered_disjoint_and_covering():
     late_start = config(scene('a', 1, 10), scene('b', 10, 20))
     detail = problem(late_start)
     assert detail is not None and 'start at 0' in detail
-
-
-@pytest.mark.parametrize('template, expected', [
-    ('not-a-dict', 'template must be null or exactly'),
-    ({'name': 'github-trending'}, 'template must be null or exactly'),
-    ({'name': 'nope', 'scene': 'project-cover'}, 'must be null or one of'),
-    ({'name': 'github-trending', 'scene': 'nope'}, 'has no scene'),
-])
-def test_template_resources_must_exist(template, expected: str):
-    data = config(scene('a', 0, 20, template=template))
-    detail = problem(data, modules_root=ROOT)
-    assert detail is not None and expected in detail, detail
-    # modules_root 缺省时跳过资源存在性检查（结构仍须合法）
-    if isinstance(template, dict) and set(template) == {'name', 'scene'}:
-        assert problem(config(scene('a', 0, 20, template=template))) is None
-
-
-def test_template_none_and_free_layout_are_the_normal_path():
-    data = config(scene('a', 0, 20, template=None, layout=caption_layout(preset=None)))
-    assert problem(data, modules_root=ROOT) is None
 
 
 def test_load_reports_path_and_problem():

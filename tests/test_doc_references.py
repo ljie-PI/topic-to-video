@@ -5,8 +5,6 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DOC_FILES = [
     REPO_ROOT / 'SKILL.md',
@@ -20,13 +18,6 @@ MODULE_RELATIVE_REFERENCE = re.compile(
     r'`((?:designs|layouts|components|transitions|templates|patterns)/[^`\s]+)`'
 )
 PLACEHOLDER_CHARACTERS = frozenset('<{*')
-
-
-def test_doc_globs_match_at_least_one_file():
-    # Parametrized over these lists, an empty glob silently runs zero tests.
-    assert DOC_FILES, 'no doc files matched'
-    assert DELEGATION_DOCS, 'no delegation docs found'
-    assert PHASE_DOCS, 'no phase docs found'
 
 
 def logical_lines(path: Path) -> Iterator[tuple[int, str]]:
@@ -46,39 +37,45 @@ def logical_lines(path: Path) -> Iterator[tuple[int, str]]:
         yield start_line, pending
 
 
-@pytest.mark.parametrize('doc_path', DOC_FILES, ids=lambda path: str(path.relative_to(REPO_ROOT)))
-def test_documented_scripts_arguments_and_paths_exist(doc_path: Path):
+def test_documented_scripts_arguments_and_paths_exist():
+    assert DOC_FILES, 'no doc files matched'
+    script_sources: dict[Path, str] = {}
     failures: list[str] = []
-    for line_number, line in logical_lines(doc_path):
-        for script_match in SCRIPT_REFERENCE.finditer(line):
-            relative_script = script_match.group(1)
-            script_path = REPO_ROOT / relative_script
-            if not script_path.is_file():
-                failures.append(f'line {line_number}: missing script {relative_script}')
-                continue
-            source = script_path.read_text(encoding='utf-8')
-            for argument in SCRIPT_ARGUMENT.findall(line[script_match.end():]):
-                if argument not in source:
-                    failures.append(
-                        f'line {line_number}: {relative_script} does not define {argument}'
-                    )
 
-        for match in LOCAL_REFERENCE.finditer(line):
-            relative_path = match.group(1)
-            if PLACEHOLDER_CHARACTERS.intersection(relative_path):
-                continue
-            if not (REPO_ROOT / relative_path).exists():
-                failures.append(f'line {line_number}: missing path {relative_path}')
+    for doc_path in DOC_FILES:
+        rel_doc = doc_path.relative_to(REPO_ROOT)
+        for line_number, line in logical_lines(doc_path):
+            for script_match in SCRIPT_REFERENCE.finditer(line):
+                relative_script = script_match.group(1)
+                script_path = REPO_ROOT / relative_script
+                if not script_path.is_file():
+                    failures.append(f'{rel_doc}:{line_number}: missing script {relative_script}')
+                    continue
+                source = script_sources.setdefault(
+                    script_path, script_path.read_text(encoding='utf-8')
+                )
+                for argument in SCRIPT_ARGUMENT.findall(line[script_match.end():]):
+                    if argument not in source:
+                        failures.append(
+                            f'{rel_doc}:{line_number}: {relative_script} does not define {argument}'
+                        )
 
-        if doc_path.is_relative_to(REPO_ROOT / 'modules'):
-            for match in MODULE_RELATIVE_REFERENCE.finditer(line):
+            for match in LOCAL_REFERENCE.finditer(line):
                 relative_path = match.group(1)
                 if PLACEHOLDER_CHARACTERS.intersection(relative_path):
                     continue
-                if not (REPO_ROOT / 'modules' / relative_path).exists():
-                    failures.append(f'line {line_number}: missing module path {relative_path}')
+                if not (REPO_ROOT / relative_path).exists():
+                    failures.append(f'{rel_doc}:{line_number}: missing path {relative_path}')
 
-    assert not failures, f'{doc_path.relative_to(REPO_ROOT)}:\n' + '\n'.join(failures)
+            if doc_path.is_relative_to(REPO_ROOT / 'modules'):
+                for match in MODULE_RELATIVE_REFERENCE.finditer(line):
+                    relative_path = match.group(1)
+                    if PLACEHOLDER_CHARACTERS.intersection(relative_path):
+                        continue
+                    if not (REPO_ROOT / 'modules' / relative_path).exists():
+                        failures.append(f'{rel_doc}:{line_number}: missing module path {relative_path}')
+
+    assert not failures, '\n'.join(failures)
 
 
 # A delegated agent reads its delegation package, not the main agent's phase
@@ -89,17 +86,19 @@ PAPER_PARSE_DOC = 'references/phases/02-paper-parse.md'
 CATALOG_DOC = 'references/phases/05-material-catalog.md'
 
 
-@pytest.mark.parametrize(
-    'doc_path',
-    [path for path in [*DELEGATION_DOCS, *PHASE_DOCS] if path.name != '02-paper-parse.md'],
-    ids=lambda path: str(path.relative_to(REPO_ROOT)),
-)
-def test_paper_parse_doc_is_referenced_by_no_other_phase_or_delegation_doc(doc_path: Path):
-    text = doc_path.read_text(encoding='utf-8')
-    assert '02-paper-parse' not in text, f'{doc_path.relative_to(REPO_ROOT)} points at {PAPER_PARSE_DOC}'
+def test_phase_and_delegation_docs_keep_package_boundaries():
+    assert DELEGATION_DOCS, 'no delegation docs found'
+    assert PHASE_DOCS, 'no phase docs found'
 
+    violations: list[str] = []
+    for doc_path in [*DELEGATION_DOCS, *PHASE_DOCS]:
+        if doc_path.name == '02-paper-parse.md':
+            continue
+        if '02-paper-parse' in doc_path.read_text(encoding='utf-8'):
+            violations.append(f'{doc_path.relative_to(REPO_ROOT)} points at {PAPER_PARSE_DOC}')
 
-@pytest.mark.parametrize('doc_path', DELEGATION_DOCS, ids=lambda path: str(path.relative_to(REPO_ROOT)))
-def test_delegation_docs_do_not_point_at_the_catalog_phase_doc(doc_path: Path):
-    text = doc_path.read_text(encoding='utf-8')
-    assert '05-material-catalog' not in text, f'{doc_path.relative_to(REPO_ROOT)} points at {CATALOG_DOC}'
+    for doc_path in DELEGATION_DOCS:
+        if '05-material-catalog' in doc_path.read_text(encoding='utf-8'):
+            violations.append(f'{doc_path.relative_to(REPO_ROOT)} points at {CATALOG_DOC}')
+
+    assert not violations, '\n'.join(violations)

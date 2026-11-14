@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from cli_helpers import parse_stdout, run_cli
+from cli_helpers import parse_stdout, run_cli, write_silent_mp3
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TRANSCRIBE = REPO_ROOT / 'scripts' / 'transcribe.py'
@@ -29,29 +29,21 @@ def run_transcribe(*args: str, env: dict[str, str] | None = None) -> subprocess.
     )
 
 
-@pytest.fixture
-def silent_mp3(tmp_path: Path, require_ffmpeg) -> Path:
-    audio = tmp_path / 'narration.mp3'
-    subprocess.run(
-        [
-            'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
-            '-f', 'lavfi', '-i', 'anullsrc=r=24000:cl=mono', '-t', '3',
-            '-c:a', 'libmp3lame', str(audio),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+@pytest.fixture(scope='module')
+def silent_mp3(tmp_path_factory: pytest.TempPathFactory, require_ffmpeg) -> Path:
+    audio = tmp_path_factory.mktemp('transcribe_fake') / 'narration.mp3'
+    write_silent_mp3(audio, 3.0, sample_rate=24000)
     return audio
 
 
-def test_fake_asr_spreads_text_evenly_over_audio_duration(tmp_path: Path, silent_mp3: Path):
+def test_fake_asr_selectable_via_env_and_spreads_text_evenly_over_audio_duration(
+    tmp_path: Path, silent_mp3: Path
+):
     output = tmp_path / 'out' / 'transcript.json'
 
     proc = run_transcribe(
-        str(silent_mp3), str(output), '--backend', 'fake',
-        env={'ASR_FAKE_TEXT': TEXT},
+        str(silent_mp3), str(output),
+        env={'ASR_BACKEND': 'fake', 'ASR_FAKE_TEXT': TEXT},
     )
 
     assert proc.returncode == 0, proc.stderr
@@ -80,16 +72,6 @@ def test_fake_asr_spreads_text_evenly_over_audio_duration(tmp_path: Path, silent
     assert all(a['end'] == b['begin'] for a, b in zip(words, words[1:]))
     step = words[0]['end'] - words[0]['begin']
     assert all(w['end'] - w['begin'] == pytest.approx(step, abs=1) for w in words)
-
-
-def test_fake_asr_is_selectable_through_the_environment(tmp_path: Path, silent_mp3: Path):
-    proc = run_transcribe(
-        str(silent_mp3), str(tmp_path / 'transcript.json'),
-        env={'ASR_BACKEND': 'fake', 'ASR_FAKE_TEXT': TEXT},
-    )
-
-    assert proc.returncode == 0, proc.stderr
-    assert parse_stdout(proc)['backend'] == 'fake'
 
 
 def test_fake_asr_without_text_is_a_runtime_error(tmp_path: Path, silent_mp3: Path):

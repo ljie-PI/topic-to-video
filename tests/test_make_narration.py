@@ -88,27 +88,47 @@ def run_success(tmp_path: Path, script_text: str = SCRIPT_TEXT, lexicon=LEXICON)
 # --- replacement behavior ---------------------------------------------------
 
 
-def test_lexicon_replacement_produces_expected_narration(tmp_path: Path):
-    result = run_success(tmp_path)
-    assert result['success'] is True
-    narration = Path(result['narration_path']).read_text(encoding='utf-8')
-    assert narration == EXPECTED_NARRATION
-    assert result['narration_length'] == len(EXPECTED_NARRATION)
-
-
-def test_replacement_is_deterministic(tmp_path: Path):
+def test_lexicon_replacement_offset_table_and_determinism(tmp_path: Path):
     script_path, lexicon_path, out_dir = make_fixtures(tmp_path)
     args = ('--script', str(script_path), '--lexicon', str(lexicon_path),
             '--output-dir', str(out_dir))
     first = run_cli(*args)
-    narration_1 = Path(json.loads(first.stdout)['narration_path']).read_bytes()
-    offsets_1 = Path(json.loads(first.stdout)['offsets_path']).read_bytes()
+    assert first.returncode == 0
+    result = parse_result(first)
+    assert result['success'] is True
+
+    narration_path = Path(result['narration_path'])
+    offsets_path = Path(result['offsets_path'])
+    narration = narration_path.read_text(encoding='utf-8')
+    assert narration == EXPECTED_NARRATION
+    assert result['narration_length'] == len(EXPECTED_NARRATION)
+
+    offsets = json.loads(offsets_path.read_text(encoding='utf-8'))
+    assert offsets['narration_length'] == len(narration)
+    assert offsets['script_length'] == len(SCRIPT_TEXT)
+    cursor = 0
+    for seg in offsets['segments']:
+        assert seg['narration_start'] == cursor
+        assert seg['narration_end'] > seg['narration_start']
+        assert 0 <= seg['script_start'] < seg['script_end'] <= len(SCRIPT_TEXT)
+        cursor = seg['narration_end']
+        n_len = seg['narration_end'] - seg['narration_start']
+        s_len = seg['script_end'] - seg['script_start']
+        if n_len == s_len:
+            assert narration[seg['narration_start']:seg['narration_end']] == \
+                SCRIPT_TEXT[seg['script_start']:seg['script_end']]
+    assert cursor == len(narration)
+    replaced = [seg for seg in offsets['segments']
+                if seg['narration_end'] - seg['narration_start']
+                != seg['script_end'] - seg['script_start']]
+    assert replaced and replaced[0]['script_start'] == 0
+
+    narration_1 = narration_path.read_bytes()
+    offsets_1 = offsets_path.read_bytes()
     second = run_cli(*args)
-    narration_2 = Path(json.loads(second.stdout)['narration_path']).read_bytes()
-    offsets_2 = Path(json.loads(second.stdout)['offsets_path']).read_bytes()
-    assert first.returncode == 0 and second.returncode == 0
-    assert narration_1 == narration_2
-    assert offsets_1 == offsets_2
+    assert second.returncode == 0
+    assert narration_path.read_bytes() == narration_1
+    assert offsets_path.read_bytes() == offsets_1
 
 
 def test_empty_lexicon_is_identity(tmp_path: Path):
@@ -158,38 +178,6 @@ def test_equal_length_overlap_uses_display_form_tie_break(tmp_path: Path):
     assert offsets_fwd == offsets_rev
 
 
-# --- offset table -----------------------------------------------------------
-
-
-def test_offset_table_covers_narration_and_preserves_source_spans(tmp_path: Path):
-    result = run_success(tmp_path)
-    narration = Path(result['narration_path']).read_text(encoding='utf-8')
-    offsets = json.loads(Path(result['offsets_path']).read_text(encoding='utf-8'))
-
-    assert offsets['narration_length'] == len(narration)
-    assert offsets['script_length'] == len(SCRIPT_TEXT)
-    # segments are sorted and contiguous, covering [0, len(narration))
-    cursor = 0
-    for seg in offsets['segments']:
-        assert seg['narration_start'] == cursor
-        assert seg['narration_end'] > seg['narration_start']
-        assert 0 <= seg['script_start'] < seg['script_end'] <= len(SCRIPT_TEXT)
-        cursor = seg['narration_end']
-        n_len = seg['narration_end'] - seg['narration_start']
-        s_len = seg['script_end'] - seg['script_start']
-        if n_len == s_len:
-            # 1:1 span: characters must match the display draft exactly
-            assert narration[seg['narration_start']:seg['narration_end']] == \
-                SCRIPT_TEXT[seg['script_start']:seg['script_end']]
-    assert cursor == len(narration)
-    # the "OpenHuman" → "Open Human" replacement must appear as a segment
-    # whose lengths differ (10 narration chars over 9 script chars)
-    replaced = [seg for seg in offsets['segments']
-                if seg['narration_end'] - seg['narration_start']
-                != seg['script_end'] - seg['script_start']]
-    assert replaced and replaced[0]['script_start'] == 0
-
-
 # --- errors -----------------------------------------------------------------
 
 
@@ -208,34 +196,29 @@ def test_output_directory_error_exits_1_with_json(tmp_path: Path):
     assert 'Traceback' not in proc.stderr
 
 
-def test_missing_script_file_exits_1(tmp_path: Path):
+def test_invalid_or_missing_inputs_exit_1(tmp_path: Path):
     lexicon_path = tmp_path / 'tts-lexicon.json'
     write_json(lexicon_path, LEXICON)
-    proc = run_cli('--script', str(tmp_path / 'nope.txt'), '--lexicon', str(lexicon_path),
-                   '--output-dir', str(tmp_path / 'out'))
-    assert proc.returncode == 1
-    result = parse_result(proc)
-    assert result['success'] is False
+    missing_script = run_cli(
+        '--script', str(tmp_path / 'nope.txt'), '--lexicon', str(lexicon_path),
+        '--output-dir', str(tmp_path / 'out1'),
+    )
+    assert missing_script.returncode == 1 and parse_result(missing_script)['success'] is False
 
+    empty_script = tmp_path / 'empty.txt'
+    write_text(empty_script, '')
+    empty_proc = run_cli(
+        '--script', str(empty_script), '--lexicon', str(lexicon_path),
+        '--output-dir', str(tmp_path / 'out2'),
+    )
+    assert empty_proc.returncode == 1 and parse_result(empty_proc)['success'] is False
 
-def test_invalid_lexicon_exits_1(tmp_path: Path):
     script_path = tmp_path / 'script.txt'
     write_text(script_path, SCRIPT_TEXT)
-    lexicon_path = tmp_path / 'tts-lexicon.json'
-    write_json(lexicon_path, ['not', 'a', 'map'])
-    proc = run_cli('--script', str(script_path), '--lexicon', str(lexicon_path),
-                   '--output-dir', str(tmp_path / 'out'))
-    assert proc.returncode == 1
-    result = parse_result(proc)
-    assert result['success'] is False
-
-
-def test_empty_script_exits_1(tmp_path: Path):
-    script_path = tmp_path / 'script.txt'
-    write_text(script_path, '')
-    lexicon_path = tmp_path / 'tts-lexicon.json'
-    write_json(lexicon_path, LEXICON)
-    proc = run_cli('--script', str(script_path), '--lexicon', str(lexicon_path),
-                   '--output-dir', str(tmp_path / 'out'))
-    assert proc.returncode == 1
-    assert parse_result(proc)['success'] is False
+    bad_lexicon = tmp_path / 'bad-lexicon.json'
+    write_json(bad_lexicon, ['not', 'a', 'map'])
+    bad_lex_proc = run_cli(
+        '--script', str(script_path), '--lexicon', str(bad_lexicon),
+        '--output-dir', str(tmp_path / 'out3'),
+    )
+    assert bad_lex_proc.returncode == 1 and parse_result(bad_lex_proc)['success'] is False

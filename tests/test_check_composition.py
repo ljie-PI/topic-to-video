@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from cli_helpers import parse_stdout
+
 pytestmark = pytest.mark.usefixtures('require_chrome')
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -150,7 +152,7 @@ def run_check(
         write_json(timeline_path, timeline)
         args += ['--timeline', str(timeline_path)]
     proc = run_cli(*args)
-    result = json.loads(proc.stdout)
+    result = parse_stdout(proc)
     return proc, result
 
 
@@ -161,15 +163,37 @@ def checks_of(result: dict) -> set[tuple[str, str]]:
 # --- fixture with deliberately broken elements -----------------------------------
 
 
-def test_dirty_fixture_reports_each_check(tmp_path: Path):
+def test_dirty_fixture_reports_each_check_and_attributes_scenes(tmp_path: Path):
     comp = write_composition(
         tmp_path,
         [
             scene('s1', 0.0, 10.0, DIRTY_SCENE + CAPTION_BAR),
             scene('s2', 10.0, 20.0, CLEAN_SCENE + CAPTION_BAR),
+            scene(
+                's3',
+                20.0,
+                30.0,
+                '<div class="stray" style="position:absolute; left:1750px; top:400px; '
+                'width:400px; height:100px; font-size:30px; background:#eeeeee;">越界</div>'
+                + CAPTION_BAR,
+            ),
         ],
     )
-    proc, result = run_check(tmp_path, comp, units=SUBTITLE_UNITS, timeline=TIMELINE)
+    timeline = {
+        'version': 1,
+        'total_s': 30.0,
+        'scenes': [
+            *TIMELINE['scenes'],
+            {'scene_id': 's3', 'begin_s': 20.0, 'end_s': 30.0},
+        ],
+    }
+    units = {
+        'units': [
+            {'text': '大家好', 'begin_s': 0.0, 'end_s': 20.0},
+            {'text': '大家好啊', 'begin_s': 20.0, 'end_s': 30.0},
+        ]
+    }
+    proc, result = run_check(tmp_path, comp, units=units, timeline=timeline)
     assert proc.returncode == 0
     assert result['success'] is True
     assert result['verdict'] == 'fail'
@@ -180,34 +204,17 @@ def test_dirty_fixture_reports_each_check(tmp_path: Path):
         ('s1', 'text_overflow'),
         ('s1', 'media_load_failure'),
         ('s1', 'font_size_below_min'),
+        ('s3', 'outside_content_regions'),
+        ('s3', 'caption_mismatch'),
     } <= checks
-    # s2 is clean: every finding belongs to s1
-    assert all(finding['scene_id'] == 's1' for finding in result['findings'])
-
-
-def test_out_of_bounds_finding_carries_scene_id(tmp_path: Path):
-    comp = write_composition(
-        tmp_path,
-        [
-            scene('s1', 0.0, 10.0, CLEAN_SCENE),
-            scene(
-                's2',
-                10.0,
-                20.0,
-                '<div class="stray" style="position:absolute; left:1750px; top:400px; '
-                'width:400px; height:100px; font-size:30px; background:#eeeeee;">越界</div>',
-            ),
-        ],
-    )
-    proc, result = run_check(tmp_path, comp, timeline=TIMELINE)
-    assert proc.returncode == 0
-    assert checks_of(result) == {('s2', 'outside_content_regions')}
+    # s2 is clean: findings are attributed strictly to the offending scenes
+    assert {finding['scene_id'] for finding in result['findings']} == {'s1', 's3'}
 
 
 # --- clean fixture ----------------------------------------------------------------
 
 
-def test_clean_fixture_passes(tmp_path: Path):
+def test_clean_fixture_passes_and_dumps_snapshots(tmp_path: Path):
     comp = write_composition(
         tmp_path,
         [
@@ -215,22 +222,23 @@ def test_clean_fixture_passes(tmp_path: Path):
             scene('s2', 10.0, 20.0, CLEAN_SCENE + CAPTION_BAR + PRESENTER),
         ],
     )
-    proc, result = run_check(tmp_path, comp, units=SUBTITLE_UNITS, timeline=TIMELINE)
-    assert proc.returncode == 0
+    dump_path = tmp_path / 'recorded' / 'snapshots.json'
+    proc, result = run_check(
+        tmp_path,
+        comp,
+        units=SUBTITLE_UNITS,
+        timeline=TIMELINE,
+        extra_args=('--dump-snapshots', str(dump_path)),
+    )
+    assert proc.returncode == 0, proc.stderr
     assert result['success'] is True
     assert result['verdict'] == 'pass'
     assert result['findings'] == []
-
-
-def test_caption_mismatch_is_found(tmp_path: Path):
-    comp = write_composition(
-        tmp_path,
-        [scene('s1', 0.0, 10.0, CLEAN_SCENE + CAPTION_BAR)],
-    )
-    units = {'units': [{'text': '大家好啊', 'begin_s': 0.0, 'end_s': 10.0}]}
-    proc, result = run_check(tmp_path, comp, units=units, timeline=TIMELINE)
-    assert proc.returncode == 0
-    assert ('s1', 'caption_mismatch') in checks_of(result)
+    snapshots = json.loads(dump_path.read_text(encoding='utf-8'))
+    assert isinstance(snapshots, list) and len(snapshots) == 6
+    assert {snapshot['scene_id'] for snapshot in snapshots} == {'s1', 's2'}
+    assert all(isinstance(snapshot['time'], (int, float)) for snapshot in snapshots)
+    assert all(isinstance(snapshot['elements'], list) for snapshot in snapshots)
 
 
 # --- CLI seam ---------------------------------------------------------------------
@@ -245,8 +253,7 @@ def test_invalid_argument_value_exits_2(tmp_path: Path):
         '--viewport', 'not-a-viewport',
     )
     assert proc.returncode == 2
-    result = json.loads(proc.stdout)
-    assert result['success'] is False
+    assert parse_stdout(proc)['success'] is False
 
 
 def test_missing_composition_exits_1(tmp_path: Path):
@@ -256,8 +263,7 @@ def test_missing_composition_exits_1(tmp_path: Path):
         '--min-font-size', '22',
     )
     assert proc.returncode == 1
-    result = json.loads(proc.stdout)
-    assert result['success'] is False
+    assert parse_stdout(proc)['success'] is False
 
 
 def test_invalid_timeline_scene_is_skipped_with_warning(tmp_path: Path):
@@ -296,42 +302,29 @@ def test_scenes_fall_back_to_dom_roots_without_timeline(tmp_path: Path):
     assert checked == {'s1', 's2'}
 
 
-def test_design_json_supplies_min_font_size(tmp_path: Path):
-    comp = write_composition(
-        tmp_path,
-        [scene('s1', 0.0, 10.0, CLEAN_SCENE + CAPTION_BAR)],
-    )
-    design = tmp_path / 'theme.json'
-    write_json(design, {'min_font_px': {'reading': 26, 'ui': 26}})
-    units_path = tmp_path / 'subtitle-units.json'
-    write_json(units_path, SUBTITLE_UNITS)
-    proc = run_cli(
-        str(comp),
-        '--layout', str(PRESENTER_LAYOUT),
-        '--design', str(design),
-        '--subtitle-units', str(units_path),
-    )
-    assert proc.returncode == 0
-    result = json.loads(proc.stdout)
-    assert result['min_font_size'] == 26
-    assert result['min_ui_font_size'] == 26
-    # panel text is 30px, above the JSON 26px floor
-    assert result['verdict'] == 'pass'
-
-
 UI_TEXT_SCENE = """
   <div class="panel" style="position:absolute; left:96px; top:196px; width:800px; height:400px;
-       font-size:30px; line-height:1.4;">
-    <div class="title-bar" data-text-role="ui" style="font-size:23px;">面板标题</div>
-    <div class="body-small" style="font-size:23px;">正文小字</div>
+       font-size:32px; line-height:1.4;">
+    <div class="body-ok" style="font-size:32px;">正文正常字号</div>
+    <div class="title-bar" data-text-role="ui" style="font-size:24px;">面板标题</div>
+    <div class="body-small" style="font-size:24px;">正文小字</div>
   </div>
 """
 
 
-def test_ui_text_role_uses_the_ui_minimum(tmp_path: Path):
+def test_design_json_supplies_reading_and_ui_font_minimums(tmp_path: Path):
+    import video_contract
+
     comp = write_composition(tmp_path, [scene('s1', 0.0, 10.0, UI_TEXT_SCENE + CAPTION_BAR)])
-    design = tmp_path / 'theme.json'
-    write_json(design, {'min_font_px': {'reading': 26, 'ui': 22}})
+    preset = video_contract.load_design_preset(REPO_ROOT, 'github')
+    design = tmp_path / 'design.json'
+    write_json(design, {
+        'version': 1,
+        'source': 'custom',
+        'preset': None,
+        'tokens': dict(preset['tokens']),
+        'min_font_px': {'reading': 31, 'ui': 23},
+    })
     units_path = tmp_path / 'subtitle-units.json'
     write_json(units_path, SUBTITLE_UNITS)
     proc = run_cli(
@@ -341,12 +334,12 @@ def test_ui_text_role_uses_the_ui_minimum(tmp_path: Path):
         '--subtitle-units', str(units_path),
     )
     assert proc.returncode == 0, proc.stderr
-    result = json.loads(proc.stdout)
-    assert (result['min_font_size'], result['min_ui_font_size']) == (26, 22)
+    result = parse_stdout(proc)
+    assert (result['min_font_size'], result['min_ui_font_size']) == (31, 23)
     small = [f['issue'] for f in result['findings'] if f['check'] == 'font_size_below_min']
-    # 23px body text fails the 26px reading minimum; the 23px UI title bar passes.
+    # 32px reading text and 24px UI title bar pass; 24px body-small fails the 31px reading floor.
     assert len(small) == 1
-    assert 'body-small' in small[0] and 'reading-text minimum 26px' in small[0]
+    assert 'body-small' in small[0] and 'reading-text minimum 31px' in small[0]
 
 
 def test_viewport_defaults_to_layout_canvas(tmp_path: Path):
@@ -371,24 +364,3 @@ def test_explicit_viewport_mismatch_is_used_and_reported(tmp_path: Path):
     assert 'warning' in proc.stderr.lower()
     assert 'viewport' in proc.stderr.lower()
     assert any('viewport' in warning for warning in result['warnings'])
-
-
-def test_dump_snapshots_writes_raw_recorded_list(tmp_path: Path):
-    comp = write_composition(tmp_path, [scene('s1', 0.0, 10.0, CLEAN_SCENE)])
-    dump_path = tmp_path / 'recorded' / 'snapshots.json'
-
-    proc, result = run_check(
-        tmp_path,
-        comp,
-        timeline=TIMELINE,
-        extra_args=('--dump-snapshots', str(dump_path)),
-    )
-
-    assert proc.returncode == 0, proc.stderr
-    snapshots = json.loads(dump_path.read_text(encoding='utf-8'))
-    assert isinstance(snapshots, list)
-    assert len(snapshots) == 6
-    assert {snapshot['scene_id'] for snapshot in snapshots} == {'s1', 's2'}
-    assert all(isinstance(snapshot['time'], (int, float)) for snapshot in snapshots)
-    assert all(isinstance(snapshot['elements'], list) for snapshot in snapshots)
-    assert result['success'] is True
