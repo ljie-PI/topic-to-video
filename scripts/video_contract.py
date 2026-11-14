@@ -84,6 +84,11 @@ def catalog_applies(inputs: dict[str, Any]) -> bool:
     return bool(inputs.get('fetch_materials')) or inputs.get('input_mode') == 'paper'
 
 
+def bgm_applies(inputs: dict[str, Any]) -> bool:
+    """BGM 混音默认开启；仅在 inputs.json 显式设 bgm = false 时跳过。"""
+    return bool(inputs.get('bgm', True))
+
+
 def input_field_problem(field: str, value: Any) -> str | None:
     """字段类型的公共规则；调用方只传入自己声明消费的字段。"""
     if field == 'orientation':
@@ -91,9 +96,9 @@ def input_field_problem(field: str, value: Any) -> str | None:
     if field == 'duration':
         if duration_minutes(value) is None:
             return f'field duration must be a positive finite length in minutes (分钟数), got {value!r}'
-    elif field == 'fetch_materials':
+    elif field in ('fetch_materials', 'bgm'):
         if not isinstance(value, bool):
-            return f'field fetch_materials must be a boolean, got {value!r}'
+            return f'field {field} must be a boolean, got {value!r}'
     elif field in ('coding_agent', 'language', 'input_mode'):
         if not isinstance(value, str) or not value.strip():
             return f'field {field} must be a non-empty string, got {value!r}'

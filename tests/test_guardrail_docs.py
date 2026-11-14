@@ -107,12 +107,7 @@ def test_every_phase_has_guardrails_immediately_after_next_step(doc_path: Path):
 
     next_step = headings.index('下一步')
     assert headings[next_step + 1] == '护栏'
-    if doc_path.name == '09-check-mix.md':
-        # Phase 1 收集输入有自己的规则（不要逐项追问、要求要落地、不提前定模板），
-        # 不再是一个空的“无”。
-        assert section(text, '护栏').strip() == '无'
-    else:
-        assert section(text, '护栏').strip() != '无'
+    assert section(text, '护栏').strip() != '无'
 
 
 @pytest.mark.parametrize('relpath, required', [

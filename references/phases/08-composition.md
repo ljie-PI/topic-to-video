@@ -60,7 +60,7 @@
 
 ## 下一步
 
-Phase 9（检查与混音）：渲染后 QA（`check-render.py` 确定性检查 + `make-contact-sheet.py` 拼图 + 按 `qa_level` 三档的 vision 检查，修复轮最多 2 轮）通过后混入 BGM，得到最终交付文件。
+Phase 9（成片检查）：渲染后 QA（`check-render.py` 确定性检查 + `make-contact-sheet.py` 拼图 + 按 `qa_level` 三档的 vision 检查，修复轮最多 2 轮）收尾后，进入 Phase 10 混入 BGM 得到最终交付文件（`bgm = false` 时跳过 Phase 10 直接交付 `final.mp4`）。
 
 ## 护栏
 
@@ -84,7 +84,7 @@ Phase 9（检查与混音）：渲染后 QA（`check-render.py` 确定性检查 
 - **design、视觉 scenes、模板与 layout 不在这一步决定。** 主 agent 不替 composition agent 预选 design，不要求预先决定全局 template / layout，也不要求 `composition/design.json` / `composition/scene-config.json` 已存在——它们由 composition agent 在本阶段根据内容与用户要求产出。所有布局共用符合 orientation 的固定画布。
 - **旧输入不作门槛。** 旧工作区残留的 `inputs.json.design` / `layout` / `template` 原样保留、不做未经确认的数据删除，准备与状态脚本都不拿它们当门槛；新流程的命令一律消费本阶段生成的 `composition/design.json` 与 `composition/scene-config.json`。
 
-视觉 scenes、design 或实际使用的 layout 改变只会让本阶段及登记的下游重做：Phase 7 不依赖它们，音频、transcript 和时间轴都不重建。主 agent 核对影响范围后显式登记 `--redo 8-composition`，并按交付范围决定 Phase 9 的 QA / 混音是否重跑；标准无素材模式不读取残留 catalog。
+视觉 scenes、design 或实际使用的 layout 改变只会让本阶段及登记的下游重做：Phase 7 不依赖它们，音频、transcript 和时间轴都不重建。主 agent 核对影响范围后显式登记 `--redo 8-composition`，并按交付范围决定 Phase 9 的成片 QA 与 Phase 10 的 BGM 混音是否重跑；标准无素材模式不读取残留 catalog。
 
 用户在本阶段新提出画面要求时，先按 `references/pipeline-control.md` 写进 `inputs.json` 的 `composition_requests`，再生成 handoff。
 

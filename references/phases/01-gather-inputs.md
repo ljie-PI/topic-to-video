@@ -25,10 +25,11 @@
 | `composition_requests` | 可选，字符串列表，默认不填。用户对画面与视觉风格提出的长期要求（“强调方法图”“不要人物区”“用 github 主题”“仅第 2 场用深色科技风”），逐条用原话记下；Phase 8 委派前读它 |
 | `material_search_requests` | 可选，字符串列表，默认不填。用户点名要用某个平台找素材（“去 Google 图片搜某产品的界面”“在 B 站找演示视频”）时，把原话逐条记下；Phase 4 读它。它只是记录，不会自动让素材阶段重做：用户新提或修改这类要求时，另按 `references/pipeline-control.md` 登记 Phase 4 重做。不主动要求平台搜索 |
 | `qa_level` | 可选，渲染后 QA 档位：`quick` / `standard`（缺省）/ `strict`。只按用户明确要求写，不主动问；三档的完整流程见 Phase 9 |
+| `bgm` | 可选，是否混入背景音乐（布尔，缺省 `true`）；仅在用户明确要求不要背景音乐 / BGM 时写 `false`（跳过 Phase 10，直接交付 `final.mp4`）。只按用户明确要求写，不主动问 |
 
 ## 完成判据
 
-`inputs.json` 存在、非空、JSON 可解析，且上表非可选字段齐全（`fetch_materials` 必须是布尔；`duration` 必须是分钟数；`orientation` 必须是三个规范朝向之一；`qa_level`、`approval_gates`、`narration_requests`、`composition_requests`、`material_search_requests` 和 `delegation` 都可缺省，填写时按上表类型校验）。
+`inputs.json` 存在、非空、JSON 可解析，且上表非可选字段齐全（`fetch_materials` 必须是布尔；`duration` 必须是分钟数；`orientation` 必须是三个规范朝向之一；`qa_level`、`bgm`、`approval_gates`、`narration_requests`、`composition_requests`、`material_search_requests` 和 `delegation` 都可缺省，填写时按上表类型校验）。
 
 ## 执行后自检
 
@@ -62,7 +63,7 @@
 3. 时长：用户说了就用他的值，不设上下限；没说用 3 分钟。
 4. 语言：默认中文；用户要其他语言时照他说的写。
 5. 视觉素材：默认联网搜索。用户说不要就用 `fetch_materials = false`；论文模式即使不联网搜索，论文自己的关键图也照样进视频。用户点名要在某个平台找素材（图片搜索、视频网站等）时，把原话记进 `material_search_requests`；没提就不加。
-6. 旁白与画面的额外要求：用户对旁白说的（“语气更口语”“结尾不要 CTA”）进 `narration_requests`；对画面、视觉风格、配色或主题说的（“强调实验对比图”“不要人物区”“全片用 github 风格”“仅第 2 场用深色科技风”）原话进 `composition_requests`，由 Phase 8 按 `modules/designs/designs.md` 处理。同一件事不要两处都记。
+6. 旁白、画面与背景乐的额外要求：用户对旁白说的（“语气更口语”“结尾不要 CTA”）进 `narration_requests`；对画面、视觉风格、配色或主题说的（“强调实验对比图”“不要人物区”“全片用 github 风格”“仅第 2 场用深色科技风”）原话进 `composition_requests`，由 Phase 8 按 `modules/designs/designs.md` 处理；明确说不要背景音乐 / BGM 时置 `bgm = false`（没提就不填，默认开启）。同一件事不要两处都记。
 7. 审稿：默认不审稿（`approval_gates` 为 `[]`）。只有用户明确要求时才填 `research-brief` / `script`，不主动询问。
 8. **输入类型识别：**
    - 来源是 `.pdf` 文件路径 → 置 `input_mode = "paper"`

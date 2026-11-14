@@ -59,7 +59,8 @@ source .venv/bin/activate && python3 scripts/pipeline-status.py <workspace> --fi
 | 叙事重复或跳跃、旁白不忠于简报、场景计划误导 | `6-script-scene-plan` |
 | 漏读、读音不对 | `7-voice-subtitles` |
 | preset / custom design 选择或契约错误、模板选错、layout 选错、版式、素材容器、字幕错位或溢出、必用图表没上、渲染不完整 | `8-composition` |
-| 黑屏、冻结、音画时长不符、成片观感 | `9-check-mix` |
+| 黑屏、冻结、音画时长不符、成片观感 | `9-check` |
+| BGM 曲目、背景乐音量或开关变化 | `10-mix`（开关变化先改 `inputs.json` 的 `bgm`） |
 
 一次反馈涉及多个阶段时，先登记最早的那一个，后面的阶段等它完成后再按已知修改范围逐项登记；用户明确要求后面的步骤也全部重做时，逐项登记。
 

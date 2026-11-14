@@ -16,7 +16,7 @@
 
 工作区由 agent 创建：`<work_dir>/<topic_name>/`，其中 `inputs.json` 在 Phase 1 生成，不需要用户手工准备。
 
-最终产物：`<work_dir>/<topic_name>/composition/renders/final.mp4`（混入 BGM 后为 `final_with_bgm.mp4`）。
+最终产物：`<work_dir>/<topic_name>/composition/renders/final.mp4`（默认经 Phase 10 混入 BGM 后为 `final_with_bgm.mp4`；`inputs.json` 设 `bgm = false` 时跳过混音直接交付 `final.mp4`）。
 
 ## 环境要求
 

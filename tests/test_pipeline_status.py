@@ -387,10 +387,16 @@ def pass_report(ws: Path) -> dict:
     }
 
 
-def complete_all(ws: Path, **inputs_overrides) -> None:
+def complete_through_check(ws: Path, **inputs_overrides) -> None:
     complete_through_composition(ws, **inputs_overrides)
-    write_blob(ws / 'composition' / 'renders' / 'final_with_bgm.mp4')
     write_json(ws / 'qa' / 'qa-report.json', {'findings': [], 'verdict': 'pass'})
+
+
+def complete_all(ws: Path, **inputs_overrides) -> None:
+    complete_through_check(ws, **inputs_overrides)
+    inputs = {**INPUTS, **inputs_overrides}
+    if inputs.get('bgm', True):
+        write_blob(ws / 'composition' / 'renders' / 'final_with_bgm.mp4')
 
 
 # --- usage / workspace errors -------------------------------------------------
@@ -1347,7 +1353,8 @@ def test_all_complete(tmp_path: Path):
         '6-script-scene-plan',
         '7-voice-subtitles',
         '8-composition',
-        '9-check-mix',
+        '9-check',
+        '10-mix',
     ]
     assert result['next_phase'] is None
     assert result['missing_products'] == []
@@ -1578,21 +1585,21 @@ def test_invalid_qa_level_is_corrupt_inputs(tmp_path: Path):
     assert 'inputs.json' in result['corrupt_products']
 
 
-# --- phase 9 products: final_with_bgm.mp4 + qa/qa-report.json ------------------
+# --- phase 9 (check) & phase 10 (mix): qa/qa-report.json gates final_with_bgm.mp4 ---
 
 
-def test_missing_qa_report_falls_back_to_phase_9(tmp_path: Path):
+def test_missing_qa_report_stops_at_phase_9_and_keeps_phase_10_pending(tmp_path: Path):
     complete_through_composition(tmp_path)
-    write_blob(tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4')
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
-    assert result['next_phase']['id'] == '9-check-mix'
-    assert 'qa/qa-report.json' in result['missing_products']
+    assert result['next_phase']['id'] == '9-check'
+    assert result['next_phase']['doc'] == 'references/phases/09-check.md'
+    assert result['missing_products'] == ['qa/qa-report.json']
+    assert statuses(result)['10-mix'] == 'pending'
 
 
 def test_fail_verdict_qa_report_falls_back_to_phase_9(tmp_path: Path):
     complete_through_composition(tmp_path)
-    write_blob(tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4')
     write_json(
         tmp_path / 'qa' / 'qa-report.json',
         {
@@ -1602,13 +1609,13 @@ def test_fail_verdict_qa_report_falls_back_to_phase_9(tmp_path: Path):
     )
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
-    assert result['next_phase']['id'] == '9-check-mix'
+    assert result['next_phase']['id'] == '9-check'
     assert 'qa/qa-report.json' in result['corrupt_products']
+    assert statuses(result)['10-mix'] == 'pending'
 
 
-def test_handed_off_qa_report_completes_phase_9(tmp_path: Path):
+def test_handed_off_qa_report_completes_phase_9_and_advances_to_phase_10(tmp_path: Path):
     complete_through_composition(tmp_path)
-    write_blob(tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4')
     write_json(
         tmp_path / 'qa' / 'qa-report.json',
         {
@@ -1618,33 +1625,62 @@ def test_handed_off_qa_report_completes_phase_9(tmp_path: Path):
     )
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
-    assert '9-check-mix' in result['completed_phases']
+    assert '9-check' in result['completed_phases']
+    assert result['next_phase']['id'] == '10-mix'
+    assert result['next_phase']['doc'] == 'references/phases/10-mix.md'
+    assert result['missing_products'] == ['composition/renders/final_with_bgm.mp4']
+
+
+def test_missing_final_with_bgm_falls_back_to_phase_10_keeping_phase_9_completed(tmp_path: Path):
+    complete_through_check(tmp_path)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert '9-check' in result['completed_phases']
+    assert result['next_phase']['id'] == '10-mix'
+    assert result['missing_products'] == ['composition/renders/final_with_bgm.mp4']
+
+
+def test_bgm_false_skips_phase_10_and_completes_after_phase_9(tmp_path: Path):
+    complete_through_check(tmp_path, bgm=False)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert '9-check' in result['completed_phases']
+    assert '10-mix' in result['skipped_phases']
     assert result['next_phase'] is None
+    assert not (tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4').exists()
+    redo_proc = run_cli(str(tmp_path), '--redo', '10-mix', '--reason', '换音乐')
+    assert redo_proc.returncode == 1
+    assert 'skipped' in parse_result(redo_proc)['error']
+
+
+@pytest.mark.parametrize('bad_bgm', ['none', 0, 1, None, []])
+def test_non_boolean_bgm_is_corrupt_inputs(tmp_path: Path, bad_bgm):
+    complete_through_inputs(tmp_path, bgm=bad_bgm)
+    result = parse_result(run_cli(str(tmp_path)))
+    assert result['next_phase']['id'] == '1-gather-inputs'
+    assert 'inputs.json' in result['corrupt_products']
+    assert 'bgm' in result['next_phase']['problems']['inputs.json']
 
 
 def test_qa_report_with_extra_keys_is_corrupt(tmp_path: Path):
     complete_through_composition(tmp_path)
-    write_blob(tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4')
     write_json(
         tmp_path / 'qa' / 'qa-report.json',
         {'findings': [], 'verdict': 'pass', 'qa_level': 'standard'},
     )
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
-    assert result['next_phase']['id'] == '9-check-mix'
+    assert result['next_phase']['id'] == '9-check'
     assert 'qa/qa-report.json' in result['corrupt_products']
 
 
 def test_qa_report_finding_missing_frame_is_corrupt(tmp_path: Path):
     complete_through_composition(tmp_path)
-    write_blob(tmp_path / 'composition' / 'renders' / 'final_with_bgm.mp4')
     write_json(
         tmp_path / 'qa' / 'qa-report.json',
         {'findings': [{'scene_id': 's1', 'check': 'freeze', 'issue': 'frozen'}], 'verdict': 'pass'},
     )
     proc = run_cli(str(tmp_path))
     result = parse_result(proc)
-    assert result['next_phase']['id'] == '9-check-mix'
+    assert result['next_phase']['id'] == '9-check'
     assert 'qa/qa-report.json' in result['corrupt_products']
 
 
@@ -1687,7 +1723,8 @@ PHASE_IDS = [
     '6-script-scene-plan',
     '7-voice-subtitles',
     '8-composition',
-    '9-check-mix',
+    '9-check',
+    '10-mix',
 ]
 
 
@@ -1818,7 +1855,7 @@ def test_changing_only_qa_level_invalidates_nothing(tmp_path: Path):
     result = parse_result(run_cli(str(tmp_path)))
 
     assert result['next_phase'] is None
-    assert '9-check-mix' in result['completed_phases']
+    assert '9-check' in result['completed_phases']
 
 
 def test_a_newly_added_request_list_invalidates_nothing(tmp_path: Path):
@@ -1874,7 +1911,7 @@ def test_deleting_phase_6_products_makes_6_next_and_the_rest_pending_until_resto
 
     assert result['next_phase']['id'] == '6-script-scene-plan'
     assert result['next_phase']['reason'] == 'missing'
-    assert result['pending_phases'] == ['7-voice-subtitles', '8-composition', '9-check-mix']
+    assert result['pending_phases'] == ['7-voice-subtitles', '8-composition', '9-check', '10-mix']
     assert result['completed_phases'] == ['1-gather-inputs', '3-research', '4-material-harvest', '5-material-catalog']
 
     # 相同的字节写回去：一切照旧。
@@ -1891,7 +1928,8 @@ def test_changed_upstream_of_a_pending_phase_is_not_looked_at(tmp_path: Path):
     write_json(tmp_path / 'inputs.json', {**INPUTS, 'qa_level': 'strict'})
     result = parse_result(run_cli(str(tmp_path)))
     assert result['next_phase']['id'] == '3-research'
-    assert statuses(result)['9-check-mix'] == 'pending'
+    assert statuses(result)['9-check'] == 'pending'
+    assert statuses(result)['10-mix'] == 'pending'
 
 
 # --- phase 6 check: script.txt / narration.txt still match the offset table ---------
@@ -2105,7 +2143,7 @@ def test_script_gate_records_the_confirmation_fact(tmp_path: Path):
         '把旁白和每个 scene 的 scene_id + intent + content_plan 摘要交给用户确认；确认后运行 '
         '`python3 scripts/pipeline-status.py <ws> --approve script`'
     )
-    assert waiting['pending_phases'] == ['7-voice-subtitles', '8-composition', '9-check-mix']
+    assert waiting['pending_phases'] == ['7-voice-subtitles', '8-composition', '9-check', '10-mix']
 
     result = approve(tmp_path, 'script')
 
@@ -2333,17 +2371,29 @@ def test_finish_accepts_a_redo_once_its_products_pass(tmp_path: Path):
 def test_finishing_a_redo_accepts_byte_identical_products(tmp_path: Path):
     # --finish 不要求产物字节与上次不同：确定性重跑得到相同字节也是正常结束。
     settle(tmp_path)
-    redo(tmp_path, '9-check-mix', '重新核对 QA 结论')
-    for relpath in ('qa/qa-report.json', 'composition/renders/final_with_bgm.mp4'):
-        product = tmp_path / relpath
-        product.write_bytes(product.read_bytes())
+    redo(tmp_path, '9-check', '重新核对 QA 结论')
+    product = tmp_path / 'qa/qa-report.json'
+    product.write_bytes(product.read_bytes())
 
-    proc = finish(tmp_path, '9-check-mix')
+    proc = finish(tmp_path, '9-check')
 
     assert proc.returncode == 0, proc.stderr
     result = parse_result(proc)
-    assert statuses(result)['9-check-mix'] == 'completed'
+    assert statuses(result)['9-check'] == 'completed'
+    assert statuses(result)['10-mix'] == 'completed'
     assert result['next_phase'] is None
+
+
+def test_redoing_phase_10_mix_keeps_phase_9_check_completed(tmp_path: Path):
+    settle(tmp_path)
+    result = redo(tmp_path, '10-mix', '调低背景音乐音量')
+    assert statuses(result)['9-check'] == 'completed'
+    assert result['next_phase']['id'] == '10-mix'
+    assert result['next_phase']['reason'] == 'redo'
+
+    proc = finish(tmp_path, '10-mix')
+    assert proc.returncode == 0, proc.stderr
+    assert parse_result(proc)['next_phase'] is None
 
 
 def test_finish_refuses_products_that_do_not_pass(tmp_path: Path):

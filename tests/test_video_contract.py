@@ -26,6 +26,14 @@ def test_phase_1_fields_carry_no_visual_decision():
     for name in ('source', 'input_mode', 'duration', 'language', 'orientation',
                  'coding_agent', 'fetch_materials'):
         assert name in video_contract.INPUTS_BASE_FIELDS
+    # bgm 默认开启，属于可选布尔字段，不强制要求旧工作区补填。
+    assert 'bgm' not in video_contract.INPUTS_BASE_FIELDS
+    assert video_contract.bgm_applies({}) is True
+    assert video_contract.bgm_applies({'bgm': True}) is True
+    assert video_contract.bgm_applies({'bgm': False}) is False
+    assert video_contract.input_field_problem('bgm', True) is None
+    assert video_contract.input_field_problem('bgm', False) is None
+    assert video_contract.input_field_problem('bgm', 'none') is not None
 
 
 def test_only_the_visual_step_reads_the_visual_fields():
