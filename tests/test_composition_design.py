@@ -30,9 +30,7 @@ def write_json(path: Path, payload: dict) -> None:
 
 
 def preset_design(name: str = 'github') -> dict:
-    preset = json.loads(
-        (REPO_ROOT / 'modules' / 'designs' / name / f'{name}.json').read_text(encoding='utf-8')
-    )
+    preset = video_contract.load_design_preset(REPO_ROOT, name)
     return {
         'version': 1,
         'source': 'preset',
@@ -50,9 +48,9 @@ def custom_design() -> dict:
     return design
 
 
-def load(path: Path, payload: dict) -> dict:
+def load(path: Path, payload: dict, *, inputs: dict | None = None) -> dict:
     write_json(path, payload)
-    return composition_design.load_composition_design(path, skill_root=REPO_ROOT)
+    return composition_design.load_composition_design(path, skill_root=REPO_ROOT, inputs=inputs)
 
 
 @pytest.mark.parametrize('payload', [preset_design(), custom_design()], ids=['preset', 'custom'])
@@ -107,10 +105,32 @@ def test_custom_ui_floor_must_be_at_least_22px(tmp_path: Path):
     assert load(tmp_path / 'composition' / 'design.json', payload) == payload
 
 
+def test_inputs_constraints_default_to_preset_and_allow_custom_only_with_user_requests(tmp_path: Path):
+    path = tmp_path / 'composition' / 'design.json'
+
+    # 无 composition_requests：必须从库内 preset 选择，拒绝自造 custom。
+    assert load(path, preset_design('default'), inputs={}) == preset_design('default')
+    assert load(path, preset_design('github'), inputs={}) == preset_design('github')
+    with pytest.raises(ValueError, match='composition_requests'):
+        load(path, custom_design(), inputs={})
+    with pytest.raises(ValueError, match='composition_requests'):
+        load(path, custom_design(), inputs={'composition_requests': []})
+
+    # 用户在 composition_requests 提出要求：允许 custom；旧工作区残留的 inputs.design 不作门槛。
+    custom_inputs = {'design': 'legacy-ignored', 'composition_requests': ['全片用深色科技风配色']}
+    assert load(path, custom_design(), inputs=custom_inputs) == custom_design()
+    assert load(path, preset_design('default'), inputs={'design': 'legacy-ignored'}) == preset_design('default')
+
+
 @pytest.mark.parametrize('source', ['preset', 'custom'])
 @pytest.mark.usefixtures('require_ffmpeg')
-def test_phase_8_accepts_both_design_sources(tmp_path: Path, source: str):
+def test_phase_8_accepts_preset_by_default_and_custom_when_user_requested(tmp_path: Path, source: str):
     complete_all(tmp_path)
+    inputs = json.loads((tmp_path / 'inputs.json').read_text(encoding='utf-8'))
+    inputs.pop('design', None)
+    if source == 'custom':
+        inputs['composition_requests'] = ['全片使用深色科技风配色']
+    write_json(tmp_path / 'inputs.json', inputs)
     payload = preset_design() if source == 'preset' else custom_design()
     write_json(tmp_path / composition_design.COMPOSITION_DESIGN_PATH, payload)
 
@@ -118,6 +138,19 @@ def test_phase_8_accepts_both_design_sources(tmp_path: Path, source: str):
 
     assert result['next_phase'] is None, result
     assert '8-composition' in result['completed_phases']
+
+
+@pytest.mark.usefixtures('require_ffmpeg')
+def test_phase_8_rejects_unrequested_custom_design(tmp_path: Path):
+    complete_all(tmp_path)
+    inputs = json.loads((tmp_path / 'inputs.json').read_text(encoding='utf-8'))
+    inputs.pop('design', None)
+    write_json(tmp_path / 'inputs.json', inputs)
+    write_json(tmp_path / composition_design.COMPOSITION_DESIGN_PATH, custom_design())
+
+    unrequested = parse_result(run_status(str(tmp_path)))
+    assert unrequested['next_phase']['id'] == '8-composition'
+    assert 'composition_requests' in unrequested['next_phase']['problems']['composition/design.json']
 
 
 @pytest.mark.usefixtures('require_chrome')

@@ -229,7 +229,7 @@ def test_status_does_not_gate_on_the_template_declaration(tmp_path: Path):
 
 def test_materializing_identical_resource_bytes_invalidates_nothing(tmp_path: Path):
     status_fixtures.settle(tmp_path, fetch_materials=False)
-    for name in ('modules/layouts/stage.json', 'modules/designs/default/default.json'):
+    for name in ('modules/layouts/stage.json', 'modules/designs/default/default.md'):
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / name, path)

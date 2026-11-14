@@ -682,23 +682,6 @@ def check_harvest_manifest(ws: Path, relpath: str) -> CheckResult:
 duration_minutes = video_contract.duration_minutes
 
 
-def available_designs() -> list[str]:
-    """skill 的 modules/designs/ 下注册的 design 名。"""
-    return video_contract.available_designs(SKILL_ROOT)
-
-
-def design_problem(design: Any) -> str | None:
-    """inputs.json 的 design 不可用的原因，或 None。
-
-    只接受当前库 modules/designs/ 下注册的 design：从库里移除的主题不再以工作区
-    里的历史副本变相存续，那会让已删除的资源继续驱动新的生成。
-    """
-    designs = available_designs()
-    if isinstance(design, str) and design and '/' not in design and design in designs:
-        return None
-    return f'field design {design!r} is not an available design (choose one of: {", ".join(designs)})'
-
-
 def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
     """校验 inputs.json 并返回 (result, 解析出的 inputs)。"""
     result, data = read_json_product(ws, 'inputs.json')
@@ -721,19 +704,12 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
     if orientation:
         return CheckResult(STATUS_CORRUPT, orientation), None
     if duration_minutes(data['duration']) is None:
-        # 与“design 被移除”同理：inputs.json 的其余部分仍可用于
-        # 判断阶段适用性，只有 Phase 1 需要重写这个字段。
+        # inputs.json 的其余部分仍可用于判断阶段适用性，只有 Phase 1 需要重写这个字段。
         return CheckResult(
             STATUS_CORRUPT,
             'field duration must be the target length in minutes (分钟数): a positive number '
             f'such as 5, or a number with a minutes unit such as "5min", got {data["duration"]!r}',
         ), data
-    if 'design' in data:
-        problem = design_problem(data['design'])
-        if problem:
-            # 例如一个在某主题被移除之前创建的项目：退回 Phase 1
-            # 选一个仍然存在的。未写 design 则表示没有用户预选约束。
-            return CheckResult(STATUS_CORRUPT, problem), data
     if 'qa_level' in data and data['qa_level'] not in QA_LEVELS:
         return CheckResult(
             STATUS_CORRUPT,
@@ -803,14 +779,19 @@ def load_workspace_scene_config(ws: Path) -> tuple[dict[str, Any] | None, str | 
 
 
 def check_composition_design_product(ws: Path, relpath: str) -> CheckResult:
-    """Phase 8 的 preset / custom design 共用这一份公共机器契约。"""
+    """Phase 8 的全片 design 契约：默认选库内 preset，仅用户要求库外风格时允许 custom。"""
     path = ws / relpath
     if not path.exists():
         return CheckResult(STATUS_MISSING, 'composition design contract is required before Phase 8 can complete')
     if not path.is_file():
         return CheckResult(STATUS_CORRUPT, 'composition design contract is not a file')
+    input_result, inputs = load_inputs(ws)
     try:
-        composition_design.load_composition_design(path, skill_root=SKILL_ROOT)
+        composition_design.load_composition_design(
+            path,
+            skill_root=SKILL_ROOT,
+            inputs=inputs if input_result.ok else None,
+        )
     except ValueError as exc:
         return CheckResult(STATUS_CORRUPT, str(exc))
     return OK

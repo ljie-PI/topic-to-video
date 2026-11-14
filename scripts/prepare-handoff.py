@@ -5,9 +5,8 @@
 步骤委派给 coding agent，由后者读取一份 handoff 文件。handoff 是确定性的，因此由
 本脚本生成，而不是让主 agent 手填散文模板。每次调用做三件事：
 
-  0. 校验（在写任何东西之前）：composition 步骤只在校验出现的设计约束时
-     要求 design 是当前库注册的；缺省不预选。不要求预选全局 template / layout——
-     它们是 composition agent 逐视觉场景的决定，design.json / scene-config.json
+  0. 校验（在写任何东西之前）：不要求预选 design、template 或 layout——
+     它们由 composition agent 在 Phase 8 根据内容决定，design.json / scene-config.json
      由该 agent 在本阶段产出，准备时还不存在。
      校验的就是 handoff 之后会引用的那份文件（不 --refresh 时是工作区副本）。
      非法时就地失败，workspace 完全未被改动。
@@ -31,7 +30,7 @@
    "fonts": null,
    "dispatch_prompt": "读取 <handoff> 并按它执行；完成后报告产物路径。"}
 materialized 列出本次调用写入了文件的那些包路径。fonts 保留 null 兼容形状；
-composition agent 选定 preset / custom design 后才按 handoff 安装字体。
+composition agent 从库内 preset 选定主题（或按用户要求生成 custom design）后才按 handoff 安装字体。
 主 agent 原样派发 dispatch_prompt。
 退出码：0 = 成功，1 = 运行时错误（含请求了模型但未传 --resolved-model），
 2 = 参数非法。
@@ -110,8 +109,6 @@ def load_inputs(ws: Path, step: str) -> dict[str, Any]:
     if missing:
         raise ValueError(f'inputs.json is missing fields: {", ".join(missing)}')
     optional = [video_contract.STEP_REQUESTS_FIELD[step]]
-    if step == 'composition':
-        optional.append('design')
     selected = {name: data[name] for name in (*required, *optional) if name in data}
     for name, value in selected.items():
         problem = video_contract.input_field_problem(name, value)
@@ -264,27 +261,13 @@ def script_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool = False) -> P
 # “哪个朝向对应哪个画布”只定义一份，字幕规格、handoff 与渲染检查都读它。
 
 
-def require_registered_design(inputs: dict[str, Any]) -> None:
-    """用户明确给出的 design 约束必须仍注册；缺省表示由子 agent 选择。"""
-    if 'design' not in inputs:
-        return
-    designs = video_contract.available_designs(SKILL_ROOT)
-    if inputs['design'] not in designs:
-        raise ValueError(
-            f'inputs.json field design {inputs["design"]!r} is not an available design '
-            f'(choose one of: {", ".join(designs)})'
-        )
-
-
 def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan:
-    design = inputs.get('design')
     delegation = ws / DELEGATION
     modules = ws / 'modules'
     base = delegation / 'composition' / 'base-instructions.md'
     scene_config_doc = delegation / 'composition' / 'scene-config.md'
     modules_doc = modules / 'modules.md'
     design_contract = modules / 'designs' / 'designs.md'
-    require_registered_design(inputs)
     layouts_doc = modules / 'layouts' / 'layouts.md'
     templates_doc = modules / 'templates' / 'templates.md'
 
@@ -298,7 +281,7 @@ def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan
         (f'{scene_config_doc}（scene-config 数据契约：机器配置的唯一 schema 与可验证示例）', [scene_config_doc]),
         (f'{modules_doc}（模块库入口与组装约定）', [modules_doc]),
         (
-            f'{design_contract}（design 目录与共享 token 契约；具体 preset 文档 / JSON 选定后按需阅读）',
+            f'{design_contract}（design 目录与共享契约；选定后按需阅读具体 <主题>.md）',
             [design_contract],
         ),
         (f'{layouts_doc}（layout 目录：可借用的 preset 及对应 JSON / 文档；也可自主设计自由布局）', [layouts_doc]),
@@ -314,7 +297,6 @@ def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan
         values={
             'required_references': numbered([text for text, _ in references]),
             'additional_instructions': request_list(inputs, 'composition'),
-            'design': design or '未预选',
             'orientation': str(inputs['orientation']),
         },
         inputs=[
