@@ -1,6 +1,6 @@
 # 设计主题：github（纸本）
 
-一张冷灰色的棉纸，上面是低饱和的 GitHub 配色：灰、蓝、绿，不加阴影，用 2px 细线和卡片分层。看起来像一张安静、干净的技术页面。GitHub 专属的内容（Octocat 标志、语言色点、仓库卡片、Star 按钮、贡献图配色等）不在这里，在 `templates/github/github.md`。
+一张冷灰色的棉纸，上面是低饱和的 GitHub 配色：灰、蓝、绿，不加阴影，用 2px 细线和卡片分层。看起来像一张安静、干净的技术页面。GitHub 专属的内容（Octocat 标志、语言色点、仓库卡片、Star 按钮、贡献图配色等）不在这里，需要时放进模板。
 
 背景贴图在 `designs/github/textures/`，用的时候复制到视频工程的 `assets/textures/`。字体与主题变量代码见 1.4。
 
