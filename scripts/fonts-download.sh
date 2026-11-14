@@ -17,7 +17,7 @@
 # share the same files. Installing copies the theme's CSS plus the pool files
 # it references into target_dir and never touches the network. --refresh is
 # the maintenance path: it re-downloads the families in
-# modules/designs/<theme>/<theme>.json from Google Fonts, replaces the theme's
+# modules/designs/<theme>/<theme>.md from Google Fonts, replaces the theme's
 # CSS, adds only the pool files that are missing, and prunes pool files no
 # theme references any more, so the result can be committed.
 #
@@ -45,6 +45,9 @@ import urllib.request
 from pathlib import Path
 
 REPO = Path(sys.argv[1]).parent
+sys.path.insert(0, str(REPO / 'scripts'))
+import video_contract
+
 DESIGNS = REPO / 'modules' / 'designs'
 RESOURCES = Path(os.environ.get('FONTS_RESOURCES_DIR') or REPO / 'resources' / 'fonts')
 POOL = RESOURCES / 'files'
@@ -97,11 +100,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def contract_path(theme: Path) -> Path:
-    return theme / f'{theme.name}.json'
+    return theme / f'{theme.name}.md'
 
 
 def known_themes() -> list[str]:
-    return sorted(path.parent.name for path in DESIGNS.glob('*/*.json') if path.stem == path.parent.name)
+    return video_contract.available_designs(REPO)
 
 
 def resolve_manifests(spec: str) -> list[Path]:
@@ -113,7 +116,7 @@ def resolve_manifests(spec: str) -> list[Path]:
         return [contract_path(DESIGNS / spec)]
     for base in (Path.cwd(), REPO):
         path = base / spec
-        if path.is_file() and path.suffix == '.json' and path.stem == path.parent.name:
+        if path.is_file() and path.suffix == '.md' and path.stem == path.parent.name:
             return [path]
         if path.is_dir() and contract_path(path).is_file():
             return [contract_path(path)]
@@ -121,21 +124,7 @@ def resolve_manifests(spec: str) -> list[Path]:
 
 
 def load_manifest(path: Path) -> dict:
-    contract = json.loads(path.read_text(encoding='utf-8'))
-    manifest = contract.get('fonts') if isinstance(contract, dict) else None
-    if not isinstance(manifest, dict):
-        raise ValueError(f'design {path}: fonts must be an object')
-    families = manifest.get('css2_families')
-    if not isinstance(families, list) or not families:
-        raise ValueError(f'design {path}: fonts.css2_families must be a non-empty list')
-    if not isinstance(manifest.get('css_filename'), str) or not manifest['css_filename']:
-        raise ValueError(f'design {path}: fonts.css_filename must be a non-empty string')
-    rename = manifest.get('rename')
-    if not isinstance(rename, dict) or not all(
-        isinstance(old, str) and isinstance(new, str) for old, new in rename.items()
-    ):
-        raise ValueError(f'design {path}: fonts.rename must be a string mapping')
-    return manifest
+    return video_contract.parse_design_markdown(path)['fonts']
 
 
 def css_refs(css: str) -> list[str]:

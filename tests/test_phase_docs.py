@@ -300,8 +300,8 @@ def test_paper_mode_instructions_live_in_the_phase_or_package_that_uses_them():
 def test_phase_1_assures_paper_figures_at_the_visual_material_question():
     phase_1 = doc_text('references/phases/01-gather-inputs.md')
     assurance = '论文模式即使不联网搜索，论文自己的关键图也照样进视频'
-    visual_question_at = phase_1.index('6. 视觉素材')
-    input_detection_at = phase_1.index('9. **输入类型识别：**')
+    visual_question_at = phase_1.index('5. 视觉素材')
+    input_detection_at = phase_1.index('8. **输入类型识别：**')
     assurance_at = phase_1.index(assurance)
 
     assert visual_question_at < assurance_at < input_detection_at
@@ -736,6 +736,7 @@ def test_composition_defaults_to_original_design_and_only_records_borrowed_refer
     # 表达与事实边界：自主表现机制、创意边界、新增屏幕事实来源、示意与证据边界。
     assert '### 表达与事实边界' in design
     boundary = design.split('### 表达与事实边界', 1)[1]
+    assert '优先使用 SVG、WebGL、Three.js、GSAP 等表现力更强的动态元素来表达场景内容要传达的意思' in boundary
     assert 'DOM/SVG/CSS/Canvas/WebGL' in boundary
     assert 'modules/motion.md' in boundary
     assert '视觉创意服务于理解' in boundary
@@ -763,26 +764,38 @@ def test_composition_defaults_to_original_design_and_only_records_borrowed_refer
 
 def test_design_selection_and_custom_contract_are_delegated_to_composition():
     phase_1 = doc_text('references/phases/01-gather-inputs.md')
+    phase_7 = doc_text('references/phases/07-voice-subtitles.md')
     phase_8 = doc_text('references/phases/08-composition.md')
     phase_9 = doc_text('references/phases/09-check-mix.md')
     base = doc_text('references/delegation/composition/base-instructions.md')
     handoff = doc_text('references/delegation/composition/handoff-template.md')
     designs = doc_text('modules/designs/designs.md')
+    modules = doc_text('modules/modules.md')
 
-    assert '未指定时不填' in phase_1
+    assert '| `design`' not in phase_1
+    assert '外观主题（design）、模板和字幕排版不在本阶段决定' in phase_1
     assert '未指定时保持默认主题' not in phase_1
+    assert 'inputs.json.design' not in designs
     assert 'composition/design.json' in phase_8
     assert 'composition/design.json' in base
     assert 'composition/design.json' in handoff
+    assert '{{design}}' not in handoff
     assert 'fonts-download.sh' in base and 'fonts-download.sh' in handoff
     assert 'custom' in base and 'preset' in base
+    assert '默认从库内注册 preset 中选择' in base
+    assert '默认从库内注册 preset 中选择' in designs
+    assert '默认从库内注册 preset 中选择' in modules
+    assert '无特定专题匹配选通用的 `default`' in base
+    assert '明确要求库外风格时才生成 `custom`' in base
+    assert '仅当用户在 `composition_requests` 中明确要求' in designs
     assert '复用字体资源不等于采用该 preset 的视觉设计' in base
     assert '系统字体' in base
     assert 'scene 限定' in phase_9 and '外泄' in phase_9
-    assert '候选' in designs and '不是默认必选' in designs
-    for text in (phase_8, base, handoff):
+    for text in (phase_1, phase_7, phase_8, base, handoff, designs, modules):
+        assert '不是默认必选' not in text
+        assert '而非默认必选' not in text
         assert '主 agent 预置' not in text
-        assert '已按所选 design 预置' not in text
+        assert '按所选 design 预置' not in text
 
 
 def test_pattern_and_motion_indexes_are_optional_and_not_a_fixed_design_sequence():
@@ -951,6 +964,7 @@ def test_composition_base_instructions_opening_lists_five_constraint_categories(
     ):
         assert item in opening
 
+    assert '富有创造力' in opening and '视觉解说设计师' in opening
     assert '各视觉 scene' in opening
     assert '逐场景' in opening
     assert '工作顺序' in opening
@@ -959,3 +973,29 @@ def test_composition_base_instructions_opening_lists_five_constraint_categories(
     assert '主 agent 已选定 layout' not in composition
     assert '写回 inputs.json' not in opening
 
+
+def test_composition_base_instructions_specifies_concrete_module_markdown_paths():
+    composition = doc_text('references/delegation/composition/base-instructions.md')
+    handoff = doc_text('references/delegation/composition/handoff-template.md')
+    workflow = composition.split('## 工作顺序', 1)[1]
+    step0_and_1 = workflow.split('2. **生成字幕初稿**', 1)[0]
+
+    for concrete_md in (
+        'modules/modules.md',
+        'modules/designs/<design>/<design>.md',
+        'modules/layouts/<preset>.md',
+        'modules/layouts/portrait.md',
+        'modules/templates/<t>/<t>.md',
+        'modules/templates/<t>/<scene>.md',
+        'modules/components/<c>/<c>.md',
+        'modules/transitions/<tr>/<tr>.md',
+        'modules/patterns/patterns.md',
+        'modules/patterns/<media|info>/<p>.md',
+    ):
+        assert concrete_md in composition
+
+    assert '不得只看 `.json` / `.html` / `.mjs` 猜参数' in composition
+    assert 'init(...)' in composition
+    assert 'modules/modules.md' in step0_and_1
+    assert '先读完该模块对应的具体 `.md` 文档' in step0_and_1
+    assert '所依据的具体模块 `.md`' in composition and '所依据的具体模块 `.md`' in handoff

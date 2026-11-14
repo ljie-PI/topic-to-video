@@ -153,8 +153,8 @@ def test_phase_8_assigns_scene_layouts_and_visual_timing_to_composition_agent():
     rules = guardrails('references/phases/08-composition.md')
 
     assert 'composition/scene-config.json' in rules
-    assert '主 agent 只固定 orientation、用户明确指定的 design 与其他约束' in rules
-    assert '不预选默认 design' in rules
+    assert '主 agent 只固定 orientation 与用户要求' in rules
+    assert '不预选 design' in rules
     assert '任何 scene 方案' in rules
     assert 'prepare-handoff.py` 不预装字体' in rules
     assert '--scene-config ... --narration-audio ...' in rules

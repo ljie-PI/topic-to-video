@@ -1,4 +1,4 @@
-"""Every design JSON supplies the floors check-composition enforces."""
+"""Every shipped design Markdown supplies the floors check-composition enforces."""
 from __future__ import annotations
 
 import json
@@ -16,7 +16,7 @@ DESIGNS = sorted(
 
 
 @pytest.mark.parametrize('design', DESIGNS, ids=lambda path: path.name)
-def test_every_design_json_yields_reading_and_ui_floors(tmp_path: Path, design: Path):
+def test_every_design_doc_yields_reading_and_ui_floors(tmp_path: Path, design: Path):
     snapshots = tmp_path / 'snapshots.json'
     snapshots.write_text('[]', encoding='utf-8')
     proc = subprocess.run(
@@ -25,7 +25,7 @@ def test_every_design_json_yields_reading_and_ui_floors(tmp_path: Path, design: 
             str(SCRIPT),
             str(tmp_path),
             '--layout', str(REPO_ROOT / 'modules' / 'layouts' / 'stage.json'),
-            '--design', str(design / f'{design.name}.json'),
+            '--design', str(design / f'{design.name}.md'),
             '--snapshots-from', str(snapshots),
         ],
         capture_output=True,

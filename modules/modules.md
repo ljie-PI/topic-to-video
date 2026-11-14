@@ -75,10 +75,10 @@ const { timeline, ready, seek, destroy } = init(root, {
 ```
 modules.md                                 本文档：入口、组装流程、约定
 designs/
-  designs.md                              主题变量约定（token 契约：--c-* 颜色 / --font-* / --motion-* / 字号下限）、design JSON 与字体清单格式、备选配色
-  default/default.md, default.json, textures/   主题：燕麦纸（暖燕麦棉纸 + 低饱和墨灰与灰薰衣草）；paper.jpg
-  github/github.md, github.json, textures/   主题：纸本（冷灰棉纸 + 低饱和 GitHub 色）；paper.jpg、slate.jpg
-  producthunt/producthunt.md, producthunt.json, textures/   主题：亚麻纸（粉调亚麻纸 + 低饱和墨蓝与陶土橙）；paper.jpg
+  designs.md                              主题选择与落盘契约、共享变量/字号阶梯/通用元素基线、字体维护与备选配色
+  default/default.md, textures/           主题：燕麦纸（暖燕麦棉纸 + 低饱和墨灰与灰薰衣草）；paper.jpg
+  github/github.md, textures/             主题：纸本（冷灰棉纸 + 低饱和 GitHub 色）；paper.jpg、slate.jpg
+  producthunt/producthunt.md, textures/   主题：亚麻纸（粉调亚麻纸 + 低饱和墨蓝与陶土橙）；paper.jpg
 layouts/
   layouts.md                              布局目录：逐视觉 scene 选择 layout；全片 canvas 固定、regions / caption 随 scene 变化
   presenter.md, presenter.json            布局：讲解模式（人物右下角主持，主 / 副展示区，上下界面条）
@@ -112,7 +112,7 @@ templates/
 | 要做的事 | 先读 |
 |---|---|
 | 做一类已有模板的视频（如 GitHub 热榜） | `templates/<类型>/<类型>.md`，再看它用到的场景和组件文档 |
-| 选择 preset / custom 外观或新建主题 | 先读 `designs/designs.md`；preset 是候选而非默认必选，选中后再看具体 `<主题>.md` + `<主题>.json`。实际选择写入 `composition/design.json` |
+| 选择全片外观主题或新建主题 | 先读 `designs/designs.md`（默认从库内注册 preset 中选择），选定后再看具体 `designs/<主题>/<主题>.md` 并落盘 `composition/design.json` |
 | 安排版面、逐视觉 scene 选布局、确定区域坐标 | `layouts/layouts.md` → 每个所用 `layouts/<布局>.md` + 对应 `.json`（机器可读区域定义，字幕脚本读它的 `caption` 段） |
 | 挂某个组件、写它的数据 | `components/<组件>/<组件>.md` |
 | 需要转场、写它的切点数据 | `transitions/transitions.md`，选定后再读 `transitions/<转场>/<转场>.md`（如 `transitions/tile-wipe/tile-wipe.md`） |
@@ -134,10 +134,8 @@ templates/
 
 1. **建工程**：还没有 `composition/` 目录时直接 `npx hyperframes init composition/`。`prepare-handoff.py` 只物化 modules，不预装字体，因此无需为 `composition/assets/fonts/` 绕过 init。
 2. **主题**：
-   - 先决定 preset / custom design，把完整 tokens 与 `min_font_px` 写入 `composition/design.json`；preset 的值必须与对应 JSON 一致，custom 的 `preset` 为 `null`；
-   - 选定后用 skill 根目录的 `bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/<主题>` 把字体装进工程，并在 `index.html` 的 `<head>` 里引入实际 CSS。custom 可复用已有字体包，但 token 字体名必须与 CSS 一致，复用字体资源不等于采用该 preset 的视觉设计；
-   - preset 使用其 textures / tokens；custom 按实际需求自配资源与完整 tokens，再放入 `index.html` 的 `:root`；
-   - 根节点放一个铺满全屏的 `#ground`，背景用 `var(--ground)`。
+   - 按 `designs/designs.md` 选定主题并写出 `composition/design.json`，运行 `bash scripts/fonts-download.sh <工程>/assets/fonts --theme modules/designs/<主题>` 把字体装入 `composition/assets/fonts/` 并在 `<head>` 引入字体 CSS；
+   - 把主题 `:root` 放入 `index.html`，根节点放铺满全屏的 `#ground`（背景用 `var(--ground)`）。
 3. **模板**：按 `templates/<类型>/<类型>.md`：
    - 在主题变量之后加上模板的专属变量；
    - 复制模板资源（如 `templates/github/brand/` → 工程 `assets/brand/`）；
@@ -188,7 +186,7 @@ window.VIDEO = {
 
 ## 扩展约定
 
-- **新主题**：按 `designs/designs.md` 定义全部变量（颜色 + 字体 + 运动 token + 字号下限），同时写 `<名>.md` 和 `<名>.json`，都放在 `designs/<名>/`。JSON 是机器契约：`tokens` 与文档 CSS 一致，另含 `min_font_px` 和 `fonts` 字体清单。
+- **新主题**：按 `designs/designs.md` 在 `designs/<名>/<名>.md` 单文件中定义完整 `:root` 变量代码块与包含 `min_font_px` / `fonts` 的机器配置 JSON 代码块，运行 `--refresh` 拉取并提交字体。
 - **新布局**：写清每个区域的坐标、尺寸、层级，以及哪个组件填哪个区域；再放一份同名 `.json` 区域定义（`canvas` / `regions` / `caption`），数值与文档一致。放 `layouts/<名>.md`。
 - **新组件**：
   - 不带内容，只读主题变量，位置默认按某个布局；

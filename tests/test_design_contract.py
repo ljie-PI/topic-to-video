@@ -1,7 +1,6 @@
-"""The design JSON contracts stay complete and consistent with their docs."""
+"""Each theme Markdown holds the single-file CSS + metadata contract consistent with designs.md."""
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
@@ -12,26 +11,18 @@ import video_contract
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DESIGNS_ROOT = REPO_ROOT / 'modules' / 'designs'
 DESIGN_NAMES = ['default', 'github', 'producthunt']
+
+
 def design_dir(name: str) -> Path:
     return DESIGNS_ROOT / name
 
 
 def load_contract(name: str) -> dict:
-    return json.loads((design_dir(name) / f'{name}.json').read_text(encoding='utf-8'))
+    return video_contract.load_design_preset(REPO_ROOT, name)
 
 
 def contract_tokens() -> set[str]:
     return set(video_contract.DESIGN_TOKEN_NAMES)
-
-
-def markdown_tokens(name: str) -> dict[str, str]:
-    text = (design_dir(name) / f'{name}.md').read_text(encoding='utf-8')
-    blocks = re.findall(r'```css\s*:root\s*\{(.*?)\}\s*```', text, flags=re.DOTALL)
-    assert len(blocks) == 1, name
-    return {
-        token: value.strip()
-        for token, value in re.findall(r'(--[\w-]+)\s*:\s*([^;]+);', blocks[0])
-    }
 
 
 @pytest.mark.parametrize('name', DESIGN_NAMES)
@@ -40,11 +31,6 @@ def test_tokens_cover_the_shared_design_contract(name: str):
 
     assert contract['design'] == name
     assert set(contract['tokens']) == contract_tokens()
-
-
-@pytest.mark.parametrize('name', DESIGN_NAMES)
-def test_token_values_match_the_markdown_css(name: str):
-    assert load_contract(name)['tokens'] == markdown_tokens(name)
 
 
 @pytest.mark.parametrize('name', DESIGN_NAMES)
@@ -87,42 +73,67 @@ def test_font_metadata_migrates_without_changing_values(name: str, fonts: dict):
     assert load_contract(name)['fonts'] == fonts
 
 
-def test_only_theme_named_json_contracts_remain():
-    assert sorted(path.name for path in DESIGNS_ROOT.glob('*/*.json')) == [
-        'default.json', 'github.json', 'producthunt.json',
-    ]
+def test_no_standalone_design_json_files_remain():
+    assert list(DESIGNS_ROOT.glob('*/*.json')) == []
 
 
-def test_extension_docs_require_markdown_and_json_contracts():
-    for path in (DESIGNS_ROOT / 'designs.md', REPO_ROOT / 'modules' / 'modules.md'):
-        text = path.read_text(encoding='utf-8')
-        assert '<名>.json' in text
+def test_parse_design_markdown_rejects_duplicated_tokens_or_broken_blocks(tmp_path: Path):
+    source = (design_dir('default') / 'default.md').read_text(encoding='utf-8')
+    doc = tmp_path / 'broken.md'
+
+    doc.write_text(source.replace('"min_font_px"', '"tokens": {}, "min_font_px"'), encoding='utf-8')
+    with pytest.raises(ValueError, match='exactly min_font_px and fonts'):
+        video_contract.parse_design_markdown(doc)
+
+    doc.write_text(source.replace('--c-canvas: #f3f1ec;', ''), encoding='utf-8')
+    with pytest.raises(ValueError, match='--c-canvas'):
+        video_contract.parse_design_markdown(doc)
+
+
+def test_extension_docs_require_single_file_markdown_contracts():
+    designs_text = (DESIGNS_ROOT / 'designs.md').read_text(encoding='utf-8')
+    modules_text = (REPO_ROOT / 'modules' / 'modules.md').read_text(encoding='utf-8')
+
+    assert '<主题>.md' in designs_text
+    assert '<名>.md' in modules_text
+    assert '不再单独拆' not in designs_text
+    for text in (designs_text, modules_text):
         assert 'fonts.json' not in text
         assert 'caption_font_px' not in text
+        assert '<名>.json' not in text
+        assert '<主题>.json' not in text
 
 
-def test_design_index_states_positive_responsibilities_without_negative_formula():
+def test_design_index_owns_shared_rules_and_states_positive_responsibilities():
     text = (DESIGNS_ROOT / 'designs.md').read_text(encoding='utf-8')
     first_para = text.split('\n\n')[1]
 
     for item in ('配色', '字体', '字号', '背景', '形状', '图标风格', '动效节奏'):
         assert item in first_para
     assert '不管内容，也不管版面' not in text
+    for shared in ('字号阶梯（1920×1080）', 'tabular-nums', 'data-text-role="ui"', '2px', '16×16', 'repeat: -1'):
+        assert shared in text
 
 
 @pytest.mark.parametrize('name', DESIGN_NAMES)
-def test_theme_docs_deduplicate_token_tables_and_link_font_maintenance_to_index(name: str):
+def test_theme_docs_deduplicate_shared_sections_and_stale_font_prestage_copy(name: str):
     doc_path = design_dir(name) / f'{name}.md'
     text = doc_path.read_text(encoding='utf-8')
     contract = load_contract(name)
 
     assert '这份文档只规定外观' not in text
     assert '主题变量值' not in text
-    assert f'{name}.json' in text
+    assert '## 1. 配色' in text
+    assert '## 2. 字体' in text
+    assert '配色与机器配置' not in text
+    assert '字号阶梯（1920×1080）' not in text
+    assert '通用元素的外观' not in text
+    assert '要做 / 不要做' not in text
+    assert f'{name}.json' not in text
     assert contract['fonts']['css_filename'] in text
     assert 'fonts-download.sh' not in text
     assert 'resources/fonts/' not in text
-    assert '预置在 `composition/assets/fonts/`' in text
+    assert '预置在 `composition/assets/fonts/`' not in text
 
     headings = {
         match.group(1)
@@ -139,5 +150,3 @@ def test_theme_docs_deduplicate_token_tables_and_link_font_maintenance_to_index(
             continue
         target = (doc_path.parent / rel_target).resolve()
         assert target.is_file(), f'{name}: broken link {link}'
-
-

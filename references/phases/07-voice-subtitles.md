@@ -34,7 +34,7 @@
 
 ## 下一步
 
-Phase 8（composition，委派）：sub-agent 按最终 layout 生成字幕单元、用时间轴和素材 catalog 完成画面与渲染；字体由 Phase 8 准备阶段按所选 design 预置。
+Phase 8（composition，委派）：sub-agent 根据内容选定 design 并安装字体，按最终视觉 scene 生成字幕单元、用时间轴和素材 catalog 完成画面与渲染。
 
 ## 护栏
 
