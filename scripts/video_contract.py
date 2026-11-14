@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 # Phase 1 的基础字段：用户输入落地成 inputs.json 时必须齐全的部分。
-# layout 与 template 不在这里：它们是 Phase 8 的画面决策。
+# design、layout 与 template 不在这里：它们是 Phase 8 的画面决策。
 INPUTS_BASE_FIELDS = (
     'source',
     'input_mode',
@@ -97,7 +97,7 @@ def input_field_problem(field: str, value: Any) -> str | None:
     elif field in ('coding_agent', 'language', 'input_mode'):
         if not isinstance(value, str) or not value.strip():
             return f'field {field} must be a non-empty string, got {value!r}'
-    elif field in ('design', 'layout', 'template'):
+    elif field in ('layout', 'template'):
         if field == 'template' and value is None:
             return None
         if not isinstance(value, str) or NAME.fullmatch(value) is None:
@@ -190,6 +190,86 @@ LAYOUTS_PATH = 'modules/layouts'
 TEMPLATES_PATH = 'modules/templates'
 DESIGNS_PATH = 'modules/designs'
 
+DESIGN_CSS_BLOCK = re.compile(r'```css\s*:root\s*\{(.*?)\}\s*```', flags=re.DOTALL)
+DESIGN_JSON_BLOCK = re.compile(r'```json\s*(\{.*?\})\s*```', flags=re.DOTALL)
+CSS_DECLARATION = re.compile(r'(--[\w-]+)\s*:\s*([^;]+);')
+DESIGN_META_KEYS = frozenset({'min_font_px', 'fonts'})
+DESIGN_FLOOR_KEYS = frozenset({'reading', 'ui'})
+DESIGN_FONT_KEYS = frozenset({'css_filename', 'rename', 'css2_families'})
+
+
+def _positive_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def parse_design_markdown(path: Path) -> dict[str, Any]:
+    """从主题 Markdown（`:root` CSS 块 + 机器配置 JSON 块）解析完整主题契约。"""
+    text = path.read_text(encoding='utf-8')
+    css_blocks = DESIGN_CSS_BLOCK.findall(text)
+    if len(css_blocks) != 1:
+        raise ValueError(
+            f'design {path}: expected exactly 1 ```css :root {{ ... }} ``` block, found {len(css_blocks)}'
+        )
+    tokens: dict[str, str] = {}
+    for token, raw_value in CSS_DECLARATION.findall(css_blocks[0]):
+        if token in tokens:
+            raise ValueError(f'design {path}: duplicate CSS token {token}')
+        value = raw_value.strip()
+        if not value:
+            raise ValueError(f'design {path}: empty CSS token {token}')
+        tokens[token] = value
+    missing = sorted(DESIGN_TOKEN_NAMES - set(tokens))
+    extra = sorted(set(tokens) - DESIGN_TOKEN_NAMES)
+    if missing:
+        raise ValueError(f'design {path}: missing shared tokens: {", ".join(missing)}')
+    if extra:
+        raise ValueError(f'design {path}: unknown tokens in :root block: {", ".join(extra)}')
+
+    json_blocks = DESIGN_JSON_BLOCK.findall(text)
+    if len(json_blocks) != 1:
+        raise ValueError(
+            f'design {path}: expected exactly 1 ```json {{ ... }} ``` metadata block, found {len(json_blocks)}'
+        )
+    meta = json.loads(json_blocks[0])
+    if not isinstance(meta, dict) or set(meta) != DESIGN_META_KEYS:
+        raise ValueError(f'design {path}: metadata JSON must contain exactly min_font_px and fonts')
+
+    floors = meta['min_font_px']
+    if not isinstance(floors, dict) or set(floors) != DESIGN_FLOOR_KEYS:
+        raise ValueError(f'design {path}: min_font_px must contain exactly reading and ui')
+    if not all(_positive_int(floors[key]) for key in DESIGN_FLOOR_KEYS):
+        raise ValueError(f'design {path}: min_font_px.reading and min_font_px.ui must be positive integers')
+    if floors['ui'] < 22:
+        raise ValueError(f'design {path}: min_font_px.ui must be at least 22px')
+
+    fonts = meta['fonts']
+    if not isinstance(fonts, dict) or set(fonts) != DESIGN_FONT_KEYS:
+        raise ValueError(f'design {path}: fonts must contain exactly css_filename, rename, css2_families')
+    if not isinstance(fonts['css_filename'], str) or not fonts['css_filename'].strip():
+        raise ValueError(f'design {path}: fonts.css_filename must be a non-empty string')
+    families = fonts['css2_families']
+    if not isinstance(families, list) or not families or not all(
+        isinstance(item, str) and item.strip() for item in families
+    ):
+        raise ValueError(f'design {path}: fonts.css2_families must be a non-empty list of strings')
+    rename = fonts['rename']
+    if not isinstance(rename, dict) or not all(
+        isinstance(old, str) and isinstance(new, str) for old, new in rename.items()
+    ):
+        raise ValueError(f'design {path}: fonts.rename must be a string mapping')
+
+    return {
+        'design': path.stem,
+        'tokens': tokens,
+        'min_font_px': {'reading': floors['reading'], 'ui': floors['ui']},
+        'fonts': fonts,
+    }
+
+
+def load_design_preset(skill_root: Path, name: str) -> dict[str, Any]:
+    """加载库内 modules/designs/<name>/<name>.md 的完整主题契约。"""
+    return parse_design_markdown(skill_root / DESIGNS_PATH / name / f'{name}.md')
+
 
 def _named_doc_dirs(root: Path, *, with_contract: bool) -> list[str]:
     """``root`` 下以 <名>/<名>.md（且可选的 <名>/<名>.json）声明自己的子目录名。"""
@@ -225,8 +305,8 @@ def _named_doc_files(root: Path) -> list[str]:
 
 
 def available_designs(skill_root: Path) -> list[str]:
-    """skill 的 modules/designs/ 下注册的 design（文档 + JSON 契约）。"""
-    return _named_doc_dirs(skill_root / DESIGNS_PATH, with_contract=True)
+    """skill 的 modules/designs/ 下注册的 design（单文件 <名>/<名>.md）。"""
+    return _named_doc_dirs(skill_root / DESIGNS_PATH, with_contract=False)
 
 
 def available_layouts(skill_root: Path) -> list[str]:

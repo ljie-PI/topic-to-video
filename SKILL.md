@@ -12,7 +12,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 - **Web 调研** 在写脚本之前获取准确的内容
 - **HyperFrames** 用于下游 HTML composition + 渲染（delegated）
 - **TTS / ASR** 生成配音并拿回词级时间戳；后端由环境变量选择，参数和依赖见两个脚本的 `--help`
-- 全片固定的 orientation（画布）、Phase 1 记录的用户明确 design 约束（可选）与 Phase 8 落盘的 preset / custom design（`composition/design.json`，全片外观基线）、Phase 8 确定的视觉 scenes 与逐场景 template / layout（`composition/scene-config.json`，各场景的版面与一类视频的组装方式）
+- 全片固定的 orientation（画布），以及 Phase 8 根据内容落盘的 `composition/design.json`（外观基线）与 `composition/scene-config.json`（视觉 scenes 与逐场景 template / layout）
 
 **输出：** `{work_dir}/{topic_name}/composition/renders/final.mp4`，可直接发布（由 Phase 8 coding sub-agent 产出）；Phase 9 混入 BGM 后得到 `final_with_bgm.mp4`。
 

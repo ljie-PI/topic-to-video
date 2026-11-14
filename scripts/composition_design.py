@@ -1,8 +1,10 @@
 """composition/design.json 的公共读取与校验。
 
-这份产物固定记录 Phase 8 实际采用的全片外观基线。preset 必须与库内当前
-契约一致；custom 也必须包含完整共享 token 与 reading / ui 字号下限。字体
-维护清单不属于这个产物，实际 CSS 与 WOFF2 仍在 composition/assets/fonts/。
+这份产物固定记录 Phase 8 根据内容确定的全片外观基线。默认必须从库内注册 preset
+中选择，且与所选主题文档一致；仅当用户在 inputs.json 的 composition_requests
+中提出视觉风格要求时才允许 custom，custom 也必须包含完整共享 token 与
+reading / ui 字号下限。字体维护清单不属于这个产物，实际 CSS 与 WOFF2 仍在
+composition/assets/fonts/。
 """
 from __future__ import annotations
 
@@ -22,7 +24,12 @@ def _positive_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
-def composition_design_problem(data: Any, *, skill_root: Path) -> str | None:
+def composition_design_problem(
+    data: Any,
+    *,
+    skill_root: Path,
+    inputs: dict[str, Any] | None = None,
+) -> str | None:
     """返回 design 产物不符合公共契约的原因；合格时返回 None。"""
     if not isinstance(data, dict):
         return 'JSON root is not an object'
@@ -46,6 +53,14 @@ def composition_design_problem(data: Any, *, skill_root: Path) -> str | None:
                 f'got {preset_name!r}'
             )
 
+    if inputs is not None and source == 'custom':
+        requests = video_contract.request_items(inputs, video_contract.COMPOSITION_REQUESTS_FIELD)
+        if not requests:
+            return (
+                'custom design is only allowed when composition_requests explicitly requests '
+                'an out-of-library style; select a registered preset from modules/designs/ instead'
+            )
+
     tokens = data['tokens']
     if not isinstance(tokens, dict):
         return 'tokens must be an object'
@@ -65,10 +80,9 @@ def composition_design_problem(data: Any, *, skill_root: Path) -> str | None:
         return 'min_font_px.ui must be at least 22px for a custom design'
 
     if source == 'preset':
-        path = skill_root / video_contract.DESIGNS_PATH / preset_name / f'{preset_name}.json'
         try:
-            preset = json.loads(path.read_text(encoding='utf-8'))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            preset = video_contract.load_design_preset(skill_root, preset_name)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             return f'preset {preset_name!r} contract cannot be read: {exc}'
         if tokens != preset.get('tokens'):
             return f'tokens must exactly match preset {preset_name!r}'
@@ -77,13 +91,18 @@ def composition_design_problem(data: Any, *, skill_root: Path) -> str | None:
     return None
 
 
-def load_composition_design(path: Path, *, skill_root: Path) -> dict[str, Any]:
+def load_composition_design(
+    path: Path,
+    *,
+    skill_root: Path,
+    inputs: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """读取并校验一份 composition/design.json；失败时抛出 ValueError。"""
     try:
         data = json.loads(path.read_text(encoding='utf-8'))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f'{path} cannot be read as a design contract: {exc}') from exc
-    problem = composition_design_problem(data, skill_root=skill_root)
+    problem = composition_design_problem(data, skill_root=skill_root, inputs=inputs)
     if problem:
         raise ValueError(f'{path}: {problem}')
     return data

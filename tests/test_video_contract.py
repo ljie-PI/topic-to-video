@@ -19,16 +19,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_phase_1_fields_carry_no_visual_decision():
-    # layout / template 是 Phase 8 的决定，不是 Phase 1 的输入。
+    # design / layout / template 都是 Phase 8 的决定，不是 Phase 1 的输入。
+    assert 'design' not in video_contract.INPUTS_BASE_FIELDS
     assert 'layout' not in video_contract.INPUTS_BASE_FIELDS
     assert 'template' not in video_contract.INPUTS_BASE_FIELDS
     for name in ('source', 'input_mode', 'duration', 'language', 'orientation',
                  'coding_agent', 'fetch_materials'):
         assert name in video_contract.INPUTS_BASE_FIELDS
-    # design 只在用户明确指定时作为可选约束；缺省不由 Phase 1 补默认值。
-    assert 'design' not in video_contract.INPUTS_BASE_FIELDS
-    assert video_contract.input_field_problem('design', 'github') is None
-    assert video_contract.input_field_problem('design', '../github') is not None
 
 
 def test_only_the_visual_step_reads_the_visual_fields():

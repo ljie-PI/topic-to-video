@@ -20,14 +20,15 @@ from pathlib import Path
 
 import pytest
 
+import video_contract
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'fonts-download.sh'
-DESIGNS = sorted(p.parent.name for p in (REPO_ROOT / 'modules' / 'designs').glob('*/*.json'))
+DESIGNS = video_contract.available_designs(REPO_ROOT)
 
 
 def load_fonts(design: str) -> dict:
-    path = REPO_ROOT / 'modules' / 'designs' / design / f'{design}.json'
-    return json.loads(path.read_text(encoding='utf-8'))['fonts']
+    return video_contract.load_design_preset(REPO_ROOT, design)['fonts']
 # Unreachable on purpose: install must never fetch anything.
 NO_NETWORK = {'FONTS_CSS2_URL': 'http://127.0.0.1:9/css2'}
 
@@ -198,7 +199,7 @@ def test_install_rejects_references_that_are_not_bare_pool_names(tmp_path: Path,
 
 
 @pytest.mark.parametrize('design', ['default', 'github', 'producthunt'])
-def test_refresh_dry_run_uses_every_family_from_the_design_json(design: str):
+def test_refresh_dry_run_uses_every_family_from_the_design_doc(design: str):
     proc, result = run('--refresh', '--theme', design, '--dry-run')
 
     assert proc.returncode == 0, proc.stderr
@@ -217,7 +218,7 @@ def test_font_family_names_are_not_hardcoded_in_the_downloader():
 def test_refresh_rejects_contract_paths(tmp_path: Path):
     copy = tmp_path / 'modules' / 'designs' / 'default'
     copy.mkdir(parents=True)
-    (copy / 'default.json').write_text((REPO_ROOT / 'modules/designs/default/default.json').read_text())
+    (copy / 'default.md').write_text((REPO_ROOT / 'modules/designs/default/default.md').read_text(encoding='utf-8'), encoding='utf-8')
     proc, result = run('--refresh', '--theme', str(copy), env={'FONTS_RESOURCES_DIR': str(tmp_path / 'res')})
     assert proc.returncode == 2
     assert 'theme name under modules/designs' in result['error']

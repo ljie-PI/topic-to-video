@@ -26,8 +26,8 @@ video/audio 元素；两者都不存在时该快照报 seek finding，静态快�
                   与 --layout 互斥。
   --min-font-size design 的最小正文字号，单位 px；UI 文本可用
                   --min-ui-font-size（默认：与正文相同）。另一种方式是
-                  --design 从某个主题的 design JSON 读取 min_font_px.reading
-                  与 min_font_px.ui。二者必居其一。
+                  --design 从 composition/design.json 或主题文档 <主题>.md 读取
+                  min_font_px.reading 与 min_font_px.ui。二者必居其一。
   --subtitle-units 用于字幕检查的 subtitle-units.json（可选）。
   --timeline      仅旧单 layout 模式：timeline.json 的可选叙事 scenes 决定场景时间。
                   新视觉模式使用 --scene-config，不接受 --timeline。
@@ -55,6 +55,7 @@ import chrome_cdp
 import cli
 import media
 import scene_config
+import video_contract
 from timeline_scenes import normalize_scenes
 
 TOOL_NAME = 'check-composition'
@@ -106,8 +107,8 @@ def parse_args() -> argparse.Namespace:
     font.add_argument('--min-ui-font-size', type=int, default=None,
                       help='Minimum for text inside [data-text-role="ui"] (default: --min-font-size).')
     font.add_argument('--design', default=None,
-                      help='Theme design JSON (modules/designs/<theme>/<theme>.json); the reading-text '
-                           'and UI-text minimums come from min_font_px.')
+                      help='Design contract path (composition/design.json or modules/designs/<theme>/<theme>.md); '
+                           'the reading-text and UI-text minimums come from min_font_px.')
     parser.add_argument('--subtitle-units', default=None,
                         help='subtitle-units.json used for the caption check (optional).')
     parser.add_argument('--timeline', default=None,
@@ -152,7 +153,13 @@ def load_font_floors(args: argparse.Namespace) -> Tuple[int, int]:
     """(正文字号下限, UI 字号下限)，单位 px。"""
     if args.min_font_size is not None:
         return args.min_font_size, args.min_ui_font_size or args.min_font_size
-    design = json.loads(Path(args.design).read_text(encoding='utf-8'))
+    design_path = Path(args.design)
+    if design_path.is_dir():
+        design_path = design_path / f'{design_path.name}.md'
+    if design_path.suffix == '.md':
+        design = video_contract.parse_design_markdown(design_path)
+    else:
+        design = json.loads(design_path.read_text(encoding='utf-8'))
     floors = design.get('min_font_px') if isinstance(design, dict) else None
     if not isinstance(floors, dict):
         raise ValueError(f'design {args.design}: min_font_px must be an object')
