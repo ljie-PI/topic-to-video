@@ -106,28 +106,28 @@ def test_relative_frame_paths_are_relative_to_the_json_not_cwd(tmp_path: Path):
     assert result['sheets'][0]['frames'][0]['path'] == str(tmp_path / 'frames/frame_000.png')
 
 
-@pytest.mark.parametrize('bad_time', [None, True, -1, '90', float('nan'), float('inf')])
-def test_bad_timestamps_fail_before_writing_sheets(tmp_path: Path, bad_time):
+def test_bad_timestamps_and_payloads_fail_before_writing_sheets(tmp_path: Path):
     frames_json, frames = make_frames(tmp_path, 1)
-    frames[0]['t_s'] = bad_time
-    frames_json.write_text(json.dumps({'frames': frames}), encoding='utf-8')
-    proc, result = run_cli(frames_json, tmp_path / 'sheets')
+    for bad_time in (None, True, -1, '90', float('nan'), float('inf')):
+        frames[0]['t_s'] = bad_time
+        frames_json.write_text(json.dumps({'frames': frames}), encoding='utf-8')
+        proc, result = run_cli(frames_json, tmp_path / 'sheets')
+        assert proc.returncode == 1 and 't_s' in result['error']
+        assert not (tmp_path / 'sheets').exists()
 
-    assert proc.returncode == 1
-    assert 't_s' in result['error']
-    assert not (tmp_path / 'sheets').exists()
+    bad_path = tmp_path / 'bad_frames.json'
+    for payload in ([], {}, {'frames': []}, {'frames': [None]}, {'success': False, 'frames': [{}]}):
+        bad_path.write_text(json.dumps(payload), encoding='utf-8')
+        proc, result = run_cli(bad_path, tmp_path / 'sheets')
+        assert proc.returncode == 1 and result['success'] is False
+        assert 'Traceback' not in proc.stderr
+        assert not (tmp_path / 'sheets').exists()
 
 
-@pytest.mark.parametrize('payload', [[], {}, {'frames': []}, {'frames': [None]}, {'success': False, 'frames': [{}]}])
-def test_unusable_frame_json_is_a_single_error(tmp_path: Path, payload):
-    path = tmp_path / 'frames.json'
-    path.write_text(json.dumps(payload), encoding='utf-8')
-    proc, result = run_cli(path, tmp_path / 'sheets')
-
-    assert proc.returncode == 1
-    assert result['success'] is False
-    assert 'Traceback' not in proc.stderr
-    assert not (tmp_path / 'sheets').exists()
+def test_invalid_cell_width_is_an_argument_error(tmp_path: Path):
+    for width in ('0', '-1'):
+        proc, result = run_cli(tmp_path / 'missing.json', tmp_path / 'sheets', '--cell-width', width)
+        assert proc.returncode == 2 and 'cell-width' in result['error']
 
 
 @pytest.mark.parametrize('failure', ['missing', 'corrupt', 'duplicate_time'])
@@ -146,13 +146,6 @@ def test_invalid_source_frames_are_not_silently_dropped(tmp_path: Path, failure)
     assert proc.returncode == 1
     assert result['success'] is False
     assert not (tmp_path / 'sheets').exists()
-
-
-@pytest.mark.parametrize('width', ['0', '-1'])
-def test_invalid_cell_width_is_an_argument_error(tmp_path: Path, width):
-    proc, result = run_cli(tmp_path / 'missing.json', tmp_path / 'sheets', '--cell-width', width)
-    assert proc.returncode == 2
-    assert 'cell-width' in result['error']
 
 
 def test_generation_does_not_overwrite_a_legacy_input_sheet(tmp_path: Path):

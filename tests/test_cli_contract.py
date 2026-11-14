@@ -50,15 +50,13 @@ def test_invalid_flag_is_one_json_error_on_stdout(script: Path, tmp_path: Path):
     assert 'Traceback' not in proc.stderr
 
 
-@pytest.mark.parametrize(
-    'script',
-    sorted((path for path in SCRIPTS_DIR.glob('*.py') if path.name != 'cli.py'), key=lambda path: path.name),
-    ids=lambda path: path.name,
-)
-def test_shared_cli_helpers_are_not_redefined(script: Path):
-    match = SHARED_HELPER_DEFINITION.search(script.read_text(encoding='utf-8'))
-
-    assert match is None, f'{script.name} still defines {match.group(0)!r}; use scripts/cli.py'
+def test_shared_cli_helpers_are_not_redefined():
+    offenders: list[str] = []
+    for script in sorted((p for p in SCRIPTS_DIR.glob('*.py') if p.name != 'cli.py'), key=lambda p: p.name):
+        match = SHARED_HELPER_DEFINITION.search(script.read_text(encoding='utf-8'))
+        if match is not None:
+            offenders.append(f'{script.name} still defines {match.group(0)!r}; use scripts/cli.py')
+    assert not offenders, '\n'.join(offenders)
 
 
 def test_gemini_self_check_runtime_error_is_json_without_output_dir(tmp_path: Path):
@@ -102,39 +100,30 @@ def test_json_argument_parser_error_uses_tool_name_and_exit_2(cli, capsys: pytes
     assert captured.err == '[example-tool] bad arguments: bad 参数\n'
 
 
-def test_make_logger_writes_prefixed_stderr(cli, capsys: pytest.CaptureFixture[str]):
+def test_logger_and_print_json_format_streams(cli, capsys: pytest.CaptureFixture[str]):
     log = cli.make_logger('example-tool')
-
     log('处理中')
-
     captured = capsys.readouterr()
     assert captured.out == ''
     assert captured.err == '[example-tool] 处理中\n'
 
-
-def test_print_json_writes_one_unicode_json_line(cli, capsys: pytest.CaptureFixture[str]):
     cli.print_json({'success': True, 'message': '你好'})
-
     captured = capsys.readouterr()
     assert captured.out == '{"success": true, "message": "你好"}\n'
     assert captured.err == ''
 
 
-def test_fail_writes_prefixed_json_error_and_exits(cli, capsys: pytest.CaptureFixture[str]):
+def test_fail_writes_prefixed_json_error_and_structured_fields(
+    cli, capsys: pytest.CaptureFixture[str]
+):
     with pytest.raises(SystemExit) as exc_info:
         cli.fail('example-tool', 'bad 参数', exit_code=7)
-
     assert exc_info.value.code == 7
     captured = capsys.readouterr()
     assert captured.out == '{"success": false, "error": "bad 参数"}\n'
     assert captured.err == '[example-tool] bad 参数\n'
 
-
-def test_fail_preserves_structured_error_fields_and_log_message(
-    cli, capsys: pytest.CaptureFixture[str]
-):
     child = {'success': False, 'error': 'child exploded'}
-
     with pytest.raises(SystemExit) as exc_info:
         cli.fail(
             'example-tool',
@@ -143,7 +132,6 @@ def test_fail_preserves_structured_error_fields_and_log_message(
             extra={'child': child},
             log_message='error (tts): child exploded',
         )
-
     assert exc_info.value.code == 1
     captured = capsys.readouterr()
     assert json.loads(captured.out) == {

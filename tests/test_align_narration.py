@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from cli_helpers import parse_stdout, write_silent_mp3
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'align-narration.py'
 MAKE_NARRATION = REPO_ROOT / 'scripts' / 'make-narration.py'
@@ -125,12 +127,7 @@ def make_workspace(
         write_json(tmp_path / 'inputs.json', {
             'orientation': orientation, 'design': 'default',
         })
-        audio = tmp_path / 'voice_clone' / 'narration.mp3'
-        audio.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run([
-            'ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono',
-            '-t', '6', '-c:a', 'libmp3lame', str(audio),
-        ], capture_output=True, check=True)
+        write_silent_mp3(tmp_path / 'voice_clone' / 'narration.mp3', 6.0)
 
     units_path = tmp_path / 'transcribe' / 'subtitle-units.json'
     timeline_path = tmp_path / 'transcribe' / 'timeline.json'
@@ -138,15 +135,15 @@ def make_workspace(
         tmp_path, 'subtitles', width=width, font_size=font_size, max_lines=max_lines, layout=layout,
         scene_config=scene_config,
     ), *subtitle_args)
-    result = json.loads(proc.stdout)
+    result = parse_stdout(proc)
     timeline_result = None
     if proc.returncode == 0:
         timing_proc = run_cli(*align_args(tmp_path, 'timing', scene_plan=scene_plan))
         if timing_proc.returncode == 0:
-            timeline_result = json.loads(timing_proc.stdout)
+            timeline_result = parse_stdout(timing_proc)
         else:
             proc = timing_proc
-            result = json.loads(timing_proc.stdout)
+            result = parse_stdout(timing_proc)
     if timeline_result is not None:
         units_summary = result.get('summary') or {}
         timing_summary = timeline_result.get('summary') or {}
@@ -200,6 +197,8 @@ def test_regression_tokens_without_punctuation_or_spaces(tmp_path: Path):
     # the only break falls at the comma — never inside 并提交改动.
     assert unit_texts(units_data) == ['Claude Code 发布了 5.4 版本', '并提交改动']
     assert timeline_data['paragraphs'] == [{'index': 1, 'begin_s': 0.0, 'end_s': 2.6}]
+    assert timeline_data['total_s'] == 2.6
+    assert not {'scenes', 'cues', 'beats'} & timeline_data.keys()
 
 
 def display_width(text: str) -> float:
@@ -493,17 +492,17 @@ def test_breaks_at_soft_punctuation_before_width(tmp_path: Path):
 # --- timeline -------------------------------------------------------------------
 
 
-def test_timeline_paragraph_bounds(tmp_path: Path):
+def test_timeline_paragraph_scene_and_cue_seconds_with_scene_plan(tmp_path: Path):
     transcript = [
         {
             'begin': 0,
             'end': 1200,
             'text': '第一段内容。',
             'words': [
-                {'text': '第', 'begin': 0, 'end': 200},
-                {'text': '一', 'begin': 200, 'end': 400},
-                {'text': '段', 'begin': 400, 'end': 700},
-                {'text': '内容', 'begin': 700, 'end': 1200},
+                {'text': '第', 'begin': 0, 'end': 300},
+                {'text': '一', 'begin': 300, 'end': 600},
+                {'text': '段', 'begin': 600, 'end': 900},
+                {'text': '内容', 'begin': 900, 'end': 1200},
             ],
         },
         {
@@ -518,8 +517,13 @@ def test_timeline_paragraph_bounds(tmp_path: Path):
             ],
         },
     ]
-    proc, _, _, timeline_data = make_workspace(
-        tmp_path, '第一段内容。\n\n第二段内容。', {}, transcript
+    scene_plan = [
+        {'scene_id': 's1', 'paragraphs': [1], 'cues': ['第一段']},
+        {'scene_id': 's2', 'paragraphs': [1, 2], 'cues': ['不存在的锚点句']},
+        {'scene_id': 's3', 'paragraphs': [99], 'cues': []},  # 无对齐段落：警告并跳过
+    ]
+    proc, result, _, timeline_data = make_workspace(
+        tmp_path, '第一段内容。\n\n第二段内容。', {}, transcript, scene_plan=scene_plan
     )
     assert proc.returncode == 0
     assert timeline_data['paragraphs'] == [
@@ -527,77 +531,22 @@ def test_timeline_paragraph_bounds(tmp_path: Path):
         {'index': 2, 'begin_s': 1.2, 'end_s': 2.5},
     ]
     assert timeline_data['total_s'] == 2.5
-    assert not {'scenes', 'cues', 'beats'} & timeline_data.keys()
-
-
-def test_timeline_cue_seconds_with_scene_plan(tmp_path: Path):
-    transcript = [
-        {
-            'begin': 0,
-            'end': 1200,
-            'text': '第一段内容。',
-            'words': [
-                {'text': '第', 'begin': 0, 'end': 300},
-                {'text': '一', 'begin': 300, 'end': 600},
-                {'text': '段', 'begin': 600, 'end': 900},
-                {'text': '内容', 'begin': 900, 'end': 1200},
-            ],
-        }
+    assert timeline_data['scenes'] == [
+        {'scene_id': 's1', 'begin_s': 0.0, 'end_s': 1.2},
+        {'scene_id': 's2', 'begin_s': 0.0, 'end_s': 2.5},
     ]
-    scene_plan = [
-        {'scene_id': 's1', 'paragraphs': [1], 'cues': ['第一段']},
-        {'scene_id': 's2', 'paragraphs': [1], 'cues': ['不存在的锚点句']},
-    ]
-    proc, result, _, timeline_data = make_workspace(
-        tmp_path, '第一段内容。', {}, transcript, scene_plan=scene_plan
-    )
-    assert proc.returncode == 0
     assert timeline_data['cues'] == [
         {'scene_id': 's1', 'cue': '第一段', 'begin_s': 0.0, 'end_s': 0.9}
     ]
-    # unmatched cue reported as a warning, not a failure
-    assert any('s2' in warning for warning in result['summary']['warnings'])
+    warnings = result['summary']['warnings']
+    assert any('s2' in warning for warning in warnings)
+    assert any('s3' in warning for warning in warnings)
 
 
-def test_cues_are_located_in_the_display_script_not_the_narration(tmp_path: Path):
-    # The display draft says NVIDIA, the TTS reads 英伟达. Cue lookup runs on the
-    # restored display text, so a narration-form cue cannot match even though it
-    # is word-for-word what the audio says; case and punctuation are normalized.
-    script_text = 'NVIDIA 发布了新模型。'
-    transcript = [
-        {
-            'begin': 0,
-            'end': 2000,
-            'text': '英伟达 发布了新模型。',
-            'words': [
-                {'text': '英伟达', 'begin': 0, 'end': 700},
-                {'text': '发布了新模型', 'begin': 700, 'end': 2000},
-            ],
-        }
-    ]
-    scene_plan = [
-        {
-            'scene_id': 's1',
-            'paragraphs': [1],
-            'cues': ['NVIDIA 发布了新模型。', '英伟达发布了新模型。', 'nvidia，发布了新模型！'],
-        }
-    ]
-    proc, result, _, timeline_data = make_workspace(
-        tmp_path, script_text, {'NVIDIA': '英伟达'}, transcript, scene_plan=scene_plan
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert [cue['cue'] for cue in timeline_data['cues']] == [
-        'NVIDIA 发布了新模型。',
-        'nvidia，发布了新模型！',
-    ]
-    assert any(
-        'cue not found' in warning and '英伟达发布了新模型。' in warning
-        for warning in result['summary']['warnings']
-    )
-
-
-def test_cue_outside_its_scene_paragraphs_is_skipped(tmp_path: Path):
-    script_text = '第一段内容。\n\nNVIDIA 发布了新模型。'
+def test_cues_match_display_script_within_scene_paragraphs(tmp_path: Path):
+    # Cue lookup runs on restored display text restricted to the scene's own
+    # paragraphs: narration-form text and cues from other paragraphs are skipped.
+    script_text = '第一段内容。\n\nNVIDIA 发布了 2000 个新模型。'
     transcript = [
         {
             'begin': 0,
@@ -608,27 +557,42 @@ def test_cue_outside_its_scene_paragraphs_is_skipped(tmp_path: Path):
         {
             'begin': 1200,
             'end': 3200,
-            'text': '英伟达 发布了新模型。',
+            'text': '英伟达 发布了 2000 个新模型。',
             'words': [
                 {'text': '英伟达', 'begin': 1200, 'end': 1900},
-                {'text': '发布了新模型', 'begin': 1900, 'end': 3200},
+                {'text': '发布了', 'begin': 1900, 'end': 2400},
+                {'text': '2000', 'begin': 2400, 'end': 2700},
+                {'text': '个新模型', 'begin': 2700, 'end': 3200},
             ],
         },
     ]
     scene_plan = [
-        {'scene_id': 's1', 'paragraphs': [1], 'cues': ['NVIDIA 发布了新模型。']},
-        {'scene_id': 's2', 'paragraphs': [2], 'cues': []},
+        {'scene_id': 's1', 'paragraphs': [1], 'cues': ['NVIDIA 发布了 2000 个新模型。']},
+        {
+            'scene_id': 's2',
+            'paragraphs': [2],
+            'cues': [
+                'NVIDIA 发布了 2000 个新模型。',
+                '英伟达发布了 2000 个新模型。',
+                'nvidia，发布了 2000 个新模型！',
+                '2000 个新模型',
+            ],
+        },
     ]
     proc, result, _, timeline_data = make_workspace(
         tmp_path, script_text, {'NVIDIA': '英伟达'}, transcript, scene_plan=scene_plan
     )
     assert proc.returncode == 0, proc.stderr
-    # The text exists in the display draft, but not in the paragraph s1 covers.
-    assert timeline_data['cues'] == []
-    assert any(
-        'cue not found' in warning and 's1' in warning
-        for warning in result['summary']['warnings']
-    )
+    assert [(cue['scene_id'], cue['cue']) for cue in timeline_data['cues']] == [
+        ('s2', 'NVIDIA 发布了 2000 个新模型。'),
+        ('s2', 'nvidia，发布了 2000 个新模型！'),
+        ('s2', '2000 个新模型'),
+    ]
+    model_cue = next(cue for cue in timeline_data['cues'] if cue['cue'] == '2000 个新模型')
+    assert 2.4 <= model_cue['begin_s'] < model_cue['end_s'] <= 3.2
+    warnings = result['summary']['warnings']
+    assert any('cue not found' in w and 's1' in w for w in warnings)
+    assert any('cue not found' in w and '英伟达发布了 2000 个新模型。' in w for w in warnings)
 
 
 @pytest.mark.parametrize('removed', ['beats', 'pattern_hints', 'template_scene'])
@@ -654,80 +618,12 @@ def test_scene_plan_fields_of_composition_are_rejected(tmp_path: Path, removed: 
     assert timeline_data is None
 
 
-def test_timeline_scene_seconds_with_scene_plan(tmp_path: Path):
-    transcript = [
-        {
-            'begin': 0,
-            'end': 1200,
-            'text': '第一段内容。',
-            'words': [
-                {'text': '第', 'begin': 0, 'end': 300},
-                {'text': '一', 'begin': 300, 'end': 600},
-                {'text': '段', 'begin': 600, 'end': 900},
-                {'text': '内容', 'begin': 900, 'end': 1200},
-            ],
-        },
-        {
-            'begin': 1200,
-            'end': 2500,
-            'text': '第二段内容。',
-            'words': [
-                {'text': '第二段内容', 'begin': 1200, 'end': 2500},
-            ],
-        },
-    ]
-    scene_plan = [
-        {'scene_id': 's1', 'paragraphs': [1], 'cues': []},
-        {'scene_id': 's2', 'paragraphs': [1, 2], 'cues': []},
-        {'scene_id': 's3', 'paragraphs': [99], 'cues': []},  # 无对齐段落：警告并跳过
-    ]
-    proc, result, _, timeline_data = make_workspace(
-        tmp_path, '第一段内容。\n\n第二段内容。', {}, transcript, scene_plan=scene_plan
-    )
-    assert proc.returncode == 0
-    assert timeline_data['scenes'] == [
-        {'scene_id': 's1', 'begin_s': 0.0, 'end_s': 1.2},
-        {'scene_id': 's2', 'begin_s': 0.0, 'end_s': 2.5},
-    ]
-    assert any('s3' in warning for warning in result['summary']['warnings'])
-
-
 # --- CLI seam -------------------------------------------------------------------
 
 
-def test_bad_arguments_exit_2(tmp_path: Path):
-    proc = run_cli('--width', '100')
-    assert proc.returncode == 2
-    result = json.loads(proc.stdout)
-    assert result['success'] is False
-
-
-def test_missing_input_file_exits_1(tmp_path: Path):
-    write_text(tmp_path / 'script.txt', '内容。')
-    write_json(tmp_path / 'tts-lexicon.json', {})
-    write_text(tmp_path / 'narration.txt', '内容。')
-    write_json(tmp_path / 'narration-offsets.json', {
-        'version': 1, 'script_length': 3, 'narration_length': 3, 'segments': [],
-    })
-    proc = run_cli(
-        '--mode', 'subtitles',
-        '--transcript', str(tmp_path / 'transcribe' / 'transcript.json'),
-        '--narration', str(tmp_path / 'narration.txt'),
-        '--offsets', str(tmp_path / 'narration-offsets.json'),
-        '--script', str(tmp_path / 'script.txt'),
-        '--units-output', str(tmp_path / 'units.json'),
-        '--width', '1200', '--font-size', '42', '--max-lines', '1',
-    )
-    assert proc.returncode == 1
-    result = json.loads(proc.stdout)
-    assert result['success'] is False
-
-
-def test_offsets_without_content_hashes_are_accepted(tmp_path: Path):
-    """内容哈希已删除：make-narration 现在写的就是无哈希偏移表，直接对齐接受它。"""
+def test_missing_or_wordless_input_files_exit_1(tmp_path: Path):
     script_text = '内容。'
     write_text(tmp_path / 'script.txt', script_text)
-    write_json(tmp_path / 'tts-lexicon.json', {})
     write_text(tmp_path / 'narration.txt', script_text)
     write_json(tmp_path / 'narration-offsets.json', {
         'version': 1,
@@ -735,36 +631,7 @@ def test_offsets_without_content_hashes_are_accepted(tmp_path: Path):
         'narration_length': len(script_text),
         'segments': [{'narration_start': 0, 'narration_end': 3, 'script_start': 0, 'script_end': 3}],
     })
-    write_json(tmp_path / 'transcribe' / 'transcript.json', [
-        {'begin': 0, 'end': 500, 'text': '内容', 'words': [{'text': '内容', 'begin': 0, 'end': 500}]},
-    ])
-    proc = run_cli(
-        '--mode', 'timing',
-        '--transcript', str(tmp_path / 'transcribe' / 'transcript.json'),
-        '--narration', str(tmp_path / 'narration.txt'),
-        '--offsets', str(tmp_path / 'narration-offsets.json'),
-        '--script', str(tmp_path / 'script.txt'),
-        '--timeline-output', str(tmp_path / 'timeline.json'),
-    )
-    assert proc.returncode == 0, proc.stderr + proc.stdout
-    assert (tmp_path / 'timeline.json').is_file()
-
-
-def test_transcript_without_word_timestamps_exit_1(tmp_path: Path):
-    write_text(tmp_path / 'script.txt', '内容。')
-    write_json(tmp_path / 'tts-lexicon.json', {})
-    mn = subprocess.run(
-        [sys.executable, str(MAKE_NARRATION),
-         '--script', str(tmp_path / 'script.txt'),
-         '--lexicon', str(tmp_path / 'tts-lexicon.json'),
-         '--output-dir', str(tmp_path)],
-        capture_output=True, text=True,
-    )
-    assert mn.returncode == 0
-    write_json(tmp_path / 'transcribe' / 'transcript.json', [
-        {'begin': 0, 'end': 500, 'text': '内容', 'words': []},
-    ])
-    proc = run_cli(
+    common = [
         '--mode', 'subtitles',
         '--transcript', str(tmp_path / 'transcribe' / 'transcript.json'),
         '--narration', str(tmp_path / 'narration.txt'),
@@ -772,10 +639,15 @@ def test_transcript_without_word_timestamps_exit_1(tmp_path: Path):
         '--script', str(tmp_path / 'script.txt'),
         '--units-output', str(tmp_path / 'units.json'),
         '--width', '1200', '--font-size', '42', '--max-lines', '1',
-    )
-    assert proc.returncode == 1
-    result = json.loads(proc.stdout)
-    assert result['success'] is False
+    ]
+    missing = run_cli(*common)
+    assert missing.returncode == 1 and parse_stdout(missing)['success'] is False
+
+    write_json(tmp_path / 'transcribe' / 'transcript.json', [
+        {'begin': 0, 'end': 500, 'text': '内容', 'words': []},
+    ])
+    wordless = run_cli(*common)
+    assert wordless.returncode == 1 and parse_stdout(wordless)['success'] is False
 
 
 # --- layout region definitions --------------------------------------------------
@@ -833,14 +705,18 @@ def test_portrait_layout_allows_two_lines(tmp_path: Path, subtitle_args):
 
 def test_timing_mode_needs_no_caption_spec_and_writes_no_units(tmp_path: Path):
     """timing 不读 layout、不要字幕参数，也不产字幕单元。"""
-    proc, result, units_data, timeline_data = make_workspace(
-        tmp_path, REGRESSION_SCRIPT, {}, REGRESSION_TRANSCRIPT,
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert timeline_data['paragraphs']
-    assert units_data['units']
-    assert result['mode'] == 'subtitles'
-
+    script_text = '内容。'
+    write_text(tmp_path / 'script.txt', script_text)
+    write_text(tmp_path / 'narration.txt', script_text)
+    write_json(tmp_path / 'narration-offsets.json', {
+        'version': 1,
+        'script_length': len(script_text),
+        'narration_length': len(script_text),
+        'segments': [{'narration_start': 0, 'narration_end': 3, 'script_start': 0, 'script_end': 3}],
+    })
+    write_json(tmp_path / 'transcribe' / 'transcript.json', [
+        {'begin': 0, 'end': 500, 'text': '内容', 'words': [{'text': '内容', 'begin': 0, 'end': 500}]},
+    ])
     timing = run_cli(
         '--mode', 'timing',
         '--transcript', str(tmp_path / 'transcribe' / 'transcript.json'),
@@ -850,37 +726,28 @@ def test_timing_mode_needs_no_caption_spec_and_writes_no_units(tmp_path: Path):
         '--timeline-output', str(tmp_path / 'timeline-only.json'),
     )
     assert timing.returncode == 0, timing.stderr
-    payload = json.loads(timing.stdout)
+    payload = parse_stdout(timing)
     assert payload['mode'] == 'timing'
     assert payload['timeline_path'].endswith('timeline-only.json')
+    assert not (tmp_path / 'transcribe' / 'subtitle-units.json').exists()
 
 
-def test_mode_is_required_and_must_match_the_parameters(tmp_path: Path):
+def test_mode_and_caption_parameter_mismatches_exit_2():
     base = [
         '--transcript', 'x.json', '--narration', 'n.txt', '--offsets', 'o.json', '--script', 's.txt',
     ]
-    assert run_cli(*base).returncode == 2
-    # timing 不接受按字幕容量算出来的参数
-    assert run_cli(*base, '--mode', 'timing', '--layout', 'l.json').returncode == 2
-    assert run_cli(*base, '--mode', 'timing', '--width', '100', '--font-size', '40', '--max-lines', '1').returncode == 2
-    # subtitles 不写时间轴
-    assert run_cli(*base, '--mode', 'subtitles', '--units-output', 'u.json',
-                   '--timeline-output', 't.json',
-                   '--width', '100', '--font-size', '40', '--max-lines', '1').returncode == 2
-
-
-def test_caption_spec_required_without_layout(tmp_path: Path):
-    # subtitles mode needs either --layout or the explicit width flags.
-    proc = run_cli(
-        '--mode', 'subtitles',
-        '--transcript', 'x.json',
-        '--narration', 'n.txt',
-        '--offsets', 'o.json',
-        '--script', 's.txt',
-    )
-    assert proc.returncode == 2
-    result = json.loads(proc.stdout)
-    assert result['success'] is False
+    for bad_args in (
+        ('--width', '100'),
+        tuple(base),
+        (*base, '--mode', 'timing', '--layout', 'l.json'),
+        (*base, '--mode', 'timing', '--width', '100', '--font-size', '40', '--max-lines', '1'),
+        (*base, '--mode', 'subtitles', '--units-output', 'u.json',
+         '--timeline-output', 't.json', '--width', '100', '--font-size', '40', '--max-lines', '1'),
+        (*base, '--mode', 'subtitles'),
+    ):
+        proc = run_cli(*bad_args)
+        assert proc.returncode == 2, bad_args
+        assert parse_stdout(proc)['success'] is False
 
 
 def test_layout_file_without_caption_spec_exits_1(tmp_path: Path):
@@ -892,44 +759,3 @@ def test_layout_file_without_caption_spec_exits_1(tmp_path: Path):
     )
     assert proc.returncode == 1
     assert result['success'] is False
-
-
-def test_timing_mode_places_template_cue_declarations(tmp_path: Path):
-    """模板的入场锚点用同一次对齐取时间：cue 声明 → template-timeline.json。"""
-    script_text = 'OpenHuman 是一个项目。\n\n本周它涨了 2000 个 star。\n'
-    transcript = [
-        {
-            'begin': 0,
-            'end': 2200,
-            'text': script_text.split('\n\n')[0],
-            'words': [
-                {'text': 'OpenHuman', 'begin': 0, 'end': 700},
-                {'text': '是一个项目', 'begin': 700, 'end': 2200},
-            ],
-        },
-        {
-            'begin': 2200,
-            'end': 4000,
-            'text': script_text.split('\n\n')[1].strip(),
-            'words': [
-                {'text': '本周它涨了', 'begin': 2200, 'end': 3200},
-                {'text': '2000', 'begin': 3200, 'end': 3500},
-                {'text': '个star', 'begin': 3500, 'end': 4000},
-            ],
-        },
-    ]
-    cues = [
-        {'scene_id': 'project-cover', 'paragraphs': [1], 'cues': ['OpenHuman']},
-        {'scene_id': 'stars', 'paragraphs': [2], 'cues': ['2000 个 star']},
-    ]
-
-    proc, _, _, timeline_data = make_workspace(
-        tmp_path, script_text, {}, transcript, scene_plan=cues,
-    )
-
-    assert proc.returncode == 0, proc.stderr
-    located = {cue['scene_id']: cue for cue in timeline_data['cues']}
-    assert set(located) == {'project-cover', 'stars'}
-    assert located['project-cover']['begin_s'] == 0.0
-    # 第二段从 2.2 s 开始，cue 落在该句内：时间来自实际对齐，不是按字数推算的。
-    assert 2.2 <= located['stars']['begin_s'] < located['stars']['end_s'] <= 4.0

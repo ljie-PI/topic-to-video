@@ -9,8 +9,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / 'scripts'
 TESTS_DIR = REPO_ROOT / 'tests'
@@ -34,15 +32,17 @@ def _is_referenced(script: Path, sources: list[tuple[Path, str]]) -> bool:
     return False
 
 
-@pytest.mark.parametrize(
-    'script',
-    sorted([*SCRIPTS_DIR.glob('*.py'), *SCRIPTS_DIR.glob('*.sh')]),
-    ids=lambda path: path.name,
-)
-def test_every_script_is_referenced_by_a_test(script: Path):
-    assert _is_referenced(script, _test_sources()), (
-        f'{script.relative_to(REPO_ROOT)} is not referenced by any tests/test_*.py; '
-        'add a behavioral test using its public CLI or import seam'
+def test_every_script_is_referenced_by_a_test():
+    sources = _test_sources()
+    scripts = sorted([*SCRIPTS_DIR.glob('*.py'), *SCRIPTS_DIR.glob('*.sh')])
+    unreferenced = [
+        str(script.relative_to(REPO_ROOT))
+        for script in scripts
+        if not _is_referenced(script, sources)
+    ]
+    assert not unreferenced, (
+        'scripts not referenced by any tests/test_*.py (add a behavioral test using '
+        'their public CLI or import seam):\n' + '\n'.join(unreferenced)
     )
 
 

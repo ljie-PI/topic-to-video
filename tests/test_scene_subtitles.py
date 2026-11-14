@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -77,6 +75,12 @@ def test_each_visual_scene_budget_applies_without_reordering_text(tmp_path: Path
             spec = segment['caption']
             assert len(unit['text']) <= int(spec['width_px'] / spec['font_size_px']) * spec['max_lines']
     assert timeline['total_s'] == 6
+    timeline_path = tmp_path / 'transcribe/timeline.json'
+    before = timeline_path.read_bytes()
+    from test_align_narration import align_args, run_cli
+    rerun = run_cli(*align_args(tmp_path, 'subtitles', scene_config=config))
+    assert rerun.returncode == 0, rerun.stdout + rerun.stderr
+    assert timeline_path.read_bytes() == before
 
 
 def test_atom_and_version_crossing_a_boundary_use_the_whole_display_range(tmp_path: Path):
@@ -115,44 +119,6 @@ def test_an_unfittable_token_fails_instead_of_being_broken(tmp_path: Path):
     assert proc.returncode == 1
     assert 'without breaking it' in result['error'] or 'exceeds its visual-scene budget' in result['error']
     assert units is None
-
-
-def test_visual_coverage_includes_silent_head_and_tail_without_extra_units(tmp_path: Path):
-    text = '只有中间有旁白。'
-    config = scene_config(tmp_path / 'scene-config.json', visual_scene('all', 0, 6, layout_spec('landscape')))
-
-    proc, _, units, _ = make_workspace(
-        tmp_path, text, {}, one_word_transcript(text, begin=1000, end=5000), scene_config=config,
-    )
-
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert units['units'][0]['begin_s'] == 1
-    assert units['units'][-1]['end_s'] == 5
-    assert units['caption_segments'][0]['begin_s'] == 0
-    assert units['caption_segments'][0]['end_s'] == 6
-
-
-def test_subtitle_regeneration_does_not_touch_phase_7_timeline(tmp_path: Path):
-    text = '先对齐时间轴，再按视觉场景生成字幕。'
-    config = scene_config(tmp_path / 'scene-config.json',
-        visual_scene('a', 0, 3, layout_spec('landscape-presenter')),
-        visual_scene('b', 3, 6, layout_spec('landscape')),
-    )
-
-    proc, _, units, timeline = make_workspace(
-        tmp_path, text, {}, one_word_transcript(text), scene_config=config,
-    )
-
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert units['units']
-    assert timeline['paragraphs'][0]['end_s'] == 6
-    # make_workspace runs timing after subtitles; a second subtitles run must leave it untouched.
-    timeline_path = tmp_path / 'transcribe/timeline.json'
-    before = timeline_path.read_bytes()
-    from test_align_narration import align_args, run_cli
-    rerun = run_cli(*align_args(tmp_path, 'subtitles', scene_config=config))
-    assert rerun.returncode == 0, rerun.stdout + rerun.stderr
-    assert timeline_path.read_bytes() == before
 
 
 # --- 多场景混合（#151）：三种版面共存、scene_id、切点规则 -----------------------
@@ -305,6 +271,8 @@ def test_silent_scenes_at_head_and_tail_keep_caption_coverage(tmp_path: Path):
     proc, _, units, _ = make_workspace(tmp_path, text, {}, transcript, scene_config=config)
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert units['units'][0]['begin_s'] == 2.5
+    assert units['units'][-1]['end_s'] == 3.5
     assert {u['scene_id'] for u in units['units']} == {'mid'}
     assert [(s['begin_s'], s['end_s']) for s in units['caption_segments']] == [(0, 2), (2, 4), (4, 6)]
 

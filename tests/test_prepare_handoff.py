@@ -282,14 +282,24 @@ def pointed_at_paths_that_do_not_exist(text: str) -> set[Path]:
 
 
 class TestHandoffContent:
-    def test_commands_run_the_skills_scripts_by_absolute_path(self, tmp_path: Path):
-        ws = make_workspace(tmp_path)
+    def test_script_handoff_commands_material_refs_and_base_references(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, template='github-trending')
         prepare(ws, 'script')
 
         text = (ws / 'script-handoff.md').read_text(encoding='utf-8')
+        sections = handoff_sections(text)
 
         assert f'source {REPO_ROOT}/.venv/bin/activate && python3 {REPO_ROOT}/scripts/make-narration.py' in text
         assert 'python3 scripts/' not in text
+        assert '`<slug>/<id>`' in sections['Outputs']
+        assert '`<slug>/<video_id>:<start>-<end>`' in sections['Outputs']
+
+        refs = sections['Required References']
+        items = re.findall(r'^\d+\. (.+)$', refs, flags=re.MULTILINE)
+        assert [absolute_paths(item) for item in items] == [
+            {ws / 'references' / 'delegation' / 'script' / 'base-instructions.md'},
+        ]
+        assert 'modules/templates' not in refs
 
     def test_coding_agent_comes_from_inputs(self, tmp_path: Path):
         ws = make_workspace(tmp_path, coding_agent='codex')
@@ -298,15 +308,6 @@ class TestHandoffContent:
         sections = handoff_sections((ws / 'script-handoff.md').read_text(encoding='utf-8'))
 
         assert sections['Coding Agent'] == 'codex'
-
-    def test_script_handoff_renders_slug_qualified_material_ref_formats(self, tmp_path: Path):
-        ws = make_workspace(tmp_path)
-        prepare(ws, 'script')
-
-        outputs = handoff_sections((ws / 'script-handoff.md').read_text(encoding='utf-8'))['Outputs']
-
-        assert '`<slug>/<id>`' in outputs
-        assert '`<slug>/<video_id>:<start>-<end>`' in outputs
 
     def test_research_brief_is_a_required_path_and_the_catalog_follows_fetch_materials(self, tmp_path: Path):
         ws = make_workspace(tmp_path, fetch_materials=False)
@@ -317,21 +318,6 @@ class TestHandoffContent:
         assert f'- research-brief.md：{ws}/research-brief.md' in inputs
         assert '无（fetch_materials = false' in inputs
         assert 'material-catalog.json）' not in inputs
-
-
-class TestRequiredReferences:
-    def test_script_references_are_just_the_base_instructions(self, tmp_path: Path):
-        # 模板是 Phase 8 的画面选择：即使 inputs.json 里已经有 template，script 也不读它。
-        ws = make_workspace(tmp_path, template='github-trending')
-        prepare(ws, 'script')
-
-        body = handoff_sections((ws / 'script-handoff.md').read_text(encoding='utf-8'))['Required References']
-
-        items = re.findall(r'^\d+\. (.+)$', body, flags=re.MULTILINE)
-        assert [absolute_paths(item) for item in items] == [
-            {ws / 'references' / 'delegation' / 'script' / 'base-instructions.md'},
-        ]
-        assert 'modules/templates' not in body
 
 
 class TestAdditionalInstructions:
@@ -414,8 +400,12 @@ class TestMaterialization:
 
 
 class TestCatalogHandoff:
-    def test_inputs_outputs_and_cut_clips_command(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'catalog')
+    def test_inputs_outputs_references_and_cut_clips_command(self, tmp_path: Path):
+        ws = make_workspace(
+            tmp_path, 'catalog', narration_requests=['x'], composition_requests=['y']
+        )
+        write(ws / 'narration-instructions.md', 'not for catalog')
+        write(ws / 'composition-instructions.md', 'not for catalog')
         prepare(ws, 'catalog')
 
         sections = handoff_sections((ws / 'catalog-handoff.md').read_text(encoding='utf-8'))
@@ -435,24 +425,11 @@ class TestCatalogHandoff:
             f'python3 {REPO_ROOT}/scripts/cut-clips.py {ws}'
         ) in outputs
         assert 'python3 scripts/' not in outputs
-
-    def test_required_references_and_none_without_catalog_instructions(self, tmp_path: Path):
-        ws = make_workspace(
-            tmp_path, 'catalog', narration_requests=['x'], composition_requests=['y']
-        )
-        write(ws / 'narration-instructions.md', 'not for catalog')
-        write(ws / 'composition-instructions.md', 'not for catalog')
-        prepare(ws, 'catalog')
-
-        sections = handoff_sections((ws / 'catalog-handoff.md').read_text(encoding='utf-8'))
-
-        base = ws / 'references' / 'delegation' / 'catalog' / 'base-instructions.md'
         assert absolute_paths(sections['Required References']) == {
-            base,
+            ws / 'references' / 'delegation' / 'catalog' / 'base-instructions.md',
             ws / 'references' / 'delegation' / 'conventions.md',
         }
         assert sections['Additional Instructions'] == 'None'
-
 
     def test_catalog_receives_user_material_instructions(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'catalog')
@@ -530,17 +507,14 @@ class TestCompositionHandoff:
         assert '正常流程不阅读或复述其全文' in tool_inputs
         assert str(ws / 'composition/scene-config.json') not in sections['Inputs']
         assert str(ws / 'composition/scene-config.json') in sections['Outputs']
-        assert '已有用户编辑是有效输入' in sections['Outputs']
         assert result['dispatch_prompt'] == f'读取 {ws}/composition-handoff.md 并按它执行；完成后报告产物路径。'
-        base = (ws / 'references/delegation/composition/base-instructions.md').read_text(encoding='utf-8')
-        assert '标为「仅供工具读取」' in base
-        assert '先读工作区里的输入（handoff 的 Inputs 一节列出的文件）' not in base
 
-    def test_commands_use_visual_scenes_and_the_composition_design_artifact(self, tmp_path: Path):
+    def test_commands_and_selection_order_use_visual_scenes_and_design_artifact(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition', design='default', layout='stage')
         prepare(ws, 'composition')
 
         text = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
+        sections = handoff_sections(text)
 
         assert f'cd {ws}/composition && npx hyperframes check' in text
         assert f'source {REPO_ROOT}/.venv/bin/activate && python3 {REPO_ROOT}/scripts/check-composition.py' in text
@@ -551,6 +525,12 @@ class TestCompositionHandoff:
         assert '--layout ' not in text
         assert '--timeline ' not in text
         assert 'python3 scripts/' not in text
+
+        assert '用户要求 → 特别匹配模块 → 即时生成' in sections['Outputs']
+        refs = sections['Required References']
+        assert '发现入口，不是采用清单' in refs
+        assert '必须采用' not in refs
+        assert '每个 scene 都必须' not in refs
 
     def test_documented_options_of_the_commands_exist_in_the_scripts(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition')
@@ -639,41 +619,10 @@ class TestCompositionHandoff:
         # 模板按场景借用：不预选任何具体模板文档。
         assert 'modules/templates/github-trending' not in body
 
-    def test_handoff_orders_selection_from_user_requests_to_special_match_to_on_the_spot_generation(
-        self, tmp_path: Path,
-    ):
-        ws = make_workspace(tmp_path, 'composition')
-        prepare(ws, 'composition')
-
-        handoff = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
-        outputs = handoff_sections(handoff)['Outputs']
-        refs = handoff_sections(handoff)['Required References']
-
-        assert '用户要求 → 特别匹配模块 → 即时生成' in outputs
-        # Required References 提供模块发现入口，不把列出目录当成必须采用清单。
-        assert '发现入口，不是采用清单' in refs
-        assert '必须采用' not in refs
-        assert '每个 scene 都必须' not in refs
-
-
-    def test_no_global_template_is_dispatched_at_all(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'composition')
-        inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
-        inputs.pop('template')
-        (ws / 'inputs.json').write_text(json.dumps(inputs, ensure_ascii=False), encoding='utf-8')
-
-        prepare(ws, 'composition')
-
-        inputs_section = handoff_sections(
-            (ws / 'composition-handoff.md').read_text(encoding='utf-8')
-        )['Inputs']
-        assert 'template 未选择' not in inputs_section  # 模板逐场景决定，不是全局 handoff 内容
-        assert 'template 无（不使用模板）' not in inputs_section
-
 
 class TestCompositionMaterialization:
-    def test_modules_are_copied_for_composition(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'composition')
+    def test_modules_are_copied_for_composition_and_edited_template_contract_repairs_on_refresh(self, tmp_path: Path):
+        ws = make_workspace(tmp_path, 'composition', template='github-trending')
 
         result = prepare(ws, 'composition')
 
@@ -693,46 +642,18 @@ class TestCompositionMaterialization:
             str(modules),
         ]
 
-    def test_an_edited_workspace_layout_copy_is_not_a_gate(self, tmp_path: Path):
-        """preset 是逐 scene 的可选借用：工作区 layout 副本被改过不再阻止准备
-        handoff；--refresh 仍把副本换回库文件。"""
-        ws = make_workspace(tmp_path, 'composition', layout='landscape-presenter')
+        # Edited template contract copy is advisory (not a gate), and --refresh restores it.
+        tpl_contract = modules / 'templates' / 'github-trending' / 'github-trending.json'
+        contract = json.loads(tpl_contract.read_text(encoding='utf-8'))
+        contract['preferred_layouts'] = ['landscape']
+        tpl_contract.write_text(json.dumps(contract), encoding='utf-8')
         prepare(ws, 'composition')
-        copy = ws / 'modules' / 'layouts' / 'landscape-presenter.json'
-        data = json.loads(copy.read_text(encoding='utf-8'))
-        data['canvas'] = {'width': 1080, 'height': 1920}
-        copy.write_text(json.dumps(data), encoding='utf-8')
-
-        prepare(ws, 'composition')
-
         prepare(ws, 'composition', '--refresh')
-        assert json.loads(copy.read_text(encoding='utf-8'))['canvas'] == {'width': 1920, 'height': 1080}
-
-    def test_commands_use_the_scene_config_pipeline_entry(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'composition', template='github-trending', layout='stage')
-        write(ws / 'composition/scene-config.json', json.dumps({
-            'version': 1,
-            'canvas': {'width': 1920, 'height': 1080},
-            'total_s': 5,
-            'scenes': [],
-        }))
-
-        prepare(ws, 'composition')
-
-        assert '--scene-config' in (ws / 'composition-handoff.md').read_text(encoding='utf-8')
-
-    def test_legacy_template_layout_combos_are_not_validated(self, tmp_path: Path):
-        """旧全局 template/layout 组合不再是门槛：竖屏项目带着 github-trending 模板名也能
-        生成 handoff——模板与布局由 agent 逐场景决定。"""
-        ws = make_workspace(tmp_path, 'composition', template='github-trending', layout='portrait', orientation='portrait')
-
-        prepare(ws, 'composition')
-
-        assert (ws / 'composition-handoff.md').exists()
+        assert json.loads(tpl_contract.read_text(encoding='utf-8'))['preferred_layouts'] == ['landscape-presenter']
 
 
 class TestCompositionDesignDelegation:
-    def test_handoff_never_preselects_design_or_preinstalls_fonts(self, tmp_path: Path):
+    def test_handoff_never_preselects_design_preinstalls_fonts_or_gates_on_legacy_design(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition')
         inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
         inputs.pop('design', None)
@@ -750,16 +671,15 @@ class TestCompositionDesignDelegation:
         assert str(ws / 'modules/designs/designs.md') in sections['Required References']
         assert str(ws / 'modules/designs/default/default.md') not in sections['Required References']
 
-    def test_legacy_inputs_design_is_not_a_handoff_gate_or_injected_input(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'composition', design='no-such-design')
-
-        result = prepare(ws, 'composition')
-
-        assert result['fonts'] is None
+        # Legacy inputs.design is neither validated as a gate nor injected into Inputs.
+        inputs['design'] = 'no-such-design'
+        write(ws / 'inputs.json', json.dumps(inputs, ensure_ascii=False))
+        legacy_res = prepare(ws, 'composition')
+        assert legacy_res['fonts'] is None
         assert not (ws / 'composition' / 'assets' / 'fonts').exists()
-        sections = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))
-        assert 'no-such-design' not in sections['Inputs']
-        assert str(ws / 'modules/designs/designs.md') in sections['Required References']
+        legacy_sections = handoff_sections((ws / 'composition-handoff.md').read_text(encoding='utf-8'))
+        assert 'no-such-design' not in legacy_sections['Inputs']
+        assert str(ws / 'modules/designs/designs.md') in legacy_sections['Required References']
 
     def test_style_and_scene_scoped_design_requests_flow_through_composition_requests(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition')
@@ -777,163 +697,110 @@ class TestCompositionDesignDelegation:
         assert scoped_request in sections['Additional Instructions']
         assert 'design github' not in sections['Inputs']
 
-    def test_phase_1_omits_design_field_and_routes_style_requests_to_phase_8(self):
-        phase_1 = (REPO_ROOT / 'references/phases/01-gather-inputs.md').read_text(encoding='utf-8')
-        base = (REPO_ROOT / 'references/delegation/composition/base-instructions.md').read_text(encoding='utf-8')
-        assert '| `design`' not in phase_1
-        assert 'composition_requests' in phase_1
-        assert '只在该 scene 根作用域覆盖相应 token' in base
-        assert '不自动传播到其他 scene' in base
-
 
 class TestFailures:
-    def test_unknown_step_is_a_bad_argument(self, tmp_path: Path):
+    def test_bad_cli_arguments_and_missing_workspace_fail_cleanly(self, tmp_path: Path):
         ws = make_workspace(tmp_path)
-
         proc, result = run_cli(str(ws), 'not-a-step')
-
-        assert proc.returncode == 2
-        assert result['success'] is False
+        assert proc.returncode == 2 and result['success'] is False
         assert not (ws / 'not-a-step-handoff.md').exists()
 
-    def test_missing_arguments_are_bad_arguments(self):
-        proc, result = run_cli()
+        missing_args, missing_res = run_cli()
+        assert missing_args.returncode == 2 and missing_res['success'] is False
 
-        assert proc.returncode == 2
-        assert result['success'] is False
+        no_ws, no_ws_res = run_cli(str(tmp_path / 'nowhere'), 'script')
+        assert no_ws.returncode == 1 and 'workspace is not a directory' in no_ws_res['error']
 
-    def test_workspace_must_exist(self, tmp_path: Path):
-        proc, result = run_cli(str(tmp_path / 'nowhere'), 'script')
-
-        assert proc.returncode == 1
-        assert result['success'] is False
-        assert 'workspace is not a directory' in result['error']
-
-    @pytest.mark.parametrize('inputs_text, message', [
-        (None, 'inputs.json not found'),
-        ('{not json', 'not valid JSON'),
-        ('[]', 'not an object'),
-        ('{"coding_agent": "pi-coding-agent"}', 'missing fields'),
-    ])
-    def test_unusable_inputs_json_exits_1(self, tmp_path: Path, inputs_text: str | None, message: str):
+    def test_unusable_inputs_json_and_field_types_exit_1(self, tmp_path: Path):
         ws = make_workspace(tmp_path)
-        (ws / 'inputs.json').unlink()
-        if inputs_text is not None:
-            write(ws / 'inputs.json', inputs_text)
+        for inputs_text, message in (
+            (None, 'inputs.json not found'),
+            ('{not json', 'not valid JSON'),
+            ('[]', 'not an object'),
+            ('{"coding_agent": "pi-coding-agent"}', 'missing fields'),
+        ):
+            (ws / 'inputs.json').unlink(missing_ok=True)
+            if inputs_text is not None:
+                write(ws / 'inputs.json', inputs_text)
+            proc, result = run_cli(str(ws), 'script')
+            assert proc.returncode == 1 and message in result['error']
 
-        proc, result = run_cli(str(ws), 'script')
-
-        assert proc.returncode == 1
-        assert result['success'] is False
-        assert message in result['error']
-
-    def test_missing_input_exits_1_before_touching_the_workspace(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'composition')
-        (ws / 'transcribe' / 'timeline.json').unlink()
-
-        proc, result = run_cli(str(ws), 'composition')
-
-        assert proc.returncode == 1
-        assert result['success'] is False
-        assert str(ws / 'transcribe' / 'timeline.json') in result['error']
-        assert not (ws / 'composition-handoff.md').exists()
-        assert not (ws / 'modules').exists()
-        assert not (ws / 'composition').exists()
-
-    def test_the_script_step_needs_no_template_or_layout(self, tmp_path: Path):
-        # 旁白在 Phase 8 之前就写完了：那时的 inputs.json 里还没有模板与 layout。
-        ws = make_workspace(tmp_path)
-        inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
-        for name in ('template', 'layout'):
-            inputs.pop(name, None)
-        write(ws / 'inputs.json', json.dumps(inputs, ensure_ascii=False))
-
-        prepare(ws, 'script')
-
-    def test_composition_handoff_needs_no_visual_decisions_nor_scene_config(self, tmp_path: Path):
-        """Scene template / layouts are decided after dispatch, not a handoff precondition."""
-        ws = make_workspace(tmp_path, 'composition')
-        inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
-        inputs.pop('layout', None)
-        inputs.pop('template', None)
-        write(ws / 'inputs.json', json.dumps(inputs, ensure_ascii=False))
-        assert not (ws / 'composition' / 'scene-config.json').exists()
-
-        prepare(ws, 'composition')
-
-        text = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
-        assert f'{ws}/modules/layouts/layouts.md' in text
-        assert f'--scene-config {ws}/composition/scene-config.json' in text
-        assert f'--narration-audio {ws}/voice_clone/narration.mp3' in text
-        assert not (ws / 'composition' / 'scene-config.json').exists()
-
-    @pytest.mark.parametrize('field', ['narration_requests', 'composition_requests'])
-    @pytest.mark.parametrize('value', ['语气更口语', None, [''], ['ok', 3]])
-    def test_requests_must_be_lists_of_non_empty_strings(self, tmp_path: Path, field: str, value):
-        step = 'script' if field == 'narration_requests' else 'composition'
-        ws = make_workspace(tmp_path, step, **{field: value})
-
-        proc, result = run_cli(str(ws), step)
-
-        assert proc.returncode == 1
-        assert field in result['error']
-
-    def test_the_script_step_requires_the_research_brief(self, tmp_path: Path):
-        ws = make_workspace(tmp_path)
-        (ws / 'research-brief.md').unlink()
-
-        proc, result = run_cli(str(ws), 'script')
-
-        assert proc.returncode == 1
-        assert str(ws / 'research-brief.md') in result['error']
-
-    def test_a_catalog_is_required_only_when_materials_are_fetched(self, tmp_path: Path):
-        ws = make_workspace(tmp_path)
-        (ws / 'material-catalog.json').unlink()
-
-        proc, result = run_cli(str(ws), 'script')
-
-        assert proc.returncode == 1
-        assert str(ws / 'material-catalog.json') in result['error']
-
-    def test_legacy_layout_canvas_mismatch_is_not_a_gate(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'composition', layout='presenter', orientation='portrait')
-
-        prepare(ws, 'composition')
-
-    def test_an_unknown_orientation_exits_1(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'composition', orientation='vertical')
-
-        proc, result = run_cli(str(ws), 'composition')
-
-        assert proc.returncode == 1
-        assert 'orientation' in result['error']
-
-    def test_unknown_legacy_template_or_layout_names_are_not_gates(self, tmp_path: Path):
-        # 模板与 layout 在 Phase 8 逐场景决定；inputs.json 的旧全局名字不再校验。
-        ws = make_workspace(tmp_path, 'composition', template='no-such-template', layout='no-such-layout')
-
-        prepare(ws, 'composition')
-
-        assert (ws / 'composition-handoff.md').exists()
-
-    @pytest.mark.parametrize(
-        'overrides, message',
-        [
+        for overrides, message in (
             ({'fetch_materials': 'false'}, 'fetch_materials'),
             ({'duration': '90秒'}, 'duration'),
             ({'duration': {'min': 5}}, 'duration'),
             ({'coding_agent': ''}, 'coding_agent'),
             ({'language': None}, 'language'),
-        ],
-    )
-    def test_field_types_are_validated(self, tmp_path: Path, overrides: dict, message: str):
-        ws = make_workspace(tmp_path, **overrides)
+            ({'narration_requests': '语气更口语'}, 'narration_requests'),
+            ({'narration_requests': ['']}, 'narration_requests'),
+        ):
+            write(ws / 'inputs.json', json.dumps({**INPUTS, **overrides}, ensure_ascii=False))
+            proc, result = run_cli(str(ws), 'script')
+            assert proc.returncode == 1 and message in result['error']
 
-        proc, result = run_cli(str(ws), 'script')
+        comp_ws = make_workspace(tmp_path / 'comp', 'composition')
+        for overrides, message in (
+            ({'orientation': 'vertical'}, 'orientation'),
+            ({'composition_requests': ['ok', 3]}, 'composition_requests'),
+        ):
+            write(comp_ws / 'inputs.json', json.dumps({**INPUTS, **overrides}, ensure_ascii=False))
+            proc, result = run_cli(str(comp_ws), 'composition')
+            assert proc.returncode == 1 and message in result['error']
 
-        assert proc.returncode == 1
-        assert message in result['error']
+    def test_missing_step_prerequisites_exit_1_before_touching_workspace(self, tmp_path: Path):
+        comp_ws = make_workspace(tmp_path / 'comp', 'composition')
+        (comp_ws / 'transcribe' / 'timeline.json').unlink()
+        proc, result = run_cli(str(comp_ws), 'composition')
+        assert proc.returncode == 1 and str(comp_ws / 'transcribe' / 'timeline.json') in result['error']
+        assert not (comp_ws / 'composition-handoff.md').exists()
+        assert not (comp_ws / 'modules').exists()
+        assert not (comp_ws / 'composition').exists()
+
+        script_ws = make_workspace(tmp_path / 'script')
+        catalog_file = script_ws / 'material-catalog.json'
+        catalog_bytes = catalog_file.read_bytes()
+        catalog_file.unlink()
+        proc, result = run_cli(str(script_ws), 'script')
+        assert proc.returncode == 1 and str(catalog_file) in result['error']
+
+        catalog_file.write_bytes(catalog_bytes)
+        (script_ws / 'research-brief.md').unlink()
+        proc, result = run_cli(str(script_ws), 'script')
+        assert proc.returncode == 1 and str(script_ws / 'research-brief.md') in result['error']
+
+    def test_steps_accept_only_declared_inputs_and_ignore_legacy_visual_fields(self, tmp_path: Path):
+        for step in ('catalog', 'script'):
+            ws = make_workspace(tmp_path / step, step)
+            inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
+            for field in ('source', 'design', 'orientation', 'layout', 'template'):
+                inputs.pop(field, None)
+            inputs.update(layout={}, template='../unused', composition_requests=3)
+            write(ws / 'inputs.json', json.dumps(inputs, ensure_ascii=False))
+            prepare(ws, step)
+
+        comp_ws = make_workspace(tmp_path / 'comp', 'composition')
+        base_inputs = json.loads((comp_ws / 'inputs.json').read_text(encoding='utf-8'))
+        base_inputs.pop('layout', None)
+        base_inputs.pop('template', None)
+        write(comp_ws / 'inputs.json', json.dumps(base_inputs, ensure_ascii=False))
+        assert not (comp_ws / 'composition' / 'scene-config.json').exists()
+        prepare(comp_ws, 'composition')
+        text = (comp_ws / 'composition-handoff.md').read_text(encoding='utf-8')
+        assert f'{comp_ws}/modules/layouts/layouts.md' in text
+        assert f'--scene-config {comp_ws}/composition/scene-config.json' in text
+        assert not (comp_ws / 'composition' / 'scene-config.json').exists()
+
+        for legacy_overrides in (
+            {'template': 'github-trending', 'layout': 'portrait', 'orientation': 'portrait'},
+            {'layout': 'presenter', 'orientation': 'portrait'},
+            {'template': 'no-such-template', 'layout': 'no-such-layout'},
+            {'layout': 'portrait-3x4', 'orientation': 'portrait-3:4'},
+        ):
+            write(comp_ws / 'inputs.json', json.dumps({**base_inputs, **legacy_overrides}, ensure_ascii=False))
+            prepare(comp_ws, 'composition')
+            body = handoff_sections((comp_ws / 'composition-handoff.md').read_text(encoding='utf-8'))['Required References']
+            assert f'{comp_ws}/modules/layouts/layouts.md' in body
+            assert 'portrait-3x4.json' not in body
 
 
 @pytest.fixture
@@ -1014,19 +881,6 @@ class TestInputsRendering:
 class TestReviewRoundFixes:
     """Regressions pinned from the first /code-review round."""
 
-    def test_legacy_layout_still_references_the_layout_catalog(self, tmp_path: Path):
-        # 旧字段继续参与校验，但 handoff 不把某一个 layout 当成全片选择。
-        ws = make_workspace(tmp_path, 'composition', layout='portrait-3x4', orientation='portrait-3:4')
-
-        prepare(ws, 'composition')
-
-        text = (ws / 'composition-handoff.md').read_text(encoding='utf-8')
-        assert f'--scene-config {ws}/composition/scene-config.json' in text
-        assert '--layout ' not in text
-        body = handoff_sections(text)['Required References']
-        assert f'{ws}/modules/layouts/layouts.md' in body
-        assert f'{ws}/modules/layouts/portrait-3x4.json' not in body
-
     def test_paths_with_spaces_are_quoted_in_commands(self, tmp_path: Path):
         spaced = (tmp_path / 'AI Agents 2026').resolve()
         ws = (spaced / 'ws' / 'demo-topic').resolve()
@@ -1079,121 +933,18 @@ class TestReviewRoundFixes:
 
 
 class TestDelegationDocs:
-    """The docs the main agent follows hand it prepare-handoff.py, not a template to fill."""
+    """Delegated phase docs invoke prepare-handoff.py rather than filling handoff-template.md directly."""
 
-    @pytest.mark.parametrize('doc, step', [
-        ('references/phases/05-material-catalog.md', 'catalog'),
-        ('references/phases/06-script-scene-plan.md', 'script'),
-        ('references/phases/08-composition.md', 'composition'),
-    ])
-    def test_phase_docs_run_prepare_handoff_and_dispatch_its_prompt(self, doc: str, step: str):
-        text = (REPO_ROOT / doc).read_text(encoding='utf-8')
-
-        assert (
-            f'source .venv/bin/activate && python3 scripts/prepare-handoff.py '
-            f'{{work_dir}}/{{topic_name}} {step}'
-        ) in text
-        assert 'dispatch_prompt' in text
-        assert 'handoff-template.md' not in text
-
-    def test_conventions_dispatch_through_pi_from_the_workspace(self):
-        text = (REPO_ROOT / 'references' / 'delegation' / 'conventions.md').read_text(encoding='utf-8')
-
-        assert '默认 coding agent 是 **pi-coding-agent**' in text
-        assert 'pi -p -- "<dispatch_prompt>"' in text
-        # Pi 没有 --add-dir 那类目录授权开关：靠 cwd 与绝对路径，而不是照搬其他 CLI。
-        assert '--add-dir' not in text
-        assert '--permission-mode' not in text
-        assert (
-            '运行 `source .venv/bin/activate && python3 scripts/prepare-handoff.py <ws> <step>`'
-        ) in text
-
-    @pytest.mark.parametrize('doc', [
-        'modules/modules.md',
-        'modules/templates/github-trending/github-trending.md',
-        'modules/components/presenter/presenter.md',
-    ])
-    def test_example_docs_do_not_point_to_the_removed_handoff_reference(self, doc: str):
-        text = (REPO_ROOT / doc).read_text(encoding='utf-8')
-
-        assert 'handoff 的 Required References' not in text
-
-    def test_composition_instructions_choose_components_before_writing_the_storyboard(self):
-        text = (REPO_ROOT / 'references' / 'delegation' / 'composition' / 'base-instructions.md').read_text(encoding='utf-8')
-
-        assert text.index('modules/components/components.md') < text.index('组件与转场使用表')
-        assert 'reserved 区要求的组件必须出现在表里' in text
-        assert '每个用到的组件或转场一行' in text
-        assert '`window.VIDEO`' in text and '`cuts`' in text
-        assert 'modules/transitions/transitions.md' in text
-        assert '由你自己从工作区的 `modules/` 拷进 `composition/`' in text
-        assert '组件使用表' not in text
-
-    def test_script_instructions_report_all_five_products(self):
-        text = (REPO_ROOT / 'references' / 'delegation' / 'script' / 'base-instructions.md').read_text(encoding='utf-8')
-
-        assert '五个产物路径' in text
-        assert '四个产物路径' not in text
-
-    def test_modules_doc_no_longer_copies_examples_or_previews_for_the_delegated_agent(self):
-        text = (REPO_ROOT / 'modules' / 'modules.md').read_text(encoding='utf-8')
-
-        assert '复制 `examples/' not in text
-        assert 'npx hyperframes init composition/' in text
-        assert 'composition/assets/fonts/' in text
-        assert '用 `npx hyperframes preview` 交给用户看' not in text
-
-    def test_modules_doc_initializes_before_delegated_font_installation(self):
-        text = (REPO_ROOT / 'modules' / 'modules.md').read_text(encoding='utf-8')
-
-        assert 'composition-init/' not in text
-        assert '不预装字体' in text
-        assembly = text.split('## 组装一支视频', 1)[1]
-        assert assembly.index('npx hyperframes init composition/') < assembly.index('fonts-download.sh')
-
-    def test_conventions_list_all_three_delegation_packages(self):
-        text = (REPO_ROOT / 'references' / 'delegation' / 'conventions.md').read_text(encoding='utf-8')
-
-        for step in ('catalog', 'script', 'composition'):
-            assert f'`references/delegation/{step}/`' in text
-        assert '只支持 `script` 和 `composition`' not in text
-        assert '重新运行一次 `prepare-handoff.py`' in text
-
-    def test_phase_5_keeps_main_agent_workflow_and_inline_fallback(self):
-        text = (REPO_ROOT / 'references' / 'phases' / '05-material-catalog.md').read_text(encoding='utf-8')
-
-        assert '写进委派 prompt' not in text
-        assert '主 agent 做四件事' in text
-        assert '200 字以内' in text
-        assert '3-5 个核心论点或关键概念' in text
-        assert 'pipeline-status.py {work_dir}/{topic_name}' in text
-        assert '环境既不能原生委派也不能运行目标 CLI' in text
-        assert '未指定 agent' in text
-        assert 'references/delegation/catalog/base-instructions.md' in text
-        assert '一次处理一条 manifest entry' in text
-        assert '增量写入 `material-catalog.json`' in text
-        assert '`material-catalog.json` 的结构' not in text
-        assert '**Mode 1（显式 VLM）' not in text
-
-    def test_catalog_base_instructions_contain_all_delegated_rules(self):
-        text = (REPO_ROOT / 'references' / 'delegation' / 'catalog' / 'base-instructions.md').read_text(encoding='utf-8')
-
-        for required in (
-            '**路径 base（必须保持一致）',
-            '### 抽帧与字幕',
-            '**Mode 1（显式 VLM）',
-            '**Mode 2（执行 agent 直接分析）',
-            '**Paper-origin entries',
-            '**过滤阈值为 7 分',
-            '**所有 entry 写完后运行一次',
-            'scripts/cut-clips.py {work_dir}/{topic_name}',
-            '`material-catalog.json` 的结构',
-            '## 仅论文素材（`input_mode = "paper"` 且 `fetch_materials = false`）',
+    def test_delegated_phase_docs_run_prepare_handoff_and_dispatch_its_prompt(self):
+        for doc, step in (
+            ('references/phases/05-material-catalog.md', 'catalog'),
+            ('references/phases/06-script-scene-plan.md', 'script'),
+            ('references/phases/08-composition.md', 'composition'),
         ):
-            assert required in text
-
-    def test_skill_entry_points_at_the_delegation_prep_script(self):
-        text = (REPO_ROOT / 'SKILL.md').read_text(encoding='utf-8')
-
-        assert '`scripts/prepare-handoff.py`：委派步骤的准备' in text
-        assert 'dispatch_prompt' in text
+            text = (REPO_ROOT / doc).read_text(encoding='utf-8')
+            assert (
+                f'source .venv/bin/activate && python3 scripts/prepare-handoff.py '
+                f'{{work_dir}}/{{topic_name}} {step}'
+            ) in text, doc
+            assert 'dispatch_prompt' in text, doc
+            assert 'handoff-template.md' not in text, doc

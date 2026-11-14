@@ -100,14 +100,6 @@ def test_project_cover_uses_supplied_cues_including_zero():
     assert any(c['target'] == '#pc-stats' and c['at'] == 2.75 for c in result['calls'])
 
 
-def test_template_metadata_does_not_reintroduce_guessed_cue_defaults():
-    text = (TEMPLATES / 'project-cover.html').read_text(encoding='utf-8')
-    variables = json.loads(re.search(r"data-composition-variables='(.*?)'", text, flags=re.S).group(1))
-    for variable in variables:
-        if variable['id'] in ('nameAt', 'taglineAt', 'starsAt'):
-            assert 'default' not in variable
-
-
 def test_trending_overview_rejects_missing_repo_cues():
     result = execute('trending-overview', {}, {'repos': [
         dict(owner='demo', repo='tool', readme='x.png'),
@@ -126,7 +118,13 @@ def test_trending_overview_uses_supplied_repo_cues():
     assert any(c['target'] == 'to-row2 .tint' and c['at'] == 3.5 for c in result['calls'])
 
 
-def test_machine_declaration_distinguishes_required_and_optional_cues():
+def test_template_metadata_and_contract_declare_required_and_optional_cues_without_defaults():
+    text = (TEMPLATES / 'project-cover.html').read_text(encoding='utf-8')
+    variables = json.loads(re.search(r"data-composition-variables='(.*?)'", text, flags=re.S).group(1))
+    for variable in variables:
+        if variable['id'] in ('nameAt', 'taglineAt', 'starsAt'):
+            assert 'default' not in variable
+
     contract = json.loads((TEMPLATES / 'github-trending.json').read_text(encoding='utf-8'))
     assert contract['anchor_fields'] == {
         'project-cover': {'required': ['nameAt'], 'optional': ['taglineAt', 'starsAt']},

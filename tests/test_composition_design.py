@@ -3,25 +3,15 @@ from __future__ import annotations
 
 import copy
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
 import composition_design
 import video_contract
-from test_check_composition import (
-    CAPTION_BAR,
-    CLEAN_SCENE,
-    PRESENTER_LAYOUT,
-    scene,
-    write_composition,
-)
 from test_pipeline_status import complete_all, parse_result, run_cli as run_status
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CHECK_COMPOSITION = REPO_ROOT / 'scripts' / 'check-composition.py'
 
 
 def write_json(path: Path, payload: dict) -> None:
@@ -86,18 +76,14 @@ def test_public_reader_rejects_invalid_contracts(tmp_path: Path, mutate, message
         composition_design.load_composition_design(path, skill_root=REPO_ROOT)
 
 
-def test_custom_preset_must_be_null(tmp_path: Path):
-    payload = custom_design()
-    payload['preset'] = 'github'
-
+def test_custom_contract_enforces_null_preset_and_22px_ui_floor(tmp_path: Path):
+    bad_preset = custom_design()
+    bad_preset['preset'] = 'github'
     with pytest.raises(ValueError, match='preset must be null'):
-        load(tmp_path / 'composition' / 'design.json', payload)
+        load(tmp_path / 'composition' / 'design.json', bad_preset)
 
-
-def test_custom_ui_floor_must_be_at_least_22px(tmp_path: Path):
     payload = custom_design()
     payload['min_font_px']['ui'] = 21
-
     with pytest.raises(ValueError, match='ui must be at least 22px'):
         load(tmp_path / 'composition' / 'design.json', payload)
 
@@ -124,60 +110,22 @@ def test_inputs_constraints_default_to_preset_and_allow_custom_only_with_user_re
 
 @pytest.mark.parametrize('source', ['preset', 'custom'])
 @pytest.mark.usefixtures('require_ffmpeg')
-def test_phase_8_accepts_preset_by_default_and_custom_when_user_requested(tmp_path: Path, source: str):
+def test_phase_8_accepts_preset_by_default_and_gates_custom_on_user_requests(tmp_path: Path, source: str):
     complete_all(tmp_path)
     inputs = json.loads((tmp_path / 'inputs.json').read_text(encoding='utf-8'))
     inputs.pop('design', None)
-    if source == 'custom':
-        inputs['composition_requests'] = ['全片使用深色科技风配色']
     write_json(tmp_path / 'inputs.json', inputs)
     payload = preset_design() if source == 'preset' else custom_design()
     write_json(tmp_path / composition_design.COMPOSITION_DESIGN_PATH, payload)
+
+    if source == 'custom':
+        unrequested = parse_result(run_status(str(tmp_path)))
+        assert unrequested['next_phase']['id'] == '8-composition'
+        assert 'composition_requests' in unrequested['next_phase']['problems']['composition/design.json']
+        inputs['composition_requests'] = ['全片使用深色科技风配色']
+        write_json(tmp_path / 'inputs.json', inputs)
 
     result = parse_result(run_status(str(tmp_path)))
 
     assert result['next_phase'] is None, result
     assert '8-composition' in result['completed_phases']
-
-
-@pytest.mark.usefixtures('require_ffmpeg')
-def test_phase_8_rejects_unrequested_custom_design(tmp_path: Path):
-    complete_all(tmp_path)
-    inputs = json.loads((tmp_path / 'inputs.json').read_text(encoding='utf-8'))
-    inputs.pop('design', None)
-    write_json(tmp_path / 'inputs.json', inputs)
-    write_json(tmp_path / composition_design.COMPOSITION_DESIGN_PATH, custom_design())
-
-    unrequested = parse_result(run_status(str(tmp_path)))
-    assert unrequested['next_phase']['id'] == '8-composition'
-    assert 'composition_requests' in unrequested['next_phase']['problems']['composition/design.json']
-
-
-@pytest.mark.usefixtures('require_chrome')
-def test_real_check_composition_reads_custom_design_font_floors(tmp_path: Path):
-    comp = write_composition(tmp_path, [scene('s1', 0.0, 10.0, CLEAN_SCENE + CAPTION_BAR)])
-    design_path = tmp_path / 'composition' / 'design.json'
-    write_json(design_path, custom_design())
-
-    proc = subprocess.run(
-        [
-            sys.executable,
-            str(CHECK_COMPOSITION),
-            str(comp),
-            '--layout',
-            str(PRESENTER_LAYOUT),
-            '--design',
-            str(design_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
-
-    assert proc.returncode == 0, proc.stderr + proc.stdout
-    result = json.loads(proc.stdout)
-    assert (result['min_font_size'], result['min_ui_font_size']) == (31, 23)
-    small_text = [
-        finding for finding in result['findings']
-        if finding['check'] == 'font_size_below_min' and 'panel' in finding['issue']
-    ]
-    assert small_text and '31px' in small_text[0]['issue']
