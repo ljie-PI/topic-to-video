@@ -1,4 +1,4 @@
-// jay — the character component (docs: jay.md).
+// presenter — the character component (docs: presenter.md).
 //
 // Explicit init per modules/modules.md: the caller passes the root element,
 // mount params, the acting script, the slot duration and GSAP; this module
@@ -33,12 +33,12 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
   // seconds to local seconds before driving seek.
   // ================================================================
   const num = (v, d) => (Number.isFinite(Number(v)) && v !== "" && v != null ? Number(v) : d);
-  const stage = $("jay-stage");
+  const stage = $("presenter-stage");
   const SIZE = num(params.size, 420), FX = num(params.fxScale, 1);
   stage.style.left = num(params.x, 1294) + "px";
   stage.style.top = num(params.y, 642) + "px";
   stage.style.width = stage.style.height = SIZE + "px";
-  $("jay-bubble").setAttribute("transform", `translate(684 404) scale(${1.7 * FX}) translate(-684 -404)`);
+  $("presenter-bubble").setAttribute("transform", `translate(684 404) scale(${1.7 * FX}) translate(-684 -404)`);
 
   let DUR = num(duration, 60);
   let ENV = [], ENV_FPS = 30, ACTS = [], THOUGHTS = [], TYPING = [], GLANCES = [], SEED = 20261018;
@@ -85,7 +85,7 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
   };
 
   // ================================================================
-  // Outlines traced from jay-base.png (2048×2048). Same cut as puppet.html.
+  // Outlines traced from presenter-base.png (2048×2048). Same cut as puppet.html.
   // ================================================================
   const G = {
     jaw: "M803 556 Q815 640 836 705 C850 770 880 860 940 915 C975 950 1010 985 1060 992 C1120 995 1180 950 1250 902 C1300 862 1335 805 1347 750",
@@ -107,7 +107,7 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
     handle: "M1905 1672 C1960 1660 2006 1695 2005 1770 C2004 1842 1960 1878 1898 1880 L1900 1842 C1944 1840 1968 1815 1968 1770 C1968 1726 1946 1704 1906 1710 Z",
     deck: "M978 1846 L1306 1854 Q1321 1856 1318 1870 L1314 1882 Q1310 1891 1295 1892 L996 1904 Z",
     deckTop: "M984 1850 L1304 1858 L1301 1867 L990 1870 Z",
-    // right forearm and hand raised in jay-wave.png; leaves out its motion lines and the torso
+    // right forearm and hand raised in presenter-wave.png; leaves out its motion lines and the torso
     armR: "M291 490 L683 490 L683 849 L588 1013 L575 1127 L575 1238 L229 1238 L229 980 L206 817 L211 706 L291 555 Z",
   };
   const R = {
@@ -275,7 +275,7 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
   // ================================================================
   async function buildLayers() {
     const img = new Image();
-    img.src = "assets/jay/jay-base.png";
+    img.src = "assets/presenter/presenter-base.png";
     await img.decode();
     const S = 2048;
     const src = makeCanvas(S, S), sx = ctx2d(src);
@@ -382,7 +382,7 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
     liftOut(mFront, R.front);
 
     const wimg = new Image();
-    wimg.src = "assets/jay/jay-wave.png";
+    wimg.src = "assets/presenter/presenter-wave.png";
     await wimg.decode();
     const wsrc = makeCanvas(S, S);
     ctx2d(wsrc).drawImage(wimg, 0, 0, S, S);
@@ -847,7 +847,7 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
 
   let gfx = null;
   function setupScene(layers) {
-    const r = createRenderer($("jay-gl"));
+    const r = createRenderer($("presenter-gl"));
     const tex = (c, rect) => r.texture(c, rect);
     const T_ = {
       body: tex(layers.body, { x: 0, y: 0, w: 2048, h: 2048 }),
@@ -882,13 +882,13 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
     };
   }
 
-  const steamPaths = [...$("jay-steam").children];
-  const waveLines = $("jay-wavelines");
-  const thought = $("jay-thought"), thoughtText = $("jay-thought-text"), bang = $("jay-bang");
+  const steamPaths = [...$("presenter-steam").children];
+  const waveLines = $("presenter-wavelines");
+  const thought = $("presenter-thought"), thoughtText = $("presenter-thought-text"), bang = $("presenter-bang");
   const BANG_SCALE = 2 * FX;
   // where the "!" sits (stage units, 2048 = stage width): up and to the right, clear of the hair; drawn around (1580, 220)
   const BANG_AT = [1710, 160];
-  const qmark = $("jay-qmark"), bulb = $("jay-bulb"), bulbRays = $("jay-bulb-rays");
+  const qmark = $("presenter-qmark"), bulb = $("presenter-bulb"), bulbRays = $("presenter-bulb-rays");
 
   function renderAt(t) {
     t = clamp(t, 0, DUR);

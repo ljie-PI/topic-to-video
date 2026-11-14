@@ -33,7 +33,7 @@
       "id": "person",
       "kind": "reserved",
       "rect": { "x": 1294, "y": 642, "width": 420, "height": 420 },
-      "component": "jay"
+      "component": "presenter"
     },
     {
       "id": "caption-bar",

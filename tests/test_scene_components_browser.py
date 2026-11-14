@@ -7,9 +7,9 @@ data-variable-values, data from window.VIDEO, and every module owns a paused
 timeline in local seconds. No HyperFrames global is required to initialise or
 seek: the adapter converts video seconds to local seconds per mount
 (time - data-start), awaits `ready`, seeks the timeline, then calls `seek(t)`
-for self-drawing modules like jay.
+for self-drawing modules like presenter.
 
-Jay performs its real image build, simulation, and WebGL rendering in Chrome
+Presenter performs its real image build, simulation, and WebGL rendering in Chrome
 through the same init interface, including the asynchronous `ready`
 resolution and per-time-point `seek` bridging.
 """
@@ -162,8 +162,8 @@ function modulePayload(name, params) {
       return V[params.data || 'cuts'] || [];
     case 'trending-overview':
       return V[params.data || 'trending'] || {};
-    case 'jay':
-      return V[params.data || 'jay'] || {};
+    case 'presenter':
+      return V[params.data || 'presenter'] || {};
     default:
       return null;
   }
@@ -270,11 +270,11 @@ def composition_url_with_mounts(tmp_path: Path, video: dict, mounts_spec: list):
             f'data-duration="{duration}" data-width="1920" data-height="1080"{variables}{other} '
             f'style="position:absolute;inset:0"></div>'
         )
-    if any(str(item[0]).startswith('components/jay') for item in mounts_spec):
-        images = composition / 'assets/jay'
+    if any(str(item[0]).startswith('components/presenter') for item in mounts_spec):
+        images = composition / 'assets/presenter'
         images.mkdir(parents=True)
-        for name in ('jay-base.png', 'jay-wave.png'):
-            shutil.copyfile(ROOT / 'modules/components/jay/images' / name, images / name)
+        for name in ('presenter-base.png', 'presenter-wave.png'):
+            shutil.copyfile(ROOT / 'modules/components/presenter/images' / name, images / name)
 
     html = """<!doctype html><html><head><meta charset="utf-8">
       <link rel="icon" href="data:,">
@@ -611,26 +611,26 @@ def test_two_instances_with_different_params_and_data_do_not_interfere(tmp_path:
             page.close()
 
 
-def jay_state(page, time: float) -> dict:
+def presenter_state(page, time: float) -> dict:
     """Seek (video seconds) and sample the stage geometry plus a canvas
     fingerprint, proving the WebGL character itself is re-drawn per seek."""
     return page.evaluate("""async (time) => {
       await window.seek(time);
-      const stage = document.querySelector('#jay-stage');
-      const canvas = document.querySelector('#jay-gl');
+      const stage = document.querySelector('#presenter-stage');
+      const canvas = document.querySelector('#presenter-gl');
       return { display: getComputedStyle(stage).display,
         left: stage.style.left, top: stage.style.top, size: stage.style.width,
         canvas: canvas.toDataURL('image/png') };
     }""", time)
 
 
-def jay_mouth_dark(page, host_id: str, time: float) -> int:
+def presenter_mouth_dark(page, host_id: str, time: float) -> int:
     """Dark-pixel count in a window around the mouth: envelope-driven mouth
     opening shows a region of dark mouth interior there, not just ink lines."""
     return page.evaluate("""async ({ hostId, time }) => {
       await window.seek(time);
       const host = document.getElementById(hostId);
-      const gl = host.querySelector('#jay-gl');
+      const gl = host.querySelector('#presenter-gl');
       const c = document.createElement('canvas');
       c.width = gl.width; c.height = gl.height;
       const x = c.getContext('2d');
@@ -647,18 +647,18 @@ def jay_mouth_dark(page, host_id: str, time: float) -> int:
     }""", {'hostId': host_id, 'time': time})
 
 
-def test_jay_single_full_video_mount_follows_presenter_scene_visibility(tmp_path: Path):
-    video = {'jay': {'duration': 6, 'placements': [
+def test_presenter_single_full_video_mount_follows_presenter_scene_visibility(tmp_path: Path):
+    video = {'presenter': {'duration': 6, 'placements': [
         {'begin_s': 0, 'end_s': 2, 'visible': True, 'x': 1294, 'y': 642, 'size': 420},
         {'begin_s': 2, 'end_s': 4, 'visible': False},
         {'begin_s': 4, 'end_s': 6, 'visible': True, 'x': 1294, 'y': 642, 'size': 420},
     ]}}
-    with composition_url(tmp_path, video, 'components/jay') as url:
+    with composition_url(tmp_path, video, 'components/presenter') as url:
         with chrome_cdp.launch_isolated() as session:
             page, errors = open_component_page(session.browser, url)
             init = page.evaluate("""async () => {
               await window.__mountPromise;
-              const entry = window.__instances.find((item) => item.name === 'jay');
+              const entry = window.__instances.find((item) => item.name === 'presenter');
               // The component's real asynchronous image/WebGL build.
               await entry.instance.ready;
               return { mountErrors: window.__mountErrors,
@@ -667,25 +667,25 @@ def test_jay_single_full_video_mount_follows_presenter_scene_visibility(tmp_path
             }""")
             assert init == {'mountErrors': [], 'legacyTimelines': 'undefined',
                             'legacyHf': 'undefined'}
-            assert page.locator('[data-composition-src="compositions/jay.html"]').count() == 1
-            host = page.locator('#jay')
+            assert page.locator('[data-composition-src="compositions/presenter.html"]').count() == 1
+            host = page.locator('#presenter')
             assert host.get_attribute('data-start') == '0'
             assert host.get_attribute('data-duration') == '6'
-            assert page.locator('#jay-stage').count() == 1
+            assert page.locator('#presenter-stage').count() == 1
 
-            visible = jay_state(page, 1)
+            visible = presenter_state(page, 1)
             assert visible['display'] != 'none'
-            hidden = jay_state(page, 3)
+            hidden = presenter_state(page, 3)
             assert hidden['display'] == 'none'
-            frame5 = jay_state(page, 5)
+            frame5 = presenter_state(page, 5)
             assert {key: frame5[key] for key in ('display', 'left', 'top', 'size')} == {
                 'display': 'block', 'left': '1294px', 'top': '642px', 'size': '420px',
             }
-            assert jay_state(page, 3)['display'] == 'none'
-            again = jay_state(page, 1)
+            assert presenter_state(page, 3)['display'] == 'none'
+            again = presenter_state(page, 1)
             assert again['display'] != 'none'
             # A nonempty placement contract is closed at the final end_s too.
-            ended = jay_state(page, 6)
+            ended = presenter_state(page, 6)
             assert ended['display'] == 'none'
             # The character is really drawn: the canvas holds pixels and every
             # seek re-renders it (same time -> identical frame, different
@@ -694,8 +694,8 @@ def test_jay_single_full_video_mount_follows_presenter_scene_visibility(tmp_path
             assert again['canvas'] == visible['canvas']
             assert ended['canvas'] != visible['canvas']
 
-            # The production collector must inspect #jay-stage. The host stays
-            # visible and has a full-canvas box, so it cannot make a hidden Jay
+            # The production collector must inspect #presenter-stage. The host stays
+            # visible and has a full-canvas box, so it cannot make a hidden presenter
             # count as visible by itself.
             host_state = host.evaluate("""(element) => ({
               display: getComputedStyle(element).display,
@@ -711,14 +711,14 @@ def test_jay_single_full_video_mount_follows_presenter_scene_visibility(tmp_path
                 {'scene_id': 'stage-backward', 'time': 3},
                 {'scene_id': 'ended', 'time': 6},
             ])
-            assert [snapshot['jayVisible'] for snapshot in snapshots] == [
+            assert [snapshot['presenterVisible'] for snapshot in snapshots] == [
                 True, False, True, False, False,
             ]
             assert errors == []
             page.close()
 
 
-def test_jay_scene_mount_keeps_local_seconds_for_acts_and_envelope(tmp_path: Path):
+def test_presenter_scene_mount_keeps_local_seconds_for_acts_and_envelope(tmp_path: Path):
     # Scene clipped from a longer video: the host starts at video 2.5s and the
     # adapter converts video seconds to local seconds. Acting-script times
     # (placements, acts, envelope) stay local: nothing may shift by the
@@ -728,7 +728,7 @@ def test_jay_scene_mount_keeps_local_seconds_for_acts_and_envelope(tmp_path: Pat
     envelope = [100] * (30 * 8)
     for i in range(30 * 2, 30 * 3):
         envelope[i] = 0
-    video = {'jay': {
+    video = {'presenter': {
         'duration': 6,
         'seed': 7,
         'envelopeFps': 30,
@@ -740,7 +740,7 @@ def test_jay_scene_mount_keeps_local_seconds_for_acts_and_envelope(tmp_path: Pat
             {'begin_s': 2, 'end_s': 6, 'visible': False},
         ],
     }}
-    mounts = [('components/jay', None, {'data-start': '2.5', 'data-duration': '6'})]
+    mounts = [('components/presenter', None, {'data-start': '2.5', 'data-duration': '6'})]
     with composition_url_with_mounts(tmp_path, video, mounts) as url:
         with chrome_cdp.launch_isolated() as session:
             page, errors = open_component_page(session.browser, url)
@@ -749,12 +749,12 @@ def test_jay_scene_mount_keeps_local_seconds_for_acts_and_envelope(tmp_path: Pat
             def bubble(time):
                 return page.evaluate("""async (time) => {
                   await window.seek(time);
-                  const stage = document.querySelector('#jay-stage');
-                  const thought = document.querySelector('#jay-thought');
+                  const stage = document.querySelector('#presenter-stage');
+                  const thought = document.querySelector('#presenter-thought');
                   return { display: getComputedStyle(stage).display,
                     left: stage.style.left, top: stage.style.top, size: stage.style.width,
                     thoughtOpacity: Number(thought.getAttribute('opacity')),
-                    thoughtText: document.querySelector('#jay-thought-text').textContent };
+                    thoughtText: document.querySelector('#presenter-thought-text').textContent };
                 }""", time)
 
             # Local 1.5s = video 4.0s: visible placement, think act in full swing.
@@ -779,26 +779,26 @@ def test_jay_scene_mount_keeps_local_seconds_for_acts_and_envelope(tmp_path: Pat
             # local 1.0 (video 3.5) and closed inside the quiet window at
             # local 2.5 (video 5.0). A shift by the 2.5s mount offset would
             # sample a loud frame inside the quiet window and fail here.
-            loud = jay_mouth_dark(page, 'jay', 3.5)
-            quiet = jay_mouth_dark(page, 'jay', 5.0)
+            loud = presenter_mouth_dark(page, 'presenter', 3.5)
+            quiet = presenter_mouth_dark(page, 'presenter', 5.0)
             assert loud > 30
             assert loud > quiet + 20
             assert errors == []
             page.close()
 
 
-def test_two_jay_instances_with_different_roots_positions_and_data_do_not_interfere(tmp_path: Path):
+def test_two_presenter_instances_with_different_roots_positions_and_data_do_not_interfere(tmp_path: Path):
     video = {
-        'jayA': {'duration': 6, 'seed': 1, 'envelopeFps': 30, 'envelope': [80] * 180},
-        'jayB': {'duration': 6, 'seed': 999, 'envelopeFps': 30, 'envelope': [0] * 180,
-                 'placements': [
-                     {'begin_s': 0, 'end_s': 3, 'visible': True, 'x': 900, 'y': 500, 'size': 500},
-                     {'begin_s': 3, 'end_s': 6, 'visible': False},
-                 ]},
+        'presenterA': {'duration': 6, 'seed': 1, 'envelopeFps': 30, 'envelope': [80] * 180},
+        'presenterB': {'duration': 6, 'seed': 999, 'envelopeFps': 30, 'envelope': [0] * 180,
+                       'placements': [
+                           {'begin_s': 0, 'end_s': 3, 'visible': True, 'x': 900, 'y': 500, 'size': 500},
+                           {'begin_s': 3, 'end_s': 6, 'visible': False},
+                       ]},
     }
     mounts = [
-        ('components/jay', {'data': 'jayA', 'x': 100, 'y': 100, 'size': 300}),
-        ('components/jay', {'data': 'jayB', 'x': 900, 'y': 500, 'size': 500, 'fxScale': 1.3}),
+        ('components/presenter', {'data': 'presenterA', 'x': 100, 'y': 100, 'size': 300}),
+        ('components/presenter', {'data': 'presenterB', 'x': 900, 'y': 500, 'size': 500, 'fxScale': 1.3}),
     ]
     with composition_url_with_mounts(tmp_path, video, mounts) as url:
         with chrome_cdp.launch_isolated() as session:
@@ -810,12 +810,12 @@ def test_two_jay_instances_with_different_roots_positions_and_data_do_not_interf
             state = page.evaluate("""async (time) => {
               await window.seek(time);
               const stageOf = (hostId) => {
-                const stage = document.getElementById(hostId).querySelector('#jay-stage');
+                const stage = document.getElementById(hostId).querySelector('#presenter-stage');
                 return { display: getComputedStyle(stage).display,
                   left: stage.style.left, top: stage.style.top, size: stage.style.width,
-                  canvas: stage.parentElement.querySelector('#jay-gl').toDataURL('image/png') };
+                  canvas: stage.parentElement.querySelector('#presenter-gl').toDataURL('image/png') };
               };
-              return { a: stageOf('jay'), b: stageOf('jay-2'),
+              return { a: stageOf('presenter'), b: stageOf('presenter-2'),
                 timelinesDistinct: new Set(window.__instances.map(
                   (entry) => entry.instance.timeline)).size === 2 };
             }""", 1.0)
@@ -831,23 +831,23 @@ def test_two_jay_instances_with_different_roots_positions_and_data_do_not_interf
             later = page.evaluate("""async (time) => {
               await window.seek(time);
               const display = (hostId) => getComputedStyle(
-                document.getElementById(hostId).querySelector('#jay-stage')).display;
-              return { a: display('jay'), b: display('jay-2') };
+                document.getElementById(hostId).querySelector('#presenter-stage')).display;
+              return { a: display('presenter'), b: display('presenter-2') };
             }""", 4.0)
             assert later == {'a': 'block', 'b': 'none'}
 
             # Tear A down the way an adapter would: no driver may survive,
             # and B must keep rendering without interference.
             page.evaluate("""async () => {
-              const index = window.__instances.findIndex((entry) => entry.host.id === 'jay');
+              const index = window.__instances.findIndex((entry) => entry.host.id === 'presenter');
               const [entry] = window.__instances.splice(index, 1);
               entry.instance.destroy();
               entry.host.remove();
             }""")
             surviving = page.evaluate("""async (time) => {
               await window.seek(time);
-              const stage = document.getElementById('jay-2').querySelector('#jay-stage');
-              const canvas = stage.parentElement.querySelector('#jay-gl');
+              const stage = document.getElementById('presenter-2').querySelector('#presenter-stage');
+              const canvas = stage.parentElement.querySelector('#presenter-gl');
               const frame = canvas.toDataURL('image/png');
               await window.seek(time);
               const again = canvas.toDataURL('image/png');
@@ -856,7 +856,7 @@ def test_two_jay_instances_with_different_roots_positions_and_data_do_not_interf
                 bDisplay: getComputedStyle(stage).display,
                 bFrame: frame, bFrameAgain: again };
             }""", 2.0)
-            assert surviving['names'] == ['jay']
+            assert surviving['names'] == ['presenter']
             assert surviving['hosts'] == 1
             assert surviving['bDisplay'] == 'block'
             assert surviving['bFrame'] == surviving['bFrameAgain']
@@ -864,20 +864,20 @@ def test_two_jay_instances_with_different_roots_positions_and_data_do_not_interf
             page.close()
 
 
-def test_jay_ready_rejects_when_build_assets_are_missing(tmp_path: Path):
-    video = {'jay': {'duration': 6}}
-    with composition_url(tmp_path, video, 'components/jay') as url:
+def test_presenter_ready_rejects_when_build_assets_are_missing(tmp_path: Path):
+    video = {'presenter': {'duration': 6}}
+    with composition_url(tmp_path, video, 'components/presenter') as url:
         # Break the layer source before the page loads: the asynchronous
         # build must surface the failure through the returned `ready` promise
         # instead of leaving a silently empty character.
-        (tmp_path / 'composition/assets/jay/jay-base.png').unlink()
+        (tmp_path / 'composition/assets/presenter/presenter-base.png').unlink()
         with chrome_cdp.launch_isolated() as session:
             browser = session.browser
             page = browser.new_page(viewport={'width': 1920, 'height': 1080})
             page.goto(url, wait_until='networkidle', timeout=30000)
             page.evaluate('window.__mountPromise')
             outcome = page.evaluate("""async () => {
-              const entry = window.__instances.find((item) => item.name === 'jay');
+              const entry = window.__instances.find((item) => item.name === 'presenter');
               let message = null;
               try {
                 await entry.instance.ready;

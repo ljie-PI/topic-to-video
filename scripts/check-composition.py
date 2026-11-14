@@ -778,15 +778,15 @@ def build_report(
             ))
             if visual_scenes and caption_segment and snapshot['scene_id'] == caption_segment['scene_id']:
                 has_person_region = any(
-                    isinstance(region, dict) and region.get('component') == 'jay'
+                    isinstance(region, dict) and region.get('component') == 'presenter'
                     for region in caption_segment['layout_data']['regions']
                 )
-                jay_visible = bool(snapshot.get('jayVisible'))
+                presenter_visible = bool(snapshot.get('presenterVisible'))
                 issue = None
-                if has_person_region and not jay_visible:
-                    issue = 'visual scene layout has a presenter region but Jay is not visible'
-                elif not has_person_region and jay_visible:
-                    issue = 'Jay is visible in a visual scene whose layout has no presenter region'
+                if has_person_region and not presenter_visible:
+                    issue = 'visual scene layout has a presenter region but presenter is not visible'
+                elif not has_person_region and presenter_visible:
+                    issue = 'presenter is visible in a visual scene whose layout has no presenter region'
                 if issue:
                     findings.append({
                         'scene_id': snapshot['scene_id'], 'check': 'presenter_component',

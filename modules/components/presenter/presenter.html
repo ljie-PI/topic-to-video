@@ -1,11 +1,11 @@
 <template>
   <!--
-    Jay — character component (docs: components/jay/jay.md).
-    This file is static markup + styles only. Initialisation lives in the sibling jay.mjs
+    Presenter — character component (docs: components/presenter/presenter.md).
+    This file is static markup + styles only. Initialisation lives in the sibling presenter.mjs
     (explicit init per modules/modules.md: params, acting script, duration and GSAP are
     passed in; the video project wires it into its own host/adapter).
     Mount once, full length: data-start="0", data-duration = the video's length.
-    Needs: assets/jay/jay-base.png, assets/jay/jay-wave.png. Colours and font come from the design theme's tokens
+    Needs: assets/presenter/presenter-base.png, assets/presenter/presenter-wave.png. Colours and font come from the design theme's tokens
     (--c-ink, --c-card, --c-border, --c-focus, --font-sans); the character's own art colours stay as drawn.
   -->
   <style>
@@ -15,15 +15,15 @@
       pointer-events: none;
     }
     /* placement comes from the init params; these defaults are the presenter layout's character slot */
-    #jay-stage {
+    #presenter-stage {
       position: absolute;
       left: 1294px;
       top: 642px;
       width: 420px;
       height: 420px;
     }
-    #jay-stage > canvas,
-    #jay-stage > svg {
+    #presenter-stage > canvas,
+    #presenter-stage > svg {
       position: absolute;
       left: 0;
       top: 0;
@@ -31,52 +31,52 @@
       height: 100%;
       overflow: visible;
     }
-    #jay-thought-text {
+    #presenter-thought-text {
       font-family: var(--font-sans);
       font-weight: 800;
       font-size: 64px;
       fill: var(--c-ink);
     }
   </style>
-  <div id="root" data-composition-id="jay" data-width="1920" data-height="1080">
-    <div id="jay-stage" data-layout-allow-overflow data-layout-ignore>
-      <svg id="jay-shadow" viewBox="0 0 2048 2048" aria-hidden="true">
+  <div id="root" data-composition-id="presenter" data-width="1920" data-height="1080">
+    <div id="presenter-stage" data-layout-allow-overflow data-layout-ignore>
+      <svg id="presenter-shadow" viewBox="0 0 2048 2048" aria-hidden="true">
         <ellipse cx="560" cy="1900" rx="500" ry="16" style="fill: var(--c-ink)" opacity=".08" />
         <ellipse cx="1765" cy="1954" rx="160" ry="12" style="fill: var(--c-ink)" opacity=".12" />
       </svg>
-      <canvas id="jay-gl" width="1200" height="1200" role="img" aria-label="Jay：戴眼镜、穿黑色连帽衫的主持人"></canvas>
-      <svg id="jay-fx" viewBox="0 0 2048 2048" aria-hidden="true">
-        <g id="jay-steam" fill="none" style="stroke: var(--c-border)" stroke-width="12" stroke-linecap="round">
+      <canvas id="presenter-gl" width="1200" height="1200" role="img" aria-label="主持人：戴眼镜、穿黑色连帽衫的主持人"></canvas>
+      <svg id="presenter-fx" viewBox="0 0 2048 2048" aria-hidden="true">
+        <g id="presenter-steam" fill="none" style="stroke: var(--c-border)" stroke-width="12" stroke-linecap="round">
           <path d="M1712 1592 c-18 -25 18 -50 0 -75 c-18 -25 18 -50 0 -75" />
           <path d="M1764 1582 c-18 -25 18 -50 0 -75 c-18 -25 18 -50 0 -75" />
           <path d="M1816 1592 c-18 -25 18 -50 0 -75 c-18 -25 18 -50 0 -75" />
         </g>
         <!-- motion lines beside the waving hand; moved with the hand in renderAt -->
-        <g id="jay-wavelines" fill="none" style="stroke: var(--c-ink)" stroke-width="10" stroke-linecap="round" opacity="0">
+        <g id="presenter-wavelines" fill="none" style="stroke: var(--c-ink)" stroke-width="10" stroke-linecap="round" opacity="0">
           <path d="M228 574 Q170 612 150 700" />
           <path d="M230 634 Q196 660 184 728" />
         </g>
-        <g id="jay-bubble" transform="translate(684 404) scale(1.7) translate(-684 -404)">
-          <g id="jay-thought" opacity="0" style="stroke: var(--c-ink)" stroke-linejoin="round">
+        <g id="presenter-bubble" transform="translate(684 404) scale(1.7) translate(-684 -404)">
+          <g id="presenter-thought" opacity="0" style="stroke: var(--c-ink)" stroke-linejoin="round">
             <circle cx="684" cy="404" r="13" style="fill: var(--c-card)" stroke-width="7" />
             <circle cx="636" cy="346" r="22" style="fill: var(--c-card)" stroke-width="7" />
             <path style="fill: var(--c-card)" stroke-width="8" d="M260 230 A60 60 0 0 1 300 130 A80 80 0 0 1 430 90 A80 80 0 0 1 560 100 A70 70 0 0 1 650 190 A60 60 0 0 1 620 290 A70 70 0 0 1 510 320 A80 80 0 0 1 370 320 A75 75 0 0 1 260 230 Z" />
-            <text id="jay-thought-text" x="455" y="230" stroke="none" text-anchor="middle"></text>
+            <text id="presenter-thought-text" x="455" y="230" stroke="none" text-anchor="middle"></text>
           </g>
         </g>
-        <g id="jay-bang" opacity="0">
+        <g id="presenter-bang" opacity="0">
           <path fill="none" style="stroke: var(--c-ink)" stroke-width="9" stroke-linecap="round" d="M1490 170 L1462 140 M1500 250 L1458 252 M1650 160 L1680 128 M1660 250 L1700 256" />
           <circle cx="1580" cy="220" r="72" style="fill: var(--c-focus); stroke: var(--c-ink)" stroke-width="9" />
           <path style="fill: var(--c-card)" d="M1590 166 L1622 166 L1592 238 L1560 238 Z" />
           <circle cx="1568" cy="264" r="16" style="fill: var(--c-card)" />
         </g>
         <!-- overhead effects; each sits around its own anchor and is placed and scaled in renderAt -->
-        <g id="jay-qmark" opacity="0">
+        <g id="presenter-qmark" opacity="0">
           <circle cx="1580" cy="220" r="72" style="fill: var(--c-card); stroke: var(--c-ink)" stroke-width="9" />
           <text x="1580" y="262" text-anchor="middle" style="fill: var(--c-focus); font-family: var(--font-sans); font-weight: 800; font-size: 120px">?</text>
         </g>
-        <g id="jay-bulb" opacity="0">
-          <g id="jay-bulb-rays" fill="none" style="stroke: var(--c-ink)" stroke-width="9" stroke-linecap="round">
+        <g id="presenter-bulb" opacity="0">
+          <g id="presenter-bulb-rays" fill="none" style="stroke: var(--c-ink)" stroke-width="9" stroke-linecap="round">
             <path d="M1580 98 L1580 70 M1490 136 L1468 116 M1670 136 L1692 116 M1456 214 L1426 214 M1704 214 L1734 214" />
           </g>
           <circle cx="1580" cy="208" r="66" style="fill: var(--c-highlight); stroke: var(--c-ink)" stroke-width="9" />

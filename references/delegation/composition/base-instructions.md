@@ -14,7 +14,7 @@
 4. 逐场景内容演绎、template/layout 与自主设计；
 5. 模板时间锚点只能来自真实朗读。
 
-后文同时给出一条工作顺序。在不违反输入、真实语音、必用素材、落盘 design、所选字体与 QA 检查约束的前提下，其余视觉设计由 composition agent 决定：视觉 scene 怎么切、各用什么 template / layout、构图与视觉隐喻、素材怎么摆、Jay 怎么演、动效怎么编排，是你的设计空间。
+后文同时给出一条工作顺序。在不违反输入、真实语音、必用素材、落盘 design、所选字体与 QA 检查约束的前提下，其余视觉设计由 composition agent 决定：视觉 scene 怎么切、各用什么 template / layout、构图与视觉隐喻、素材怎么摆、主持人怎么演、动效怎么编排，是你的设计空间。
 
 ## 一、输入契约
 
@@ -36,10 +36,10 @@
 
 ## 三、必须遵守各 scene 的 layout 区域
 
-- 每个视觉 scene 的画面只能使用它在 `scene-config.json` 里落盘的 `regions`：content 区域自由放内容；reserved 区域只放各自 `component` 声明的组件（如导航栏区只放 `nav-bar`、字幕区只放 `caption-bar`、人物区只放 `jay`）。区域坐标可以来自借用的 preset（`preset` 记录出处），也可以完全自主设计；检查一律以落盘的 rect 为准。
+- 每个视觉 scene 的画面只能使用它在 `scene-config.json` 里落盘的 `regions`：content 区域自由放内容；reserved 区域只放各自 `component` 声明的组件（如导航栏区只放 `nav-bar`、字幕区只放 `caption-bar`、人物区只放 `presenter`）。区域坐标可以来自借用的 preset（`preset` 记录出处），也可以完全自主设计；检查一律以落盘的 rect 为准。
 - storyboard 里**每个视觉 scene 都要写明它的区域方案**：借用了哪个 preset（或自主设计）、用了哪些 content 区域、reserved 区各挂什么组件。
 - 每个视觉 scene 的根挂载必须带与声明一致的 `data-scene-id`、`data-scene-start`、`data-scene-end`，供 QA 采样使用。
-- scene 的 regions 有人物区（`component` 为 `jay` 的 reserved 区）时必须挂 `jay`；Jay 仍是全片唯一常驻实例，没有人物区的 scene 不强制显示 Jay（通过 `placements` 隐藏，如 `visible: false`）。`VIDEO.jay` 的动作与通用演法按 `modules/components/jay/jay.md` 编排，有模板时再叠加模板的演法。
+- scene 的 regions 有人物区（`component` 为 `presenter` 的 reserved 区）时必须挂 `presenter`；`presenter` 仍是全片唯一常驻实例，没有人物区的 scene 不强制显示 `presenter`（通过 `placements` 隐藏，如 `visible: false`）。`VIDEO.presenter` 的动作与通用演法按 `modules/components/presenter/presenter.md` 编排，有模板时再叠加模板的演法。
 
 ## 四、内容演绎与模板选择
 
