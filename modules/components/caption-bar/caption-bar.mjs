@@ -8,7 +8,7 @@
 //   init(root, { params, data, duration, gsap })
 //     params: { x, width, y, height, fontSize, bar: "on" | "off" }
 //     data:   { captions: [{ start, end, text }],
-//               captionSegments?: [{ scene_id, begin_s, end_s, caption_rect, caption }] }
+//               captionSegments?: [{ scene_id, begin_s, end_s, caption_rect, caption_bar_rect?, caption }] }
 //     All times are local seconds: 0 = the mount's start, i.e. video seconds
 //     for full-length chrome mounted at data-start="0".
 //   returns { timeline, destroy }: a paused GSAP timeline plus a teardown that
@@ -16,17 +16,35 @@
 
 export function init(root, { params = {}, data = {}, duration = 0, gsap }) {  const tl = gsap.timeline({ paused: true });
   const num = (v, d) => (v !== "" && v != null && Number.isFinite(Number(v)) ? Number(v) : d);
-  // position defaults are the presenter layout's caption region
+  // position defaults are the landscape-presenter layout's caption region
   const X = num(params.x, 96), WIDTH = num(params.width, 1166),
     Y = num(params.y, 1008), H = num(params.height, 72), FS = num(params.fontSize, 36);
   const bar = root.querySelector("#cb-bar");
   bar.style.top = Y + "px";
   bar.style.height = H + "px";
-  if (params.bar === "off") bar.remove();
+  const barOff = params.bar === "off";
+  if (barOff) bar.remove();
 
   const cues = (data.captions || []).slice().sort((a, b) => a.start - b.start);
   const segments = (data.captionSegments || []).slice().sort((a, b) => a.begin_s - b.begin_s);
   const dynamic = segments.length > 0;
+  if (!barOff && dynamic) {
+    for (const segment of segments) {
+      if (!("caption_bar_rect" in segment)) continue;
+      const barRect = segment.caption_bar_rect;
+      if (barRect) {
+        tl.set(bar, {
+          display: "block",
+          left: num(barRect.x, 0) + "px",
+          top: num(barRect.y, Y) + "px",
+          width: barRect.width != null ? num(barRect.width, 1920) + "px" : "100%",
+          height: num(barRect.height, H) + "px",
+        }, segment.begin_s);
+      } else {
+        tl.set(bar, { display: "none" }, segment.begin_s);
+      }
+    }
+  }
   const ctx = document.createElement("canvas").getContext("2d");
   const family = getComputedStyle(root).fontFamily;
   cues.forEach((c, i) => {
@@ -58,15 +76,24 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {  co
         const rect = segment.caption_rect || {};
         const spec = segment.caption;
         const fontSize = num(spec.font_size_px, FS);
-        tl.set(line, {
+        const lineUpdate = {
           left: num(rect.x, X) + "px", top: num(rect.y, Y) + "px",
           width: num(rect.width, spec.width_px) + "px", height: num(rect.height, H) + "px",
-        }, at);
-        tl.set(span, {
+        };
+        const spanUpdate = {
           fontSize: fontSize + "px", whiteSpace: spec.max_lines > 1 ? "normal" : "nowrap",
           lineHeight: "1.15", width: "100%", overflow: "hidden",
           maxHeight: (spec.max_lines * fontSize * 1.15) + "px",
-        }, at);
+        };
+        if ("caption_bar_rect" in segment) {
+          const hasBar = Boolean(segment.caption_bar_rect) && !barOff;
+          const centered = !hasBar && spec.max_lines > 1;
+          lineUpdate["--cb-justify"] = centered ? "center" : "flex-start";
+          lineUpdate["--cb-ink"] = hasBar ? "var(--c-chrome-ink)" : "var(--c-ink)";
+          lineUpdate["--cb-align"] = centered ? "center" : "left";
+        }
+        tl.set(line, lineUpdate, at);
+        tl.set(span, spanUpdate, at);
       }
     }
     const fadeIn = dynamic ? Math.min(0.18, (end - start) / 3) : 0.18;

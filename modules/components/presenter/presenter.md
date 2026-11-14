@@ -34,7 +34,7 @@
 presenter 由视频工程的 adapter 接线（普通浏览器和 HyperFrames 工程都用同一个 `init` 入口，不需要任何厂商全局变量）：
 
 ```html
-<!-- index.html 根节点里：从 0 秒挂到片尾，最上层 -->
+<!-- index.html 根节点里：从 0 秒挂到片尾，最上层；data-width / data-height 填全片实际画布尺寸 -->
 <div id="presenter" data-composition-id="presenter" data-composition-src="compositions/presenter.html"
      data-start="0" data-duration="27.2" data-width="1920" data-height="1080"
      data-variable-values='{"x":1294,"y":642,"size":420}' style="z-index: 20"></div>
@@ -94,9 +94,9 @@ window.VIDEO = { presenter: {
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `x`, `y` | 1294, 642 | 人物舞台左上角，单位 px。默认就是讲解模式布局的人物区 |
-| `size` | 420 | 舞台边长，单位 px（原图 2048 等比缩放）。600 是 100%，420 是 70% |
-| `fxScale` | 1 | 思考气泡和“!”的额外放大倍数。人物缩小后可以设 1.2–1.4 |
+| `x`, `y` | 1294, 642 | 人物舞台左上角，单位 px。默认就是横屏讲解模式（`landscape-presenter`）的人物区；竖屏讲解模式见 `layouts/portrait-presenter.md` |
+| `size` | 420 | 舞台边长，单位 px（原图 2048 等比缩放）。600 是 100%，横屏讲解模式 420（70%），竖屏讲解模式 320 |
+| `fxScale` | 1 | 思考气泡和“!”的额外放大倍数。人物缩小后（如竖屏 320px）建议设 1.25–1.35 |
 
 ## 视觉 scene 放置（剧本里的 `placements`）
 
@@ -109,7 +109,7 @@ window.VIDEO = { presenter: {
 ```
 
 - 命中规则是 `begin_s <= t < end_s`；数组按 `begin_s` 排序，重叠时最后开始的一项生效。
-- `visible: false` 将 `#presenter-stage` 设为 `display: none`，用于 `stage` / `portrait` 等非主持人场景；`visible: true` 恢复显示。
+- `visible: false` 将 `#presenter-stage` 设为 `display: none`，用于 `landscape` / `portrait` / `portrait-3x4` 等非主持人场景；`visible: true` 恢复显示。
 - 可见项可用 `x` / `y` / `size` 覆盖舞台左边、上边和边长（px）。省略的字段不修改当前值；通常每个可见项都写明完整位置，避免依赖前一项留下的值。
 - 只要 `placements` 非空，没有命中任何一项时就隐藏 presenter；这也包括 `t` 恰好等于最后一项 `end_s` 的片尾时刻。完全不提供 `placements`（或提供空数组）时保留旧行为：presenter 全片显示。
 
@@ -161,8 +161,8 @@ presenter: {
 |---|---|
 | 开场后 0.45 秒 | `["wave", 3000]` |
 | 每次转场前约 0.85 秒 | `typing [切点 - 0.85, 切点 + 0.05]` |
-| 主展示区换内容时 | 瞥视 `[该时刻, 1.0, "L"]` |
-| 副展示区换内容时 | 瞥视 `[该时刻, 1.0, "U"]` |
+| 主展示区换内容时 | 横屏（`landscape-presenter`）瞥视 `[该时刻, 1.0, "L"]`；竖屏（`portrait-presenter` / `portrait-3x4-presenter`）主展示区在人物上方，瞥视以 `[该时刻, 1.0, "U"]` 为主 |
+| 副展示区换内容时 | 瞥视 `[该时刻, 1.0, "U"]`（仅含副展示区的布局） |
 | 旁白讲到提问、结论、关键数字、反例或转场 | 从下面的动作库挑一个合适的动作；需要卡准秒数时用该句在 `timeline.json` 的段落 / cue |
 | 结尾 | `["laugh", 2200]`，再 `["wave", 3200]` 告别 |
 
@@ -215,8 +215,8 @@ presenter: {
 
 | 方向 | 看哪里 |
 |---|---|
-| `L` | 左边：讲解模式的主展示区。眼珠移到左侧，脸转向左，头稍往左偏 |
-| `U` | 上方：副展示区（他头顶上方的榜单或步骤）。眼珠往上，头抬起，眉毛上扬 |
+| `L` | 左边（如 `landscape-presenter` 的左侧主展示区，或竖屏主展示区偏左要素）。眼珠移到左侧，脸转向左，头稍往左偏 |
+| `U` | 上方（如 `landscape-presenter` 头顶上方的副展示区，或 `portrait-presenter` / `portrait-3x4-presenter` 位于人物上方的主展示区）。眼珠往上，头抬起，眉毛上扬 |
 | `R` | 右边。和 `L` 对称 |
 | `D` | 低头看笔记本。眼珠往左下，头低下，眼皮下垂 |
 

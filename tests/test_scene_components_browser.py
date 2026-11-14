@@ -234,7 +234,9 @@ def composition_url(tmp_path: Path, video: dict, *components: str):
 
 
 @contextmanager
-def composition_url_with_mounts(tmp_path: Path, video: dict, mounts_spec: list):
+def composition_url_with_mounts(
+    tmp_path: Path, video: dict, mounts_spec: list, *, canvas: tuple[int, int] = (1920, 1080),
+):
     """Serve a temporary host while loading module sources from this repo.
 
     mounts_spec entries are (modules-relative path without extension, params
@@ -242,6 +244,7 @@ def composition_url_with_mounts(tmp_path: Path, video: dict, mounts_spec: list):
     (e.g. data-start / data-duration overrides for scene mounts). Params
     become the host's data-variable-values.
     """
+    canvas_w, canvas_h = canvas
     composition = tmp_path / 'composition'
     (composition / 'compositions').mkdir(parents=True)
     mounts = []
@@ -267,7 +270,7 @@ def composition_url_with_mounts(tmp_path: Path, video: dict, mounts_spec: list):
         mounts.append(
             f'<div id="{host_id}" data-composition-id="{name}" '
             f'data-composition-src="compositions/{name}.html" data-start="{start}" '
-            f'data-duration="{duration}" data-width="1920" data-height="1080"{variables}{other} '
+            f'data-duration="{duration}" data-width="{canvas_w}" data-height="{canvas_h}"{variables}{other} '
             f'style="position:absolute;inset:0"></div>'
         )
     if any(str(item[0]).startswith('components/presenter') for item in mounts_spec):
@@ -280,7 +283,7 @@ def composition_url_with_mounts(tmp_path: Path, video: dict, mounts_spec: list):
       <link rel="icon" href="data:,">
       <style>
         * { box-sizing: border-box; }
-        html, body { margin: 0; width: 1920px; height: 1080px; }
+        html, body { margin: 0; width: __CANVAS_W__px; height: __CANVAS_H__px; }
         :root { --font-sans: Arial, sans-serif; --font-mono: monospace;
           --c-chrome: #222; --c-chrome-ink: #fff; --c-chrome-muted: #999;
           --c-chrome-active: #f66; --c-ink: #222; --c-ink2: #666; --c-card: #fff;
@@ -295,7 +298,9 @@ def composition_url_with_mounts(tmp_path: Path, video: dict, mounts_spec: list):
       <script>__TIMELINE_SEEKER__</script>
       </head><body><main data-composition-id="main">__MOUNTS__</main>
       <script>__MOUNTER__</script></body></html>"""
-    html = (html.replace('__VIDEO__', json.dumps(video, ensure_ascii=False))
+    html = (html.replace('__CANVAS_W__', str(canvas_w))
+            .replace('__CANVAS_H__', str(canvas_h))
+            .replace('__VIDEO__', json.dumps(video, ensure_ascii=False))
             .replace('__TIMELINE_SEEKER__', TIMELINE_SEEKER)
             .replace('__MOUNTS__', ''.join(mounts))
             .replace('__MOUNTER__', MOUNTER))
@@ -313,8 +318,8 @@ def composition_url_with_mounts(tmp_path: Path, video: dict, mounts_spec: list):
         thread.join(timeout=5)
 
 
-def open_component_page(browser, url: str):
-    page = browser.new_page(viewport={'width': 1920, 'height': 1080})
+def open_component_page(browser, url: str, *, viewport: tuple[int, int] = (1920, 1080)):
+    page = browser.new_page(viewport={'width': viewport[0], 'height': viewport[1]})
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
     page.goto(url, wait_until='networkidle', timeout=30000)
@@ -363,10 +368,10 @@ def test_caption_bar_uses_scene_contract_at_exact_times_and_reverse_seeks(tmp_pa
             {'scene_id': 'portrait', 'begin_s': 0, 'end_s': 2,
              'caption_rect': {'x': 70, 'y': 1620, 'width': 940, 'height': 200},
              'caption': {'width_px': 940, 'font_size_px': 42, 'max_lines': 2}},
-            {'scene_id': 'stage', 'begin_s': 2, 'end_s': 4,
+            {'scene_id': 'landscape', 'begin_s': 2, 'end_s': 4,
              'caption_rect': {'x': 96, 'y': 1008, 'width': 1728, 'height': 72},
              'caption': {'width_px': 1728, 'font_size_px': 36, 'max_lines': 1}},
-            {'scene_id': 'presenter', 'begin_s': 4, 'end_s': 6,
+            {'scene_id': 'landscape-presenter', 'begin_s': 4, 'end_s': 6,
              'caption_rect': {'x': 96, 'y': 1008, 'width': 1166, 'height': 72},
              'caption': {'width_px': 1166, 'font_size_px': 36, 'max_lines': 1}},
         ],
@@ -889,3 +894,211 @@ def test_presenter_ready_rejects_when_build_assets_are_missing(tmp_path: Path):
             assert outcome['mountErrors'] == []
             assert outcome['message']
             page.close()
+
+
+def test_portrait_presenter_switches_bar_character_and_tile_wipe_within_portrait_canvas(tmp_path: Path):
+    portrait_presenter = json.loads((ROOT / 'modules/layouts/portrait-presenter.json').read_text(encoding='utf-8'))
+    portrait = json.loads((ROOT / 'modules/layouts/portrait.json').read_text(encoding='utf-8'))
+    pp_regions = {r['id']: r['rect'] for r in portrait_presenter['regions']}
+    p_regions = {r['id']: r['rect'] for r in portrait['regions']}
+
+    video = {
+        'captions': [
+            {'start': 0.2, 'end': 2.8, 'text': '竖屏讲解场景底部有双行字幕条且右侧有主持人'},
+            {'start': 3.2, 'end': 5.8, 'text': '切到无主持人竖屏舞台后底条自动收起并切换居中深色字'},
+        ],
+        'captionSegments': [
+            {
+                'scene_id': 'host_scene', 'begin_s': 0, 'end_s': 3,
+                'caption_rect': pp_regions['caption-text'],
+                'caption_bar_rect': pp_regions['caption-bar'],
+                'caption': portrait_presenter['caption'],
+            },
+            {
+                'scene_id': 'stage_scene', 'begin_s': 3, 'end_s': 6,
+                'caption_rect': p_regions['caption-text'],
+                'caption_bar_rect': None,
+                'caption': portrait['caption'],
+            },
+        ],
+        'presenter': {
+            'duration': 6,
+            'glances': [[0.5, 1.0, 'U']],
+            'placements': [
+                {'begin_s': 0, 'end_s': 3, 'visible': True,
+                 'x': pp_regions['person']['x'], 'y': pp_regions['person']['y'],
+                 'size': pp_regions['person']['width']},
+                {'begin_s': 3, 'end_s': 6, 'visible': False},
+            ],
+        },
+        'cuts': [{'at': 3.0}],
+    }
+    mounts = [
+        ('components/caption-bar', None, {'data-track-kind': 'captions'}),
+        ('components/presenter', {'x': 700, 'y': 1500, 'size': 320, 'fxScale': 1.3}),
+        ('transitions/tile-wipe', {'originX': 860, 'originY': 1748, 'top': 0, 'bottom': 1776}),
+    ]
+    with composition_url_with_mounts(tmp_path, video, mounts, canvas=(1080, 1920)) as url:
+        with chrome_cdp.launch_isolated() as session:
+            page, errors = open_component_page(session.browser, url, viewport=(1080, 1920))
+
+            state_at = """async (time) => {
+              await window.seek(time);
+              const bar = document.querySelector('#cb-bar');
+              const barStyle = getComputedStyle(bar);
+              const barRect = bar.getBoundingClientRect();
+              const stage = document.querySelector('#presenter-stage');
+              const stageStyle = getComputedStyle(stage);
+              const stageRect = stage.getBoundingClientRect();
+              const plateRect = document.querySelector('#tw-plate').getBoundingClientRect();
+              const activeLine = Array.from(document.querySelectorAll('.cb-line'))
+                .find((el) => Number(getComputedStyle(el).opacity) > 0.5);
+              const spanStyle = activeLine ? getComputedStyle(activeLine.querySelector('span')) : null;
+              return {
+                barDisplay: barStyle.display,
+                barRect: { x: barRect.x, y: barRect.y, width: barRect.width, height: barRect.height },
+                presenterDisplay: stageStyle.display,
+                presenterRect: { x: stageRect.x, y: stageRect.y, width: stageRect.width, height: stageRect.height },
+                plateWidth: plateRect.width,
+                plateHeight: plateRect.height,
+                textAlign: spanStyle ? spanStyle.textAlign : null,
+                textColor: spanStyle ? spanStyle.color : null,
+              };
+            }"""
+
+            host_state = page.evaluate(state_at, 1.0)
+            assert host_state['barDisplay'] == 'block'
+            assert host_state['barRect'] == {'x': 0, 'y': 1776, 'width': 1080, 'height': 144}
+            assert host_state['presenterDisplay'] == 'block'
+            assert host_state['presenterRect'] == {'x': 700, 'y': 1500, 'width': 320, 'height': 320}
+            assert host_state['plateWidth'] == 1080
+            assert host_state['plateHeight'] == 1776
+            assert host_state['textAlign'] == 'left'
+            assert host_state['textColor'] == 'rgb(255, 255, 255)'
+
+            stage_state = page.evaluate(state_at, 4.5)
+            assert stage_state['barDisplay'] == 'none'
+            assert stage_state['presenterDisplay'] == 'none'
+            assert stage_state['textAlign'] == 'center'
+            assert stage_state['textColor'] == 'rgb(34, 34, 34)'
+
+            # Reverse seek back to portrait-presenter restores bottom bar, character, and chrome-ink text.
+            assert page.evaluate(state_at, 1.0) == host_state
+
+            # Add visible visual-scene mounts inside each scene's `main` region so
+            # check-composition validates the full portrait-presenter -> portrait composition.
+            page.evaluate("""() => {
+              const main = document.querySelector('main');
+              for (const [id, start, end, height] of [
+                ['host_scene', 0, 3, 1170],
+                ['stage_scene', 3, 6, 1240],
+              ]) {
+                const sceneEl = document.createElement('div');
+                sceneEl.setAttribute('data-scene-id', id);
+                sceneEl.setAttribute('data-scene-start', String(start));
+                sceneEl.setAttribute('data-scene-end', String(end));
+                sceneEl.style.cssText = 'position:absolute;inset:0;display:none';
+                const card = document.createElement('div');
+                card.id = `card-${id}`;
+                card.style.cssText = `position:absolute;left:70px;top:300px;width:940px;height:${height}px;font-size:32px;background:var(--c-card)`;
+                card.textContent = `竖屏内容区 ${id}`;
+                sceneEl.appendChild(card);
+                main.appendChild(sceneEl);
+              }
+              const origSeek = window.seek;
+              window.seek = async (time) => {
+                for (const el of document.querySelectorAll('[data-scene-id]')) {
+                  const s = Number(el.getAttribute('data-scene-start'));
+                  const e = Number(el.getAttribute('data-scene-end'));
+                  el.style.display = time >= s && time < e ? 'block' : 'none';
+                }
+                return origSeek(time);
+              };
+            }""")
+
+            snapshots = collect_snapshots(page, [
+                {'scene_id': 'host_scene', 'time': 1.0},
+                {'scene_id': 'stage_scene', 'time': 4.5},
+            ])
+            assert [s['presenterVisible'] for s in snapshots] == [True, False]
+            assert snapshots[0]['captionDetails'][0]['fontSize'] == 38
+            assert snapshots[0]['captionDetails'][0]['lineCount'] <= 2
+            assert snapshots[1]['captionDetails'][0]['fontSize'] == 42
+            assert snapshots[1]['captionDetails'][0]['lineCount'] <= 2
+
+            # Verify stylesheet CSS on .cb-line span can still override barless --cb-ink
+            # (e.g. light text over dark footage in a custom/freeform scene).
+            overridden_color = page.evaluate("""async () => {
+              const style = document.createElement('style');
+              style.textContent = '#caption-bar .cb-line span { color: rgb(240, 248, 255); }';
+              document.head.appendChild(style);
+              await window.seek(4.5);
+              const active = Array.from(document.querySelectorAll('.cb-line'))
+                .find((el) => Number(getComputedStyle(el).opacity) > 0.5);
+              return getComputedStyle(active.querySelector('span')).color;
+            }""")
+            assert overridden_color == 'rgb(240, 248, 255)'
+            assert errors == []
+            page.close()
+
+    # Run real check-composition.py against the collected portrait-presenter +
+    # portrait + tile-wipe snapshots: #tw-plate must not trigger outside_content_regions
+    # or reserved_region_intrusion into person, and both scenes must pass QA!
+    import subprocess
+    import sys
+    ws = tmp_path / 'qa_ws'
+    (ws / 'composition').mkdir(parents=True)
+    (ws / 'composition/index.html').write_text('<html></html>', encoding='utf-8')
+    (ws / 'inputs.json').write_text(json.dumps({'orientation': 'portrait'}), encoding='utf-8')
+    (ws / 'voice_clone').mkdir(parents=True)
+    subprocess.run([
+        'ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono',
+        '-t', '6', '-c:a', 'libmp3lame', str(ws / 'voice_clone/narration.mp3'),
+    ], capture_output=True, check=True)
+    scene_cfg = ws / 'composition/scene-config.json'
+    scene_cfg.write_text(json.dumps({
+        'version': 1,
+        'canvas': {'width': 1080, 'height': 1920},
+        'total_s': 6.0,
+        'scenes': [
+            {
+                'scene_id': 'host_scene', 'source_scene_ids': ['s1'],
+                'begin_s': 0.0, 'end_s': 3.0, 'template': None,
+                'layout': {
+                    'preset': 'portrait-presenter',
+                    'regions': portrait_presenter['regions'],
+                    'caption': portrait_presenter['caption'],
+                },
+            },
+            {
+                'scene_id': 'stage_scene', 'source_scene_ids': ['s2'],
+                'begin_s': 3.0, 'end_s': 6.0, 'template': None,
+                'layout': {
+                    'preset': 'portrait',
+                    'regions': portrait['regions'],
+                    'caption': portrait['caption'],
+                },
+            },
+        ],
+    }, ensure_ascii=False), encoding='utf-8')
+    units_path = ws / 'units.json'
+    units_path.write_text(json.dumps({
+        'units': [
+            {'text': video['captions'][0]['text'], 'begin_s': 0.2, 'end_s': 2.8},
+            {'text': video['captions'][1]['text'], 'begin_s': 3.2, 'end_s': 5.8},
+        ],
+    }, ensure_ascii=False), encoding='utf-8')
+    snaps_path = ws / 'snapshots.json'
+    snaps_path.write_text(json.dumps(snapshots, ensure_ascii=False), encoding='utf-8')
+    qa_proc = subprocess.run([
+        sys.executable, str(ROOT / 'scripts/check-composition.py'),
+        str(ws / 'composition'),
+        '--scene-config', str(scene_cfg),
+        '--design', str(ROOT / 'modules/designs/default/default.md'),
+        '--subtitle-units', str(units_path),
+        '--snapshots-from', str(snaps_path),
+    ], capture_output=True, text=True)
+    assert qa_proc.returncode == 0, qa_proc.stdout + qa_proc.stderr
+    qa_report = json.loads(qa_proc.stdout)
+    assert qa_report['verdict'] == 'pass', qa_report['findings']
+

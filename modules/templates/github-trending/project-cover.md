@@ -4,7 +4,7 @@
 
 一个上榜项目的封面，用来开始讲一个项目。
 
-- **布局**：讲解模式（`layouts/presenter.md`）。
+- **布局**：横屏讲解模式（`layouts/landscape-presenter.md`）。
   - **主展示区**：放大版的 GitHub 仓库头，从上到下是：
     1. 绿色标签“Trending #1 · 本周”；
     2. 仓库图标、`owner / repo`（72px）和 Public 标签；

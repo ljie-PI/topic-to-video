@@ -4,7 +4,7 @@
 
 一个场景，逐个介绍 GitHub Trending 榜单里的项目。
 
-- **布局**：讲解模式（`layouts/presenter.md`）。
+- **布局**：横屏讲解模式（`layouts/landscape-presenter.md`）。
   - **页眉行**：页面标题，例如“GitHub 本周热榜”，后面跟日期。
   - **副展示区**：Trending 榜单，紧凑样式，最多 5 行。
   - **主展示区**：README 面板，显示当前项目的 README 截图。

@@ -84,8 +84,8 @@ def workspace(tmp_path: Path, snapshots: list[dict]) -> tuple[Path, Path]:
         'canvas': {'width': 1920, 'height': 1080},
         'total_s': 10,
         'scenes': [
-            visual_scene('a', 0, 5, borrowed_layout('stage')),
-            visual_scene('b', 5, 10, borrowed_layout('presenter')),
+            visual_scene('a', 0, 5, borrowed_layout('landscape')),
+            visual_scene('b', 5, 10, borrowed_layout('landscape-presenter')),
         ],
     })
     (ws / 'voice_clone').mkdir(parents=True)
@@ -117,7 +117,7 @@ def test_same_element_is_checked_against_each_actual_scene_layout(tmp_path: Path
     assert {(f['scene_id'], f['check']) for f in result['findings']} == {
         ('b', 'outside_content_regions'), ('b', 'reserved_region_intrusion'),
     }
-    assert [s['layout'] for s in result['scenes_checked']] == ['stage', 'presenter']
+    assert [s['layout'] for s in result['scenes_checked']] == ['landscape', 'landscape-presenter']
 
 
 def test_active_scene_caption_font_and_lines_are_checked(tmp_path: Path):
@@ -203,7 +203,7 @@ def mixed_workspace(tmp_path: Path, snapshots: list[dict]) -> tuple[Path, Path]:
         'canvas': {'width': 1920, 'height': 1080},
         'total_s': 10,
         'scenes': [
-            {**visual_scene('tpl', 0, 5, borrowed_layout('presenter')),
+            {**visual_scene('tpl', 0, 5, borrowed_layout('landscape-presenter')),
              'template': {'name': 'github-trending', 'scene': 'project-cover'}},
             visual_scene('free', 5, 10, free_layout()),
         ],
@@ -251,7 +251,7 @@ def test_template_and_free_fallback_scenes_pass_together(tmp_path: Path):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert result['verdict'] == 'pass', result['findings']
     assert [(s['scene_id'], s['layout']) for s in result['scenes_checked']] == [
-        ('tpl', 'presenter'), ('free', None),
+        ('tpl', 'landscape-presenter'), ('free', None),
     ]
 
 

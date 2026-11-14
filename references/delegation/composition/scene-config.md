@@ -49,7 +49,7 @@ composition agent 产出：它存脚本需要的数据（`scripts/scene_config.p
 
 | 字段 | 规则 |
 |---|---|
-| `id` | 非空字符串，同一 layout 内唯一。 |
+| `id` | 非空字符串，同一 layout 内唯一。对于 `caption-bar` 组件：`id: "caption-text"` 表示字幕文字框（自由布局若只声明一个 `component` 以 `caption` 开头的保留区，也作为字幕文字框）；`id: "caption-bar"`（可选）表示底部 `--c-chrome` 深色背景条，省略时该 scene 按无底条处理。 |
 | `kind` | `content`（可自由放内容）或 `reserved`（只放指定组件）。 |
 | `rect` | `{x, y, width, height}`，全部为有限数值；`width` / `height` 为正，`x` / `y` 非负，且整个 rect 不超出 canvas。 |
 | `component` | `reserved` 区必填：明确该区域归属的组件（如 `caption-bar`、`presenter`、`nav-bar`）。 |
@@ -69,8 +69,10 @@ scene（重叠最多者，平手归较早 scene；atom 的真实时间不改）�
 
 每个单元保留既有字段 `index` / `text` / `begin_ms` / `end_ms` / `begin_s` /
 `end_s` / `fallback` / `paragraph`，并增加 `scene_id`（该单元归属的视觉
-scene）。产物还带 `caption_segments`（各 scene 的显示区间与 caption 规格），
-组件与 QA 消费同一组派生边界。
+scene）。产物还带 `caption_segments`（各 scene 的显示区间、`caption` 规格、
+字幕文字框 `caption_rect` 与可选底条矩形 `caption_bar_rect`），组件与 QA 消费同
+一组派生边界：`caption_bar_rect` 非空时 `caption-bar` 显示对应底条，为 `null`
+时隐藏底条以免越出当前 scene 的声明区域。
 
 切点规则：
 
@@ -90,7 +92,7 @@ scene）。产物还带 `caption_segments`（各 scene 的显示区间与 captio
 路径，都经 `scripts/scene_config.py` 的公共读取接口测试（见
 `tests/test_scene_config.py`）：示例不是只给人看的，格式以读取接口的校验为准。
 
-采用模板（github-trending 的 project-cover）并借用 presenter 预设的 scene，与无模板、
+采用模板（github-trending 的 project-cover）并借用 landscape-presenter 预设的 scene，与无模板、
 自由布局的 scene 同片共存：
 
 ```json
@@ -106,10 +108,15 @@ scene）。产物还带 `caption_segments`（各 scene 的显示区间与 captio
       "end_s": 6.0,
       "template": {"name": "github-trending", "scene": "project-cover"},
       "layout": {
-        "preset": "presenter",
+        "preset": "landscape-presenter",
         "regions": [
+          {"id": "ground", "kind": "reserved", "component": "ground", "rect": {"x": 0, "y": 0, "width": 1920, "height": 1080}},
+          {"id": "nav-bar", "kind": "reserved", "component": "nav-bar", "rect": {"x": 0, "y": 0, "width": 1920, "height": 72}},
+          {"id": "header", "kind": "content", "rect": {"x": 96, "y": 100, "width": 1048, "height": 72}},
           {"id": "main", "kind": "content", "rect": {"x": 96, "y": 196, "width": 1048, "height": 788}},
+          {"id": "side", "kind": "content", "rect": {"x": 1184, "y": 100, "width": 640, "height": 522}},
           {"id": "person", "kind": "reserved", "component": "presenter", "rect": {"x": 1294, "y": 642, "width": 420, "height": 420}},
+          {"id": "caption-bar", "kind": "reserved", "component": "caption-bar", "rect": {"x": 0, "y": 1008, "width": 1920, "height": 72}},
           {"id": "caption-text", "kind": "reserved", "component": "caption-bar", "rect": {"x": 96, "y": 1008, "width": 1166, "height": 72}}
         ],
         "caption": {"width_px": 1166, "font_size_px": 36, "max_lines": 1}

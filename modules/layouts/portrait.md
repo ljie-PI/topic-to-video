@@ -90,3 +90,4 @@
 - 不要把主展示区内容画出区域外，尤其不要压到字幕文字区。
 - 字幕不要超过 `caption.width_px` 对应的显示宽度，不要超过两行。
 - 不要在竖屏左侧或右侧塞横屏式 side rail。
+- 不要在没有主持人的画面上叠加人物组件；竖屏需要人物主持时用 `portrait-presenter` / `portrait-3x4-presenter`（见 [portrait-presenter.md](portrait-presenter.md)）。

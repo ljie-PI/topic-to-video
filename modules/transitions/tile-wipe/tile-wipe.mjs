@@ -20,11 +20,13 @@ export function init(root, { params = {}, data = [], duration = 0, gsap }) {
   const tl = gsap.timeline({ paused: true });
   const C = (n) => getComputedStyle(root).getPropertyValue(n).trim();
   const num = (v, d) => (v !== "" && v != null && Number.isFinite(Number(v)) ? Number(v) : d);
-  // defaults are the presenter layout: tiles between the two 72 px bars, spreading from the character's laptop
+  // defaults are the landscape-presenter layout: tiles between the two 72 px bars, spreading from the character's laptop
+  const W = num(params.width, root.clientWidth || 1920);
+  const H = num(params.height, root.clientHeight || 1080);
   const OX = num(params.originX, 1504), OY = num(params.originY, 968);
   const CX = num(params.cardX, 240), CY = num(params.cardY, 410);
-  const TOP = num(params.top, 72), BOTTOM = num(params.bottom, 1080), SPEED = 6500;
-  const PITCH = 56, CELL = 48, COLS = Math.ceil(1920 / PITCH), X0 = Math.round((1920 - COLS * PITCH) / 2) + (PITCH - CELL) / 2;
+  const TOP = num(params.top, 72), BOTTOM = num(params.bottom, H), SPEED = 6500;
+  const PITCH = 56, CELL = 48, COLS = Math.ceil(W / PITCH), X0 = Math.round((W - COLS * PITCH) / 2) + (PITCH - CELL) / 2;
   const ROWS = Math.ceil((BOTTOM - TOP) / PITCH), Y0 = TOP + (PITCH - CELL) / 2;
   const PALETTE = [0, 1, 2, 3, 4].map((i) => C(`--c-tile${i}`));
   const plate = root.querySelector("#tw-plate");

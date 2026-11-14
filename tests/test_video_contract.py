@@ -128,8 +128,15 @@ def test_removed_scene_field_message_points_at_composition():
 
 def test_the_library_registers_the_shipped_modules():
     assert video_contract.available_designs(REPO_ROOT) == ['default', 'github', 'producthunt']
-    # portrait-3x4 has only a .json; portrait.md documents both portrait canvases.
-    assert video_contract.available_layouts(REPO_ROOT) == ['portrait', 'portrait-3x4', 'presenter', 'stage']
+    # 3:4 portrait variants share their 9:16 sibling doc (portrait.md / portrait-presenter.md).
+    assert video_contract.available_layouts(REPO_ROOT) == [
+        'landscape',
+        'landscape-presenter',
+        'portrait',
+        'portrait-3x4',
+        'portrait-3x4-presenter',
+        'portrait-presenter',
+    ]
     assert video_contract.available_templates(REPO_ROOT) == ['github-trending']
 
 
@@ -140,11 +147,24 @@ def test_a_layout_without_its_own_or_shared_doc_is_not_registered(tmp_path: Path
     (layouts / 'orphan-family.md').write_text('# nope', encoding='utf-8')
     assert video_contract.available_layouts(tmp_path) == []
 
+    # portrait.md only backs portrait and portrait-3x4 — not undocumented
+    # portrait-orphan.json or portrait-3x4-presenter.json without portrait-presenter.md.
+    (layouts / 'portrait.md').write_text('# portrait', encoding='utf-8')
+    (layouts / 'portrait-3x4.json').write_text('{}', encoding='utf-8')
+    (layouts / 'portrait-orphan.json').write_text('{}', encoding='utf-8')
+    (layouts / 'portrait-3x4-presenter.json').write_text('{}', encoding='utf-8')
+    assert video_contract.available_layouts(tmp_path) == ['portrait-3x4']
+
+    (layouts / 'portrait-presenter.md').write_text('# portrait-presenter', encoding='utf-8')
+    assert video_contract.available_layouts(tmp_path) == ['portrait-3x4', 'portrait-3x4-presenter']
+
 
 def test_unknown_names_are_rejected_with_the_available_ones():
     problem = video_contract.layout_contract_problem(REPO_ROOT, 'portrait-3:4')
-    assert 'not an available layout' in problem and 'presenter' in problem
-    assert video_contract.layout_contract_problem(REPO_ROOT, 'presenter') is None
+    assert 'not an available layout' in problem and 'landscape-presenter' in problem
+    assert video_contract.layout_contract_problem(REPO_ROOT, 'landscape-presenter') is None
+    assert video_contract.layout_contract_problem(REPO_ROOT, 'portrait-presenter') is None
+    assert video_contract.layout_contract_problem(REPO_ROOT, 'portrait-3x4-presenter') is None
     assert video_contract.template_contract_problem(REPO_ROOT, None) is None
     assert video_contract.template_contract_problem(REPO_ROOT, 'github-trending') is None
     assert "got 'nope'" in video_contract.template_contract_problem(REPO_ROOT, 'nope')
@@ -162,8 +182,8 @@ def test_the_effective_resource_follows_the_copy_then_refresh_policy(tmp_path: P
     skill = tmp_path / 'skill'
     ws = tmp_path / 'ws'
     (skill / 'modules' / 'layouts').mkdir(parents=True)
-    (skill / 'modules' / 'layouts' / 'presenter.json').write_text('lib', encoding='utf-8')
-    relpath = 'modules/layouts/presenter.json'
+    (skill / 'modules' / 'layouts' / 'landscape-presenter.json').write_text('lib', encoding='utf-8')
+    relpath = 'modules/layouts/landscape-presenter.json'
     assert video_contract.effective_resource(skill, ws, relpath, refresh=False) == skill / relpath
 
     (ws / 'modules' / 'layouts').mkdir(parents=True)
@@ -189,11 +209,11 @@ def test_every_shipped_layout_satisfies_the_contract():
 
 
 def test_a_layout_file_must_carry_its_own_name_regions_and_caption(tmp_path: Path):
-    good = {'layout': 'stage', 'canvas': {'width': 1920, 'height': 1080},
+    good = {'layout': 'landscape', 'canvas': {'width': 1920, 'height': 1080},
             'regions': [{'id': 'main'}], 'caption': {'width_px': 100, 'font_size_px': 40, 'max_lines': 1}}
-    path = tmp_path / 'stage.json'
+    path = tmp_path / 'landscape.json'
     path.write_text(json.dumps(good), encoding='utf-8')
-    assert video_contract.layout_file_problem(path, 'landscape', 'stage') is None
+    assert video_contract.layout_file_problem(path, 'landscape', 'landscape') is None
 
     for broken, expected in (
         ({**good, 'layout': 'other'}, 'declares layout'),
@@ -202,14 +222,14 @@ def test_a_layout_file_must_carry_its_own_name_regions_and_caption(tmp_path: Pat
         ({**good, 'caption': {'width_px': 0, 'font_size_px': 40, 'max_lines': 1}}, 'must be positive'),
     ):
         path.write_text(json.dumps(broken), encoding='utf-8')
-        problem = video_contract.layout_file_problem(path, 'landscape', 'stage')
+        problem = video_contract.layout_file_problem(path, 'landscape', 'landscape')
         assert expected in problem, problem
 
 
 def test_an_unreadable_layout_file_is_reported(tmp_path: Path):
-    path = tmp_path / 'stage.json'
+    path = tmp_path / 'landscape.json'
     path.write_text('{not json', encoding='utf-8')
-    assert 'cannot be read' in video_contract.layout_file_problem(path, 'landscape', 'stage')
+    assert 'cannot be read' in video_contract.layout_file_problem(path, 'landscape', 'landscape')
 
 
 # --- narration offsets --------------------------------------------------------------

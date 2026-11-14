@@ -32,10 +32,12 @@ def visual_scene(scene_id: str, begin: float, end: float, layout: dict) -> dict:
     }
 
 
-def scene_config(path: Path, *scenes: dict, total_s: float = 6.0) -> Path:
+def scene_config(
+    path: Path, *scenes: dict, total_s: float = 6.0, canvas: dict | None = None,
+) -> Path:
     write_json(path, {
         'version': 1,
-        'canvas': {'width': 1920, 'height': 1080},
+        'canvas': canvas or {'width': 1920, 'height': 1080},
         'total_s': total_s,
         'scenes': list(scenes),
     })
@@ -52,8 +54,8 @@ def one_word_transcript(text: str, begin: int = 0, end: int = 6000) -> list:
 def test_each_visual_scene_budget_applies_without_reordering_text(tmp_path: Path):
     text = '宽场景先展示完整内容，再切换窄场景继续说明。'
     config = scene_config(tmp_path / 'scene-config.json',
-        visual_scene('wide', 0, 3, layout_spec('stage')),
-        visual_scene('narrow', 3, 6, layout_spec('presenter')),
+        visual_scene('wide', 0, 3, layout_spec('landscape')),
+        visual_scene('narrow', 3, 6, layout_spec('landscape-presenter')),
     )
 
     proc, result, units, timeline = make_workspace(
@@ -65,7 +67,7 @@ def test_each_visual_scene_budget_applies_without_reordering_text(tmp_path: Path
     # 切点恰好落在「，」上：它成为某个单元的结尾，按字幕惯例省略尾逗号（与
     # 单 layout 入口一致）；除此之外的字符一个不丢、顺序不变。
     assert [c for c in joined if c not in '，。'] == [c for c in text if c not in '，。']
-    assert [item['layout'] for item in units['caption_segments']] == ['stage', 'presenter']
+    assert [item['layout'] for item in units['caption_segments']] == ['landscape', 'landscape-presenter']
     assert [item['begin_s'] for item in units['caption_segments']] == [0, 3]
     for unit in units['units']:
         active = [s for s in units['caption_segments']
@@ -80,8 +82,8 @@ def test_each_visual_scene_budget_applies_without_reordering_text(tmp_path: Path
 def test_atom_and_version_crossing_a_boundary_use_the_whole_display_range(tmp_path: Path):
     text = '版本 5.4 在切换前后保持完整。'
     config = scene_config(tmp_path / 'scene-config.json',
-        visual_scene('wide', 0, 3, layout_spec('stage')),
-        visual_scene('narrow', 3, 6, layout_spec('presenter')),
+        visual_scene('wide', 0, 3, layout_spec('landscape')),
+        visual_scene('narrow', 3, 6, layout_spec('landscape-presenter')),
     )
 
     proc, _, units, _ = make_workspace(
@@ -117,7 +119,7 @@ def test_an_unfittable_token_fails_instead_of_being_broken(tmp_path: Path):
 
 def test_visual_coverage_includes_silent_head_and_tail_without_extra_units(tmp_path: Path):
     text = '只有中间有旁白。'
-    config = scene_config(tmp_path / 'scene-config.json', visual_scene('all', 0, 6, layout_spec('stage')))
+    config = scene_config(tmp_path / 'scene-config.json', visual_scene('all', 0, 6, layout_spec('landscape')))
 
     proc, _, units, _ = make_workspace(
         tmp_path, text, {}, one_word_transcript(text, begin=1000, end=5000), scene_config=config,
@@ -133,8 +135,8 @@ def test_visual_coverage_includes_silent_head_and_tail_without_extra_units(tmp_p
 def test_subtitle_regeneration_does_not_touch_phase_7_timeline(tmp_path: Path):
     text = '先对齐时间轴，再按视觉场景生成字幕。'
     config = scene_config(tmp_path / 'scene-config.json',
-        visual_scene('a', 0, 3, layout_spec('presenter')),
-        visual_scene('b', 3, 6, layout_spec('stage')),
+        visual_scene('a', 0, 3, layout_spec('landscape-presenter')),
+        visual_scene('b', 3, 6, layout_spec('landscape')),
     )
 
     proc, _, units, timeline = make_workspace(
@@ -196,7 +198,7 @@ def test_three_scene_kinds_keep_scene_local_budgets_and_scene_ids(tmp_path: Path
         ('过切点后继续', 3100, 4200),
     ])
     config = scene_config(tmp_path / 'scene-config.json',
-        {**visual_scene('wide', 0, 3, layout_spec('stage')),
+        {**visual_scene('wide', 0, 3, layout_spec('landscape')),
          'template': {'name': 'github-trending', 'scene': 'project-cover'}},
         visual_scene('narrow', 3, 6, narrow),
     )
@@ -225,8 +227,8 @@ def test_short_units_merge_within_but_not_across_different_layout_cuts(tmp_path:
     ])
 
     different = scene_config(tmp_path / 'different.json',
-        visual_scene('a', 0, 3, layout_spec('stage')),
-        visual_scene('b', 3, 6, layout_spec('presenter')),
+        visual_scene('a', 0, 3, layout_spec('landscape')),
+        visual_scene('b', 3, 6, layout_spec('landscape-presenter')),
     )
     proc, result, units, _ = make_workspace(
         tmp_path, text, {}, transcript, scene_config=different,
@@ -240,8 +242,8 @@ def test_short_units_merge_within_but_not_across_different_layout_cuts(tmp_path:
     assert any('layout cut point' in w for w in result['summary']['warnings'])
 
     same = scene_config(tmp_path / 'same.json',
-        visual_scene('a', 0, 3, layout_spec('stage')),
-        visual_scene('b', 3, 6, layout_spec('stage')),
+        visual_scene('a', 0, 3, layout_spec('landscape')),
+        visual_scene('b', 3, 6, layout_spec('landscape')),
     )
     proc, result, units, _ = make_workspace(
         tmp_path, text, {}, transcript, scene_config=same,
@@ -259,8 +261,8 @@ def test_latin_token_crossing_a_cut_fails_with_locatable_bounds(tmp_path: Path):
         ('切换到', 1000, 2900), ('v2', 2900, 3100), ('版本继续', 3100, 4000),
     ])
     config = scene_config(tmp_path / 'scene-config.json',
-        visual_scene('wide', 0, 3, layout_spec('stage')),
-        visual_scene('narrow', 3, 6, layout_spec('presenter')),
+        visual_scene('wide', 0, 3, layout_spec('landscape')),
+        visual_scene('narrow', 3, 6, layout_spec('landscape-presenter')),
     )
 
     proc, result, units, _ = make_workspace(tmp_path, text, {}, transcript, scene_config=config)
@@ -279,8 +281,8 @@ def test_fallback_units_carry_scene_id(tmp_path: Path):
         ('正常', 1000, 1600), ('朗读的', 1600, 2200), ('内容', 2200, 2600), ('干扰词', 2600, 3000),
     ])
     config = scene_config(tmp_path / 'scene-config.json',
-        visual_scene('a', 0, 3, layout_spec('stage')),
-        visual_scene('b', 3, 6, layout_spec('presenter')),
+        visual_scene('a', 0, 3, layout_spec('landscape')),
+        visual_scene('b', 3, 6, layout_spec('landscape-presenter')),
     )
 
     proc, result, units, _ = make_workspace(tmp_path, text, {}, transcript, scene_config=config)
@@ -295,8 +297,8 @@ def test_silent_scenes_at_head_and_tail_keep_caption_coverage(tmp_path: Path):
     text = '只有中间一场有旁白。'
     transcript = one_word_transcript(text, begin=2500, end=3500)
     config = scene_config(tmp_path / 'scene-config.json',
-        visual_scene('head', 0, 2, layout_spec('stage')),
-        visual_scene('mid', 2, 4, layout_spec('presenter')),
+        visual_scene('head', 0, 2, layout_spec('landscape')),
+        visual_scene('mid', 2, 4, layout_spec('landscape-presenter')),
         visual_scene('tail', 4, 6, free_layout()),
     )
 
@@ -316,8 +318,8 @@ def test_non_tail_merge_keeps_following_units_scene_id(tmp_path: Path):
         ('第三句终于足够长了一些', 3100, 3900),
     ])
     config = scene_config(tmp_path / 'scene-config.json',
-        visual_scene('a', 0, 3, layout_spec('stage')),
-        visual_scene('b', 3, 6, layout_spec('stage')),
+        visual_scene('a', 0, 3, layout_spec('landscape')),
+        visual_scene('b', 3, 6, layout_spec('landscape')),
     )
 
     proc, result, units, _ = make_workspace(tmp_path, text, {}, transcript, scene_config=config)
@@ -338,9 +340,9 @@ def test_empty_middle_scene_is_still_a_layout_cut_barrier(tmp_path: Path):
         ('下游', 4100, 4350), ('起步', 4350, 4550),
     ])
     config = scene_config(tmp_path / 'scene-config.json',
-        visual_scene('a', 0, 3, layout_spec('stage')),
-        visual_scene('empty_mid', 3, 4, layout_spec('presenter')),
-        visual_scene('c', 4, 6, layout_spec('stage')),
+        visual_scene('a', 0, 3, layout_spec('landscape')),
+        visual_scene('empty_mid', 3, 4, layout_spec('landscape-presenter')),
+        visual_scene('c', 4, 6, layout_spec('landscape')),
     )
 
     proc, result, units, _ = make_workspace(tmp_path, text, {}, transcript, scene_config=config)
@@ -361,8 +363,8 @@ def test_interior_punctuation_is_preserved_verbatim(tmp_path: Path):
         ('切点后再继续', 3100, 3900),
     ])
     config = scene_config(tmp_path / 'scene-config.json',
-        visual_scene('a', 0, 3, layout_spec('stage')),
-        visual_scene('b', 3, 6, layout_spec('presenter')),
+        visual_scene('a', 0, 3, layout_spec('landscape')),
+        visual_scene('b', 3, 6, layout_spec('landscape-presenter')),
     )
 
     proc, _, units, _ = make_workspace(tmp_path, text, {}, transcript, scene_config=config)
@@ -372,3 +374,42 @@ def test_interior_punctuation_is_preserved_verbatim(tmp_path: Path):
         ('宽场景里，逗号留在中间', 'a'),  # 中间的「，」逐字保留，仅结尾「，」省略
         ('切点后再继续', 'b'),
     ]
+
+
+@pytest.mark.parametrize(
+    'orientation, canvas, stage_preset, presenter_preset, bar_y, font_px',
+    [
+        ('portrait', {'width': 1080, 'height': 1920}, 'portrait', 'portrait-presenter', 1776, 38),
+        ('portrait-3:4', {'width': 1080, 'height': 1440}, 'portrait-3x4', 'portrait-3x4-presenter', 1296, 36),
+    ],
+)
+def test_portrait_presenter_and_portrait_stage_emit_per_scene_bar_and_two_line_budgets(
+    tmp_path: Path, orientation: str, canvas: dict, stage_preset: str, presenter_preset: str,
+    bar_y: int, font_px: int,
+):
+    text = '竖屏开场由主持人先做两行讲解介绍，切到纯竖屏舞台后继续展开核心内容。'
+    transcript = words_transcript([
+        ('竖屏开场由主持人先做两行讲解介绍，', 400, 2800),
+        ('切到纯竖屏舞台后继续展开核心内容。', 3100, 5600),
+    ])
+    config = scene_config(
+        tmp_path / 'scene-config.json',
+        visual_scene('host_intro', 0, 3, layout_spec(presenter_preset)),
+        visual_scene('full_stage', 3, 6, layout_spec(stage_preset)),
+        canvas=canvas,
+    )
+
+    proc, _, units, _ = make_workspace(
+        tmp_path, text, {}, transcript, scene_config=config, orientation=orientation,
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    segments = units['caption_segments']
+    assert [s['layout'] for s in segments] == [presenter_preset, stage_preset]
+    assert segments[0]['caption'] == {'width_px': 600, 'font_size_px': font_px, 'max_lines': 2}
+    assert segments[0]['caption_rect'] == {'x': 70, 'y': bar_y, 'width': 600, 'height': 144}
+    assert segments[0]['caption_bar_rect'] == {'x': 0, 'y': bar_y, 'width': 1080, 'height': 144}
+    assert segments[1]['caption_bar_rect'] is None
+    for unit in units['units']:
+        spec = next(s['caption'] for s in segments if s['scene_id'] == unit['scene_id'])
+        assert len(unit['text']) <= int(spec['width_px'] / spec['font_size_px']) * spec['max_lines']

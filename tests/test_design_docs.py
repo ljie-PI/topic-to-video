@@ -24,7 +24,7 @@ def test_every_design_doc_yields_reading_and_ui_floors(tmp_path: Path, design: P
             sys.executable,
             str(SCRIPT),
             str(tmp_path),
-            '--layout', str(REPO_ROOT / 'modules' / 'layouts' / 'stage.json'),
+            '--layout', str(REPO_ROOT / 'modules' / 'layouts' / 'landscape.json'),
             '--design', str(design / f'{design.name}.md'),
             '--snapshots-from', str(snapshots),
         ],

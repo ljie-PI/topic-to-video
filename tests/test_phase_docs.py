@@ -843,15 +843,19 @@ def test_transitions_are_a_top_level_module_category_without_stale_paths():
     assert '本转场常驻挂在 0 秒' in tile_wipe
     assert '本组件常驻挂在 0 秒' not in tile_wipe
 
-    presenter = doc_text('modules/layouts/presenter.md')
-    stage = doc_text('modules/layouts/stage.md')
+    presenter = doc_text('modules/layouts/landscape-presenter.md')
+    landscape = doc_text('modules/layouts/landscape.md')
+    portrait_presenter = doc_text('modules/layouts/portrait-presenter.md')
     github = doc_text('modules/templates/github-trending/github-trending.md')
     composition = doc_text('references/delegation/composition/base-instructions.md')
     assert '采用转场时，常驻转场挂一次' in presenter
     assert '采用方格转场 `tile-wipe` 时' in presenter
-    assert '采用转场时，常驻转场挂一次' in stage
+    assert '采用转场时，常驻转场挂一次' in landscape
+    assert '采用转场时，常驻转场挂一次' in portrait_presenter
+    assert '采用方格转场 `tile-wipe` 时' in portrait_presenter
     assert '常驻组件和转场' not in presenter
-    assert '常驻组件和转场' not in stage
+    assert '常驻组件和转场' not in landscape
+    assert '常驻组件和转场' not in portrait_presenter
     assert '## 3. 组件与转场参数' in github
     assert '| 组件或转场 | 参数（`init` 的 `params`；HyperFrames 工程写在 `data-variable-values`） |' in github
     assert '哪些组件与转场、给组件与转场什么参数' in github

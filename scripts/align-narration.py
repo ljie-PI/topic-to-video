@@ -1214,10 +1214,12 @@ def public_caption_segments(segments: list[dict[str, Any]]) -> list[dict[str, An
     for segment in segments:
         layout = segment['layout_data']
         caption_region = scene_config.caption_region(layout)
+        bar_region = scene_config.caption_bar_region(layout)
         result.append({
             'scene_id': segment['scene_id'], 'begin_s': segment['begin_s'], 'end_s': segment['end_s'],
             'layout': segment['layout'], 'caption': dict(layout['caption']),
             'caption_rect': dict(caption_region['rect']) if isinstance(caption_region, dict) and isinstance(caption_region.get('rect'), dict) else None,
+            'caption_bar_rect': dict(bar_region['rect']) if isinstance(bar_region, dict) and isinstance(bar_region.get('rect'), dict) else None,
         })
     return result
 
