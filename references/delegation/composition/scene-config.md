@@ -52,7 +52,7 @@ composition agent 产出：它存脚本需要的数据（`scripts/scene_config.p
 | `id` | 非空字符串，同一 layout 内唯一。 |
 | `kind` | `content`（可自由放内容）或 `reserved`（只放指定组件）。 |
 | `rect` | `{x, y, width, height}`，全部为有限数值；`width` / `height` 为正，`x` / `y` 非负，且整个 rect 不超出 canvas。 |
-| `component` | `reserved` 区必填：明确该区域归属的组件（如 `caption-bar`、`jay`、`nav-bar`）。 |
+| `component` | `reserved` 区必填：明确该区域归属的组件（如 `caption-bar`、`presenter`、`nav-bar`）。 |
 
 ## 明确不要的东西
 
@@ -109,7 +109,7 @@ scene）。产物还带 `caption_segments`（各 scene 的显示区间与 captio
         "preset": "presenter",
         "regions": [
           {"id": "main", "kind": "content", "rect": {"x": 96, "y": 196, "width": 1048, "height": 788}},
-          {"id": "person", "kind": "reserved", "component": "jay", "rect": {"x": 1294, "y": 642, "width": 420, "height": 420}},
+          {"id": "person", "kind": "reserved", "component": "presenter", "rect": {"x": 1294, "y": 642, "width": 420, "height": 420}},
           {"id": "caption-text", "kind": "reserved", "component": "caption-bar", "rect": {"x": 96, "y": 1008, "width": 1166, "height": 72}}
         ],
         "caption": {"width_px": 1166, "font_size_px": 36, "max_lines": 1}

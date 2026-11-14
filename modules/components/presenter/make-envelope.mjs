@@ -1,6 +1,6 @@
-// Mouth data for Jay from a voice track: loudness 0–100, `fps` values a second (default 30).
+// Mouth data for presenter from a voice track: loudness 0–100, `fps` values a second (default 30).
 // usage: node make-envelope.mjs <voice file: wav / mp3 / m4a / mp4> [--fps 30] > envelope.json
-// Paste the array into window.VIDEO.jay.envelope (and set envelopeFps if not 30). Needs ffmpeg on PATH.
+// Paste the array into window.VIDEO.presenter.envelope (and set envelopeFps if not 30). Needs ffmpeg on PATH.
 import { spawnSync } from "node:child_process";
 
 const args = process.argv.slice(2);

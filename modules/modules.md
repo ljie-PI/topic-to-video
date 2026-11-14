@@ -14,7 +14,7 @@
 
 ## 模块初始化接口（唯一约定）
 
-六个已迁移模块（`caption-bar`、`nav-bar`、`tile-wipe`、`jay`、`trending-overview`、`project-cover`）用同一个显式初始化约定；后续新模块也沿用它，不另建平行接口。接口名称以本节为准。
+六个已迁移模块（`caption-bar`、`nav-bar`、`tile-wipe`、`presenter`、`trending-overview`、`project-cover`）用同一个显式初始化约定；后续新模块也沿用它，不另建平行接口。接口名称以本节为准。
 
 ```js
 // <模块名>.mjs
@@ -34,13 +34,13 @@ export function init(root, { params, data, duration, gsap }) { … }
 ```js
 {
   timeline,   // 必返：暂停的 GSAP timeline，位置按局部秒；调用方负责驱动 seek
-  ready,      // 可选：Promise，异步资产（如图层）就绪后 resolve；Jay 类模块用
+  ready,      // 可选：Promise，异步资产（如图层）就绪后 resolve；presenter 类模块用
   seek(t),    // 可选：在局部秒 t 自绘一帧；timeline seek 之外画面仍需更新的自绘模块用
   destroy(),  // 必返：拆除驱动（kill timeline 等），销毁/重挂不得残留
 }
 ```
 
-暂停的 timeline 不是唯一能力假设：纯 DOM tween 模块只返回 `timeline` + `destroy`；异步加载图层的 WebGL 自绘模块（Jay）另返回 `ready` / `seek(t)`，宿主在 hf-seek 时先 seek timeline 再调 `seek(t)` 并等待 `ready`。
+暂停的 timeline 不是唯一能力假设：纯 DOM tween 模块只返回 `timeline` + `destroy`；异步加载图层的 WebGL 自绘模块（`presenter`）另返回 `ready` / `seek(t)`，宿主在 hf-seek 时先 seek timeline 再调 `seek(t)` 并等待 `ready`。
 
 模块**不**做、也没有 HyperFrames 知识：不读 `window.__hyperframes`、不从 host 推断参数或时长、不向 `window.__timelines` 注册。厂商事件桥接（`hf-seek`、`buildReady` 等）属于使用模块的视频工程的 adapter，不是模块库接口。
 
@@ -86,7 +86,7 @@ layouts/
   portrait.md, portrait.json, portrait-3x4.json   布局：竖屏（1080×1920 与 1080×1440，一文档两画布，各一份区域定义 JSON）
 components/
   components.md                           组件总览和共同约定
-  jay/jay.md, jay.html, jay.mjs, images/   人物动作：组件和两张姿势图（已迁移到显式初始化）
+  presenter/presenter.md, presenter.html, presenter.mjs, images/   人物动作：组件和两张姿势图（已迁移到显式初始化）
   nav-bar/nav-bar.md, nav-bar.html, nav-bar.mjs   顶部界面条（已迁移到显式初始化）
   caption-bar/caption-bar.md, caption-bar.html, caption-bar.mjs   底部字幕条（已迁移）
 transitions/
@@ -117,7 +117,7 @@ templates/
 | 挂某个组件、写它的数据 | `components/<组件>/<组件>.md` |
 | 需要转场、写它的切点数据 | `transitions/transitions.md`，选定后再读 `transitions/<转场>/<转场>.md`（如 `transitions/tile-wipe/tile-wipe.md`） |
 | 已有画面构想，需要借用非常匹配的形态 / 动效建议 | 按需查 `patterns/<类>/<pattern>.md` 或 `motion.md`；查阅条件见 [composition 基础指令第四部分](../references/delegation/composition/base-instructions.md#四内容演绎与模板选择) |
-| 让人物做动作、配嘴型 | `components/jay/jay.md`，动作库逐个列出每个动作的样子 |
+| 让人物做动作、配嘴型 | `components/presenter/presenter.md`，动作库逐个列出每个动作的样子 |
 
 ## 分层
 
@@ -145,13 +145,13 @@ templates/
 4. **布局**：按 `layouts/<布局>.md` 的区域表和层级表排列挂载点。
 5. **组件、转场和场景**：
    - 把实际采用的组件、转场和场景的 `.html` 与 `.mjs` 一起复制到工程的 `compositions/`，文件名不变；
-   - 组件自带的图片按各自文档复制，例如 `components/jay/images/*` → 工程 `assets/jay/`；
+   - 组件自带的图片按各自文档复制，例如 `components/presenter/images/*` → 工程 `assets/presenter/`；
    - 挂载点的 `data-composition-id` 用组件名、转场名或场景名；
    - 在工程里按 [模块初始化接口](#模块初始化接口唯一约定) 接线：克隆模板、调 `init`、驱动 timeline；选用 HyperFrames 时由工程 adapter 接其核心协议。
 6. **数据**：
    - 写 `data/video-data.js`（`window.VIDEO = {…}`），在 `index.html` 的 `<head>` 里、GSAP 之后引入；adapter 从里面取各模块的 `data`；
    - 数据最好用脚本从字幕和配音生成；
-   - 用到 Jay 时，动作演法与嘴型 `envelope` 生成方式见 `components/jay/jay.md`。
+   - 用到 `presenter` 时，动作演法与嘴型 `envelope` 生成方式见 `components/presenter/presenter.md`。
 7. **检查**：
    - `npx hyperframes check` 和 check-composition 都通过后再 `render`，`check` 的错误都要修掉；
    - 只有人直接操作时才用 `npx hyperframes preview` 给人看，确认后再渲染；委派场景下由 sub-agent 直接渲染。
@@ -169,19 +169,19 @@ window.VIDEO = {
   captions: [{ start, end, text }],                                  // caption-bar
   captionSegments: [{ scene_id, begin_s, end_s, layout, caption_rect, caption }], // 可选：scene 字幕布局
   cuts:     [{ at, label, title, emphasis, meta: [{ dot, strong, text }] }],   // tile-wipe
-  jay:      { acts, thoughts, typing, glances, envelopeFps, envelope,
-              placements: [{ begin_s, end_s, visible, x, y, size }] },          // jay；placements 可选
+  presenter: { acts, thoughts, typing, glances, envelopeFps, envelope,
+              placements: [{ begin_s, end_s, visible, x, y, size }] },          // presenter；placements 可选
   trending: { title, date, range, repos: [{ rank, owner, repo, desc, stars, readme, cue }] },  // github 模板的 trending-overview
 };
 ```
 
 每个组件、转场和场景都有一个 `data` 参数，可以改成读别的键名。
 
-视觉 scene 的常驻组件数据不从零编写：`subtitle-units.json` 的 `units[]` 以 `begin_s → start`、`end_s → end`、`text → text` 映射为 `captions[]`，`caption_segments[]` 原样映射为 `captionSegments[]`；`scene-config.json` 的每个 scene 以原起止时间映射为 `jay.placements[]`，regions 有人物区（`component` 为 `jay` 的 reserved 区）时为 `visible: true`，位置取该人物区 rect。完整映射见 `layouts/layouts.md` 和两个组件文档。
+视觉 scene 的常驻组件数据不从零编写：`subtitle-units.json` 的 `units[]` 以 `begin_s → start`、`end_s → end`、`text → text` 映射为 `captions[]`，`caption_segments[]` 原样映射为 `captionSegments[]`；`scene-config.json` 的每个 scene 以原起止时间映射为 `presenter.placements[]`，regions 有人物区（`component` 为 `presenter` 的 reserved 区）时为 `visible: true`，位置取该人物区 rect。完整映射见 `layouts/layouts.md` 和两个组件文档。
 
 ## 时间约定
 
-- 常驻组件（`nav-bar`、`caption-bar`、`jay`）和常驻转场（`tile-wipe`）挂在 0 秒、覆盖整片，**数据用视频秒**。
+- 常驻组件（`nav-bar`、`caption-bar`、`presenter`）和常驻转场（`tile-wipe`）挂在 0 秒、覆盖整片，**数据用视频秒**。
 - 场景挂在它开始的时间，**场景里的时间是场景秒**（相对场景的 `data-start`）；其他非零 `data-start` 的挂载也使用相对各自起点的局部秒。
 - 场景交接：`cuts[].at` = `tabs[].at` = 下一个场景的 `data-start`。新场景开头的 0.55 秒被转场盖着，场景里第一个元素放在 0.55 秒之后出现。
 - 所有时间点都取自配音：字幕的逐句时间，以及每句话的开始时间。

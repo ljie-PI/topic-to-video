@@ -679,7 +679,7 @@ class TestCompositionMaterialization:
         modules = ws / 'modules'
         assert (modules / 'modules.md').read_bytes() == (REPO_ROOT / 'modules' / 'modules.md').read_bytes()
         assert (modules / 'layouts' / 'presenter.json').is_file()
-        assert (modules / 'components' / 'jay' / 'jay.html').is_file()
+        assert (modules / 'components' / 'presenter' / 'presenter.html').is_file()
         delegation = ws / 'references' / 'delegation'
         assert (delegation / 'conventions.md').is_file()
         assert (delegation / 'composition' / 'base-instructions.md').is_file()
@@ -1140,7 +1140,7 @@ class TestDelegationDocs:
     @pytest.mark.parametrize('doc', [
         'modules/modules.md',
         'modules/templates/github/github.md',
-        'modules/components/jay/jay.md',
+        'modules/components/presenter/presenter.md',
     ])
     def test_example_docs_do_not_point_to_the_removed_handoff_reference(self, doc: str):
         text = (REPO_ROOT / doc).read_text(encoding='utf-8')

@@ -50,7 +50,7 @@ def element(scene_id: str, *, caption: bool = False, font_size: int = 30) -> dic
 def snapshot(scene_id: str, time: float, *, caption_font: int | None = None) -> dict:
     captions = caption_font is not None
     return {
-        'scene_id': scene_id, 'time': time, 'fontsStatus': 'loaded', 'jayVisible': scene_id == 'b',
+        'scene_id': scene_id, 'time': time, 'fontsStatus': 'loaded', 'presenterVisible': scene_id == 'b',
         'elements': [element(scene_id), *([element(scene_id, caption=True, font_size=caption_font)] if captions else [])],
         'captionTexts': ['字幕'] if captions else [],
         'captionDetails': [{
@@ -218,7 +218,7 @@ def mixed_workspace(tmp_path: Path, snapshots: list[dict]) -> tuple[Path, Path]:
     return ws, path
 
 
-def mixed_snapshot(scene_id: str, time: float, *, jay: bool) -> dict:
+def mixed_snapshot(scene_id: str, time: float, *, presenter: bool) -> dict:
     item = snapshot(scene_id, time, caption_font=36)
     if scene_id == 'tpl':
         # presenter 的 content 区：side (1184,100,640x522)
@@ -228,7 +228,7 @@ def mixed_snapshot(scene_id: str, time: float, *, jay: bool) -> dict:
         item['elements'][0]['rect'] = {'x': 200, 'y': 120, 'width': 400, 'height': 100}
         item['elements'][1]['rect'] = {'x': 96, 'y': 930, 'width': 200, 'height': 40}
         item['captionDetails'][0]['rect'] = {'x': 96, 'y': 930, 'width': 200, 'height': 40}
-    item['jayVisible'] = jay
+    item['presenterVisible'] = presenter
     return item
 
 
@@ -240,8 +240,8 @@ def test_template_and_free_fallback_scenes_pass_together(tmp_path: Path):
     测试中运行。
     """
     ws, snapshots = mixed_workspace(tmp_path, [
-        mixed_snapshot('tpl', 2, jay=True),
-        mixed_snapshot('free', 7, jay=False),
+        mixed_snapshot('tpl', 2, presenter=True),
+        mixed_snapshot('free', 7, presenter=False),
     ])
     units = tmp_path / 'units.json'
     write_json(units, {'units': [{'text': '字幕', 'begin_s': 0, 'end_s': 10}]})
@@ -258,8 +258,8 @@ def test_template_and_free_fallback_scenes_pass_together(tmp_path: Path):
 def test_hand_edited_subtitle_units_are_the_checked_truth(tmp_path: Path):
     """用户手改过的字幕文本与边界就是检查基准：按当前文件核对，不还原初稿。"""
     ws, snapshots_path = mixed_workspace(tmp_path, [
-        mixed_snapshot('tpl', 2, jay=True),
-        mixed_snapshot('free', 7, jay=False),
+        mixed_snapshot('tpl', 2, presenter=True),
+        mixed_snapshot('free', 7, presenter=False),
     ])
     snapshots = json.loads(snapshots_path.read_text(encoding='utf-8'))
     for snap in snapshots:
@@ -287,3 +287,22 @@ def test_hand_edited_subtitle_units_are_the_checked_truth(tmp_path: Path):
     mismatch = [f for f in result['findings'] if f['check'] == 'caption_mismatch']
     assert len(mismatch) == 2
     assert all('改过的字幕' in f['issue'] for f in mismatch)
+
+
+def test_presenter_visibility_mismatch_against_person_region_is_reported(tmp_path: Path):
+    ws, snapshots = mixed_workspace(tmp_path, [
+        mixed_snapshot('tpl', 2, presenter=False),
+        mixed_snapshot('free', 7, presenter=True),
+    ])
+    units = tmp_path / 'units.json'
+    write_json(units, {'units': [{'text': '字幕', 'begin_s': 0, 'end_s': 10}]})
+
+    proc, result = run(ws, snapshots, '--subtitle-units', str(units))
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert result['verdict'] == 'fail'
+    assert [(f['scene_id'], f['check'], f['issue']) for f in result['findings']] == [
+        ('tpl', 'presenter_component', 'visual scene layout has a presenter region but presenter is not visible'),
+        ('free', 'presenter_component', 'presenter is visible in a visual scene whose layout has no presenter region'),
+    ]
+

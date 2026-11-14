@@ -145,14 +145,14 @@ async ({ checks }) => {
     const captionDetails = elements
       .filter((el) => el.isCaption && el.ownText && el.text)
       .map((el) => ({ text: el.text, fontSize: el.fontSize, lineCount: el.lineCount, rect: el.rect }));
-    const jayStage = document.querySelector('#jay-stage');
-    const jayHost = document.querySelector('#jay, [data-composition-id="jay"]');
-    const jayVisible = Boolean(jayStage ? visible(jayStage) : (jayHost && visible(jayHost)));
+    const presenterStage = document.querySelector('#presenter-stage');
+    const presenterHost = document.querySelector('#presenter, [data-composition-id="presenter"]');
+    const presenterVisible = Boolean(presenterStage ? visible(presenterStage) : (presenterHost && visible(presenterHost)));
     return {
       time,
       sought,
       fontsStatus: document.fonts ? document.fonts.status : 'loaded',
-      jayVisible,
+      presenterVisible,
       elements,
       captionTexts,
       captionDetails,

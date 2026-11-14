@@ -73,8 +73,8 @@ CAPTION_BAR = """
   </div>
 """
 
-JAY = """
-  <div id="jay" style="position:absolute; left:1294px; top:642px; width:420px; height:420px;
+PRESENTER = """
+  <div id="presenter" style="position:absolute; left:1294px; top:642px; width:420px; height:420px;
        background:#cccccc;"></div>
 """
 
@@ -211,8 +211,8 @@ def test_clean_fixture_passes(tmp_path: Path):
     comp = write_composition(
         tmp_path,
         [
-            scene('s1', 0.0, 10.0, CLEAN_SCENE + CAPTION_BAR + JAY),
-            scene('s2', 10.0, 20.0, CLEAN_SCENE + CAPTION_BAR + JAY),
+            scene('s1', 0.0, 10.0, CLEAN_SCENE + CAPTION_BAR + PRESENTER),
+            scene('s2', 10.0, 20.0, CLEAN_SCENE + CAPTION_BAR + PRESENTER),
         ],
     )
     proc, result = run_check(tmp_path, comp, units=SUBTITLE_UNITS, timeline=TIMELINE)

@@ -592,9 +592,9 @@ def test_phase_1_says_nothing_about_layout():
     assert 'composition/scene-config.json' in phase_8
 
 
-def test_jay_generic_performance_and_github_specific_overlay():
-    jay = doc_text('modules/components/jay/jay.md')
-    generic = jay.split('### 通用演法')[1].split('### 动作库')[0]
+def test_presenter_generic_performance_and_github_specific_overlay():
+    presenter = doc_text('modules/components/presenter/presenter.md')
+    generic = presenter.split('### 通用演法')[1].split('### 动作库')[0]
     for cue in (
         '["wave", 3000]',
         'typing [切点 - 0.85, 切点 + 0.05]',
@@ -616,30 +616,30 @@ def test_jay_generic_performance_and_github_specific_overlay():
     ):
         assert semantic_action not in generic
 
-    action_library = jay.split('### 动作库（`acts`）')[1].split('### 常驻动作')[0]
+    action_library = presenter.split('### 动作库（`acts`）')[1].split('### 常驻动作')[0]
     # 动作库不再按已删除的语义节拍分类：四列，按“适合的时刻”选。
     assert {
         line for line in action_library.splitlines() if line.startswith('| 动作 |')
     } == {'| 动作 | 推荐时长 | 表现 | 适合的时刻 |'}
-    assert '对应 beat' not in jay
+    assert '对应 beat' not in presenter
     for action in ('`question`', '`idea`', '`think`', '`eureka`', '`shake`', '`nod-small`'):
         assert action in action_library
     assert '同一时间只做一个动作' in action_library
 
-    envelope = jay.split('### 嘴型数据（`envelope`）', 1)[1].split('## 限制', 1)[0]
-    assert 'node components/jay/make-envelope.mjs 配音.wav > envelope.json' in envelope
+    envelope = presenter.split('### 嘴型数据（`envelope`）', 1)[1].split('## 限制', 1)[0]
+    assert 'node components/presenter/make-envelope.mjs 配音.wav > envelope.json' in envelope
     assert (
-        'node modules/components/jay/make-envelope.mjs voice_clone/narration.mp3 '
-        '> composition/assets/jay-envelope.json'
+        'node modules/components/presenter/make-envelope.mjs voice_clone/narration.mp3 '
+        '> composition/assets/presenter-envelope.json'
     ) in envelope
-    assert 'VIDEO.jay.envelope' in envelope
+    assert 'VIDEO.presenter.envelope' in envelope
     assert 'envelopeFps' in envelope
     assert '不是新增的阶段产物门槛' in envelope
     assert '换了配音，就要重新生成 envelope，并且按新配音的时间重排剧本' in envelope
 
     github = doc_text('modules/templates/github/github.md')
     overlay = github.split('## 5. 人物怎么演')[1]
-    assert '先按 `components/jay/jay.md` 的通用演法' in overlay
+    assert '先按 `components/presenter/presenter.md` 的通用演法' in overlay
     assert '[cue, 1.0, "U"]' in overlay
     assert '[cue + 1.7, 1.0, "L"]' in overlay
     assert '["eureka", 2700]' in overlay
@@ -648,7 +648,7 @@ def test_jay_generic_performance_and_github_specific_overlay():
         assert generic_cue not in overlay
 
 
-def test_composition_requires_jay_for_presenter():
+def test_composition_requires_presenter_component_for_person_region():
     composition = doc_text('references/delegation/composition/base-instructions.md')
     layout_rules = composition.split('## 三、必须遵守各 scene 的 layout 区域')[1].split('## 四、', 1)[0]
     section4 = composition.split('## 四、内容演绎与模板选择', 1)[1].split('## 五、', 1)[0]
@@ -659,14 +659,14 @@ def test_composition_requires_jay_for_presenter():
     assert 'reserved 区域只放各自 `component` 声明的组件' in layout_rules
     assert 'scene 的 regions 有人物区' in layout_rules
     assert '唯一常驻实例' in layout_rules
-    assert '没有人物区的 scene 不强制显示 Jay' in layout_rules
+    assert '没有人物区的 scene 不强制显示 `presenter`' in layout_rules
     assert 'placements' in layout_rules
-    assert '`modules/components/jay/jay.md`' in layout_rules or '`jay.md`' in layout_rules
+    assert '`modules/components/presenter/presenter.md`' in layout_rules or '`presenter.md`' in layout_rules
     assert '有模板时再叠加模板的演法' in layout_rules
     assert 'make-envelope.mjs' not in composition
     assert '动作自己排' not in section4
     assert 'make-envelope.mjs' not in modules
-    assert 'components/jay/jay.md' in modules
+    assert 'components/presenter/presenter.md' in modules
     assert 'components.md' in handoff_template and '组件索引' in handoff_template and '按需读要挂载的组件文档' in handoff_template
     assert 'components.md' in phase_8 and '组件索引' in phase_8 and '按需读要挂载的组件文档' in phase_8
 
@@ -916,7 +916,7 @@ def test_scene_module_adoption_rule_is_unified_across_base_handoff_phase_and_ind
     components = doc_text('modules/components/components.md')
     assert '特别匹配' in components
     assert '自绘所需部件' in components
-    assert '不为了目录完整而挂 Jay/nav/转场' in components
+    assert '不为了目录完整而挂 presenter/nav/转场' in components
 
     patterns = doc_text('modules/patterns/patterns.md')
     assert '特别匹配' in patterns
