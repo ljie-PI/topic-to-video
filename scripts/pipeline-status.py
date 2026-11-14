@@ -696,6 +696,8 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
         ), None
     if not isinstance(data['fetch_materials'], bool):
         return CheckResult(STATUS_CORRUPT, 'field fetch_materials is not a boolean'), None
+    if 'bgm' in data and not isinstance(data['bgm'], bool):
+        return CheckResult(STATUS_CORRUPT, 'field bgm is not a boolean'), None
     try:
         validate_delegation(data)
     except ValueError as exc:
@@ -1178,11 +1180,16 @@ def _applies_fetch_or_paper(inputs: dict[str, Any]) -> bool:
     return video_contract.catalog_applies(inputs)
 
 
+def _applies_when_bgm(inputs: dict[str, Any]) -> bool:
+    return video_contract.bgm_applies(inputs)
+
+
 APPLICABILITY: dict[str, tuple[Callable[[dict[str, Any]], bool], bool]] = {
     'always': (_applies_always, True),
     'paper': (_applies_when_paper, False),
     'fetch': (_applies_when_fetch, True),
     'fetch_or_paper': (_applies_fetch_or_paper, True),
+    'bgm': (_applies_when_bgm, True),
 }
 
 PHASES: list[dict[str, Any]] = [
@@ -1267,13 +1274,21 @@ PHASES: list[dict[str, Any]] = [
         },
     },
     {
-        'id': '9-check-mix',
-        'title': '检查与混音',
-        'doc': 'references/phases/09-check-mix.md',
+        'id': '9-check',
+        'title': '成片检查',
+        'doc': 'references/phases/09-check.md',
         'applies': 'always',
         'products': {
-            'composition/renders/final_with_bgm.mp4': check_file_product,
             'qa/qa-report.json': check_qa_report,
+        },
+    },
+    {
+        'id': '10-mix',
+        'title': 'BGM 混音（可选）',
+        'doc': 'references/phases/10-mix.md',
+        'applies': 'bgm',
+        'products': {
+            'composition/renders/final_with_bgm.mp4': check_file_product,
         },
     },
 ]

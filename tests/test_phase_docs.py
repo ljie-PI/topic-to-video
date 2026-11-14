@@ -209,16 +209,18 @@ def test_login_gated_sources_are_harvestable_in_every_phase_that_filters_them():
 
 def test_restricted_sources_are_recorded_and_reported_at_delivery():
     harvest = doc_text('references/phases/04-material-harvest.md')
-    check_mix = doc_text('references/phases/09-check-mix.md')
+    phase_9 = doc_text('references/phases/09-check.md')
+    phase_10 = doc_text('references/phases/10-mix.md')
 
     assert 'search-notes.md' in harvest
     assert '登录墙' in harvest
 
-    assert 'search-notes.md' in check_mix
-    delivery = check_mix.split('#### 9.6')[1]
-    assert '--redo 4-material-harvest' in delivery
-    assert 'qa-report.json' in delivery
-    assert '不是阶段产物' in delivery
+    for doc, heading in ((phase_9, '#### 9.5'), (phase_10, '#### 10.2')):
+        assert 'search-notes.md' in doc
+        delivery = doc.split(heading)[1]
+        assert '--redo 4-material-harvest' in delivery
+        assert 'qa-report.json' in delivery
+        assert '不是阶段产物' in delivery
 
 
 def test_catalog_package_skips_videos_without_a_local_file():
@@ -559,7 +561,7 @@ def test_paper_key_figures_are_declared_and_checked_end_to_end():
     phase_5 = doc_text('references/phases/05-material-catalog.md')
     phase_6 = doc_text('references/phases/06-script-scene-plan.md')
     phase_8 = doc_text('references/phases/08-composition.md')
-    phase_9 = doc_text('references/phases/09-check-mix.md')
+    phase_9 = doc_text('references/phases/09-check.md')
     catalog_base = doc_text('references/delegation/catalog/base-instructions.md')
     script_base = doc_text('references/delegation/script/base-instructions.md')
     composition_base = doc_text('references/delegation/composition/base-instructions.md')
@@ -766,7 +768,7 @@ def test_design_selection_and_custom_contract_are_delegated_to_composition():
     phase_1 = doc_text('references/phases/01-gather-inputs.md')
     phase_7 = doc_text('references/phases/07-voice-subtitles.md')
     phase_8 = doc_text('references/phases/08-composition.md')
-    phase_9 = doc_text('references/phases/09-check-mix.md')
+    phase_9 = doc_text('references/phases/09-check.md')
     base = doc_text('references/delegation/composition/base-instructions.md')
     handoff = doc_text('references/delegation/composition/handoff-template.md')
     designs = doc_text('modules/designs/designs.md')

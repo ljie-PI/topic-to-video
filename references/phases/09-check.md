@@ -1,23 +1,20 @@
-# Phase 9 — 检查与混音
+# Phase 9 — 成片检查
 
 ## 输入
 
 - Phase 8 产出的 `composition/renders/final.mp4`；
 - `composition/design.json`（Phase 8 落盘的 preset / custom 全片外观基线，QA 不看 `inputs.json` 猜设计）；
 - `composition/scene-config.json`（最终视觉场景机器配置与全片秒；本阶段 QA 的 scene_id、抽帧和反馈范围以它为准；旧单 layout 工程才沿用 `transcribe/timeline.json` 的可选叙事 scenes）；
-- `inputs.json`（`qa_level`、BGM 选择）；
-- `search-notes.md`（可选，Phase 4 记录的来源限制，用于交付说明）。
+- `inputs.json`（`qa_level`、可选布尔开关 `bgm`）；
+- `search-notes.md`（可选，Phase 4 记录的来源限制；`bgm = false` 跳过 Phase 10 直接在本阶段交付时用于说明）。
 
 ## 输出
 
-- `qa/`（contact sheet 拼图 + `qa/qa-report.json`）；
-- `composition/renders/final_with_bgm.mp4`（解说 + 低音量背景乐的最终成片）。
+- `qa/`（contact sheet 拼图 `qa/sheet_NNN.jpg` + `qa/qa-report.json`）。
 
 ## 完成判据
 
-- `qa/qa-report.json` 存在且含 `findings` + `verdict` 两部分（修复轮结束后 verdict 为 `pass` 或 `handed_off`）；
-- `composition/renders/final_with_bgm.mp4` 存在且非空；
-- 解说音量不变，BGM 按默认线性增益 `0.03` 垫在底下。
+- `qa/qa-report.json` 存在且只含 `findings` + `verdict` 两部分（修复轮结束后 `verdict` 为 `pass` 或 `handed_off`）；状态脚本校验通过后才将本阶段标为完成并放行下游。
 
 ## 执行后自检
 
@@ -31,15 +28,21 @@
 
 ## 下一步
 
-无——这是最后一个 phase。把成片与 contact sheet 交给用户过目。
+运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`：
+
+- 默认（`inputs.json` 的 `bgm` 缺省或为 `true`）进入 Phase 10（`10-mix`，BGM 混音与交付），混入低音量背景乐后统一交付；
+- `inputs.json` 的 `bgm = false` 时 Phase 10 跳过（`next_phase` 为 `null`），`composition/renders/final.mp4` 即最终交付文件——直接把 `final.mp4` 与 contact sheet 交给用户过目，并按 9.5 汇总可选的素材限制。
 
 ## 护栏
 
-无
+- **全程不做全片密集抽帧。** 只用 `scripts/check-render.py` 做确定性容器 / 黑屏 / 冻结检测，再用 `scripts/make-contact-sheet.py` 按最终视觉 scene 抽帧拼成 2×2 sheet 供视觉检查。
+  ↳ DO NOT：对整支视频逐秒抽帧并逐张喂给视觉模型。
+- **修复轮改过画面就必须重跑 `check-composition` 并重新渲染 `final.mp4`，且最多修复 2 轮。** 状态脚本不比对源文件修改时间；跳过重跑检查或重新渲染会让报告与成片停留在旧画面。
+  ↳ DO NOT：只改源文件却不重新渲染就重跑 `check-render.py`，或在两轮未收敛后无限重试、把未解决的问题伪造成 `pass`。
 
 ---
 
-渲染完成后，QA 分确定性检查、vision 检查、修复轮三步，全程**不做全片抽帧**；最后混入 BGM。检查集由 `inputs.json` 的 `qa_level` 决定（缺省视为 `standard`）：
+渲染完成后，成片 QA 分确定性检查、contact sheet 拼图、vision 检查、修复轮四步，全程**不做全片抽帧**。检查集由 `inputs.json` 的 `qa_level` 决定（缺省视为 `standard`）：
 
 | 档位 | 渲染前检查（Phase 8） | 确定性检查 | contact sheet | vision 检查 |
 | --- | --- | --- | --- | --- |
@@ -105,26 +108,16 @@ python3 scripts/make-contact-sheet.py \
 所有 finding 统一为 `{"scene_id": str, "check": str, "issue": str, "time_s": float|null, "frame": str|null}`。确定性检查（check-render / check-composition）的 finding 原样拷进 qa-report；vision 检查的 finding 由主 agent 按同样形状写。`time_s` 填检测或快照时刻，没有对应时刻填 `null`；vision finding 的 `frame` 填相关 sheet 路径，确定性检查的 `frame` 为 `null`。`verdict` 为 `fail` 时进入修复轮，规则：
 
 1. 把 findings 反馈给 composition agent（Phase 8 委派约定），**只改受影响的 scene**；
-2. 修复若改了 composition 的源文件或视觉契约（`design.json`、`scene-config.json`、`index.html`、`compositions/`、`assets/`、`storyboard.md`），必须重跑 check-composition 用 `--output` 保存新报告，并**重新渲染** `final.mp4`——只重跑 check-render 会让报告和渲染比源文件旧，`pipeline-status` 会回退 Phase 8、卡住 Phase 9；然后确定性检查全片重跑；vision 只看受影响视觉 scene 的帧（单独抽帧看即可，不必重拼整组 sheet）；
+2. 修复若改了 composition 的源文件或视觉契约（`design.json`、`scene-config.json`、`index.html`、`compositions/`、`assets/`、`storyboard.md`），必须重跑 check-composition 用 `--output` 保存新报告，并**重新渲染** `final.mp4`（状态脚本不比对文件修改时间，跳过重跑检查或重新渲染会让报告与成片停留在旧画面）；然后确定性检查全片重跑；vision 只看受影响视觉 scene 的帧（单独抽帧看即可，不必重拼整组 sheet）；
 3. **最多 2 轮**；finding 数不再下降就停止，把报告标为 `handed_off` 连同 sheet 一起交还用户定夺。
 
-修复轮结束（verdict 为 `pass`，或 `handed_off` 交给用户）后 `pipeline-status` 才会放行进 BGM 混音。
+修复轮结束（`verdict` 为 `pass`，或 `handed_off` 交给用户）并写入 `qa/qa-report.json` 后，`pipeline-status` 才会将 `9-check` 标为完成并放行进入 Phase 10（`10-mix` BGM 混音；`bgm = false` 时跳过 Phase 10 直接结束）。
 
-#### 9.5 — BGM 混音（逻辑不变）
+#### 9.5 — 无 BGM（`bgm = false`）直接交付时的素材限制说明
 
-```bash
-python3 scripts/mix-bgm.py \
-  --video {work_dir}/{topic_name}/composition/renders/final.mp4 \
-  --output {work_dir}/{topic_name}/composition/renders/final_with_bgm.mp4
-```
+启用 BGM（默认）时进入 Phase 10 混音后再统一交付。若 `inputs.json` 显式设 `bgm = false`，Phase 10 跳过，直接在本阶段把 `composition/renders/final.mp4` 与 contact sheet 交给用户；此时若工作区存在 `search-notes.md`（Phase 4 写的可选记录，不是阶段产物，缺失就不提），一并说明素材阶段留下的限制：
 
-混音脚本逻辑保持不变：一次 ffmpeg pass 循环 `--bgm`（默认 `resources/bgm.mp3`，24 秒可循环片段）填满整个视频时长、以 `--bgm-volume`（默认线性增益 `0.03`）垫在解说底下、`-c:v copy` 不重编码视频流。如需换曲或调音量用 `--bgm` / `--bgm-volume`。**BGM 混的是修复轮之后的 `final.mp4`**——QA 通过后才生成最终交付文件。
-
-#### 9.6 — 交付时说明素材限制
-
-把成片与 contact sheet 交给用户时，一并说明素材阶段留下的限制。信息来自工作区的 `search-notes.md`（Phase 4 写的可选记录，不是阶段产物，缺失就不提）：
-
-- 哪些来源未被获取（需登录 / 地区限制 / 反机器人验证 / 已下线），以及用什幺替代或是否接受 B-roll 少一些。
+- 哪些来源未被获取（需登录 / 地区限制 / 反机器人验证 / 已下线），以及用什么替代或是否接受 B-roll 少一些。
 - 只能匿名抓到的站点：说明共享 profile 里已有登录态时会尽量用上，但登录不保证绕过平台其他限制。
 - 用户希望补抓时的入口：在 `{work_dir}/chrome_profile` 里登录后要求重跑 Phase 4（按 `references/pipeline-control.md` 登记 `--redo 4-material-harvest`），再按依赖让下游重做。
 
