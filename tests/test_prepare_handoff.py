@@ -322,7 +322,7 @@ class TestHandoffContent:
 class TestRequiredReferences:
     def test_script_references_are_just_the_base_instructions(self, tmp_path: Path):
         # 模板是 Phase 8 的画面选择：即使 inputs.json 里已经有 template，script 也不读它。
-        ws = make_workspace(tmp_path, template='github')
+        ws = make_workspace(tmp_path, template='github-trending')
         prepare(ws, 'script')
 
         body = handoff_sections((ws / 'script-handoff.md').read_text(encoding='utf-8'))['Required References']
@@ -495,7 +495,7 @@ class TestHandoffContract:
     def test_writes_handoff_and_dispatch_prompt_with_only_products_missing(
         self, tmp_path: Path, step: str, products: set[str],
     ):
-        ws = make_workspace(tmp_path, step, template='github' if step != 'catalog' else None)
+        ws = make_workspace(tmp_path, step, template='github-trending' if step != 'catalog' else None)
 
         result = prepare(ws, step)
 
@@ -593,7 +593,7 @@ class TestCompositionHandoff:
         assert 'template 无' not in inputs and 'template 未选择' not in inputs  # 无全局模板决策
         assert 'layout presenter' not in inputs
 
-    @pytest.mark.parametrize('template', ['github', None], ids=['selected-template', 'no-template'])
+    @pytest.mark.parametrize('template', ['github-trending', None], ids=['selected-template', 'no-template'])
     def test_required_references_follow_the_overlay_order(self, tmp_path: Path, template: str | None):
         ws = make_workspace(tmp_path, 'composition', template=template, design='producthunt', layout='presenter', orientation='landscape')
         prepare(ws, 'composition')
@@ -636,7 +636,7 @@ class TestCompositionHandoff:
             for item in items
         )
         # 模板按场景借用：不预选任何具体模板文档。
-        assert 'modules/templates/github' not in body
+        assert 'modules/templates/github-trending' not in body
 
     def test_handoff_orders_selection_from_user_requests_to_special_match_to_on_the_spot_generation(
         self, tmp_path: Path,
@@ -706,7 +706,7 @@ class TestCompositionMaterialization:
         assert json.loads(copy.read_text(encoding='utf-8'))['canvas'] == {'width': 1920, 'height': 1080}
 
     def test_commands_use_the_scene_config_pipeline_entry(self, tmp_path: Path):
-        ws = make_workspace(tmp_path, 'composition', template='github', layout='stage')
+        ws = make_workspace(tmp_path, 'composition', template='github-trending', layout='stage')
         write(ws / 'composition/scene-config.json', json.dumps({
             'version': 1,
             'canvas': {'width': 1920, 'height': 1080},
@@ -719,9 +719,9 @@ class TestCompositionMaterialization:
         assert '--scene-config' in (ws / 'composition-handoff.md').read_text(encoding='utf-8')
 
     def test_legacy_template_layout_combos_are_not_validated(self, tmp_path: Path):
-        """旧全局 template/layout 组合不再是门槛：竖屏项目带着 github 模板名也能
+        """旧全局 template/layout 组合不再是门槛：竖屏项目带着 github-trending 模板名也能
         生成 handoff——模板与布局由 agent 逐场景决定。"""
-        ws = make_workspace(tmp_path, 'composition', template='github', layout='portrait', orientation='portrait')
+        ws = make_workspace(tmp_path, 'composition', template='github-trending', layout='portrait', orientation='portrait')
 
         prepare(ws, 'composition')
 
@@ -1139,7 +1139,7 @@ class TestDelegationDocs:
 
     @pytest.mark.parametrize('doc', [
         'modules/modules.md',
-        'modules/templates/github/github.md',
+        'modules/templates/github-trending/github-trending.md',
         'modules/components/presenter/presenter.md',
     ])
     def test_example_docs_do_not_point_to_the_removed_handoff_reference(self, doc: str):

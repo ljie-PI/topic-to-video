@@ -120,9 +120,9 @@ def test_catalog_rejects_persisted_absolute_paths(tmp_path: Path, kind: str, fie
 def test_edited_template_copy_is_advisory_and_refresh_repairs_it(tmp_path: Path):
     # preferred_layouts 是推荐不是门槛：工作区副本被改过不再阻止准备 handoff；
     # --refresh 仍会把副本恢复成库里的声明。
-    ws = handoff_fixtures.make_workspace(tmp_path, 'composition', template='github')
-    path = ws / 'modules/templates/github/github.json'
-    contract = json.loads((ROOT / 'modules/templates/github/github.json').read_text())
+    ws = handoff_fixtures.make_workspace(tmp_path, 'composition', template='github-trending')
+    path = ws / 'modules/templates/github-trending/github-trending.json'
+    contract = json.loads((ROOT / 'modules/templates/github-trending/github-trending.json').read_text())
     contract['preferred_layouts'] = ['stage']
     status_fixtures.write_json(path, contract)
     proc, result = run('prepare-handoff.py', ws, 'composition')
@@ -218,9 +218,9 @@ def test_required_refs_are_deduplicated_by_resolved_identity():
 
 def test_status_does_not_gate_on_the_template_declaration(tmp_path: Path):
     # preferred_layouts 是建议性的：状态脚本不读模板声明做兼容性门槛。
-    status_fixtures.settle(tmp_path, fetch_materials=False, layout='presenter', template='github')
-    path = tmp_path / 'modules/templates/github/github.json'
-    contract = json.loads((ROOT / 'modules/templates/github/github.json').read_text())
+    status_fixtures.settle(tmp_path, fetch_materials=False, layout='presenter', template='github-trending')
+    path = tmp_path / 'modules/templates/github-trending/github-trending.json'
+    contract = json.loads((ROOT / 'modules/templates/github-trending/github-trending.json').read_text())
     contract['preferred_layouts'] = ['stage']
     status_fixtures.write_json(path, contract)
     _, result = run('pipeline-status.py', tmp_path)

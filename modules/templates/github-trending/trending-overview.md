@@ -1,6 +1,6 @@
-# 模板：github/trending-overview（Trending 榜单总览）
+# 模板：github-trending/trending-overview（Trending 榜单总览）
 
-属于 GitHub 热榜这一类视频（见 `templates/github/github.md`）。
+属于 GitHub 热榜这一类视频（见 `templates/github-trending/github-trending.md`）。
 
 一个场景，逐个介绍 GitHub Trending 榜单里的项目。
 
@@ -21,8 +21,8 @@
 
 ## 文件
 
-- `templates/github/trending-overview.html`：场景本体，静态标记和样式。图标已内联，没有额外图片。
-- `templates/github/trending-overview.mjs`：导出 `init`（接口见 `modules.md` 的「模块初始化接口」）。
+- `templates/github-trending/trending-overview.html`：场景本体，静态标记和样式。图标已内联，没有额外图片。
+- `templates/github-trending/trending-overview.mjs`：导出 `init`（接口见 `modules.md` 的「模块初始化接口」）。
 
 ## 依赖
 
@@ -31,7 +31,7 @@
 
 ## 安装与挂载
 
-1. 把 `templates/github/trending-overview.html` 和 `trending-overview.mjs` 一起复制到视频工程的 `compositions/`。
+1. 把 `templates/github-trending/trending-overview.html` 和 `trending-overview.mjs` 一起复制到视频工程的 `compositions/`。
 2. 在根节点加挂载点：
    - `data-composition-id="trending-overview"`，`data-composition-src="compositions/trending-overview.html"`；
    - `data-start`：场景开始的视频时间；`data-duration`：场景时长；

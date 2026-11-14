@@ -160,7 +160,7 @@ def test_no_visual_config_is_a_missing_phase_8_product(tmp_path: Path):
     (tmp_path / scene_config.SCENE_CONFIG_PATH).unlink()
     inputs = json.loads((tmp_path / 'inputs.json').read_text(encoding='utf-8'))
     inputs.pop('layout', None)
-    inputs['template'] = 'github'  # 旧全局字段不再是门槛，只保留原样
+    inputs['template'] = 'github-trending'  # 旧全局字段不再是门槛，只保留原样
     write_json(tmp_path / 'inputs.json', inputs)
 
     result = parse_result(run_cli(str(tmp_path)))
@@ -176,12 +176,12 @@ def test_declared_template_resources_must_exist(tmp_path: Path):
     make_visual_workspace(tmp_path, layouts=('stage', 'stage'))
     path = tmp_path / scene_config.SCENE_CONFIG_PATH
     data = json.loads(path.read_text(encoding='utf-8'))
-    data['scenes'][1]['template'] = {'name': 'github', 'scene': 'project-cover'}
+    data['scenes'][1]['template'] = {'name': 'github-trending', 'scene': 'project-cover'}
     write_json(path, data)
     refresh_report(tmp_path)
     assert parse_result(run_cli(str(tmp_path)))['next_phase'] is None
 
-    data['scenes'][1]['template'] = {'name': 'github', 'scene': 'no-such-scene'}
+    data['scenes'][1]['template'] = {'name': 'github-trending', 'scene': 'no-such-scene'}
     write_json(path, data)
 
     result = parse_result(run_cli(str(tmp_path)))

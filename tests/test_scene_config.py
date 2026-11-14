@@ -70,7 +70,7 @@ def test_valid_config_loads_and_snaps_boundaries(tmp_path: Path):
     path = tmp_path / 'scene-config.json'
     path.write_text(json.dumps(config(
         scene('intro', 0.02, 10.0, sources=['scene_1']),
-        scene('demo', 10.0, 19.98, sources=['scene_2', 'scene_3'], template={'name': 'github', 'scene': 'project-cover'}),
+        scene('demo', 10.0, 19.98, sources=['scene_2', 'scene_3'], template={'name': 'github-trending', 'scene': 'project-cover'}),
     )), encoding='utf-8')
 
     loaded = scene_config.load_scene_config(
@@ -83,7 +83,7 @@ def test_valid_config_loads_and_snaps_boundaries(tmp_path: Path):
         ('intro', 0.0, 10.0), ('demo', 10.0, 20.0),
     ]
     assert loaded['scenes'][1]['source_scene_ids'] == ['scene_2', 'scene_3']
-    assert loaded['scenes'][1]['template'] == {'name': 'github', 'scene': 'project-cover'}
+    assert loaded['scenes'][1]['template'] == {'name': 'github-trending', 'scene': 'project-cover'}
     assert loaded['scenes'][0]['layout']['preset'] is None  # 自由布局无需注册
 
 
@@ -223,9 +223,9 @@ def test_scene_ranges_must_be_ordered_disjoint_and_covering():
 
 @pytest.mark.parametrize('template, expected', [
     ('not-a-dict', 'template must be null or exactly'),
-    ({'name': 'github'}, 'template must be null or exactly'),
+    ({'name': 'github-trending'}, 'template must be null or exactly'),
     ({'name': 'nope', 'scene': 'project-cover'}, 'must be null or one of'),
-    ({'name': 'github', 'scene': 'nope'}, 'has no scene'),
+    ({'name': 'github-trending', 'scene': 'nope'}, 'has no scene'),
 ])
 def test_template_resources_must_exist(template, expected: str):
     data = config(scene('a', 0, 20, template=template))

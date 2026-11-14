@@ -447,8 +447,8 @@ def test_migrated_modules_init_and_seek_without_vendor_globals(tmp_path: Path):
         ('components/caption-bar', None),
         ('components/nav-bar', {'logo': '', 'path': 'github / trending'}),
         ('transitions/tile-wipe', None),
-        ('templates/github/trending-overview', None),
-        ('templates/github/project-cover',
+        ('templates/github-trending/trending-overview', None),
+        ('templates/github-trending/project-cover',
          {'owner': 'demo', 'repo': 'tool', 'nameAt': 0.5, 'taglineAt': 1.0,
           'tagline': '一句话介绍', 'stars': 2000, 'starsAt': 2.0}),
     ]

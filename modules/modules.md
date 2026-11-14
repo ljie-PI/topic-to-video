@@ -99,10 +99,10 @@ patterns/
 motion.md                                 按需动效参考：能力查询、构思维度、runtime 选择、编排建议
 templates/
   templates.md                            模板总览
-  github/github.md                        GitHub 热榜视频：组装方法、专属配色和元素、人物演法
-  github/trending-overview.md, .html, .mjs      场景：榜单总览（已迁移到显式初始化）
-  github/project-cover.md, .html, .mjs          场景：项目封面（已迁移到显式初始化）
-  github/brand/                           github-mark-white.svg
+  github-trending/github-trending.md      GitHub 热榜视频：组装方法、专属配色和元素、人物演法
+  github-trending/trending-overview.md, .html, .mjs      场景：榜单总览（已迁移到显式初始化）
+  github-trending/project-cover.md, .html, .mjs          场景：项目封面（已迁移到显式初始化）
+  github-trending/brand/                  github-mark-white.svg
 ```
 
 主题字体已经下载好放在仓库的 `resources/fonts/`（每个主题一份 CSS，WOFF2 在共用的 `resources/fonts/files/`），用 skill 根目录的 `scripts/fonts-download.sh` 从仓库字体资源拷进视频工程，例如 `bash scripts/fonts-download.sh <视频工程>/assets/fonts --theme modules/designs/github`。主题总是用 `--theme` 明确指定。
@@ -140,7 +140,7 @@ templates/
    - 根节点放一个铺满全屏的 `#ground`，背景用 `var(--ground)`。
 3. **模板**：按 `templates/<类型>/<类型>.md`：
    - 在主题变量之后加上模板的专属变量；
-   - 复制模板资源（如 `templates/github/brand/` → 工程 `assets/brand/`）；
+   - 复制模板资源（如 `templates/github-trending/brand/` → 工程 `assets/brand/`）；
    - 选用它的场景。
 4. **布局**：按 `layouts/<布局>.md` 的区域表和层级表排列挂载点。
 5. **组件、转场和场景**：
@@ -171,7 +171,7 @@ window.VIDEO = {
   cuts:     [{ at, label, title, emphasis, meta: [{ dot, strong, text }] }],   // tile-wipe
   presenter: { acts, thoughts, typing, glances, envelopeFps, envelope,
               placements: [{ begin_s, end_s, visible, x, y, size }] },          // presenter；placements 可选
-  trending: { title, date, range, repos: [{ rank, owner, repo, desc, stars, readme, cue }] },  // github 模板的 trending-overview
+  trending: { title, date, range, repos: [{ rank, owner, repo, desc, stars, readme, cue }] },  // github-trending 模板的 trending-overview
 };
 ```
 

@@ -647,7 +647,7 @@ def test_presenter_generic_performance_and_github_specific_overlay():
     assert '不是新增的阶段产物门槛' in envelope
     assert '换了配音，就要重新生成 envelope，并且按新配音的时间重排剧本' in envelope
 
-    github = doc_text('modules/templates/github/github.md')
+    github = doc_text('modules/templates/github-trending/github-trending.md')
     overlay = github.split('## 5. 人物怎么演')[1]
     assert '先按 `components/presenter/presenter.md` 的通用演法' in overlay
     assert '[cue, 1.0, "U"]' in overlay
@@ -715,7 +715,7 @@ def test_scene_plan_content_plan_and_opening_hook_contract():
     assert '模板选择及理由写进 storyboard，不写回 `inputs.json`' in composition
 
     # 模板不再给旁白下指令：它由 composition 阶段选。
-    assert not (REPO_ROOT / 'modules' / 'templates' / 'github' / 'narration.md').exists()
+    assert not (REPO_ROOT / 'modules' / 'templates' / 'github-trending' / 'narration.md').exists()
     assert '由 composition 阶段决定' in script_base
 
 
@@ -832,7 +832,7 @@ def test_transitions_are_a_top_level_module_category_without_stale_paths():
 
     presenter = doc_text('modules/layouts/presenter.md')
     stage = doc_text('modules/layouts/stage.md')
-    github = doc_text('modules/templates/github/github.md')
+    github = doc_text('modules/templates/github-trending/github-trending.md')
     composition = doc_text('references/delegation/composition/base-instructions.md')
     assert '采用转场时，常驻转场挂一次' in presenter
     assert '采用方格转场 `tile-wipe` 时' in presenter
