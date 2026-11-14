@@ -204,7 +204,7 @@ def mixed_workspace(tmp_path: Path, snapshots: list[dict]) -> tuple[Path, Path]:
         'total_s': 10,
         'scenes': [
             {**visual_scene('tpl', 0, 5, borrowed_layout('presenter')),
-             'template': {'name': 'github', 'scene': 'project-cover'}},
+             'template': {'name': 'github-trending', 'scene': 'project-cover'}},
             visual_scene('free', 5, 10, free_layout()),
         ],
     })

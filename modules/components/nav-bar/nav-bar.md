@@ -39,7 +39,7 @@
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `logo` | 空 | 标志图片路径（40×40 显示），例如 GitHub 模板的标志复制到工程后是 `assets/brand/github-mark-white.svg`。留空则不显示标志，路径左移到 40px |
+| `logo` | 空 | 标志图片路径（40×40 显示），例如 `github-trending` 模板的标志复制到工程后是 `assets/brand/github-mark-white.svg`。留空则不显示标志，路径左移到 40px |
 | `path` | 空 | 页面路径，例如 `"github / trending"`。最后一个 `/` 后面是页面名，前面是灰色 |
 | `tabsX` | 420 | 标签页起点的 x 坐标，单位 px |
 | `data` | `"tabs"` | 工程数据（`window.VIDEO`）里哪个键是标签页，adapter 取出后作为 `init` 的 `data` |

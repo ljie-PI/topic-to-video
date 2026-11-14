@@ -1,6 +1,6 @@
 # 设计主题：github（纸本）
 
-冷灰棉纸配低饱和 GitHub 灰、蓝、绿，安静干净的技术页面感。GitHub 专属品牌元素（Octocat 标志、语言色点、仓库卡片、Star 按钮、贡献图配色等）归 `templates/github/github.md`。共享变量语义、字号阶梯、纸面与通用元素基线见 [`../designs.md`](../designs.md)，本文只列本主题的专属设定。
+冷灰棉纸配低饱和 GitHub 灰、蓝、绿，安静干净的技术页面感。GitHub 专属品牌元素（Octocat 标志、语言色点、仓库卡片、Star 按钮、贡献图配色等）归模板，不放进本主题。共享变量语义、字号阶梯、纸面与通用元素基线见 [`../designs.md`](../designs.md)，本文只列本主题的专属设定。
 
 背景贴图在 `designs/github/textures/`（默认冷灰棉纸 `paper.jpg`，变体淡灰绿石板 `slate.jpg`，均 1920×1080），使用时复制到视频工程的 `assets/textures/`。主题变量代码见 1.4，字体与字号配置见第 2 节。
 

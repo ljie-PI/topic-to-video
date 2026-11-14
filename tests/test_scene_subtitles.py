@@ -197,7 +197,7 @@ def test_three_scene_kinds_keep_scene_local_budgets_and_scene_ids(tmp_path: Path
     ])
     config = scene_config(tmp_path / 'scene-config.json',
         {**visual_scene('wide', 0, 3, layout_spec('stage')),
-         'template': {'name': 'github', 'scene': 'project-cover'}},
+         'template': {'name': 'github-trending', 'scene': 'project-cover'}},
         visual_scene('narrow', 3, 6, narrow),
     )
 

@@ -42,4 +42,4 @@
 
 ## 已有实现
 
-- `templates/github/project-cover.md`：上榜项目的封面场景，绿色排名标签、仓库路径、一句话介绍、star 数滚动、语言和 Star 按钮。
+- `templates/github-trending/project-cover.md`：上榜项目的封面场景，绿色排名标签、仓库路径、一句话介绍、star 数滚动、语言和 Star 按钮。

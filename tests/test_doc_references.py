@@ -16,6 +16,9 @@ DOC_FILES = [
 SCRIPT_REFERENCE = re.compile(r'(?<![\w./-])(scripts/[\w-]+\.(?:py|sh))\b')
 SCRIPT_ARGUMENT = re.compile(r'(?<![\w-])(--[a-z][a-z0-9-]*)')
 LOCAL_REFERENCE = re.compile(r'`((?:references|modules)/[^`]+)`')
+MODULE_RELATIVE_REFERENCE = re.compile(
+    r'`((?:designs|layouts|components|transitions|templates|patterns)/[^`\s]+)`'
+)
 PLACEHOLDER_CHARACTERS = frozenset('<{*')
 
 
@@ -66,6 +69,14 @@ def test_documented_scripts_arguments_and_paths_exist(doc_path: Path):
                 continue
             if not (REPO_ROOT / relative_path).exists():
                 failures.append(f'line {line_number}: missing path {relative_path}')
+
+        if doc_path.is_relative_to(REPO_ROOT / 'modules'):
+            for match in MODULE_RELATIVE_REFERENCE.finditer(line):
+                relative_path = match.group(1)
+                if PLACEHOLDER_CHARACTERS.intersection(relative_path):
+                    continue
+                if not (REPO_ROOT / 'modules' / relative_path).exists():
+                    failures.append(f'line {line_number}: missing module path {relative_path}')
 
     assert not failures, f'{doc_path.relative_to(REPO_ROOT)}:\n' + '\n'.join(failures)
 

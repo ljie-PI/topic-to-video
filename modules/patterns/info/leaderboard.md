@@ -42,4 +42,4 @@
 
 ## 已有实现
 
-- `templates/github/trending-overview.md`：GitHub Trending 榜单场景，紧凑榜单最多 5 行，讲到某个项目时该行高亮、README 面板同步切换。
+- `templates/github-trending/trending-overview.md`：GitHub Trending 榜单场景，紧凑榜单最多 5 行，讲到某个项目时该行高亮、README 面板同步切换。

@@ -1,4 +1,4 @@
-# 模板：github（GitHub 热榜 / 开源项目盘点）
+# 模板：github-trending（GitHub 热榜 / 开源项目盘点）
 
 一类视频：人物主持，盘点 GitHub 上的一批项目（例如本周 Trending Top 5）。整支视频看起来像在浏览 GitHub 页面。
 
@@ -14,7 +14,7 @@
 | 底部字幕 | 组件 `caption-bar` | 字幕取配音的逐句时间 |
 | 场景转场 | 转场 `tile-wipe`（`transitions/tile-wipe/`） | 方格改成贡献图配色，卡片写法见第 3 节 |
 | 主持人 | 组件 `presenter` | 动作写法见第 5 节 |
-| 场景 | `trending-overview`、`project-cover`（文档 `templates/github/<场景>.md`，代码 `templates/github/<场景>.html` + `<场景>.mjs`） | 后面可以继续加：项目演示、注意事项、结尾 |
+| 场景 | `trending-overview`、`project-cover`（文档 `templates/github-trending/<场景>.md`，代码 `templates/github-trending/<场景>.html` + `<场景>.mjs`） | 后面可以继续加：项目演示、注意事项、结尾 |
 
 一支典型视频的场景顺序：
 
@@ -31,7 +31,7 @@
 在设计主题的变量后面，再加一段覆盖，把方格换成 GitHub 贡献图的五档颜色（空格灰加四档绿，按纸本主题降过饱和度）：
 
 ```css
-/* templates/github — the tile wipe is the contribution graph */
+/* templates/github-trending — the tile wipe is the contribution graph */
 :root {
   --c-tile0: #e4e8ec;  --c-tile1: #c3dfca;  --c-tile2: #92c4a0;  --c-tile3: #5f9f75;  --c-tile4: #33744c;
 }
@@ -52,7 +52,7 @@
 
 ### 2.3 品牌与界面元素
 
-- **GitHub 标志**：`templates/github/brand/github-mark-white.svg`，白色，用在深色导航栏上。复制到视频工程的 `assets/brand/`。不旋转，不改颜色。
+- **GitHub 标志**：`templates/github-trending/brand/github-mark-white.svg`，白色，用在深色导航栏上。复制到视频工程的 `assets/brand/`。不旋转，不改颜色。
 - **图标**：GitHub Octicons，已经内联在场景里，包括 repo、star、star-fill、book、triangle-down。
 - **仓库路径**：`owner / repo`，焦点色。owner 用常规字重，repo 加粗，用比例字体，和 GitHub 一样。
 - **Star → Starred**：讲到一个项目约 0.45 秒后，空心星变成 `--c-highlight` 色的实心星，按钮文字从“Star”换成“Starred”，旁边的数字弹一下。
@@ -87,7 +87,7 @@
   - 每个项目的 `cue`，以及封面的 `nameAt` / `taglineAt` / `starsAt`，都必须是旁白里**实际念到**那句话的时间：在 `composition/assets/template-cues.json` 里按 scene-plan 形状声明那句原句，用 `align-narration.py --mode timing` 得到 `composition/assets/template-timeline.json` 里的秒数，再换算成参数（全片组件用视频秒，scene 内的用相对 `data-start` 的秒数）；
   - 没念到的字段不要编时间：省略 `taglineAt` / `starsAt` 会由组件隐藏相应内容并跳过动画；`nameAt` 与榜单每个项目的 `cue` 必填，没有可用朗读锚点就不用那个场景 / 项目，不能依赖默认秒数；确实无法适配时按 Phase 8 文档写 `template: null` 并说明原因；
   - 嘴型数据用 `components/presenter/make-envelope.mjs` 从配音生成；
-  - 机器可读的模板声明（支持哪些 layout、有哪些场景、每个场景要哪些锚点）在 `templates/github/github.json`，以它为准。
+  - 机器可读的模板声明（支持哪些 layout、有哪些场景、每个场景要哪些锚点）在 `templates/github-trending/github-trending.json`，以它为准。
 
 ## 5. 人物怎么演（写在 `VIDEO.presenter`，时间是视频秒）
 

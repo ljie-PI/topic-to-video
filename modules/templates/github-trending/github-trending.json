@@ -1,5 +1,5 @@
 {
-  "template": "github",
+  "template": "github-trending",
   "preferred_layouts": ["presenter"],
   "scenes": ["trending-overview", "project-cover"],
   "anchor_fields": {

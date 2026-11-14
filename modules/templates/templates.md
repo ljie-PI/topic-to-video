@@ -13,7 +13,7 @@
 
 | 模板 | 视频类型 | 推荐的 layout | 场景 |
 |---|---|---|---|
-| `github` | GitHub 热榜 / 开源项目盘点（讲解模式，人物主持） | `presenter`（推荐，非门槛） | `trending-overview`（榜单总览）、`project-cover`（项目封面） |
+| `github-trending` | GitHub 热榜 / 开源项目盘点（讲解模式，人物主持） | `presenter`（推荐，非门槛） | `trending-overview`（榜单总览）、`project-cover`（项目封面） |
 
 每个模板一个目录，文档和代码放在一起：
 

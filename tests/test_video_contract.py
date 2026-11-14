@@ -130,7 +130,7 @@ def test_the_library_registers_the_shipped_modules():
     assert video_contract.available_designs(REPO_ROOT) == ['default', 'github', 'producthunt']
     # portrait-3x4 has only a .json; portrait.md documents both portrait canvases.
     assert video_contract.available_layouts(REPO_ROOT) == ['portrait', 'portrait-3x4', 'presenter', 'stage']
-    assert video_contract.available_templates(REPO_ROOT) == ['github']
+    assert video_contract.available_templates(REPO_ROOT) == ['github-trending']
 
 
 def test_a_layout_without_its_own_or_shared_doc_is_not_registered(tmp_path: Path):
@@ -146,7 +146,7 @@ def test_unknown_names_are_rejected_with_the_available_ones():
     assert 'not an available layout' in problem and 'presenter' in problem
     assert video_contract.layout_contract_problem(REPO_ROOT, 'presenter') is None
     assert video_contract.template_contract_problem(REPO_ROOT, None) is None
-    assert video_contract.template_contract_problem(REPO_ROOT, 'github') is None
+    assert video_contract.template_contract_problem(REPO_ROOT, 'github-trending') is None
     assert "got 'nope'" in video_contract.template_contract_problem(REPO_ROOT, 'nope')
 
 

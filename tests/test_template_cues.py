@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-TEMPLATES = ROOT / 'modules/templates/github'
+TEMPLATES = ROOT / 'modules/templates/github-trending'
 DRIVER = r'''
 const fs = require('fs'), vm = require('vm');
 const source = fs.readFileSync(process.argv[1], 'utf8');
@@ -127,7 +127,7 @@ def test_trending_overview_uses_supplied_repo_cues():
 
 
 def test_machine_declaration_distinguishes_required_and_optional_cues():
-    contract = json.loads((TEMPLATES / 'github.json').read_text(encoding='utf-8'))
+    contract = json.loads((TEMPLATES / 'github-trending.json').read_text(encoding='utf-8'))
     assert contract['anchor_fields'] == {
         'project-cover': {'required': ['nameAt'], 'optional': ['taglineAt', 'starsAt']},
         'trending-overview': {'required': ['repos[].cue'], 'optional': []},

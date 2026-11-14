@@ -34,7 +34,7 @@ composition agent 产出：它存脚本需要的数据（`scripts/scene_config.p
 | `scene_id` | 非空字符串，全文件唯一。 |
 | `source_scene_ids` | 非空字符串列表，指向 Phase 6 `scene-plan.json` 的叙事 scene；合并 / 拆分的映射及理由写在 storyboard。 |
 | `begin_s` / `end_s` | 有限秒数，`0 <= begin_s < end_s`；主区间按 `[begin_s, end_s)` 归属并覆盖 `[0, total_s]`，有序、不重叠。视觉转场重叠由画面实现处理，不写进主区间。 |
-| `template` | `null`（本 scene 不用模板）或 `{"name": ..., "scene": ...}`：`name` 是模块库注册的模板名，`scene` 是该模板声明的场景部分（如 `github` 的 `project-cover` / `trending-overview`）。两者都必须真实存在。 |
+| `template` | `null`（本 scene 不用模板）或 `{"name": ..., "scene": ...}`：`name` 是模块库注册的模板名，`scene` 是该模板声明的场景部分（如 `github-trending` 的 `project-cover` / `trending-overview`）。两者都必须真实存在。 |
 | `layout` | 见下。**实际的 regions / caption 必须完整落盘**：检查不从 `preset` 名猜坐标。 |
 
 ## layout
@@ -90,7 +90,7 @@ scene）。产物还带 `caption_segments`（各 scene 的显示区间与 captio
 路径，都经 `scripts/scene_config.py` 的公共读取接口测试（见
 `tests/test_scene_config.py`）：示例不是只给人看的，格式以读取接口的校验为准。
 
-采用模板（github 的 project-cover）并借用 presenter 预设的 scene，与无模板、
+采用模板（github-trending 的 project-cover）并借用 presenter 预设的 scene，与无模板、
 自由布局的 scene 同片共存：
 
 ```json
@@ -104,7 +104,7 @@ scene）。产物还带 `caption_segments`（各 scene 的显示区间与 captio
       "source_scene_ids": ["scene_1"],
       "begin_s": 0.0,
       "end_s": 6.0,
-      "template": {"name": "github", "scene": "project-cover"},
+      "template": {"name": "github-trending", "scene": "project-cover"},
       "layout": {
         "preset": "presenter",
         "regions": [
