@@ -125,7 +125,7 @@ scene-config 写出后，agent 跑 handoff 里的 `align-narration.py --mode sub
 
 composition agent 报告完成后：
 
-0. catalog 阶段适用时抽查必用素材：storyboard 的覆盖表是否把 `required_material_refs` 每条都落到了具体 scene，实际画面里能不能看到；不能用“选为候选”冒充“已经展示”。
+0. catalog 阶段适用时抽查素材使用：论文模式的关键图 / 表（`required_material_refs`）必须出现——storyboard 的覆盖表是否把每条都落到了具体 scene，实际画面里能不能看到（不能用“选为候选”冒充“已经展示”）；通用素材是否也尽量保留，当素材符合场景内容时是否优先考虑选用了真实素材而非无故弃用。
 1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`。
 2. `next_phase` 仍是 Phase 8 时分两种情况：`reason` 为 `missing` / `corrupt` 时，把 `next_phase.problems`（产物 → 原因，包括 `composition/scene-config.json` → 原因）原样反馈给 composition agent；`reason` 为 `redo` 时把 `redo_reason` 一并交给它。无论哪种情况都限定范围修复，修完由主 agent `--finish` 后再跑一次。不要自己改产物。
 3. Phase 8 不再是 `next_phase` 后，抽查状态脚本不判定的两项：agent 报告的 `npx hyperframes check` 无错误；storyboard 的每个视觉 scene 都写明了 template / layout 方案与理由、所用的 content 区域、构图、信息展开与动效安排，必用素材覆盖表齐全，参考库借用记录符合基础指令第四部分（设计是否合适看画面与内容是否对得上）。
