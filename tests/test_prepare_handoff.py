@@ -376,7 +376,7 @@ class TestMaterialization:
     @pytest.mark.parametrize('step, path_parts, unit_parts', [
         ('script', ('references', 'delegation', 'script', 'base-instructions.md'), ('references', 'delegation', 'script')),
         ('catalog', ('references', 'delegation', 'catalog', 'base-instructions.md'), ('references', 'delegation', 'catalog')),
-        ('composition', ('modules', 'layouts', 'presenter.md'), ('modules',)),
+        ('composition', ('modules', 'layouts', 'landscape-presenter.md'), ('modules',)),
     ], ids=['script', 'catalog', 'composition'])
     def test_rerun_keeps_an_edited_copy_and_refresh_restores_it(
         self, tmp_path: Path, step: str, path_parts: tuple[str, ...], unit_parts: tuple[str, ...],
@@ -679,7 +679,9 @@ class TestCompositionMaterialization:
 
         modules = ws / 'modules'
         assert (modules / 'modules.md').read_bytes() == (REPO_ROOT / 'modules' / 'modules.md').read_bytes()
-        assert (modules / 'layouts' / 'presenter.json').is_file()
+        assert (modules / 'layouts' / 'landscape-presenter.json').is_file()
+        assert (modules / 'layouts' / 'portrait-presenter.json').is_file()
+        assert (modules / 'layouts' / 'portrait-3x4-presenter.json').is_file()
         assert (modules / 'components' / 'presenter' / 'presenter.html').is_file()
         delegation = ws / 'references' / 'delegation'
         assert (delegation / 'conventions.md').is_file()
@@ -694,9 +696,9 @@ class TestCompositionMaterialization:
     def test_an_edited_workspace_layout_copy_is_not_a_gate(self, tmp_path: Path):
         """preset 是逐 scene 的可选借用：工作区 layout 副本被改过不再阻止准备
         handoff；--refresh 仍把副本换回库文件。"""
-        ws = make_workspace(tmp_path, 'composition', layout='presenter')
+        ws = make_workspace(tmp_path, 'composition', layout='landscape-presenter')
         prepare(ws, 'composition')
-        copy = ws / 'modules' / 'layouts' / 'presenter.json'
+        copy = ws / 'modules' / 'layouts' / 'landscape-presenter.json'
         data = json.loads(copy.read_text(encoding='utf-8'))
         data['canvas'] = {'width': 1080, 'height': 1920}
         copy.write_text(json.dumps(data), encoding='utf-8')

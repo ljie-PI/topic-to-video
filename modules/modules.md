@@ -58,7 +58,10 @@ const root = host.appendChild(template.content.cloneNode(true)).querySelector('#
 const params = JSON.parse(host.dataset.variableValues || '{}');
 const { timeline, ready, seek, destroy } = init(root, {
   params,
-  data: { captions: window.VIDEO[params.data || 'captions'] },
+  data: {
+    captions: window.VIDEO[params.data || 'captions'],
+    captionSegments: window.VIDEO[params.layoutData || 'captionSegments'],
+  },
   duration: Number(host.dataset.duration) || 0,
   gsap,
 });
@@ -81,9 +84,10 @@ designs/
   producthunt/producthunt.md, textures/   主题：亚麻纸（粉调亚麻纸 + 低饱和墨蓝与陶土橙）；paper.jpg
 layouts/
   layouts.md                              布局目录：逐视觉 scene 选择 layout；全片 canvas 固定、regions / caption 随 scene 变化
-  presenter.md, presenter.json            布局：讲解模式（人物右下角主持，主 / 副展示区，上下界面条）
-  stage.md, stage.json                    布局：舞台模式（1920×1080，无主持人，主展示区贯穿，全局字幕区）
-  portrait.md, portrait.json, portrait-3x4.json   布局：竖屏（1080×1920 与 1080×1440，一文档两画布，各一份区域定义 JSON）
+  landscape.md, landscape.json            布局：横屏模式（1920×1080，无主持人，主展示区贯穿，导航与底部字幕条）
+  landscape-presenter.md, landscape-presenter.json  布局：横屏讲解模式（1920×1080，人物右下角主持，主 / 副展示区，上下界面条）
+  portrait.md, portrait.json, portrait-3x4.json     布局：竖屏模式（1080×1920 与 1080×1440，无主持人，一文档两画布）
+  portrait-presenter.md, portrait-presenter.json, portrait-3x4-presenter.json  布局：竖屏讲解模式（1080×1920 与 1080×1440，人物右下角主持，底部双行字幕条）
 components/
   components.md                           组件总览和共同约定
   presenter/presenter.md, presenter.html, presenter.mjs, images/   人物动作：组件和两张姿势图（已迁移到显式初始化）
@@ -165,7 +169,7 @@ templates/
 window.VIDEO = {
   tabs:     [{ label, at }],                                         // nav-bar
   captions: [{ start, end, text }],                                  // caption-bar
-  captionSegments: [{ scene_id, begin_s, end_s, layout, caption_rect, caption }], // 可选：scene 字幕布局
+  captionSegments: [{ scene_id, begin_s, end_s, layout, caption_rect, caption_bar_rect, caption }], // 可选：scene 字幕布局
   cuts:     [{ at, label, title, emphasis, meta: [{ dot, strong, text }] }],   // tile-wipe
   presenter: { acts, thoughts, typing, glances, envelopeFps, envelope,
               placements: [{ begin_s, end_s, visible, x, y, size }] },          // presenter；placements 可选

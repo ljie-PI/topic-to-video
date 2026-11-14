@@ -1,8 +1,8 @@
 <template>
   <!--
-    Caption bar — the bottom chrome of the presenter layout: a bar with one subtitle line (docs: components/caption-bar/caption-bar.md).
+    Caption bar — bottom subtitle chrome for landscape and portrait layouts (docs: components/caption-bar/caption-bar.md).
     No content of its own: the lines are passed in when the video is assembled; colours and font come from the design
-    theme's tokens (--c-chrome, --c-chrome-ink, --font-sans).
+    theme's tokens (--c-chrome, --c-chrome-ink, --c-ink, --font-sans).
     This file is static markup + styles only. Initialisation lives in the sibling caption-bar.mjs
     (explicit init per modules/modules.md); the video project wires it into its own host/adapter.
   -->
@@ -17,11 +17,11 @@
       position: absolute;
       left: 0;
       top: 1008px;
-      width: 1920px;
+      width: 100%;
       height: 72px;
       background: var(--c-chrome);
     }
-    #root .cb-line {
+    :where(#root) .cb-line {
       position: absolute;
       left: 96px;
       top: 1008px;
@@ -29,15 +29,17 @@
       height: 72px;
       display: flex;
       align-items: center;
+      justify-content: var(--cb-justify, flex-start);
       overflow: visible;
       opacity: 0;
     }
-    #root .cb-line span {
+    :where(#root) .cb-line span {
       font-size: 36px;
       font-weight: 500;
       line-height: 1;
       letter-spacing: 0.02em;
-      color: var(--c-chrome-ink);
+      color: var(--cb-ink, var(--c-chrome-ink));
+      text-align: var(--cb-align, left);
       white-space: nowrap;
     }
   </style>

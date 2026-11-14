@@ -1,4 +1,4 @@
-# 布局：讲解模式（presenter）
+# 布局：横屏讲解模式（landscape-presenter）
 
 这是带主持人的通用横屏布局，用不用模板都可以选它。一个人物坐在页面右下角讲解，左侧大区域展示主要内容，人物上方的区域放辅助信息。顶部是导航栏，底部是字幕条，上下对称。
 
@@ -6,7 +6,7 @@
 
 画布 1920×1080，30 fps，左右边距都是 96px（画面宽度的 5%，正好在 90% 动作安全框的边线上）。
 
-机器可读的区域定义在同目录的 `presenter.json`（`canvas` / `regions` / `caption` 三段，reserved 区域带 `component`）。**JSON 里的数值必须和本文档的区域表一致**，改任何一个都要同步另一个。字幕分段脚本（`align-narration.py --layout`）直接读 `caption` 段。
+机器可读的区域定义在同目录的 `landscape-presenter.json`（`canvas` / `regions` / `caption` 三段，reserved 区域带 `component`）。**JSON 里的数值必须和本文档的区域表一致**，改任何一个都要同步另一个。字幕分段脚本（`align-narration.py --layout`）直接读 `caption` 段。
 
 ```
  0 ┌──────────────────────────────────────────────────────────────────────────┐

@@ -36,7 +36,9 @@ SCENE_CONFIG_PATH = 'composition/scene-config.json'
 DURATION_TOLERANCE_S = video_contract.VISUAL_DURATION_TOLERANCE_S
 
 REGION_KINDS = ('content', 'reserved')
-CAPTION_REGION_ID = 'caption-text'
+CAPTION_TEXT_REGION_ID = 'caption-text'
+CAPTION_REGION_ID = CAPTION_TEXT_REGION_ID
+CAPTION_CHROME_BAR_REGION_ID = 'caption-bar'
 SCENE_KEYS = {'scene_id', 'source_scene_ids', 'begin_s', 'end_s', 'template', 'layout'}
 LAYOUT_KEYS = {'preset', 'regions', 'caption'}
 REGION_KEYS = {'id', 'kind', 'rect', 'component'}
@@ -435,3 +437,18 @@ def caption_region(layout: dict[str, Any]) -> dict[str, Any] | None:
         if fallback is None and component.startswith('caption'):
             fallback = region
     return fallback
+
+
+def caption_bar_region(layout: dict[str, Any]) -> dict[str, Any] | None:
+    """layout 中底部 ``--c-chrome`` 字幕背景条所在的保留区域（id ``caption-bar``）；无底条布局返回 None。"""
+    regions = layout.get('regions')
+    if not isinstance(regions, list):
+        return None
+    for region in regions:
+        if (
+            isinstance(region, dict)
+            and region.get('kind') == 'reserved'
+            and region.get('id') == CAPTION_CHROME_BAR_REGION_ID
+        ):
+            return region
+    return None

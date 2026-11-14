@@ -9,7 +9,7 @@
 | 部分 | 用什么 | 说明 |
 |---|---|---|
 | 设计主题 | `designs/github/github.md`（纸本） | 也可以换成同一套变量的其他主题 |
-| 布局 | `layouts/presenter.md`（讲解模式） | 区域位置固定 |
+| 布局 | `layouts/landscape-presenter.md`（横屏讲解模式） | 区域位置固定 |
 | 顶部导航 | 组件 `nav-bar` | 参数和标签写法见第 3 节 |
 | 底部字幕 | 组件 `caption-bar` | 字幕取配音的逐句时间 |
 | 场景转场 | 转场 `tile-wipe`（`transitions/tile-wipe/`） | 方格改成贡献图配色，卡片写法见第 3 节 |

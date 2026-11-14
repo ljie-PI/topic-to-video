@@ -63,7 +63,7 @@ def test_crlf_producer_voice_and_composition_subtitles_chain(tmp_path: Path):
     subtitles, _ = run('align-narration.py', '--mode', 'subtitles',
         '--script', ws / 'script.txt', '--narration', ws / 'narration.txt',
         '--offsets', ws / 'narration-offsets.json', '--transcript', ws / 'transcribe/transcript.json',
-        '--layout', ws / 'modules/layouts/stage.json',
+        '--layout', ws / 'modules/layouts/landscape.json',
         '--units-output', ws / 'composition/assets/subtitle-units.json')
     assert subtitles.returncode == 0, subtitles.stderr + subtitles.stdout
     assert (ws / 'transcribe/timeline.json').read_bytes() == timeline_before
@@ -121,7 +121,7 @@ def write_edited_template_contract(ws: Path) -> Path:
     rel = Path('modules/templates/github-trending/github-trending.json')
     path = ws / rel
     contract = json.loads((ROOT / rel).read_text(encoding='utf-8'))
-    contract['preferred_layouts'] = ['stage']
+    contract['preferred_layouts'] = ['landscape']
     status_fixtures.write_json(path, contract)
     return path
 
@@ -136,7 +136,7 @@ def test_edited_template_copy_is_advisory_and_refresh_repairs_it(tmp_path: Path)
     assert (ws / 'composition-handoff.md').exists()
     repaired, _ = run('prepare-handoff.py', ws, 'composition', '--refresh')
     assert repaired.returncode == 0, repaired.stderr
-    assert json.loads(path.read_text(encoding='utf-8'))['preferred_layouts'] == ['presenter']
+    assert json.loads(path.read_text(encoding='utf-8'))['preferred_layouts'] == ['landscape-presenter']
 
 
 @pytest.mark.parametrize('template', [{}, [], '', '../escape'])
@@ -166,9 +166,9 @@ def test_handoff_accepts_only_its_declared_step_inputs(tmp_path: Path, step: str
 
 
 def test_layout_copy_change_invalidates_nothing_until_an_explicit_redo(tmp_path: Path):
-    path = tmp_path / 'modules/layouts/stage.json'
+    path = tmp_path / 'modules/layouts/landscape.json'
     path.parent.mkdir(parents=True)
-    shutil.copyfile(ROOT / 'modules/layouts/stage.json', path)
+    shutil.copyfile(ROOT / 'modules/layouts/landscape.json', path)
     status_fixtures.settle(tmp_path, fetch_materials=False)
     phase_7 = {name: (tmp_path / name).read_bytes() for name in (
         'voice_clone/narration.mp3', 'transcribe/transcript.json', 'transcribe/timeline.json')}
@@ -232,7 +232,7 @@ def test_status_does_not_gate_on_the_template_declaration(tmp_path: Path):
 
 def test_materializing_identical_resource_bytes_invalidates_nothing(tmp_path: Path):
     status_fixtures.settle(tmp_path, fetch_materials=False)
-    for name in ('modules/layouts/stage.json', 'modules/designs/default/default.md'):
+    for name in ('modules/layouts/landscape.json', 'modules/designs/default/default.md'):
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / name, path)

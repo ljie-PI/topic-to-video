@@ -21,7 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'align-narration.py'
 MAKE_NARRATION = REPO_ROOT / 'scripts' / 'make-narration.py'
 LAYOUTS = REPO_ROOT / 'modules' / 'layouts'
-PRESENTER_LAYOUT = LAYOUTS / 'presenter.json'
+PRESENTER_LAYOUT = LAYOUTS / 'landscape-presenter.json'
 PORTRAIT_LAYOUT = LAYOUTS / 'portrait.json'
 
 
@@ -92,6 +92,7 @@ def make_workspace(
     layout: Path | None = None,
     scene_plan=None,
     scene_config: Path | None = None,
+    orientation: str = 'landscape',
     subtitle_args: tuple[str, ...] = (),
 ):
     """Build a fixture workspace and run both align-narration modes on it.
@@ -122,7 +123,7 @@ def make_workspace(
         write_json(tmp_path / 'scene-plan.json', scene_plan)
     if scene_config is not None:
         write_json(tmp_path / 'inputs.json', {
-            'orientation': 'landscape', 'design': 'default',
+            'orientation': orientation, 'design': 'default',
         })
         audio = tmp_path / 'voice_clone' / 'narration.mp3'
         audio.parent.mkdir(parents=True, exist_ok=True)

@@ -19,7 +19,7 @@ pytestmark = pytest.mark.usefixtures('require_chrome')
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / 'scripts' / 'check-composition.py'
-PRESENTER_LAYOUT = REPO_ROOT / 'modules' / 'layouts' / 'presenter.json'
+PRESENTER_LAYOUT = REPO_ROOT / 'modules' / 'layouts' / 'landscape-presenter.json'
 
 SUBTITLE_UNITS = {
     'units': [

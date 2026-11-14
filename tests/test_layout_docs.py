@@ -24,15 +24,15 @@ class LayoutDocSpec:
 
 LAYOUT_DOC_SPECS: tuple[LayoutDocSpec, ...] = (
     LayoutDocSpec(
-        layout='presenter',
-        json_file='presenter.json',
-        md_file='presenter.md',
+        layout='landscape',
+        json_file='landscape.json',
+        md_file='landscape.md',
         section_heading='## 区域',
     ),
     LayoutDocSpec(
-        layout='stage',
-        json_file='stage.json',
-        md_file='stage.md',
+        layout='landscape-presenter',
+        json_file='landscape-presenter.json',
+        md_file='landscape-presenter.md',
         section_heading='## 区域',
     ),
     LayoutDocSpec(
@@ -45,6 +45,18 @@ LAYOUT_DOC_SPECS: tuple[LayoutDocSpec, ...] = (
         layout='portrait-3x4',
         json_file='portrait-3x4.json',
         md_file='portrait.md',
+        section_heading='## 画布 1080×1440',
+    ),
+    LayoutDocSpec(
+        layout='portrait-presenter',
+        json_file='portrait-presenter.json',
+        md_file='portrait-presenter.md',
+        section_heading='## 画布 1080×1920',
+    ),
+    LayoutDocSpec(
+        layout='portrait-3x4-presenter',
+        json_file='portrait-3x4-presenter.json',
+        md_file='portrait-presenter.md',
         section_heading='## 画布 1080×1440',
     ),
 )
@@ -306,7 +318,7 @@ def test_layouts_index_summary_table_matches_every_preset_json():
 
 
 def test_compare_layout_regions_reports_layout_region_field_and_both_values():
-    spec = LAYOUT_DOC_SPECS[0]  # presenter
+    spec = next(s for s in LAYOUT_DOC_SPECS if s.layout == 'landscape-presenter')
     contract = load_layout_json(spec)
     markdown_rows = parse_region_table(spec)
     drifted_rows = [
@@ -322,9 +334,39 @@ def test_compare_layout_regions_reports_layout_region_field_and_both_values():
     problems = compare_layout_regions(spec.layout, contract['regions'], drifted_rows)
     assert len(problems) == 1
     message = problems[0]
-    assert 'presenter' in message
+    assert 'landscape-presenter' in message
     assert 'person' in message
     assert '人物区' in message
     assert 'width' in message
     assert '420' in message
     assert '400' in message
+
+
+def test_layouts_index_scene_example_is_valid_scene_config_and_matches_preset():
+    import scene_config
+
+    markdown = (LAYOUTS_ROOT / 'layouts.md').read_text(encoding='utf-8')
+    blocks = re.findall(r'```json\s*(\{.*?\})\s*```', markdown, flags=re.DOTALL)
+    assert len(blocks) == 1
+    example_scene = json.loads(blocks[0])
+    preset_name = example_scene['layout']['preset']
+    assert preset_name == 'landscape'
+    preset_contract = json.loads((LAYOUTS_ROOT / f'{preset_name}.json').read_text(encoding='utf-8'))
+
+    wrapped = {
+        'version': 1,
+        'canvas': preset_contract['canvas'],
+        'total_s': float(example_scene['end_s']),
+        'scenes': [example_scene],
+    }
+    assert scene_config.scene_config_problem(
+        wrapped,
+        expected_canvas=(preset_contract['canvas']['width'], preset_contract['canvas']['height']),
+        known_scene_ids={'scene_1'},
+        modules_root=REPO_ROOT,
+    ) is None
+    assert [r['rect'] for r in example_scene['layout']['regions']] == [
+        r['rect'] for r in preset_contract['regions']
+    ]
+    assert example_scene['layout']['caption'] == preset_contract['caption']
+

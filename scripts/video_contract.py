@@ -287,19 +287,33 @@ def _named_doc_dirs(root: Path, *, with_contract: bool) -> list[str]:
     return sorted(names)
 
 
+def _layout_doc_candidates(stem: str) -> tuple[str, ...]:
+    """layout 契约对应的候选 Markdown 文档名。
+
+    独立布局使用同名 ``<stem>.md``；3:4 竖屏变体（``portrait-3x4``、
+    ``portrait-3x4-presenter``）可与对应的 9:16 竖屏布局共享同一份文档
+    （``portrait.md``、``portrait-presenter.md``）。不做宽泛前缀切分，以免
+    ``portrait.md`` 误把缺失文档的其他 ``portrait-*`` JSON 算作已注册。
+    """
+    if stem == 'portrait-3x4' or stem.startswith('portrait-3x4-'):
+        shared = stem.replace('-3x4', '', 1)
+        return (f'{stem}.md', f'{shared}.md')
+    return (f'{stem}.md',)
+
+
 def _named_doc_files(root: Path) -> list[str]:
     """``root`` 下的模块名：每份 <名>.json 注册一个模块。
 
-    文档可以是自己的 <名>.md，也可以是同族共享的 <前缀>.md：portrait.md 同时覆盖
-    portrait 与 portrait-3x4 两个竖屏画布，因此 portrait-3x4 只有 .json。缺少任何
-    可用文档的 .json 不算注册（那是残缺的模块）。
+    文档可以是自己的 ``<名>.md``，也可以是 3:4 竖屏变体与 9:16 同族共享的文档
+    （``portrait.md``、``portrait-presenter.md``）。缺少可用文档的 ``.json``
+    不算注册（那是残缺的模块）。
     """
     if not root.is_dir():
         return []
     names = []
     for contract in root.glob('*.json'):
         stem = contract.stem
-        if (root / f'{stem}.md').is_file() or (root / f'{stem.split("-", 1)[0]}.md').is_file():
+        if any((root / doc_name).is_file() for doc_name in _layout_doc_candidates(stem)):
             names.append(stem)
     return sorted(names)
 

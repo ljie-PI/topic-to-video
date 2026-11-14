@@ -339,8 +339,8 @@ def write_audio(path: Path) -> float:
 def write_scene_config(ws: Path) -> dict:
     """Phase 8 的机器配置产物：两个视觉 scene 借用一个注册 preset。"""
     duration = media.probe_duration(ws / 'voice_clone' / 'narration.mp3')
-    stage = json.loads((REPO_ROOT / 'modules' / 'layouts' / 'stage.json').read_text(encoding='utf-8'))
-    layout = {'preset': 'stage', 'regions': stage['regions'], 'caption': stage['caption']}
+    landscape = json.loads((REPO_ROOT / 'modules' / 'layouts' / 'landscape.json').read_text(encoding='utf-8'))
+    layout = {'preset': 'landscape', 'regions': landscape['regions'], 'caption': landscape['caption']}
     def visual_scene(scene_id: str, begin: float, end: float) -> dict:
         return {
             'scene_id': scene_id, 'source_scene_ids': ['scene_1'],

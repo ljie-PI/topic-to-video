@@ -1,0 +1,41 @@
+{
+  "layout": "portrait-3x4-presenter",
+  "canvas": { "width": 1080, "height": 1440 },
+  "regions": [
+    {
+      "id": "ground",
+      "kind": "reserved",
+      "rect": { "x": 0, "y": 0, "width": 1080, "height": 1440 },
+      "component": "ground（视频 index.html 的 #ground，var(--ground)）"
+    },
+    {
+      "id": "header",
+      "kind": "content",
+      "rect": { "x": 70, "y": 90, "width": 940, "height": 120 }
+    },
+    {
+      "id": "main",
+      "kind": "content",
+      "rect": { "x": 70, "y": 250, "width": 940, "height": 740 }
+    },
+    {
+      "id": "person",
+      "kind": "reserved",
+      "rect": { "x": 700, "y": 1020, "width": 320, "height": 320 },
+      "component": "presenter"
+    },
+    {
+      "id": "caption-bar",
+      "kind": "reserved",
+      "rect": { "x": 0, "y": 1296, "width": 1080, "height": 144 },
+      "component": "caption-bar"
+    },
+    {
+      "id": "caption-text",
+      "kind": "reserved",
+      "rect": { "x": 70, "y": 1296, "width": 600, "height": 144 },
+      "component": "caption-bar"
+    }
+  ],
+  "caption": { "width_px": 600, "font_size_px": 36, "max_lines": 2 }
+}

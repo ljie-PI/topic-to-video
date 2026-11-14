@@ -1,6 +1,6 @@
 # 组件：caption-bar（底部字幕条）
 
-讲解模式布局底部的深色条，72px 高，和顶部导航栏对称。传统挂载时条里显示单行字幕：左对齐，36px，同一时间只显示一句；人物坐在这条深色条上。使用视觉 scene 数据时，字幕文字区的位置、尺寸、字号和最大行数按当前 scene 的 layout 切换。
+常驻底部字幕与深色条组件。传统单布局挂载时默认对应横屏讲解模式底部的 72px 深色条与单行字幕（左对齐，36px）；传入视觉 scene 数据 `captionSegments` 时，字幕文字框的位置、尺寸、字号、最大行数以及底部深色条的显隐和高度（如竖屏讲解的 144px 双行底条，或无主持人竖屏的无底条居中双行字幕）全部按当前 scene 的 layout 自动切换。
 
 **组件本身没有任何具体内容**：字幕都在拼视频时传入；配色和字体全部来自设计主题的变量，组件里没有写死的色值和字体名。
 
@@ -14,7 +14,8 @@
 | 变量 | 用在哪里 |
 |---|---|
 | `--c-chrome` | 条的底色（和导航栏同色，上下对称） |
-| `--c-chrome-ink` | 字幕文字 |
+| `--c-chrome-ink` | 有底部深色条时的字幕文字 |
+| `--c-ink` | 无底部深色条场景（`caption_bar_rect: null`）直接在画布底色上显示时的字幕文字 |
 | `--font-sans` | 字体栈，对应的 `@font-face` 也写在 `index.html` |
 
 组件里没有兜底色：缺少哪个变量，对应的部分就不显示。
@@ -37,7 +38,7 @@
 | `width` | 1166 | 字幕文字区宽度，单位 px。默认值让右边界停在人物左边缘前 32px；人物位置变了要跟着改 |
 | `y`, `height` | 1008, 72 | 深色条和文字区的位置和高度，单位 px |
 | `fontSize` | 36 | 字号，单位 px |
-| `bar` | `"on"` | 设为 `"off"` 时只显示文字，不画深色条 |
+| `bar` | `"on"` | 设为 `"off"` 时在初始化阶段永久移除 `#cb-bar`（全片无底条）。同片混用有底条与无底条场景（如 `portrait-presenter` 与 `portrait`）时保持默认 `"on"`，由 `captionSegments[].caption_bar_rect` 按场景切换显隐 |
 | `data` | `"captions"` | 工程数据（`window.VIDEO`）里哪个键是字幕，adapter 取出后作为 `init` 的 `data.captions` |
 | `layoutData` | `"captionSegments"` | 可选：哪个键是视觉 scene 字幕布局，adapter 取出后作为 `data.captionSegments`；有非空数组时启用 scene 模式 |
 
@@ -78,8 +79,9 @@ window.VIDEO = {
 | 字段 | 来源 | 组件行为 |
 |---|---|---|
 | `begin_s`, `end_s` | 当前 layout 的有效显示区间 | 用 `[begin_s, end_s)` 判断区间；字幕跨过边界时在边界切换布局 |
-| `caption_rect` | 该 layout JSON 中 `id: "caption-text"` 的 `rect` | `x` → 容器 `left`，`y` → `top`，`width` / `height` → 容器宽高；缺省矩形字段才回退到挂载参数 |
-| `caption.width_px` | 该 layout JSON 的 `caption` | 没有 `caption_rect.width` 时作为容器宽度 |
+| `caption_rect` | 该 layout 中 `id: "caption-text"` 的 `rect` | `x` → 容器 `left`，`y` → `top`，`width` / `height` → 容器宽高；缺省矩形字段才回退到挂载参数 |
+| `caption_bar_rect` | 该 layout 中 `id: "caption-bar"` 的 `rect`（无该保留区时为 `null`） | 有矩形时定位并显示 `#cb-bar`（文字用 `--c-chrome-ink`）；为 `null` 时在区间内隐藏 `#cb-bar`（通过 CSS 变量 `--cb-ink` / `--cb-align` / `--cb-justify` 切换为 `--c-ink` 与多行居中；深底自由布局如需浅色文字加描边/遮罩，可直接在工程 `<head>` 样式表写 `#caption-bar .cb-line span` 覆盖） |
+| `caption.width_px` | 该 layout 的 `caption` | 没有 `caption_rect.width` 时作为容器宽度 |
 | `caption.font_size_px` | 同上 | 当前区间的实际字号，**不再按文字宽度缩小** |
 | `caption.max_lines` | 同上 | `1` 时 `white-space: nowrap`；大于 `1` 时允许正常换行，最大高度为 `max_lines × font_size_px × 1.15`，多余内容裁剪 |
 

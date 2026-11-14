@@ -73,7 +73,7 @@ def refresh_report(ws: Path) -> None:
     })
 
 
-def make_visual_workspace(ws: Path, layouts: tuple[str, str] = ('presenter', 'stage')) -> None:
+def make_visual_workspace(ws: Path, layouts: tuple[str, str] = ('landscape-presenter', 'landscape')) -> None:
     complete_all(ws)
     duration = write_audio(ws)
     inputs = json.loads((ws / 'inputs.json').read_text(encoding='utf-8'))
@@ -173,7 +173,7 @@ def test_no_visual_config_is_a_missing_phase_8_product(tmp_path: Path):
 def test_declared_template_resources_must_exist(tmp_path: Path):
     # 模板的采用是逐 scene 的决定，但声明的模板与场景部分必须真实存在：
     # 不存在的模板资源在 scene-config 校验里报 corrupt，且不牵连其他 scene。
-    make_visual_workspace(tmp_path, layouts=('stage', 'stage'))
+    make_visual_workspace(tmp_path, layouts=('landscape', 'landscape'))
     path = tmp_path / scene_config.SCENE_CONFIG_PATH
     data = json.loads(path.read_text(encoding='utf-8'))
     data['scenes'][1]['template'] = {'name': 'github-trending', 'scene': 'project-cover'}

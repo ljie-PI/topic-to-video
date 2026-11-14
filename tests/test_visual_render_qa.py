@@ -44,7 +44,7 @@ def visual_workspace(tmp_path: Path, duration: float, *, strict: bool = False, o
         'scenes': [
             {'scene_id': 'visual_before', 'source_scene_ids': ['scene_1'],
              'begin_s': 0, 'end_s': before_end, 'template': None,
-             'layout': {'preset': 'presenter', 'regions': [], 'caption': {'width_px': 1, 'font_size_px': 1, 'max_lines': 1}}},
+             'layout': {'preset': 'landscape-presenter', 'regions': [], 'caption': {'width_px': 1, 'font_size_px': 1, 'max_lines': 1}}},
             {'scene_id': 'visual_after', 'source_scene_ids': ['scene_2'],
              'begin_s': after_begin, 'end_s': duration, 'template': None,
              'layout': {'preset': None, 'regions': [], 'caption': {'width_px': 1, 'font_size_px': 1, 'max_lines': 1}}},

@@ -1,5 +1,5 @@
 {
-  "layout": "stage",
+  "layout": "landscape-presenter",
   "canvas": { "width": 1920, "height": 1080 },
   "regions": [
     {
@@ -17,12 +17,23 @@
     {
       "id": "header",
       "kind": "content",
-      "rect": { "x": 96, "y": 100, "width": 1728, "height": 72 }
+      "rect": { "x": 96, "y": 100, "width": 1048, "height": 72 }
     },
     {
       "id": "main",
       "kind": "content",
-      "rect": { "x": 96, "y": 196, "width": 1728, "height": 764 }
+      "rect": { "x": 96, "y": 196, "width": 1048, "height": 788 }
+    },
+    {
+      "id": "side",
+      "kind": "content",
+      "rect": { "x": 1184, "y": 100, "width": 640, "height": 522 }
+    },
+    {
+      "id": "person",
+      "kind": "reserved",
+      "rect": { "x": 1294, "y": 642, "width": 420, "height": 420 },
+      "component": "presenter"
     },
     {
       "id": "caption-bar",
@@ -33,9 +44,9 @@
     {
       "id": "caption-text",
       "kind": "reserved",
-      "rect": { "x": 96, "y": 1008, "width": 1728, "height": 72 },
+      "rect": { "x": 96, "y": 1008, "width": 1166, "height": 72 },
       "component": "caption-bar"
     }
   ],
-  "caption": { "width_px": 1728, "font_size_px": 36, "max_lines": 1 }
+  "caption": { "width_px": 1166, "font_size_px": 36, "max_lines": 1 }
 }
