@@ -20,7 +20,7 @@
 ## 完成判据
 
 - `material-catalog.json` 存在、非空、JSON 可解析，`entries` 为非空列表；
-- 每张图片 / 每个视频都有非空字符串的 `id` 和 `semantic_description`（适配度评分 <7 或偏题的非必用素材已过滤，达标切题的通用素材尽量保留；论文必用关键图 / 表按 `required_material_refs` 规则保留）；
+- 每张图片 / 每个视频都有非空字符串的 `id` 和 `semantic_description`（适配度评分 <7 或偏题的非必用素材已过滤，达标切题的通用素材尽量保留，供下游符合场景内容时优先选用；论文必用关键图 / 表按 `required_material_refs` 规则保留）；
 - 每个 `selected_clip` 都有 `clip_path`，且它指向的文件（相对工作区）存在且非空；
 - `required_material_refs` 必须是不重复、且能在本 catalog 里按 entry 解析的 ref；标准模式下它是可选的，论文模式下必须显式声明（没有适用的关键图时写 `[]`）；
 - 状态脚本检查结构、描述与文件；评分、相关性和片段内容由执行 agent 自检，不由状态脚本判定。
