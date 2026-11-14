@@ -5,7 +5,7 @@
 ## 输入
 
 - Phase 3 的 `research-brief.md`；
-- Phase 5 的 `material-catalog.json`（标准模式且 `fetch_materials = false` 时没有 catalog，按“无素材”路径写纯旁白；论文模式总有 catalog，其中 `required_material_refs` 标出必须用上的关键图）；
+- Phase 5 的 `material-catalog.json`（标准模式且 `fetch_materials = false` 时没有 catalog，按“无素材”路径写纯旁白；有 catalog 时对通用素材尽量保留，符合场景内容时优先选入对应 scene 的候选；论文模式总有 catalog，其中 `required_material_refs` 标出成片必须出现的论文关键图 / 表）；
 - `inputs.json`（目标时长、语言、input_mode、`narration_requests`）。
 
 模板不在本阶段输入里：用哪个模板、哪个 pattern 由 Phase 8 的 composition agent 决定，旁白按内容写。
@@ -35,9 +35,9 @@
 - 开头三句内有具体钩子（见基础指令的「开场钩子」），事实全部可追溯；第一句就给异常、困境或取舍，不是自我介绍或空泛预告。
 - 叙事是否连贯：各部分是不是一个意思、段落之间有没有断裂或重复；第一个主体部分就开始回答开头的问题。
 - 讲解风格是否符合默认要求（除非 `narration_requests` 另有指定）：先引出具体问题再讲机制、语言直白让非专业观众也能听懂，没有术语堆砌、碎短句连发或空泛的 high-level 套话；难点有日常例子或分步拆解。
-- 场景计划的 `intent` 与对应段落是否对得上；`content_plan` 是否说清了用哪些内容、按什么顺序和方式讲（难点有分步推演或日常类比），而不是把 `intent` 再说一遍；引用的素材是不是真的能讲这段内容。
+- 场景计划的 `intent` 与对应段落是否对得上；`content_plan` 是否说清了用哪些内容、按什么顺序和方式讲（难点有分步推演或日常类比），而不是把 `intent` 再说一遍；catalog 中符合场景内容的通用素材是否尽量保留并优先选入了对应 scene 的 `material_candidates`，且引用的素材确实能讲这段内容（不硬塞无关素材）。
 - 用户要求（语气、结尾不要 CTA 等，见 `narration_requests`）是否都体现出来了。
-- 论文模式的 `required_material_refs` 是否都在讲解里真正讲到了，而不只是被选为候选。
+- 论文模式的 `required_material_refs`（关键图 / 表）是否都在讲解里真正讲到了，而不只是被选为候选。
 
 不合格就重写：委派时交回 script agent，并指明是事实、结构还是引用的问题。发现是上游不足（证据不够、素材不对）时，回报主 agent，按 `references/pipeline-control.md` 登记更早的阶段重做，不要在旁白里编造补充。
 

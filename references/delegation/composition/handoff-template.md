@@ -39,7 +39,7 @@
 - {{timeline_q}}：Phase 7 不可变的段落与 cue 时间轴（只提供真实语音锚点，不提供最终视觉 scene 切分）；本阶段不修改它
 - material-catalog.json：{{material_catalog}}
 - 素材 ref：图片 / 视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>`；按 slug 定位 entry 后，视频 clip 解析到该 entry 的 `selected_clips[].clip_path`（相对工作区根），不用视频的 `local_path`
-- {{ws}}/scene-plan.json：叙事层场景规划（仅作参考）：`intent` / `content_plan` 说明讲什么、怎样展开；可以合并 / 拆分 / 改选素材与演绎方式，最终视觉 scenes、逐场景 template / layout 与构图由你自主设计
+- {{ws}}/scene-plan.json：叙事层场景规划（仅作参考）：`intent` / `content_plan` 说明讲什么、怎样展开；可以合并 / 拆分视觉 scenes 或从 catalog 改选更贴合的素材与演绎方式（论文关键图 / 表必须出现；通用素材尽量保留，符合场景内容时优先考虑选用），最终视觉 scenes、逐场景 template / layout 与构图由你自主设计
 - {{ws}}/script.txt：显示稿（旁白与屏幕文字的文本来源，不能改）
 - {{ws}}/inputs.json：design {{design}}、orientation {{orientation}}；orientation 是全片固定约束，design 非“未预选”时是用户明确指定的全片 design 约束。`composition_requests` 的用户画面要求见 Additional Instructions，其作用范围以用户表述为准
 - 字体目录：{{ws}}/composition/assets/fonts/（选定 preset / custom design 后由你安装；不使用系统字体）

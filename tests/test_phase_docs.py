@@ -559,17 +559,27 @@ def test_paper_key_figures_are_declared_and_checked_end_to_end():
     phase_5 = doc_text('references/phases/05-material-catalog.md')
     phase_6 = doc_text('references/phases/06-script-scene-plan.md')
     phase_8 = doc_text('references/phases/08-composition.md')
+    phase_9 = doc_text('references/phases/09-check-mix.md')
     catalog_base = doc_text('references/delegation/catalog/base-instructions.md')
+    script_base = doc_text('references/delegation/script/base-instructions.md')
     composition_base = doc_text('references/delegation/composition/base-instructions.md')
+    composition_handoff = doc_text('references/delegation/composition/handoff-template.md')
 
     rule = '方法、模型结构、关键实验结果等关键图'
     assert rule in phase_2 and rule in phase_5
     assert 'required_material_refs' in phase_5 and 'required_material_refs' in phase_6
-    assert 'required_material_refs' in phase_8
-    assert 'required_material_refs' in catalog_base
+    assert 'required_material_refs' in phase_8 and 'required_material_refs' in phase_9
+    assert 'required_material_refs' in catalog_base and 'required_material_refs' in script_base
     assert 'required_material_refs' in composition_base
+    assert '必须都出现在成片里' in composition_base
     assert '覆盖表' in composition_base
-    # 不改写既定取舍：关键图必须用，其余仍按素材质量筛选。
+    # 通用素材：达标后尽量保留，符合场景内容时优先考虑选用；不改写论文关键图必须出现的硬要求。
+    for doc in (phase_5, catalog_base, phase_6, script_base, composition_base, composition_handoff, phase_8):
+        assert '通用素材' in doc and '尽量保留' in doc
+    for doc in (phase_6, composition_base, composition_handoff, phase_8, phase_9):
+        assert '符合场景内容' in doc and '优先' in doc
+    assert '符合某个 scene 的讲解内容' in script_base and '优先考虑' in script_base
+    assert '尽量出现在成片里' in composition_base
     assert 'VLM 评分 <5 或偏题' not in phase_5.split('required_material_refs')[1]
 
 

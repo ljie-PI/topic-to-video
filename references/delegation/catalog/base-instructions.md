@@ -47,7 +47,7 @@
 | 可读性 / 可用性 | 0–2 | 0 关键内容看不清或缺失；1 局部放大 / reveal 后可读；2 可直接清楚展示 |
 | 具体使用价值 | 0–1 | 0 与已有素材重复且无新作用；1 能指出一个明确的讲解用途 |
 
-**过滤阈值为 7 分：`score <7/10` 或偏题的非必用素材不进入 catalog，7 分可保留。** `required_material_refs` 中的论文关键图不因评分低而剔除；缺失或看不清时如实报告，不静默省略。 关键证据看不清、caption 与画面矛盾等情况要标明不确定，不用高分掩盖。带非空 caption 的论文图表按「论文」节沿用 `score: 8` 的 caption 默认值，不把它说成模型评分。
+**过滤阈值为 7 分：`score <7/10` 或偏题的非必用素材不进入 catalog，7 分可保留。** 达标切题的通用素材尽量保留，不要无故筛掉有讲解价值的真实画面；`required_material_refs` 中的论文关键图 / 表属于成片必用素材，不因评分低而剔除；缺失或看不清时如实报告，不静默省略。 关键证据看不清、caption 与画面矛盾等情况要标明不确定，不用高分掩盖。带非空 caption 的论文图表按「论文」节沿用 `score: 8` 的 caption 默认值，不把它说成模型评分。
 
 ### 展示能力判断标准
 
@@ -135,7 +135,7 @@ Phase 4 被跳过，manifest 只有主论文与已解析的相关论文，没有
 
 ## 组合与切片段
 
-每条 harvest entry 对应一个 catalog entry；把 `entry.text_excerpt`、图片的叙事锚点描述与视频级理解结果组合，过滤低于 7 分或偏题的非必用素材；论文必用关键图按 `required_material_refs` 规则保留。对视频写 `selected_clips`，元素形如 `{start, end, reason, frame_paths[]}`，只保留核对过的片段；`clip_path` 由 `cut-clips.py` 写入。
+每条 harvest entry 对应一个 catalog entry；把 `entry.text_excerpt`、图片的叙事锚点描述与视频级理解结果组合，过滤低于 7 分或偏题的非必用素材，达标可用的通用素材尽量保留；论文必用关键图 / 表按 `required_material_refs` 规则保留。对视频写 `selected_clips`，元素形如 `{start, end, reason, frame_paths[]}`，只保留核对过的片段；`clip_path` 由 `cut-clips.py` 写入。
 
 **所有 entry 写完后运行一次：**
 
@@ -145,7 +145,7 @@ scripts/cut-clips.py {work_dir}/{topic_name}
 
 对 catalog 里每个视频的每个 `selected_clip`，切出 `{work_dir}/{topic_name}/clips/<video_id>_<start:.2f>-<end:.2f>.mp4`（`-an` 去掉音轨，libx264 重编码），在该 clip 上写入 `clip_path`（相对工作区），并原地更新 `material-catalog.json`（原子写、保留原文件权限）。视频的 `local_path` 以 `harvest_page/` 为 base。目标文件已存在且非空时跳过，所以改过 catalog 后可以直接重跑。输出 JSON：`{"success": true, "clips": [{"ref": "<slug>/<video_id>:<start>-<end>", "clip_path": ..., "skipped": false}], "errors": []}`；只要有一个 clip 失败就退出 1（已切好的保留且 catalog 增量写回），按 `errors` 里的 `ref` 与原因修 catalog（窗口、`local_path`）后重跑。
 
-**`required_material_refs`（论文模式必填）：** 一个 ref 列表，声明“必须进入成片”的素材——方法图、模型结构图、关键实验结果的图表。用与 `material_candidates` 相同的 `<slug>/<id>` 格式，指向本 catalog 的 entry。它不重复、不写裸 id；状态脚本会校验每条都能解析。不要因为评分低就把关键图从清单里去掉：真要有图缺失或看不清，在报告里说明，而不是偷偷省掉。
+**`required_material_refs`（论文模式必填）：** 一个 ref 列表，声明“成片必须出现”的论文关键图 / 表——方法图、模型结构图、关键实验结果的图表。用与 `material_candidates` 相同的 `<slug>/<id>` 格式，指向本 catalog 的 entry。它不重复、不写裸 id；状态脚本会校验每条都能解析。不要因为评分低就把关键图 / 表从清单里去掉：真要有图缺失或看不清，在报告里说明，而不是偷偷省掉。
 
 **`material-catalog.json` 的结构：**
 

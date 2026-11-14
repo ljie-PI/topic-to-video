@@ -22,8 +22,8 @@
 - **视觉 scenes 与 scene-config**：先读旁白与叙事规划，决定实际视觉切分；对每个视觉场景按「用户要求 → 特别匹配模块 → 即时生成」的顺序确定方案，写 `composition/scene-config.json`。schema 以 `references/delegation/composition/scene-config.md` 契约为准（含可验证示例），它由状态、字幕与检查脚本共同读取校验：`begin_s` / `end_s` 是全片秒，主区间按 `[begin_s, end_s)` 有序、不重叠并覆盖整段视频；每个 scene 的 `layout` 必须落盘完整 `regions` / `caption`，检查不从 `preset` 名猜坐标。它们不要求与 Phase 6 的叙事 scene 一一对应；`source_scene_ids` 记录映射，合并 / 拆分的理由写在 storyboard。模板不用就是 `null`——`template: null` 加自由布局是正常完成路径。
 - **字幕**：字幕单元在**本阶段、scene-config 写出后生成**：跑 handoff 里的 `align-narration.py --mode subtitles --scene-config ... --narration-audio ...` 命令，用各 scene 落盘的 `caption` 规格把字幕切到 `composition/assets/subtitle-units.json`。它只根据显示稿、朗读稿、偏移表、本轮 transcript、scene-config 与实际音频生成，不重跑 ASR，也不覆写 Phase 7 timeline。默认由脚本生成初稿；实际制作中可以编辑文本与边界，已有用户编辑是有效输入——仅改画面 / 重渲染时不要去覆盖已有字幕。逐单元原样上屏（每个单元带 `scene_id`，归属的 visual scene）；超宽时优先在 `，；、：——`（含半角 `, ; :`）处断开；不得因 scene 切点切断英文词或数字——工具不会跨「不同版面」的切点自动合并短字幕，切点落在英文 / 数字 token 时间内部时报出涉及的 scene 与真实时间边界，需要调整视觉切点或编辑字幕。
 - **时间**：段落与 cue 的起止秒来自 `transcribe/timeline.json`；视觉 scene 的真实配音边界与 cue 锚点以它和 narration 音频为准。本阶段不修改这份时间轴。
-- **必用素材**：catalog 阶段适用时，catalog 的 `required_material_refs`（论文模式的关键图 / 表）必须都出现在成片里。在 storyboard 里另起一张覆盖表：每条必用 ref 一行，写明展示它的 scene 与大致秒数；确实无法展示时写原因并报告，不要默默丢掉。
-- **素材**：画面素材只来自 `material-catalog.json`。图片 / 视频 ref 用 `<slug>/<id>`，先定位 `entries[*].slug` 对应的 entry，再在该 entry 内按 id 找素材；裸 id 无效。图片解析到该 entry 的 `local_path`：所有相对 `local_path` 都以 `{work_dir}/{topic_name}/harvest_page/` 为 base（不是 `composition/` 或当前目录）。视频 clip 用 `<slug>/<video_id>:<start>-<end>`，一律解析到该 entry 对应的 `selected_clips[].clip_path`（Phase 5 已切好的无音轨片段文件，相对工作区根 `{work_dir}/{topic_name}/`），不使用视频的 `local_path`、不嵌入整段原视频；场景规划只引用了 `<slug>/<video_id>` 时，从该 entry 的视频 `selected_clips` 里挑片段。同一个 video id 出现在多个 entry 时，slug 决定使用哪一个 entry 的片段，不能跨 entry 匹配窗口。读取或复制进 composition 前先按此规则解析。视频仍然静音播放（`<video>` 带 `muted playsinline`）。
+- **必用素材（论文关键图 / 表）**：catalog 阶段适用时，catalog 的 `required_material_refs`（论文模式的关键图 / 表）必须都出现在成片里。在 storyboard 里另起一张覆盖表：每条必用 ref 一行，写明展示它的 scene 与大致秒数；确实无法展示时写原因并报告，不要默默丢掉。
+- **通用素材与引用解析**：画面素材只来自 `material-catalog.json`。catalog 阶段适用时，除必用的论文关键图 / 表外，catalog 中的通用素材（普通图片 / 视频 clip 及 `material_candidates`）也尽量保留、尽量出现在成片里——当素材符合场景内容时应优先考虑选用（可搭配标注、局部放大或分步动效），不要有贴合场景的真实素材却弃之不用、一律改成纯排版或纯自绘图形；与场景内容不符的素材不硬塞。图片 / 视频 ref 用 `<slug>/<id>`，先定位 `entries[*].slug` 对应的 entry，再在该 entry 内按 id 找素材；裸 id 无效。图片解析到该 entry 的 `local_path`：所有相对 `local_path` 都以 `{work_dir}/{topic_name}/harvest_page/` 为 base（不是 `composition/` 或当前目录）。视频 clip 用 `<slug>/<video_id>:<start>-<end>`，一律解析到该 entry 对应的 `selected_clips[].clip_path`（Phase 5 已切好的无音轨片段文件，相对工作区根 `{work_dir}/{topic_name}/`），不使用视频的 `local_path`、不嵌入整段原视频；场景规划只引用了 `<slug>/<video_id>` 时，从该 entry 的视频 `selected_clips` 里挑片段。同一个 video id 出现在多个 entry 时，slug 决定使用哪一个 entry 的片段，不能跨 entry 匹配窗口。读取或复制进 composition 前先按此规则解析。视频仍然静音播放（`<video>` 带 `muted playsinline`）。
 - **字体**：先跑 `npx hyperframes init composition/`（仅当 `composition/` 目录不存在时），确定 design 后再安装到 `composition/assets/fonts/`，不依赖系统字体。preset 用对应 `modules/designs/<design>` 字体包；custom 可以复用库内某个现有字体包作为资源，但 token 的字体名必须与实际 CSS 一致。复用字体资源不等于采用该 preset 的视觉设计。通用命令：`bash scripts/fonts-download.sh <ws>/composition/assets/fonts --theme <ws>/modules/designs/<design>`；handoff Outputs 也给出带实际根路径的命令。
 
 ## 二、必须选择并落盘 design
@@ -43,7 +43,7 @@
 
 ## 四、内容演绎与模板选择
 
-`scene-plan.json` 的 `intent` 与 `content_plan` 说每个 scene 要讲什么、怎样展开，`material_candidates` 给出候选素材。它们只是参考，不是画面指令。
+`scene-plan.json` 的 `intent` 与 `content_plan` 说每个 scene 要讲什么、怎样展开，`material_candidates` 给出候选素材。它们不是锁死版面的画面指令（可合并 / 拆分视觉 scene 或从 `material-catalog.json` 改选更合适的素材），但素材取舍须守第一部分：论文关键图 / 表必须出现；通用素材尽量保留，当素材符合场景内容时应优先考虑选用真实素材，再围绕素材组织构图与演绎。
 
 默认即时生成，预定义模块是例外；阅读模块目录不等于采用模块。逐场景选择，顺序固定——对每个视觉 scene 按以下统一顺序与规则执行（用户要求 → 特别匹配模块 → 即时生成）：
 
@@ -54,7 +54,7 @@
    - 不需要改旁白、视觉 scene、orientation 或用户要求来迁就模块；
    - 采用它比即时生成更清楚或更可靠，而不只是少写代码。
    采用模板后按它的 `preferred_layouts` 与用户要求确定本 scene 布局（`preferred_layouts` 是建议不是门槛）；先读 `modules/templates/templates.md` 目录，选中某个模板场景时读它的 `<t>.json`（场景与真实朗读锚点声明）和场景文档；不命中就不用，不要为了套模板改主题、叙事、朝向、design 或视觉 scenes。
-3. **没有特别匹配就即时生成。** 自主设计优先：先根据旁白要表达的关系、素材实际内容和各 scene 的可用区域，自主构思构图、视觉隐喻、信息展开与动效，根据 scene 要求自行设计 DOM/CSS/SVG/JS、图表、视觉机制或组件，不为使用库而使用库，再写入 storyboard；遇到旁白或 `content_plan` 做了日常类比、多步拆解的难点时，优先用分步揭示或阶段演进的动画把每一步的变化可视化讲清楚（`composition_requests` 另有要求时按用户要求处理）；简洁的静态呈现也是有效选择。
+3. **没有特别匹配就即时生成。** 自主设计优先（即时生成指不硬套预定义模块，有符合场景内容的真实素材时仍优先选用并围绕素材构图）：先根据旁白要表达的关系、素材实际内容和各 scene 的可用区域，自主构思构图、视觉隐喻、信息展开与动效，根据 scene 要求自行设计 DOM/CSS/SVG/JS、图表、视觉机制或组件，不为使用库而使用库，再写入 storyboard；遇到旁白或 `content_plan` 做了日常类比、多步拆解的难点时，优先用分步揭示或阶段演进的动画把每一步的变化可视化讲清楚（`composition_requests` 另有要求时按用户要求处理）；简洁的静态呈现也是有效选择。
 4. **按实际采用落盘。** 不用 template 时写 `template: null`；不借 layout preset 时写 `preset: null` 并落盘完整实际 `regions` / `caption`；不借 pattern / motion 时不产生借用记录；自绘组件仍须满足区域、字幕、确定性、事实和检查契约。模板选择及理由写进 storyboard，不写回 `inputs.json`。
 5. **保持模块内部依赖完整。** 一个特别匹配且被采用的 template / layout 所声明的必要组件，属于该方案的一部分；若这些组件不适合，应判定整个方案不够匹配，而不是破坏它的 reserved 区约定。
 6. **只记录实际采用。** 参考库按需：`modules/patterns/`、`modules/motion.md` 与 `modules/transitions/` 都是可跳过的参考入口。仅在已有构想对应某个非常匹配的模式 / 动效建议，或有具体的画面 / 动效问题需要参考时，才定向查阅；采用时须与内容关系、素材形态和区域约束高度吻合，并确实改善表达。可以局部借用或改写。需要转场时读 `modules/transitions/transitions.md`，选定后再读具体转场文档；简单接缝已经合适时不采用转场，自由布局也不强制使用转场。默认自主设计，全片不用参考库也完全合格，不使用转场也同样合格。storyboard 只记录实际借用的模块、用户指定依据或特别匹配理由（只在借用时用一句话记录借用内容与匹配理由）；即时生成不需要“未使用其他模块”的清单，无需填写 pattern 字段或未使用理由。
