@@ -48,8 +48,8 @@ RESEARCH_BRIEF = (
     '- https://example.com/article — official site\n'
 )
 
-# duration '5min' -> 5 * 60 * 7 = 2100 characters, here as two paragraphs.
-SCRIPT_TXT = '甲' * 1050 + '\n\n' + '乙' * 1050 + '\n'
+# duration '5min' -> 5 * 60 * 5 = 1500 characters, here as two paragraphs.
+SCRIPT_TXT = '甲' * 750 + '\n\n' + '乙' * 750 + '\n'
 
 # cut-clips.py writes this flat, two-decimal path and records it as clip_path.
 CLIP_PATH = 'clips/vid_001_12.00-18.50.mp4'
@@ -613,25 +613,25 @@ def test_missing_or_corrupt_phase_6_products_fall_back_to_phase_6(tmp_path: Path
 
 def test_script_length_tolerance_whitespace_and_duration_coupling(tmp_path: Path):
     complete_through_script(tmp_path)
-    for chars in (2520, 1680):
+    for chars in (1800, 1200):
         write_text(tmp_path / 'script.txt', script_of(chars))
         result = parse_result(run_cli(str(tmp_path)))
         assert result['next_phase']['id'] == '6-script-scene-plan'
         detail = result['next_phase']['problems']['script.txt']
-        assert str(chars) in detail and '2100' in detail and '20.0%' in detail, detail
+        assert str(chars) in detail and '1500' in detail and '20.0%' in detail, detail
 
     for accepted_text in (
-        script_of(2394),
-        script_of(1806),
-        '甲 ' * 1050 + '\n\n\n　　' + '乙\t' * 1050 + '\n\n',
+        script_of(1724),
+        script_of(1276),
+        '甲 ' * 750 + '\n\n\n　　' + '乙\t' * 750 + '\n\n',
     ):
         write_script(tmp_path, accepted_text)
         approve(tmp_path, 'script')
         assert '6-script-scene-plan' in parse_result(run_cli(str(tmp_path)))['completed_phases']
 
-    # Numeric duration sets target (1 min -> 420 chars); invalid duration fails at Phase 1 first.
+    # Numeric duration sets target (1 min -> 300 chars); invalid duration fails at Phase 1 first.
     write_json(tmp_path / 'inputs.json', {**INPUTS, 'duration': 1})
-    assert '420' in parse_result(run_cli(str(tmp_path)))['next_phase']['problems']['script.txt']
+    assert '300' in parse_result(run_cli(str(tmp_path)))['next_phase']['problems']['script.txt']
 
     write_json(tmp_path / 'inputs.json', {**INPUTS, 'duration': 'soon'})
     bad_dur = parse_result(run_cli(str(tmp_path)))
@@ -641,7 +641,7 @@ def test_script_length_tolerance_whitespace_and_duration_coupling(tmp_path: Path
 
 # --- phase 6 product: scene-plan.json -------------------------------------------
 
-THREE_PARAGRAPH_SCRIPT = '甲' * 700 + '\n\n' + '乙' * 700 + '\n\n' + '丙' * 700 + '\n'  # 2100 characters
+THREE_PARAGRAPH_SCRIPT = '甲' * 500 + '\n\n' + '乙' * 500 + '\n\n' + '丙' * 500 + '\n'  # 1500 characters
 
 
 def scene(scene_id: str, paragraphs, candidates=()) -> dict:
@@ -1356,7 +1356,7 @@ def test_a_phase_with_both_missing_and_corrupt_products_is_corrupt(tmp_path: Pat
 # 由主 agent 按已知修改范围显式登记（--redo）；这里验证脚本确实不从文件
 # 变化推断任何失效，也不需要任何指纹状态文件。
 
-EDITED_SCRIPT_TXT = '甲' * 1050 + '\n\n' + '丙' * 1050 + '\n'  # same length as SCRIPT_TXT, other content
+EDITED_SCRIPT_TXT = '甲' * 750 + '\n\n' + '丙' * 750 + '\n'  # same length as SCRIPT_TXT, other content
 
 
 def settle(ws: Path, **inputs_overrides) -> dict:
@@ -1483,9 +1483,9 @@ def test_offsets_mismatch_and_non_integer_lengths_send_phase_6_back(tmp_path: Pa
     complete_through_script(tmp_path)
     saved_offsets = json.loads((tmp_path / 'narration-offsets.json').read_text(encoding='utf-8'))
 
-    write_text(tmp_path / 'script.txt', '甲' * 1050 + '\n\n' + '乙' * 1055 + '\n')
+    write_text(tmp_path / 'script.txt', '甲' * 750 + '\n\n' + '乙' * 755 + '\n')
     detail = offsets_problem(tmp_path)
-    assert 'script_length' in detail and 'script.txt' in detail and '2103' in detail and '2108' in detail
+    assert 'script_length' in detail and 'script.txt' in detail and '1503' in detail and '1508' in detail
     assert 'make-narration' in detail
     write_text(tmp_path / 'script.txt', SCRIPT_TXT)
 

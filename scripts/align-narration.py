@@ -844,6 +844,15 @@ def attribute_atoms_to_scenes(
         best_index = -1
         best_overlap = 0
         for index, (begin, end) in enumerate(ranges):
+            if atom.end_ms <= atom.begin_ms:
+                # 零时长 ASR 词插值出的瞬时 atom：落在 [begin, end)（或末段终点）时归属该 scene
+                in_range = (begin <= atom.begin_ms < end) or (
+                    index == len(ranges) - 1 and atom.begin_ms == end
+                )
+                if in_range:
+                    best_index = index
+                    break
+                continue
             overlap = min(atom.end_ms, end) - max(atom.begin_ms, begin)
             if overlap > best_overlap:
                 best_index = index
