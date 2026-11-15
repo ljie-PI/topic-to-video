@@ -48,14 +48,14 @@
 - `composition/compositions/` 里至少有一个文件；
 - `composition/check-composition.json` 的 `verdict` 为 `pass`，且覆盖当前 scene-config——`scenes_checked` 覆盖每个视觉 scene 及其实际 layout（preset 名或自由布局的 `null`）。改过 scene-config 或画面就要重跑 check-composition 并用 `--output` 保存报告；状态脚本只验收报告数据本身，不比对源文件哈希或修改时间；
 - `composition/renders/final.mp4` 存在、非空。渲染是否覆盖最新画面由执行流程保证：改过画面就重新渲染，不由文件时间充当验收证据；
-- 状态脚本不判定的两项由主 agent 抽查（见 8.4）：`npx hyperframes check` 无错误；storyboard 的每个视觉 scene 都标注了 template / layout 方案与所用的 content 区域，并说明了表达设计，模板 / 布局选择的理由与参考库借用记录符合 composition 基础指令第四部分。
+- 状态脚本不判定的两项由主 agent 抽查（见 8.4）：`npx hyperframes check` 无错误；storyboard 的每个视觉 scene 都标注了 template / layout 方案与所用的 content 区域，写明了实际素材分配（默认不跨场景复用；仅同一张技术图深入讲解可延长场景或做无过场连续局部 zoom）或无素材时的视觉动画演绎方案（按 SVG → WebGL → Three.js → GSAP 优先级考虑或组合），模板 / 布局选择的理由与参考库借用记录符合 composition 基础指令第四部分。
 
 ## 执行后自检
 
 `pipeline-status` 会检查字幕、报告结论、报告是否覆盖当前源文件、渲染是否比源文件新（见上）。此外：
 
 - 渲染前：`check-composition` 的 finding 是否都已改完，而不是仅在报告里标 pass。
-- 渲染后：抽看一两个关键 scene，确认素材按宽高比放对了、字幕没有溢出、画面能对应旁白。全面成片检查归 Phase 9，不要在这里重复全套。
+- 渲染后：抽看一两个关键 scene，确认素材按宽高比放对了、字幕没有溢出、画面能对应旁白，且未在非技术深讲场景违规复用素材、无素材场景确实用视觉动画演绎了 `content_plan`。全面成片检查归 Phase 9，不要在这里重复全套。
 - 发现内容错位（场景和旁白对不上、素材用错）属于叙事或素材问题，按 `references/pipeline-control.md` 回退到对应阶段，而不是只改 HTML。
 
 ## 下一步
@@ -121,9 +121,9 @@ scene-config 写出后，agent 跑 handoff 里的 `align-narration.py --mode sub
 
 composition agent 报告完成后：
 
-0. catalog 阶段适用时抽查素材使用：论文模式的关键图 / 表（`required_material_refs`）必须出现——storyboard 的覆盖表是否把每条都落到了具体 scene，实际画面里能不能看到（不能用“选为候选”冒充“已经展示”）；通用素材是否也尽量保留，当素材符合场景内容时是否优先考虑选用了真实素材而非无故弃用。
+0. catalog 阶段适用时抽查素材使用：论文模式的关键图 / 表（`required_material_refs`）必须出现——storyboard 的覆盖表是否把每条都落到了具体 scene，实际画面里能不能看到（不能用“选为候选”冒充“已经展示”）；通用素材是否也尽量保留，当素材符合场景内容时是否优先考虑选用了真实素材而非无故弃用；真实素材是否遵守了默认单场景分配（未在非技术深讲场景间跨场景重复使用；对同一张技术图深入讲解时是否合并延长了场景，或在相邻连续场景间去掉了打断性过场并优先 zoom in 到不同局部区域）。
 1. 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`。
 2. `next_phase` 仍是 Phase 8 时分两种情况：`reason` 为 `missing` / `corrupt` 时，把 `next_phase.problems`（产物 → 原因，包括 `composition/scene-config.json` → 原因）原样反馈给 composition agent；`reason` 为 `redo` 时把 `redo_reason` 一并交给它。无论哪种情况都限定范围修复，修完由主 agent `--finish` 后再跑一次。不要自己改产物。
-3. Phase 8 不再是 `next_phase` 后，抽查状态脚本不判定的两项：agent 报告的 `npx hyperframes check` 无错误；storyboard 的每个视觉 scene 都写明了 template / layout 方案与理由、所用的 content 区域、构图、信息展开与动效安排，必用素材覆盖表齐全，参考库借用记录符合基础指令第四部分（设计是否合适看画面与内容是否对得上）。
+3. Phase 8 不再是 `next_phase` 后，抽查状态脚本不判定的两项：agent 报告的 `npx hyperframes check` 无错误；storyboard 的每个视觉 scene 都写明了 template / layout 方案与理由、所用的 content 区域，以及实际使用的素材 ref（含连续技术深讲的范围、无过场衔接与各段焦点）或无素材时选用的视觉动画演绎方案（按 SVG → WebGL → Three.js → GSAP 优先级或组合生动讲述 `content_plan`，未退化为纯排版文字卡片），必用素材覆盖表齐全，参考库借用记录符合基础指令第四部分（设计是否合适看画面与内容是否对得上）。
 
 全部通过后进入 Phase 9。

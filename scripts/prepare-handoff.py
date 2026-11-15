@@ -320,7 +320,7 @@ def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan
         plan.values['material_catalog'] = str(ws / 'material-catalog.json')
         plan.inputs.append(ws / 'material-catalog.json')
     else:
-        plan.values['material_catalog'] = '无（无素材，画面用纯排版）'
+        plan.values['material_catalog'] = '无（无可用素材）'
     return plan
 
 

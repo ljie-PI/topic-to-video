@@ -5,8 +5,8 @@
 ## 适用场景和触发信号
 
 - 单个素材，旁白明确在解释它的某个局部细节，且素材的重点区域有证据支持（catalog 的 `focal_region`、avoid-region 或可验证的关键区域）。
-- 旁白一次只讲一个重点；多个局部建议拆成相邻的 `patterns/media/continuation.md` scene，一次讲一个。
-- 场景规划里 `layout_role = "detail_callout"`，或素材是图表 / figure 且旁白引用其中某个数据点、模块。
+- 旁白围绕同一张技术图依次深入拆解多个局部重点时，优先合并延长为单个视觉 scene 按时间依次推进局部放大与标注，或拆成相邻无过场的 `patterns/media/continuation.md` 连续 scene 并依次 zoom in 到图片不同区域，一次讲透一个区域。
+- 素材是技术架构图 / 流程图 / 图表 / figure，且旁白引用其中某个具体模块或数据点。
 
 ## 区域尺寸建议
 
