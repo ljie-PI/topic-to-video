@@ -118,9 +118,9 @@ TTS 朗读稿由 `scripts/make-narration.py` 按词表确定性生成，不要�
    - `scene_id`：`scene_1`, `scene_2`, ... 顺序编号。
    - `paragraphs`：覆盖的**段落序号（1 起）**；所有 scene 的段落并集必须覆盖 `script.txt` 的全部段落，段落可以属于多个 scene（合并 / 拆分时）。
    - `intent`：这场景要帮观众理解什么。
-   - `content_plan`：这场景讲什么、怎样展开。说清内容对象（如哪组结果、哪个反例、哪张图、哪个日常例子等）和展开顺序 / 演绎方式（如先引出问题再给解法、先给结果再倒推、同条件对照、失败复盘、日常类比、分步动态推演、图表解读等，不局限于此）。遇到抽象或难懂的机制时，在 `content_plan` 里明确拆成可逐步演示的几个阶段及每一步的关键变化，便于 composition 用分步动画讲清。不写模板 / pattern 名、组件、layout 区域、屏幕文字、动画参数或精确秒数——那是 composition 的设计空间；也不要把它写成 `intent` 的同义重复。
+   - `content_plan`：这场景讲什么、怎样展开。无论本 scene 有没有候选素材，都要说清具体内容对象（如哪组结果、哪个反例、哪张图的哪些模块、哪个日常例子等）、对象之间的关系 / 对比 / 因果，以及随旁白推进的展开顺序与演绎方式（如先引出问题再给解法、先给结果再倒推、同条件对照、失败复盘、日常类比、分步动态推演、图表分区解读等，不局限于此）。遇到抽象或难懂的机制时，明确拆成可逐步演示的几个阶段及每一步的关键变化；围绕同一张关键技术图深入讲解时，写清依次拆解图中的哪些区域，便于 composition 用视觉动画或连续局部镜头讲清（下游未采用真实素材的场景将直接依据 `content_plan` 做动画演绎，不要写成“介绍背景 / 总结意义”这类空泛标题）。不写模板 / pattern 名、动画 runtime、组件、layout 区域、屏幕文字、动画参数或精确秒数——那是 composition 的设计空间；也不要把它写成 `intent` 的同义重复。
    - `cues`：可选。本 scene 里值得对齐到秒的关键句（例如要卡住画面切换的那一句），必须原样取自显示稿；Phase 7 用它们从配音里算出秒数。不要为了让某个模板好看而倒推旁白。
-   - `material_candidates`：候选素材引用，每项含 `ref`、`score`（1–10）、`reason`。catalog 的 `required_material_refs`（论文关键图 / 表）必须至少各被一个 scene 选中（状态脚本会打回没覆盖的）；对 catalog 中的通用素材也尽量保留利用——当素材符合某个 scene 的讲解内容时，应优先考虑选入该 scene 的 `material_candidates`，不贴合场景内容的素材不硬塞。选为候选不等于已经出现在成片：实际画面由 composition 阶段落实。**只是候选，不做排他分配**；同一素材可以被多个 scene 候选。`ref` 的格式（即上面论文结构里说的 `material_ref`）：图片和视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>`；`slug` 必须等于 catalog 的 `entries[*].slug`，id 只需存在于该 entry，裸 id 无效。即使两个 entry 都有 `img_001` 或同一个 video id，也必须用各自 slug 区分。clip 秒数与该 entry 的 `selected_clips` 对应——数字间不加空格，起止时间要与某一项相差不超过 0.01 秒。没有 catalog（`fetch_materials = false` 且不是论文模式）时留空列表。
+   - `material_candidates`：候选素材引用，每项含 `ref`、`score`（1–10）、`reason`。catalog 的 `required_material_refs`（论文关键图 / 表）必须至少各被一个 scene 选中（状态脚本会打回没覆盖的）；对 catalog 中的通用素材也尽量保留利用——当素材符合某个 scene 的讲解内容时，应优先考虑选入该 scene 的 `material_candidates`，不贴合场景内容的素材不硬塞。选为候选不等于已经出现在成片：实际画面由 composition 阶段落实。**只是候选，不做排他分配**；同一素材可以被多个叙事 scene 候选，但候选重复不代表成片会跨场景重复展示——composition 默认每个真实素材只在一个最终视觉场景中使用（仅围绕同一张技术图连续深入讲解时例外），不要按“同一张通用配图在前后多个不同话题里反复出场”来设计叙事或 `content_plan`。`ref` 的格式（即上面论文结构里说的 `material_ref`）：图片和视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>`；`slug` 必须等于 catalog 的 `entries[*].slug`，id 只需存在于该 entry，裸 id 无效。即使两个 entry 都有 `img_001` 或同一个 video id，也必须用各自 slug 区分。clip 秒数与该 entry 的 `selected_clips` 对应——数字间不加空格，起止时间要与某一项相差不超过 0.01 秒。没有 catalog（`fetch_materials = false` 且不是论文模式）时留空列表。
    - **不包含** `template_scene` / `pattern_hints` / `beats` / `layout_role` / `visual_role` / `display_text`——模板、pattern、动作与画面都是 composition 阶段的设计空间；把场景计划写成那样会被状态脚本打回。
 
 ## 完成后
@@ -133,7 +133,7 @@ TTS 朗读稿由 `scripts/make-narration.py` 按词表确定性生成，不要�
 - 开头三句内有具体的钩子：第一句就给出异常、困境或取舍，第二句说清为什么值得看，第三句承诺正文会回答的问题；后面才补背景。
 - 各部分讲的是同一件事，段落之间没有断裂或重复；第一个主体部分就开始回答开头的问题。
 - 正文讲解是否先引出问题再展开、语言直白自然，没有术语堆砌、碎短句连发或空洞的 high-level 套话；难懂的部分是否借助日常例子或分步拆解讲清楚了。
-- 每个 scene 的 `intent` 与它覆盖的段落对得上；`content_plan` 说清了用哪些内容和怎样展开（难点有分步推演或具体例子），而不是把 `intent` 再说一遍；引用的素材能讲这段内容。
+- 每个 scene 的 `intent` 与它覆盖的段落对得上；`content_plan` 说清了具体内容对象、关系和展开步骤（难点有分步推演或具体例子，深入技术图时指明依次讲解的模块 / 区域，足以支撑无素材时的视觉动画演绎），而不是把 `intent` 再说一遍；引用的素材能讲这段内容，且没有假设同一张通用配图跨不同话题反复出场。
 - 用户的要求（语气、结尾不要 CTA 等，见 `narration_requests`）都体现了。
 - catalog 声明为 `required_material_refs` 的素材（论文模式的关键图 / 表）是否都被某个 scene 的 `material_candidates` 选中了；catalog 中符合场景内容的通用素材是否也尽量保留并优先匹配到了对应 scene。
 

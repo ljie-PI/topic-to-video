@@ -16,11 +16,11 @@ patterns 是**按需参考库**，提供常见媒体和信息形态的摆法与�
 | band | `patterns/media/band.md` | 超宽素材以足够高的信息横带呈现 |
 | detail-callout | `patterns/media/detail-callout.md` | 保留素材全貌，局部窗口 + 外置标注 |
 | comparison | `patterns/media/comparison.md` | 两个及以上素材同屏或分时对比 |
-| continuation | `patterns/media/continuation.md` | 相邻 scene 围绕同一素材连续讲解 |
+| continuation | `patterns/media/continuation.md` | 同一张技术图深入拆解时的无过场连续镜头与分区 zoom |
 
 ## 信息形态（info/）
 
-没有主素材、靠排版和数据承担叙事时的形态：
+没有真实主素材、按 **SVG → WebGL → Three.js → GSAP** 优先级用视觉动画演绎 `content_plan` 时的信息结构参考（借用版式骨架时仍须把对象、关系或分步变化做成生动动画，不得退化成静态纯排版卡片）：
 
 | pattern | 文档 | 覆盖的 visual_role |
 | --- | --- | --- |

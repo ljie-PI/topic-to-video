@@ -20,7 +20,8 @@
 
 本阶段的检查已经写在下面的流程里（确定性检查 + 按 `qa_level` 的 vision 检查 + 最多两轮修复），不需要额外再看别的东西。根据问题类型决定退回哪一层，而不是硬改：
 
-- catalog 阶段适用时，必用素材（catalog 的 `required_material_refs`，论文模式的关键图 / 表）没在成片里出现，或关键图 / 表看不清：交回 Phase 8 补上，不要只记一笔就放行。通用素材不要求逐条必出，但尽量保留且在符合场景内容时应优先考虑选用；若场景明明有贴合内容的可用素材却无故弃用，修复时一并交回 Phase 8 优先采用。
+- catalog 阶段适用时，必用素材（catalog 的 `required_material_refs`，论文模式的关键图 / 表）没在成片里出现，或关键图 / 表看不清：交回 Phase 8 补上，不要只记一笔就放行。通用素材不要求逐条必出，但尽量保留且在符合场景内容时应优先考虑选用；若场景明明有贴合内容的可用素材却无故弃用，修复时一并交回 Phase 8 优先采用。非技术深讲的素材跨视觉场景重复出现，或围绕同一张技术图连续深讲却被过场打断、整张图原地不动只换文字而未推进局部区域：交回 Phase 8 去重、合并延长场景，或改为无过场连续镜头并 zoom in 到相应区域。
+- 不用真实素材的视觉场景退化成纯排版文字卡片、静态列表或无关装饰动画，未能用视觉动画（按 SVG → WebGL → Three.js → GSAP 优先级选择或组合）生动讲述该场景的 `content_plan`：交回 Phase 8 重做该场景的内容动画演绎。
 
 - 黑屏、冻结、音画时长不符、渲染残缺：留在本阶段，交回 composition agent 修。
 - 画面与旁白对不上：可能是叙事或场景计划的问题，按 `references/pipeline-control.md` 找到对应阶段，不要只改画面。
@@ -85,14 +86,15 @@ python3 scripts/make-contact-sheet.py \
 
 #### 9.3 — vision 检查（`vision_check_required` 为 true 时，主 agent 执行）
 
-看 9.2 输出 JSON 的 `vision_check_required` 决定是否执行本节；为 `false` 时跳过。为 `true` 时，主 agent 自己逐张看 `qa/sheet_NNN.jpg`（用 `view` 工具；sheet 同时交给用户过目），每张只回答 4 项：
+看 9.2 输出 JSON 的 `vision_check_required` 决定是否执行本节；为 `false` 时跳过。为 `true` 时，主 agent 自己逐张看 `qa/sheet_NNN.jpg`（用 `view` 工具；sheet 同时交给用户过目），每张核对 5 项：
 
 1. 渲染是否完整（无缺帧、无渲染中断导致的残帧）；
-2. 画面与旁白是否相符；
-3. 是否符合 `composition/design.json` 的 preset 或 custom 配色与观感；scene 限定的 token 覆盖是否只作用于声明的 scene，没有外泄到其他 scene；
-4. 有没有明显的空洞或错位。
+2. 画面与旁白、`content_plan` 是否相符——不用真实素材的视觉场景是否用具体的视觉图示与阶段动画（SVG / WebGL / Three.js / GSAP）生动讲述了内容与演进，而不是退化成静态文字卡片、纯排版列表或无关装饰图形；
+3. 素材使用是否合规——同一素材有没有在非技术深讲场景间违规跨场景复用；围绕同一张技术图连续深讲的相邻场景，切点是否保持无打断性过场，并推进局部焦点（优先 zoom in 到图片不同区域，而非整图静止只换说明文字）；
+4. 是否符合 `composition/design.json` 的 preset 或 custom 配色与观感；scene 限定的 token 覆盖是否只作用于声明的 scene，没有外泄到其他 scene；
+5. 有没有明显的空洞或错位。
 
-除此之外不做别的视觉判断；动效与转场的观感默认交给用户在预览中判断。
+仅凭各 scene 单张中点帧无法确认“连续技术图切点有无被过场打断 / 局部 zoom 是否推进”或“无素材场景的分步动画是否真实演进”时，对照 `composition/storyboard.md` 按需对涉及切点或阶段前后的时间点单独抽帧核对（`strict` 档拼图已含入场帧与切点前后三帧可直接查看），仍不做全片密集抽帧；纯审美层面的缓动观感默认交给用户在预览中判断。
 
 #### 9.4 — qa-report.json 与修复轮
 

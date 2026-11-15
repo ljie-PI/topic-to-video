@@ -568,7 +568,8 @@ class TestCompositionHandoff:
         if input_mode == 'paper':
             assert str(ws / 'material-catalog.json') in inputs
         else:
-            assert '- material-catalog.json：无（' in inputs
+            assert '- material-catalog.json：无（无可用素材）' in inputs
+            assert '纯排版' not in inputs
         assert 'orientation landscape' in inputs
         assert 'design github' not in inputs and 'design 未预选' not in inputs
         assert 'template 无' not in inputs and 'template 未选择' not in inputs  # 无全局模板决策
