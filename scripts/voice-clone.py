@@ -111,9 +111,9 @@ DEFAULT_QWEN3_ALIGNER_MODEL = "Qwen/Qwen3-ForcedAligner-0.6B"
 DEFAULT_TTS_MODEL_MLX = "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
 DEFAULT_ALIGNER_MODEL_MLX = "mlx-community/Qwen3-ForcedAligner-0.6B-8bit"
 
-# 各后端的默认播放速度（通过 ffmpeg atempo 施加，保持音高）。
-# 配快速参考音色时 Qwen3-TTS 以 1.0 朗读最自然；CosyVoice 保持它自己的 1.4。
-DEFAULT_QWEN3TTS_SPEECH_RATE = 1.0
+# 各后端的默认播放速度（Qwen3-TTS 通过 ffmpeg atempo 施加，保持音高）。
+# Qwen3-TTS 默认轻微加速到 1.1；CosyVoice 保持它自己的 1.4。
+DEFAULT_QWEN3TTS_SPEECH_RATE = 1.1
 DEFAULT_DASHSCOPE_SPEECH_RATE = 1.4
 
 
@@ -271,7 +271,7 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         help='Playback speed. dashscope: CosyVoice speech_rate (default 1.4). '
-             'mlx / qwen3tts: ffmpeg atempo factor post-synthesis (default 1.0).',
+             'mlx / qwen3tts: ffmpeg atempo factor post-synthesis (default 1.1).',
     )
     parser.add_argument(
         '--output-dir',

@@ -44,6 +44,25 @@ EXPECTED = [
     },
 ]
 
+
+def retimed(transcript: list[dict], rate: float) -> list[dict]:
+    """Apply voice-clone's millisecond rounding after an atempo rate change."""
+    def retime(ms: int) -> int:
+        return int(round(round(ms / 1000 / rate, 3) * 1000))
+
+    return [
+        {
+            **sentence,
+            'begin': retime(sentence['begin']),
+            'end': retime(sentence['end']),
+            'words': [
+                {**word, 'begin': retime(word['begin']), 'end': retime(word['end'])}
+                for word in sentence['words']
+            ],
+        }
+        for sentence in transcript
+    ]
+
 _ENV_BLACKLIST_PREFIXES = (
     'TTS_', 'ASR_', 'ALIGNER_', 'QWEN3', 'DASHSCOPE_', 'COSYVOICE_',
 )
@@ -239,7 +258,8 @@ def test_qwen3_asr_cli_groups_aligner_tokens_into_the_transcript_schema(
 @pytest.mark.parametrize('backend, text, expected', [
     pytest.param('qwen3tts', TEXT, EXPECTED, id='torch'),
     pytest.param('mlx', MLX_TEXT, [
-        {**sentence, 'text': text} for sentence, text in zip(EXPECTED, ['你好', '再见'])
+        {**sentence, 'text': text}
+        for sentence, text in zip(retimed(EXPECTED, 1.1), ['你好', '再见'])
     ], id='mlx'),
 ])
 def test_direct_aligner_cli_writes_the_transcript_schema(tmp_path: Path, fake_packages: Path, backend, text, expected):

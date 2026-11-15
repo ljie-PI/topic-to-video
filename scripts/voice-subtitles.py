@@ -9,7 +9,7 @@
 scene / cue 秒数），不读 layout、不确定字幕宽度 / 字号 / 行数。字幕单元由
 Phase 8 在 layout 定下之后用 align-narration.py --mode subtitles 生成。
 
-不指定 TTS 语速：实际节奏由后端与文本决定，写稿的字数估算（约 7 字符/秒）不是
+不指定 TTS 语速：实际节奏由后端与文本决定，写稿的字数估算（约 5 字符/秒）不是
 传给 TTS 的参数。
 
 workspace 需要 narration.txt、narration-offsets.json、script.txt 和 inputs.json。
