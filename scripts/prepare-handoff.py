@@ -293,6 +293,9 @@ def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan
     sources.append(SKILL_ROOT / 'modules' / 'components' / 'components.md')
     components_doc = modules / 'components' / 'components.md'
     references.append((f'{components_doc}（组件索引：按需读要挂载的组件文档）', [components_doc]))
+    sources.append(SKILL_ROOT / 'modules' / 'motions' / 'motions.md')
+    motions_doc = modules / 'motions' / 'motions.md'
+    references.append((f'{motions_doc}（动效模块目录：按场景决定是否借用或改写某个动态模块）', [motions_doc]))
     plan = Plan(
         values={
             'required_references': numbered([text for text, _ in references]),

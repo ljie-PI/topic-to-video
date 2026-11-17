@@ -1,0 +1,58 @@
+<template>
+  <!--
+    Motion module: focus-callout — focal viewport pan/zoom and non-occluding exterior
+    leader-line callouts (docs: motions/focus-callout/focus-callout.md).
+    Leader lines attach strictly to the exterior border of the media/target viewport,
+    placing callout cards in the exterior band without occluding interior content.
+  -->
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      font-family: var(--font-sans);
+      color: var(--c-ink);
+      background: transparent;
+      pointer-events: none;
+    }
+    #fc-stage {
+      position: absolute;
+      left: 0;
+      top: 0;
+      overflow: hidden;
+    }
+    #fc-viewport {
+      position: absolute;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1.5px solid var(--c-border);
+      background: color-mix(in srgb, var(--c-card) 86%, transparent);
+      box-shadow: 0 2px 8px color-mix(in srgb, var(--c-ink) 5%, transparent);
+    }
+    #fc-img {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    #fc-svg {
+      position: absolute;
+      left: 0;
+      top: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+  <div id="root" data-composition-id="focus-callout" data-width="1048" data-height="788">
+    <div id="fc-stage">
+      <div id="fc-viewport">
+        <img id="fc-img" alt="" />
+      </div>
+      <svg id="fc-svg" xmlns="http://www.w3.org/2000/svg">
+        <defs id="fc-defs"></defs>
+      </svg>
+    </div>
+  </div>
+</template>

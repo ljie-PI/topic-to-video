@@ -5,6 +5,7 @@
 - **设计主题**：管外观；
 - **布局**：管版面；
 - **组件**：通用内容部件；
+- **动态模块**：可复用的场景动效与图示机制；
 - **转场**：scene 之间的交接；
 - **模板**：某一类视频的组装方法和场景。
 
@@ -14,7 +15,7 @@
 
 ## 模块初始化接口（唯一约定）
 
-六个已迁移模块（`caption-bar`、`nav-bar`、`tile-wipe`、`presenter`、`trending-overview`、`project-cover`）用同一个显式初始化约定；后续新模块也沿用它，不另建平行接口。接口名称以本节为准。
+六个已迁移模块（`caption-bar`、`nav-bar`、`tile-wipe`、`presenter`、`trending-overview`、`project-cover`）及 `motions/` 下的动态模块（`flow-path`、`topology-graph`、`chart-build`、`focus-callout`）都用同一个显式初始化约定；后续新模块也沿用它，不另建平行接口。接口名称以本节为准。
 
 ```js
 // <模块名>.mjs
@@ -34,13 +35,13 @@ export function init(root, { params, data, duration, gsap }) { … }
 ```js
 {
   timeline,   // 必返：暂停的 GSAP timeline，位置按局部秒；调用方负责驱动 seek
-  ready,      // 可选：Promise，异步资产（如图层）就绪后 resolve；presenter 类模块用
+  ready,      // 可选：Promise，异步资产（如图层、字体重排）就绪后 resolve；presenter 与 motions 类模块用
   seek(t),    // 可选：在局部秒 t 自绘一帧；timeline seek 之外画面仍需更新的自绘模块用
   destroy(),  // 必返：拆除驱动（kill timeline 等），销毁/重挂不得残留
 }
 ```
 
-暂停的 timeline 不是唯一能力假设：纯 DOM tween 模块只返回 `timeline` + `destroy`；异步加载图层的 WebGL 自绘模块（`presenter`）另返回 `ready` / `seek(t)`，宿主在 hf-seek 时先 seek timeline 再调 `seek(t)` 并等待 `ready`。
+暂停的 timeline 不是唯一能力假设：纯 DOM tween 模块只返回 `timeline` + `destroy`；依赖字体就绪实测重排的 `motions/*` 模块另返回 `ready`，异步加载图层的 WebGL 自绘模块（`presenter`）同时返回 `ready` / `seek(t)`，宿主在 hf-seek 时等待 `ready`、seek timeline 并调 `seek?.(t)`。
 
 模块**不**做、也没有 HyperFrames 知识：不读 `window.__hyperframes`、不从 host 推断参数或时长、不向 `window.__timelines` 注册。厂商事件桥接（`hf-seek`、`buildReady` 等）属于使用模块的视频工程的 adapter，不是模块库接口。
 
@@ -93,6 +94,12 @@ components/
   presenter/presenter.md, presenter.html, presenter.mjs, images/   人物动作：组件和两张姿势图（已迁移到显式初始化）
   nav-bar/nav-bar.md, nav-bar.html, nav-bar.mjs   顶部界面条（已迁移到显式初始化）
   caption-bar/caption-bar.md, caption-bar.html, caption-bar.mjs   底部字幕条（已迁移）
+motions/
+  motions.md, motion-utils.mjs            动态模块总览与共用排版几何工具：采用条件、目录、接入、runtime 与编排建议
+  flow-path/flow-path.md, .html, .mjs     流程与状态流转：有向节点揭示、焦点推进与连线生长
+  topology-graph/topology-graph.md, .html, .mjs  架构与依赖拓扑：微网格舞台、模块端口与贝塞尔脉冲连线
+  chart-build/chart-build.md, .html, .mjs 图表与核心指标：柱状、折线面积与大数字动态构建
+  focus-callout/focus-callout.md, .html, .mjs    视口推拉与外沿标注：平滑裁切推进与零遮挡引线卡
 transitions/
   transitions.md                           转场总览：采用条件、目录、接入与时间约定
   tile-wipe/tile-wipe.md, tile-wipe.html, tile-wipe.mjs   方格转场（已迁移到显式初始化）
@@ -100,7 +107,6 @@ patterns/
   patterns.md                             patterns 总览：两类 pattern 的索引和使用方式
   media/                                  媒体呈现类：media-first、video-first、viewport-reveal、band、detail-callout、comparison、continuation
   info/                                   信息形态类：leaderboard、product-card、big-number、data-table、chart、process-flow、architecture、list-grid、comparison-matrix、code-terminal、callout-quote
-motion.md                                 按需动效参考：能力查询、构思维度、runtime 选择、编排建议
 templates/
   templates.md                            模板总览
   github-trending/github-trending.md      GitHub 热榜视频：组装方法、专属配色和元素、人物演法
@@ -119,8 +125,9 @@ templates/
 | 选择全片外观主题或新建主题 | 先读 `designs/designs.md`（默认从库内注册 preset 中选择），选定后再看具体 `designs/<主题>/<主题>.md` 并落盘 `composition/design.json` |
 | 安排版面、逐视觉 scene 选布局、确定区域坐标 | `layouts/layouts.md` → 每个所用 `layouts/<布局>.md` + 对应 `.json`（机器可读区域定义，字幕脚本读它的 `caption` 段） |
 | 挂某个组件、写它的数据 | `components/<组件>/<组件>.md` |
+| 借用或改写流程、架构拓扑、图表指标、视口标注等动态模块，或查阅动效 / runtime 建议 | `motions/motions.md`，选定后再读 `motions/<模块>/<模块>.md`（如 `motions/flow-path/flow-path.md`） |
 | 需要转场、写它的切点数据 | `transitions/transitions.md`，选定后再读 `transitions/<转场>/<转场>.md`（如 `transitions/tile-wipe/tile-wipe.md`） |
-| 已有画面构想，需要借用非常匹配的形态 / 动效建议 | 按需查 `patterns/<类>/<pattern>.md` 或 `motion.md`；查阅条件见 [composition 基础指令第四部分](../references/delegation/composition/base-instructions.md#四内容演绎与模板选择) |
+| 已有画面构想，需要借用非常匹配的画面形态建议 | 按需查 `patterns/patterns.md` 及 `patterns/<类>/<pattern>.md`；查阅条件见 [composition 基础指令第四部分](../references/delegation/composition/base-instructions.md#四内容演绎与模板选择) |
 | 让人物做动作、配嘴型 | `components/presenter/presenter.md`，动作库逐个列出每个动作的样子 |
 
 ## 分层
@@ -130,8 +137,9 @@ templates/
 | 设计主题 | `designs/<主题>/` | **通用**：配色、字体、字号、背景、形状、动效。只管外观 |
 | 布局 | `layouts/` | **通用**：区域的位置、尺寸、层级。只管版面 |
 | 组件 | `components/<组件>/` | **通用**：不带具体内容；配色和字体只读主题变量；位置默认按布局 |
+| 动态模块 | `motions/<模块>/` | **通用动态层**：流程、拓扑、图表、视口标注等可复用动态机制；只读主题变量，1:1 像素自适应；在用户指定、特别匹配或确能提升表达时采用或改写 |
 | 转场 | `transitions/<转场>/` | **通用交接层**：连接 scene；只在用户指定或特别匹配时采用，自由布局可以使用简单接缝 |
-| patterns / motion | `patterns/<类>/`、`motion.md` | **按需参考（可跳过）**：画面形态与动效建议，不承担 scene 分类或设计流程 |
+| patterns | `patterns/<类>/` | **按需参考（可跳过）**：常见媒体与信息形态摆法建议，不承担 scene 分类或设计流程，对应动态实现指向 `motions/<模块>/` |
 | 模板 | `templates/<类型>/` | **专用于一类视频**：选布局，组合组件并定好参数，加入专属配色和元素，提供可填内容的场景 |
 
 ## 组装一支视频
@@ -145,10 +153,10 @@ templates/
    - 复制模板资源（如 `templates/github-trending/brand/` → 工程 `assets/brand/`）；
    - 选用它的场景。
 4. **布局**：按 `layouts/<布局>.md` 的区域表和层级表排列挂载点。
-5. **组件、转场和场景**：
-   - 把实际采用的组件、转场和场景的 `.html` 与 `.mjs` 一起复制到工程的 `compositions/`，文件名不变；
+5. **组件、动态模块、转场和场景**：
+   - 把实际采用的组件、动态模块、转场和场景的 `.html` 与 `.mjs`（采用 `motions/` 模块时含共用的 `motions/motion-utils.mjs`）一起复制到工程的 `compositions/`，文件名不变；
    - 组件自带的图片按各自文档复制，例如 `components/presenter/images/*` → 工程 `assets/presenter/`；
-   - 挂载点的 `data-composition-id` 用组件名、转场名或场景名；
+   - 挂载点的 `data-composition-id` 用组件名、动态模块名、转场名或场景名；
    - 在工程里按 [模块初始化接口](#模块初始化接口唯一约定) 接线：克隆模板、调 `init`、驱动 timeline；选用 HyperFrames 时由工程 adapter 接其核心协议。
 6. **数据**：
    - 写 `data/video-data.js`（`window.VIDEO = {…}`），在 `index.html` 的 `<head>` 里、GSAP 之后引入；adapter 从里面取各模块的 `data`；
@@ -195,6 +203,7 @@ window.VIDEO = {
 - **新组件**：
   - 不带内容，只读主题变量，位置默认按某个布局；
   - 文档和代码都放 `components/<名>/`：`<名>.md`、`<名>.html`（静态标记 + 样式）加同目录 `<名>.mjs`（导出 `init`，接口见 [模块初始化接口](#模块初始化接口唯一约定)）。
+- **新动态模块**：通用动态图示或视口推拉标注机制放顶级 `motions/<名>/`，文件包含 `<名>.md`、`<名>.html` 与导出 `init` 的 `<名>.mjs`（可共用 `motions/motion-utils.mjs`）；采用规则、1:1 `viewBox` 与确定性文本测量要求见 `motions/motions.md`。
 - **新转场**：负责 scene 交接，文档和代码放顶级 `transitions/<名>/`，文件形式与 `init` 接口同上；采用规则和时间语义见 `transitions/transitions.md`。
 - **新模板**：一类视频一个目录。`templates/<类型>/<类型>.md` 写组装方法；每个场景一份 `<场景>.md`、同目录的 `<场景>.html` 和 `<场景>.mjs`。
 - **所有 HTML** 都是静态模板：用 `<template>` 包起来，根元素 `#root` 带固定的 `data-composition-id`；所有动画只由时间决定，动画编排写在同目录 `.mjs` 的 `init` 里。

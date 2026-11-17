@@ -42,4 +42,4 @@
 
 ## 已有实现
 
-尚无。
+- `motions/topology-graph/`（文档见 `motions/topology-graph/topology-graph.md`）：分层系统架构与依赖拓扑图，含微网格底衬、模块端口锚点、`pathLength="1"` 贝塞尔脉冲连线与 `focusSequence` 局部焦点切换。

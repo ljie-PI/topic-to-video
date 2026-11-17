@@ -2,7 +2,7 @@
 
 patterns 是**按需参考库**，提供常见媒体和信息形态的摆法与动效候选，不是 scene 分类表或必选菜单。统一采用规则、查阅条件与借用记录见 [composition 基础指令第四部分](../../references/delegation/composition/base-instructions.md#四内容演绎与模板选择)：只在用户明确指定，或已有画面构想与某个 pattern 的形态和触发信号**特别匹配**时才借用；无特别匹配时不借用、自主构图，每个 scene 最终以旁白语义、素材实际情况和所选 layout 的区域为准。
 
-每份 pattern 文档都有同样的小节：适用场景和触发信号 / 区域尺寸建议 / 横屏摆法 / 竖屏摆法 / 动效候选与应避免 / 用色 / 已有实现。需要具体动效参考时可查 `motion.md`；需要转场时按需读 `transitions/transitions.md`，选定后再读具体模块文档，例如 `transitions/tile-wipe/tile-wipe.md`。
+每份 pattern 文档都有同样的小节：适用场景和触发信号 / 区域尺寸建议 / 横屏摆法 / 竖屏摆法 / 动效候选与应避免 / 用色 / 已有实现。需要可复用动态模块或具体动效与 runtime 建议时见 `motions/motions.md`（选定后再读 `motions/<模块>/<模块>.md`）；需要转场时按需读 `transitions/transitions.md`，选定后再读具体模块文档，例如 `transitions/tile-wipe/tile-wipe.md`。
 
 ## 媒体呈现（media/）
 
@@ -40,5 +40,5 @@ patterns 是**按需参考库**，提供常见媒体和信息形态的摆法与�
 
 1. 带着已经构思的画面或具体问题，从 media/ 或 info/ 定位相关文档，只读匹配的条目。
 2. 用「适用场景和触发信号」核对适用性；横 / 竖屏摆法与动效候选都可局部借用或改写，坐标仍以所选 layout 的区域表（`layouts/`）为准。
-3. 「动效候选与应避免」只是本 pattern 的参考，不要求继续查阅 `motion.md`，也不规定最终机制与 runtime。
+3. 「动效候选与应避免」只是本 pattern 的参考，不规定最终机制与 runtime；若「已有实现」列出了匹配的动态模块，可按需查阅 `motions/motions.md` 与对应模块文档决定直接借用或拷入工程改写。
 4. 「用色」里的分主题写法覆盖在主题 token 之上；没有特殊覆盖时全部颜色只用主题 token（`designs/designs.md`）。

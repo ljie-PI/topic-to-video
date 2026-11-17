@@ -106,7 +106,7 @@ def test_composition_reference_links_resolve_from_the_markdown_file():
         'modules/templates/templates.md',
         'modules/layouts/layouts.md',
         'modules/components/components.md',
-        'modules/motion.md',
+        'modules/motions/motions.md',
         'modules/patterns/patterns.md',
     )
     expected_target = (REPO_ROOT / 'references/delegation/composition/base-instructions.md').resolve()

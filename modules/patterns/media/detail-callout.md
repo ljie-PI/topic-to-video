@@ -43,4 +43,4 @@
 
 ## 已有实现
 
-尚无。
+- `motions/focus-callout/`（文档见 `motions/focus-callout/focus-callout.md`）：主视口局部聚焦与外边框锚定 `pathLength="1"` 引线标注，标注卡置于外置信息带，不遮挡素材内部关键区域。

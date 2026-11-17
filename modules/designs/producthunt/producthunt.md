@@ -68,6 +68,7 @@
 ## 3. 背景与质感
 
 - 纸纹按 `designs/github/github.md` 第 3 节的做法生成，换成粉调亚麻色系：底色 `#F4F0EC`，深纤维偏暖褐灰 `#A6988E`，四角压暗约 12 级亮度、暗部偏桃灰 `#C7B2A8`。
+- 新写场景与 `motions/` 模块可用 `color-mix(in srgb, var(--c-card) 82%, transparent)`（`80%–88%`）半透明卡片与节点底色透出粉调亚麻纹理，配轻量纸张微投影、舞台细点阵/微网格底衬及 `1–2px` 精细线宽阶梯（SVG 采用 1:1 像素 `viewBox`，细则参考 [`../designs.md`](../designs.md)）；既有模板样式保持稳定。
 
 ---
 
@@ -75,7 +76,7 @@
 
 - **圆角（更圆润、不用尖角）**：卡片和面板 16px，缩略图 12px，按钮 10px，转场卡片 20px。
 - **图标**：线性图标端点用圆头；upvote 用 `--c-highlight` 实心三角。
-- **upvote 药丸**：2px `--c-border` 边的药丸（当前项换成 `--c-highlight` 边），左 `--c-highlight` 实心三角、右 `IBMPlexMono` 600 数字（`--c-ink`）。
+- **upvote 药丸**：`1.5–2px` `--c-border` 边的药丸（当前项换成 `--c-highlight` 边），左 `--c-highlight` 实心三角、右 `IBMPlexMono` 600 数字（`--c-ink`）。
 - **topic 小标签**：`--c-surface` 底加 `--c-ink2` 字的无色药丸。
 - **数字滚动**：从 0 滚到目标值，1.4 秒，`power3.out`，带千分位；落定时微弹（`1 → 1.05 → 1`，0.25 秒）。
 
