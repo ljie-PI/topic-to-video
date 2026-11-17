@@ -39,4 +39,4 @@
 
 ## 已有实现
 
-尚无。
+- `motions/focus-callout/`（文档见 `motions/focus-callout/focus-callout.md`）：通过 `stops[].crop` 在主视口内沿素材重点区域平滑推拉缩放（pan/zoom），并同步联动外置说明卡。

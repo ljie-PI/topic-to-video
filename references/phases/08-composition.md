@@ -105,7 +105,7 @@ source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topi
 
 #### 8.2 — handoff
 
-同一次调用还会生成 `{work_dir}/{topic_name}/composition-handoff.md`：Coding Agent（按 `inputs.json` 解析本阶段的 agent；有模型请求时同时展示请求与实际解析值，规则见 `references/delegation/conventions.md`）、Inputs、Outputs（含 `composition/design.json`、`composition/scene-config.json`、用 `--scene-config` 生成字幕与运行 check-composition 的命令，以及渲染前自查）、Required References（基础指令 → scene-config 数据契约 → `modules/modules.md` → `modules/designs/designs.md`（具体 `<主题>.md` 选定后按需读）→ layout 目录 `modules/layouts/layouts.md`（可借用的 preset）→ 模板目录 `templates.md`（按场景借用）→ 组件索引 `modules/components/components.md`（按需读要挂载的组件文档），全部指向 8.1 物化的工作区副本；patterns / motion / transitions 另列为可选参考）、Additional Instructions（`composition_requests` 逐条列出并说明作用范围；没有写 None）。路径全是绝对路径，命令里的 skill 脚本从 skill 根目录运行，CLI JSON 的 `fonts` 保持 `null`。主 agent 不手写 handoff。
+同一次调用还会生成 `{work_dir}/{topic_name}/composition-handoff.md`：Coding Agent（按 `inputs.json` 解析本阶段的 agent；有模型请求时同时展示请求与实际解析值，规则见 `references/delegation/conventions.md`）、Inputs、Outputs（含 `composition/design.json`、`composition/scene-config.json`、用 `--scene-config` 生成字幕与运行 check-composition 的命令，以及渲染前自查）、Required References（基础指令 → scene-config 数据契约 → `modules/modules.md` → `modules/designs/designs.md`（具体 `<主题>.md` 选定后按需读）→ layout 目录 `modules/layouts/layouts.md`（可借用的 preset）→ 模板目录 `templates.md`（按场景借用）→ 组件索引 `modules/components/components.md`（按需读要挂载的组件文档）→ 动效模块目录 `modules/motions/motions.md`（按场景决定是否借用或改写某个动态模块），全部指向 8.1 物化的工作区副本；patterns / transitions 另列为可选参考）、Additional Instructions（`composition_requests` 逐条列出并说明作用范围；没有写 None）。路径全是绝对路径，命令里的 skill 脚本从 skill 根目录运行，CLI JSON 的 `fonts` 保持 `null`。主 agent 不手写 handoff。
 
 #### 8.3 — 委派 composition agent
 
@@ -115,7 +115,7 @@ source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topi
 
 agent 先读旁白与叙事规划，按 `modules/designs/designs.md` 选定全片 design、初始化工程、安装字体并写 `composition/design.json`（具体资源由它自己从工作区 `modules/` 拷入 `composition/`）；然后决定实际视觉切分，对每个视觉场景按固定顺序（用户要求 → 特别匹配模块 → 即时生成）定方案，写出 `composition/scene-config.json` 与 storyboard。模板与 preset 按场景借用：只在用户明确指定或与目标 scene 特别匹配时才采用，`template: null` 与 `preset: null` 的即时生成自由布局是正常路径。
 
-scene-config 写出后，agent 跑 handoff 里的 `align-narration.py --mode subtitles --scene-config ... --narration-audio ...`，把字幕生成到 `composition/assets/subtitle-units.json`（已有用户编辑是有效输入）。然后按基础指令第四部分自主设计构图、动作与动效，选择实际需要的组件或转场（采用任何模块前先读其对应的具体 `.md` 文档，不直接看源码猜参数）并完成 storyboard 和画面；storyboard 开头用「组件与转场使用表」逐个记录它们所依据的具体模块 `.md` 路径、挂载参数与 `window.VIDEO` 数据来源，采用转场时包括 `cuts`。patterns / motion / transitions 的查阅和借用也按该部分处理，transitions 不是所有 scene 的必读或必用模块。scene、layout、模板与画面设计都由它自己负责，主 agent 不代为决定。
+scene-config 写出后，agent 跑 handoff 里的 `align-narration.py --mode subtitles --scene-config ... --narration-audio ...`，把字幕生成到 `composition/assets/subtitle-units.json`（已有用户编辑是有效输入）。然后按基础指令第四部分自主设计构图、动作与动效，选择实际需要的组件、动态模块或转场（采用任何模块前先读其对应的具体 `.md` 文档，不直接看源码猜参数）并完成 storyboard 和画面；storyboard 开头用「组件与转场使用表」逐个记录它们所依据的具体模块 `.md` 路径、挂载参数与 `window.VIDEO` 数据来源，采用转场时包括 `cuts`。motions / patterns / transitions 的查阅和借用也按该部分处理，transitions 不是所有 scene 的必读或必用模块。scene、layout、模板与画面设计都由它自己负责，主 agent 不代为决定。
 
 #### 8.4 — 主 agent 校验
 

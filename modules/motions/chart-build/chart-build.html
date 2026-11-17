@@ -1,0 +1,38 @@
+<template>
+  <!--
+    Motion module: chart-build — quantitative bar, line-area, and hero-metric builder
+    (docs: motions/chart-build/chart-build.md).
+    Uses a 1:1 pixel SVG viewBox, 1px crisp axes & gridlines, pathLength="1" curve draw,
+    progressive bar growth, and tabular-nums counter readouts.
+  -->
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      font-family: var(--font-sans);
+      color: var(--c-ink);
+      background: transparent;
+      pointer-events: none;
+    }
+    #cb-stage {
+      position: absolute;
+      left: 0;
+      top: 0;
+      overflow: hidden;
+      border-radius: 14px;
+      box-shadow: 0 2px 8px color-mix(in srgb, var(--c-ink) 5%, transparent);
+    }
+    #cb-svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+  <div id="root" data-composition-id="chart-build" data-width="1048" data-height="788">
+    <div id="cb-stage">
+      <svg id="cb-svg" xmlns="http://www.w3.org/2000/svg">
+        <defs id="cb-defs"></defs>
+      </svg>
+    </div>
+  </div>
+</template>

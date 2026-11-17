@@ -74,7 +74,7 @@ TIMELINE_SEEKER = r"""
   };
 
   class Timeline {
-    constructor() { this.operations = []; this.targets = new Map(); }
+    constructor() { this.operations = []; this.targets = new Map(); this._time = 0; }
     remember(target) {
       for (const item of asTargets(target)) {
         if (isElement(item) && !this.targets.has(item)) {
@@ -97,9 +97,16 @@ TIMELINE_SEEKER = r"""
       this.operations.push({ kind: 'to', target, to, at });
       return this;
     }
+    time() { return this._time; }
+    clear() {
+      this.operations = [];
+      this.targets.clear();
+      return this;
+    }
     pause() { return this; }
     kill() { return this; }
     seek(time) {
+      this._time = numeric(time, 0);
       for (const [target, style] of this.targets) target.setAttribute('style', style);
       const operations = this.operations.map((operation, index) => ({ operation, index }))
         .sort((a, b) => a.operation.at - b.operation.at || a.index - b.index);
@@ -165,7 +172,8 @@ function modulePayload(name, params) {
     case 'presenter':
       return V[params.data || 'presenter'] || {};
     default:
-      return null;
+      const keys = { 'flow-path': 'flowPath', 'topology-graph': 'topologyGraph', 'chart-build': 'chartBuild', 'focus-callout': 'focusCallout' };
+      return keys[name] ? (V[params.data || keys[name]] || {}) : null;
   }
 }
 async function mountComposition(host) {
@@ -273,6 +281,11 @@ def composition_url_with_mounts(
             f'data-duration="{duration}" data-width="{canvas_w}" data-height="{canvas_h}"{variables}{other} '
             f'style="position:absolute;inset:0"></div>'
         )
+    if any(str(item[0]).startswith('motions/') for item in mounts_spec):
+        shutil.copyfile(
+            ROOT / 'modules/motions/motion-utils.mjs',
+            composition / 'compositions/motion-utils.mjs',
+        )
     if any(str(item[0]).startswith('components/presenter') for item in mounts_spec):
         images = composition / 'assets/presenter'
         images.mkdir(parents=True)
@@ -290,6 +303,7 @@ def composition_url_with_mounts(
           --c-border: #888; --c-focus: #06f; --c-highlight: #fc0; --c-muted: #aaa;
           --c-surface: #eee; --c-focus-tint: #def; --c-positive: #2a4;
           --c-positive-tint: #dfd; --c-positive-solid: #2a4; --c-positive-text: #142;
+          --c-done: #4c4583; --c-info: #3e6994; --c-warning: #94661b; --c-danger: #a4434a;
           --c-tile0: #e4e8ec; --c-tile1: #c3dfca; --c-tile2: #92c4a0;
           --c-tile3: #5f9f75; --c-tile4: #33744c;
         }
@@ -1102,3 +1116,218 @@ def test_portrait_presenter_switches_bar_character_and_tile_wipe_within_portrait
     qa_report = json.loads(qa_proc.stdout)
     assert qa_report['verdict'] == 'pass', qa_report['findings']
 
+
+@pytest.mark.parametrize('orientation, canvas, region', [
+    ('landscape', (1920, 1080), {'x': 96, 'y': 196, 'width': 1048, 'height': 788}),
+    ('portrait', (1080, 1920), {'x': 70, 'y': 300, 'width': 940, 'height': 1170}),
+], ids=['landscape', 'portrait'])
+def test_motion_modules_wrap_copy_seek_reversibly_and_pass_qa(
+    tmp_path: Path, orientation: str, canvas: tuple[int, int], region: dict[str, int], require_ffmpeg,
+):
+    import subprocess
+    import sys
+
+    video = {
+        'flowPath': {'nodes': [{'id': 'n1', 'label': '多源异构工程文档解析与语法树抽取 FLOW_TAIL_1', 'detail': '保留长路径 https://github.com/org/repo/flow_token_alpha_ok', 'at': 0.15}, {'id': 'n2', 'label': '确定性多行折行与承载矩形动态适配 FLOW_TAIL_2', 'detail': '最小阅读字号二十六像素与界面二十二像素零截断 FLOW_DET_2', 'at': 0.65}, {'id': 'n3', 'label': '逐帧采样与编码门禁验收 FLOW_TAIL_3', 'detail': 'unbrokenidentifierwithoutdelimiterstailFLOW3 保持间距清晰', 'at': 1.2, 'status': 'positive'}], 'edges': [{'from': 'n1', 'to': 'n2', 'label': 'AST EDGE_1', 'at': 0.45}, {'from': 'n2', 'to': 'n3', 'label': '1:1 EDGE_2', 'at': 1.0}]},
+        'topologyGraph': {'layers': [{'id': 'edge', 'label': '接入网关 LAYER_1'}, {'id': 'core', 'label': '编排合成核 LAYER_2'}, {'id': 'store', 'label': '构件存储 LAYER_3'}], 'nodes': [{'id': 'gw', 'label': '多协议鉴权流控路由网关 TOPO_TAIL_1', 'detail': '/api/v2/deterministic_gateway_tail_ok', 'layer': 'edge', 'at': 0.1}, {'id': 'sched', 'label': 'DAG 拓扑任务调度核心 TOPO_TAIL_2', 'detail': '按语音时间戳切换子图焦点', 'layer': 'core', 'at': 0.45, 'emphasis': True}, {'id': 'worker', 'label': '隔离渲染沙箱节点 TOPO_TAIL_3', 'detail': '1:1 像素视口矢量度量', 'layer': 'core', 'at': 0.65}, {'id': 'cas', 'label': '内容寻址构件存储库 TOPO_TAIL_4', 'detail': '哈希去重复用静态纹理', 'layer': 'store', 'at': 1.0}], 'links': [{'from': 'gw', 'to': 'sched', 'label': 'gRPC LINK_1', 'at': 0.35, 'emphasis': True}, {'from': 'sched', 'to': 'worker', 'at': 0.75, 'emphasis': True}, {'from': 'worker', 'to': 'cas', 'at': 1.1}], 'focusSequence': [{'nodeIds': ['gw', 'sched'], 'at': 0.55}, {'nodeIds': ['sched', 'worker', 'cas'], 'at': 1.25}]},
+        'chartBar': {'items': [{'label': '串行基线 BAR_TAIL_1', 'value': 38, 'at': 0.15}, {'label': '增量缓存 BAR_TAIL_2', 'value': 84, 'at': 0.6}, {'label': '零拷贝引擎 zero_copy_bar_tail_ok', 'value': 156, 'displayValue': '156 fps', 'at': 1.05, 'emphasis': True}], 'summary': '吞吐提升 4.1 倍 BAR_SUM_OK', 'summaryAt': 1.4},
+        'chartLine': {'points': [{'label': 'v1.0_base', 'value': 24, 'at': 0.15}, {'label': 'v1.5_cache', 'value': 76, 'at': 0.65}, {'label': 'v2.0_readout_tail_ok', 'value': 148, 'at': 1.25, 'emphasis': True}], 'summary': '趋势曲线稳定收敛 LINE_SUM_OK', 'summaryAt': 1.5},
+        'chartMetric': {'label': '高压缩比细线完整率 METRIC_TAIL_OK', 'value': 99.8, 'displayValue': '99.8 %', 'detail': '覆盖超长标识符 metric_unbroken_token_tail_ok 实测', 'summary': '兼顾纸面呼吸感与抗断线稳定性', 'at': 0.2},
+        'focusCallout': {'stops': [{'crop': {'x': 0.0, 'y': 0.0, 'w': 1.0, 'h': 1.0}, 'anchor': {'x': 0.78, 'y': 0.28}, 'label': '全局架构视口概览 CALLOUT_TAIL_1', 'detail': '外沿引线零像素侵入主画面内部', 'at': 0.15}, {'crop': {'x': 0.32, 'y': 0.38, 'w': 0.52, 'h': 0.5}, 'anchor': {'x': 0.88, 'y': 0.68}, 'label': '局部推进稀疏路由核 callout_router_tail_ok', 'detail': '视口平滑推拉并同步切换外置标注焦点', 'at': 1.05}]},
+    }
+    geom = {'x': region['x'], 'y': region['y'], 'width': region['width'], 'height': region['height']}
+    scenes = [('s_flow', 0.0, 2.0, 'motions/flow-path', {**geom, 'title': '流水线 TITLE_FLOW', 'data': 'flowPath'}), ('s_topo', 2.0, 4.0, 'motions/topology-graph', {**geom, 'title': '系统拓扑 TITLE_TOPO', 'data': 'topologyGraph'}), ('s_bar', 4.0, 6.0, 'motions/chart-build', {**geom, 'variant': 'bar', 'title': '吞吐对比', 'unit': ' fps', 'data': 'chartBar'}), ('s_line', 6.0, 8.0, 'motions/chart-build', {**geom, 'variant': 'line', 'title': '版本趋势', 'unit': ' req/s', 'data': 'chartLine'}), ('s_metric', 8.0, 10.0, 'motions/chart-build', {**geom, 'variant': 'metric', 'unit': '%', 'data': 'chartMetric'}), ('s_callout', 10.0, 12.0, 'motions/focus-callout', {**geom, 'title': '视口推拉标注', 'src': 'assets/diagram.png', 'intrinsicWidth': 1200, 'intrinsicHeight': 800, 'data': 'focusCallout'})]
+    mounts = [(c, p, {'data-start': str(s), 'data-duration': str(e - s), 'data-scene-id': sid, 'data-scene-start': str(s), 'data-scene-end': str(e)}) for sid, s, e, c, p in scenes]
+    tails = ('FLOW_TAIL_1', 'flow_token_alpha_ok', 'unbrokenidentifierwithoutdelimiterstailFLOW3', 'EDGE_2', 'TOPO_TAIL_1', 'TOPO_TAIL_4', 'zero_copy_bar_tail_ok', 'v2.0_readout_tail_ok', 'METRIC_TAIL_OK', 'metric_unbroken_token_tail_ok', 'callout_router_tail_ok', '156 fps', '99.8 %')
+
+    with composition_url_with_mounts(tmp_path, video, mounts, canvas=canvas) as url:
+        diag = tmp_path / 'composition/assets/diagram.png'
+        diag.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(['ffmpeg', '-y', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=1200x800:d=0.1', '-frames:v', '1', str(diag)], capture_output=True, check=True)
+        with chrome_cdp.launch_isolated() as session:
+            page, errors = open_component_page(session.browser, url, viewport=canvas)
+            page.evaluate("""() => { const o = window.seek; window.seek = async (t) => { for (const el of document.querySelectorAll('[data-scene-id]')) el.style.display = t >= Number(el.dataset.sceneStart) && t < Number(el.dataset.sceneEnd) ? 'block' : 'none'; return o(t); }; }""")
+            flow_q = """async (t) => { await window.seek(t); const h = document.querySelector('[data-scene-id="s_flow"]'); return { vb: h.querySelector('#fp-svg').getAttribute('viewBox'), nodes: Array.from(h.querySelectorAll('.fp-node')).map((g) => { const r = g.querySelector('rect').getBoundingClientRect(); return { op: Number(getComputedStyle(g).opacity), st: g.style.getPropertyValue('--node-stroke'), x: Math.round(r.x), y: Math.round(r.y), ts: g.querySelectorAll('tspan').length }; }), dashes: Array.from(h.querySelectorAll('.fp-edges path[pathLength="1"]')).map((p) => Number(p.style.strokeDashoffset || 0)) }; }"""
+            f_early, f_late = page.evaluate(flow_q, 0.45), page.evaluate(flow_q, 1.75)
+            axis_key = 'y' if orientation == 'portrait' else 'x'
+            assert f_early['vb'] == f"0 0 {region['width']} {region['height']}" and f_early['nodes'][0]['op'] > 0.5 and f_early['nodes'][2]['op'] == pytest.approx(0)
+            assert (f_late['nodes'][0]['st'], f_late['nodes'][2]['st']) == ('var(--c-done)', 'var(--c-positive-solid)')
+            assert all(d == pytest.approx(0) for d in f_late['dashes']) and any(n['ts'] >= 2 for n in f_late['nodes'])
+            assert f_late['nodes'][0][axis_key] < f_late['nodes'][1][axis_key] < f_late['nodes'][2][axis_key] and page.evaluate(flow_q, 0.45) == f_early
+
+            topo_end = page.evaluate("""async () => { await window.seek(3.7); return Array.from(document.querySelectorAll('[data-scene-id="s_topo"] .tg-node')).map((g) => [Number(getComputedStyle(g).opacity), g.style.getPropertyValue('--node-stroke')]); }""")
+            assert topo_end[0][0] == pytest.approx(0.56) and topo_end[1][1] == 'var(--c-focus)' and topo_end[3][1] == 'var(--c-focus)'
+
+            fc_q = """async (t) => { await window.seek(t); const h = document.querySelector('[data-scene-id="s_callout"]'), vp = h.querySelector('#fc-viewport').getBoundingClientRect(); const hits = Array.from(h.querySelectorAll('.fc-card rect, .fc-leaders path, .fc-leaders circle')).filter((el) => { if (Number(getComputedStyle(el).opacity) < 0.03) return false; const b = el.getBoundingClientRect(); return Math.max(0, Math.min(b.right, vp.right - 1) - Math.max(b.left, vp.x + 1)) * Math.max(0, Math.min(b.bottom, vp.bottom - 1) - Math.max(b.top, vp.y + 1)) > 1; }); return { vb: getComputedStyle(h.querySelector('#fc-img')).objectViewBox, hits: hits.length }; }"""
+            fc1, fc2 = page.evaluate(fc_q, 10.6), page.evaluate(fc_q, 11.85)
+            assert fc1 == {'vb': 'inset(0%)', 'hits': 0} and fc2['hits'] == 0 and '38%' in fc2['vb'] and page.evaluate(fc_q, 10.6) == fc1
+
+            rendered_all = []
+            for sid, s, e, _, _ in scenes:
+                chk = page.evaluate("""async ({ sid, t }) => {
+                  await window.seek(t); const h = document.querySelector(`[data-scene-id="${sid}"]`);
+                  const txt = Array.from(h.querySelectorAll('text')).map((el) => Array.from(el.querySelectorAll('tspan')).map((x) => x.textContent).join('') || el.textContent).join(' || ');
+                  const overflow = [];
+                  for (const g of h.querySelectorAll('g')) {
+                    const rects = Array.from(g.children).filter((c) => c.tagName.toLowerCase() === 'rect');
+                    if (rects.length !== 1) continue;
+                    const b = rects[0].getBoundingClientRect(); if (b.width < 30 || b.height < 24) continue;
+                    for (const te of g.querySelectorAll(':scope > text, :scope > g[data-text-role="ui"]:not(.fp-badge):not(.fc-badge) > text')) {
+                      const tb = te.getBoundingClientRect();
+                      if (tb.width > 0 && (tb.left < b.left - 3 || tb.right > b.right + 3 || tb.top < b.top - 3 || tb.bottom > b.bottom + 3)) overflow.push(te.textContent);
+                    }
+                  }
+                  const cards = Array.from(h.querySelectorAll('.fp-node, .tg-node, .fc-card')).filter((g) => Number(getComputedStyle(g).opacity) > 0.05).map((g) => g.querySelector('rect').getBoundingClientRect());
+                  let overlaps = 0;
+                  for (let i = 0; i < cards.length; i++) for (let j = i + 1; j < cards.length; j++) if (Math.max(0, Math.min(cards[i].right, cards[j].right) - Math.max(cards[i].left, cards[j].left)) * Math.max(0, Math.min(cards[i].bottom, cards[j].bottom) - Math.max(cards[i].top, cards[j].top)) > 1) overlaps++;
+                  return { txt, overflow, overlaps };
+                }""", {'sid': sid, 't': e - 0.15})
+                assert '…' not in chk['txt'] and chk['overflow'] == [] and chk['overlaps'] == 0, f'{orientation} {sid}: {chk}'
+                rendered_all.append(chk['txt'])
+            assert all(tok in ' || '.join(rendered_all) for tok in tails)
+            snapshots = collect_snapshots(page, [{'scene_id': sid, 'time': round(t, 3)} for sid, s, e, _, _ in scenes for t in (s + 0.1, (s + e) / 2, e - 0.1)])
+            assert page.evaluate('window.__mountErrors') == [] and errors == []
+            page.close()
+
+    ws = tmp_path / f'qa_{orientation}'
+    (ws / 'composition').mkdir(parents=True); (ws / 'voice_clone').mkdir(parents=True)
+    (ws / 'composition/index.html').write_text('<html></html>', encoding='utf-8')
+    (ws / 'inputs.json').write_text(json.dumps({'orientation': orientation}), encoding='utf-8')
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', '12', '-c:a', 'libmp3lame', str(ws / 'voice_clone/narration.mp3')], capture_output=True, check=True)
+    cap_spec = {'width_px': 1166, 'font_size_px': 36, 'max_lines': 1} if orientation == 'landscape' else {'width_px': 600, 'font_size_px': 38, 'max_lines': 2}
+    cap_rect = {'x': 96, 'y': 1008, 'width': 1166, 'height': 72} if orientation == 'landscape' else {'x': 70, 'y': 1776, 'width': 600, 'height': 144}
+    scene_cfg, snaps_path = ws / 'composition/scene-config.json', ws / 'snapshots.json'
+    scene_cfg.write_text(json.dumps({'version': 1, 'canvas': {'width': canvas[0], 'height': canvas[1]}, 'total_s': 12.0, 'scenes': [{'scene_id': sid, 'source_scene_ids': [sid], 'begin_s': s, 'end_s': e, 'template': None, 'layout': {'preset': None, 'regions': [{'id': 'main', 'kind': 'content', 'rect': region}, {'id': 'caption-text', 'kind': 'reserved', 'rect': cap_rect, 'component': 'caption-bar'}], 'caption': cap_spec}} for sid, s, e, _, _ in scenes]}, ensure_ascii=False), encoding='utf-8')
+    snaps_path.write_text(json.dumps(snapshots, ensure_ascii=False), encoding='utf-8')
+    qa = subprocess.run([sys.executable, str(ROOT / 'scripts/check-composition.py'), str(ws / 'composition'), '--scene-config', str(scene_cfg), '--design', str(ROOT / 'modules/designs/default/default.md'), '--snapshots-from', str(snaps_path)], capture_output=True, text=True)
+    assert qa.returncode == 0 and json.loads(qa.stdout)['verdict'] == 'pass'
+
+
+def test_default_design_h264_mp4_preserves_thin_lines_and_translucent_paper_texture(tmp_path: Path, require_ffmpeg):
+    import subprocess
+    from PIL import Image, ImageStat
+    import video_contract
+
+    video = {'chartBuild': {'items': [{'label': 'Base', 'value': 38, 'at': 0.1}, {'label': 'Cache', 'value': 84, 'at': 0.4}, {'label': 'ZeroCopy', 'value': 148, 'at': 0.7, 'emphasis': True}]}}
+    params = {'x': 96, 'y': 96, 'width': 1240, 'height': 888, 'variant': 'bar', 'orientation': 'vertical', 'title': 'H.264 Thin-Line & Paper Grain'}
+    with composition_url_with_mounts(tmp_path, video, [('motions/chart-build', params)]) as url:
+        comp, frames, mp4, png = tmp_path / 'composition', tmp_path / 'frames', tmp_path / 'out.mp4', tmp_path / 'decoded.png'
+        (comp / 'assets/textures').mkdir(parents=True); frames.mkdir()
+        shutil.copyfile(ROOT / 'modules/designs/default/textures/paper.jpg', comp / 'assets/textures/paper.jpg')
+        tokens = '; '.join(f'{k}: {v}' for k, v in video_contract.load_design_preset(ROOT, 'default')['tokens'].items())
+        idx = comp / 'index.html'
+        idx.write_text(idx.read_text(encoding='utf-8').replace('</style>', f':root{{{tokens};}} #ground{{position:fixed;inset:0;background:var(--ground)}} #card-mix{{position:absolute;left:1368px;top:96px;width:456px;height:560px;border-radius:12px;border:1.5px solid var(--c-border);background:color-mix(in srgb, var(--c-card) 82%, transparent)}} #card-flat{{position:absolute;left:1368px;top:688px;width:456px;height:296px;border-radius:12px;border:1.5px solid var(--c-border);background:var(--c-card)}}</style>').replace('<body>', '<body><div id="ground"></div>').replace('</main>', '<div id="card-mix"></div><div id="card-flat"></div></main>'), encoding='utf-8')
+        with chrome_cdp.launch_isolated() as session:
+            page, errors = open_component_page(session.browser, url, viewport=(1920, 1080))
+            geom = page.evaluate("""async () => { await window.seek(1.5); const d = document.querySelector('.cb-header line').getBoundingClientRect(); return { div: { l: d.left, r: d.right, y: (d.top + d.bottom) / 2 }, lines: Array.from(document.querySelectorAll('.cb-grid line')).map((l) => { const r = l.getBoundingClientRect(); return { sw: l.getAttribute('stroke-width'), dash: l.getAttribute('stroke-dasharray'), x1: r.left, x2: r.right, y: (r.top + r.bottom) / 2 }; }), bars: Array.from(document.querySelectorAll('.cb-bar-col')).map((g) => { const r = g.getBoundingClientRect(); return { l: r.left, r: r.right }; }) }; }""")
+            for i in range(6):
+                page.evaluate('window.seek', 1.2 + i * 0.05); page.screenshot(path=str(frames / f'f_{i:02d}.png'))
+            assert page.evaluate('window.__mountErrors') == [] and errors == []
+            page.close()
+
+    subprocess.run(['ffmpeg', '-y', '-v', 'error', '-framerate', '15', '-i', str(frames / 'f_%02d.png'), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(mp4)], capture_output=True, check=True)
+    subprocess.run(['ffmpeg', '-y', '-v', 'error', '-ss', '0.2', '-i', str(mp4), '-frames:v', '1', str(png)], capture_output=True, check=True)
+    im = Image.open(png).convert('L'); px = im.load()
+    dy, axis, dash = round(geom['div']['y']), next(g for g in geom['lines'] if not g['dash']), min((g for g in geom['lines'] if g['dash']), key=lambda g: g['y'])
+    ay, gy = round(axis['y']), round(dash['y'])
+    div_c = [(px[x, dy - 4] + px[x, dy + 4]) / 2 - min(px[x, dy - 1], px[x, dy], px[x, dy + 1]) for x in range(int(geom['div']['l']) + 12, int(geom['div']['r']) - 12)]
+    axis_c = [(px[x, ay - 5] + px[x, ay + 5]) / 2 - min(px[x, ay - 1], px[x, ay], px[x, ay + 1]) for x in range(int(axis['x1']) + 12, int(axis['x2']) - 12) if not any(b['l'] - 8 <= x <= b['r'] + 8 for b in geom['bars'])]
+    peaks = [max((px[x, gy - 4] + px[x, gy + 4]) / 2 - min(px[x, gy - 1], px[x, gy], px[x, gy + 1]) for x in range(wx, wx + 16)) for wx in range(int(dash['x1']) + 16, int(geom['bars'][-1]['l']) - 32, 16) if not any(b['l'] - 10 <= wx <= b['r'] + 10 for b in geom['bars'])]
+    assert axis['sw'] == '1.25' and min(div_c) >= 6.0 and min(axis_c) >= 8.0 and min(peaks) >= 3.5
+    assert ImageStat.Stat(im.crop((1384, 112, 1808, 640))).stddev[0] > 0.5 and ImageStat.Stat(im.crop((1384, 704, 1808, 968))).stddev[0] < 0.15
+
+
+def _wide_ttf_bytes(family: str = 'WideGlyphTest', advance: int = 1800, upem: int = 1000) -> bytes:
+    import struct
+    g = struct.pack('>hhhhhHH4B4h4h', 1, 50, 0, advance - 50, 700, 3, 0, 1, 1, 1, 1, 50, advance - 100, 0, 100 - advance, 0, 0, 700, -700)
+    g += b'\x00' * ((4 - len(g) % 4) % 4)
+    gids, fam, sub = [2] * 94, family.encode('utf-16-be'), 'Regular'.encode('utf-16-be')
+    cmap_s = struct.pack('>7H3HH3H3h3H94H', 4, 228, 0, 6, 4, 1, 2, 0x20, 0x7E, 0xFFFF, 0, 0x20, 0x21, 0xFFFF, 1 - 0x20, 0, 1, 0, 4, 0, *gids)
+    offs, lens = (0, len(fam), len(fam) + len(sub), len(fam) * 2 + len(sub)), (len(fam), len(sub), len(fam), len(fam))
+    name = struct.pack('>3H', 0, 4, 54) + b''.join(struct.pack('>6H', 3, 1, 0x0409, nid, ln, of) for nid, ln, of in zip((1, 2, 4, 6), lens, offs)) + fam + sub + fam + fam
+    tables = {
+        'OS/2': struct.pack('>Hh3H11h10s4I4s3H3h2H', 0, advance, 400, 5, 0, 650, 600, 0, 75, 650, 600, 0, 475, 50, 250, 0, b'\0' * 10, 1, 0, 0, 0, b'TEST', 0x40, 0x20, 0x7E, 800, -200, 0, 800, 200),
+        'cmap': struct.pack('>2H2HI', 0, 1, 3, 1, 12) + cmap_s, 'glyf': g + g,
+        'head': struct.pack('>2H3I2H2Q4h2H3h', 1, 0, 0x10000, 0, 0x5F0F3CF5, 0x0B, upem, 0, 0, 0, -200, advance, 800, 0, 8, 2, 0, 0),
+        'hhea': struct.pack('>I3hH11hH', 0x10000, 800, -200, 0, advance, 0, 0, advance, 1, 0, 0, 0, 0, 0, 0, 0, 3),
+        'hmtx': struct.pack('>3HhHh', upem, 0, 600, 0, advance, 0), 'loca': struct.pack('>4H', 0, len(g) // 2, len(g) // 2, len(g)),
+        'maxp': struct.pack('>I14H', 0x10000, 3, 4, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0), 'name': name, 'post': struct.pack('>Iihh5I', 0x30000, 0, -100, 50, 0, 0, 0, 0, 0),
+    }
+    off, entries, body = 12 + 16 * len(tables), [], []
+    for tag in sorted(tables):
+        raw = tables[tag]; pad = raw + b'\x00' * ((4 - len(raw) % 4) % 4)
+        entries.append(struct.pack('>4s3I', tag.encode(), sum(struct.unpack(f'>{len(pad) // 4}I', pad)) & 0xFFFFFFFF, off, len(raw)))
+        body.append(pad); off += len(pad)
+    return struct.pack('>I4H', 0x10000, 10, 128, 3, 32) + b''.join(entries) + b''.join(body)
+
+
+def test_motion_modules_relayout_on_delayed_wide_font_and_isolate_destroy(tmp_path: Path):
+    font_req, release, wide_ttf = threading.Event(), threading.Event(), _wide_ttf_bytes()
+    video = {
+        'flow': {'nodes': [{'id': 'a', 'label': 'alpha beta gamma', 'at': 0.1}, {'id': 'b', 'label': 'delta zeta theta', 'at': 0.8}]},
+        'topo': {'layers': [{'id': 'l1', 'label': 'edge'}, {'id': 'l2', 'label': 'core'}], 'nodes': [{'id': 'n1', 'label': 'alpha beta gamma', 'layer': 'l1', 'at': 0.1}, {'id': 'n2', 'label': 'delta zeta theta', 'layer': 'l2', 'at': 0.7, 'emphasis': True}], 'links': [{'from': 'n1', 'to': 'n2', 'at': 0.5}]},
+        'lineA': {'points': [{'label': 'alpha beta gamma', 'value': 10, 'at': 0.1}, {'label': 'delta zeta', 'value': 40, 'at': 0.8}], 'summary': 'alpha beta gamma', 'summaryAt': 0.5},
+        'lineB': {'points': [{'label': 'Q1', 'value': 90, 'at': 0.1}, {'label': 'Q2', 'value': 180, 'at': 0.8}]},
+        'callout': {'targetRect': {'x': 24, 'y': 24, 'width': 420, 'height': 340}, 'stops': [{'anchor': {'x': 0.8, 'y': 0.4}, 'label': 'alpha beta', 'at': 0.5}]},
+    }
+    mounts = [
+        ('motions/flow-path', {'x': 20, 'y': 20, 'width': 540, 'height': 460, 'direction': 'vertical', 'data': 'flow'}),
+        ('motions/topology-graph', {'x': 580, 'y': 20, 'width': 540, 'height': 460, 'data': 'topo'}),
+        ('motions/chart-build', {'x': 20, 'y': 500, 'width': 540, 'height': 460, 'variant': 'line', 'data': 'lineA'}),
+        ('motions/chart-build', {'x': 1140, 'y': 500, 'width': 740, 'height': 460, 'variant': 'line', 'data': 'lineB'}),
+        ('motions/focus-callout', {'x': 580, 'y': 500, 'width': 820, 'height': 460, 'data': 'callout'}),
+        ('motions/flow-path', {'x': 1280, 'y': 20, 'width': 540, 'height': 460, 'direction': 'vertical', 'data': 'flow'}),
+    ]
+    with composition_url_with_mounts(tmp_path, video, mounts):
+        pass
+    idx = tmp_path / 'composition/index.html'
+    idx.write_text(idx.read_text(encoding='utf-8').replace('--font-sans: Arial, sans-serif; --font-mono: monospace;', '--font-sans: "WideGlyphTest", Arial, sans-serif; --font-mono: "WideGlyphTest", monospace;').replace('</style>', '</style><script>const ff=new FontFace("WideGlyphTest","url(delayed-wide.ttf)",{weight:"100 900"});document.fonts.add(ff);window.__fontLoaded=ff.load();</script>'), encoding='utf-8')
+
+    class GatedHandler(QuietHandler):
+        def do_GET(self):
+            if self.path.split('?', 1)[0].endswith('/delayed-wide.ttf'):
+                font_req.set(); release.wait(timeout=15)
+                try: self.send_response(200); self.send_header('Content-Type', 'font/ttf'); self.send_header('Content-Length', str(len(wide_ttf))); self.end_headers(); self.wfile.write(wide_ttf)
+                except BrokenPipeError: pass
+                return
+            super().do_GET()
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), partial(GatedHandler, directory=str(tmp_path / 'composition')))
+    thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+    try:
+        with chrome_cdp.launch_isolated() as session:
+            page, errors = session.browser.new_page(viewport={'width': 1920, 'height': 1080}), []
+            page.on('pageerror', lambda e: errors.append(str(e)))
+            page.goto(f'http://127.0.0.1:{server.server_port}/index.html', wait_until='domcontentloaded', timeout=30000)
+            assert font_req.wait(timeout=10)
+            page.evaluate('window.__mountPromise')
+            before = page.evaluate("""() => {
+              window.__tls = new Map(window.__instances.map((e) => [e.host.id, e.instance.timeline]));
+              for (const e of window.__instances) if (e.host.id !== 'flow-path-2') e.instance.timeline.pause().seek(1.2, false);
+              const [dead] = window.__instances.splice(window.__instances.findIndex((e) => e.host.id === 'flow-path-2'), 1);
+              dead.instance.destroy(); window.__deadReady = dead.instance.ready;
+              const idsA = Array.from(document.querySelectorAll('#chart-build defs [id]')).map((x) => x.id), idsB = new Set(Array.from(document.querySelectorAll('#chart-build-2 defs [id]')).map((x) => x.id));
+              const card = (s) => { const g = document.querySelector(s), r = g.querySelector('rect').getBoundingClientRect(); return { w: r.width, h: r.height, ts: g.querySelector(':scope > text').querySelectorAll('tspan').length }; };
+              return { status: document.fonts.status, deadHtml: document.querySelector('#flow-path-2 svg').innerHTML, overlap: idsA.filter((x) => idsB.has(x)), fcImgs: Array.from(document.querySelectorAll('#focus-callout img')).filter((i) => i.offsetParent !== null).length, flow: card('#flow-path .fp-node'), topo: card('#topology-graph .tg-node'), summary: card('#chart-build .cb-summary'), callout: card('#focus-callout .fc-card') };
+            }""")
+            assert before['status'] == 'loading' and before['overlap'] == [] and before['fcImgs'] == 0 and all(before[k]['ts'] == 1 for k in ('flow', 'topo', 'summary', 'callout'))
+            release.set()
+            after = page.evaluate("""async () => {
+              await window.__fontLoaded; await window.__deadReady; await Promise.all(window.__instances.map((e) => e.instance.ready));
+              const card = (s) => { const g = document.querySelector(s), r = g.querySelector('rect').getBoundingClientRect(); return { w: r.width, h: r.height, ts: g.querySelector(':scope > text').querySelectorAll('tspan').length }; };
+              const bad = [];
+              for (const e of window.__instances) for (const ts of e.host.querySelectorAll('tspan[data-max-width]')) if (ts.hasAttribute('lengthAdjust') || ts.getComputedTextLength() > Number(ts.getAttribute('data-max-width')) + 1) bad.push(ts.textContent);
+              const sameTl = window.__instances.every((e) => e.instance.timeline === window.__tls.get(e.host.id)), times = window.__instances.map((e) => e.instance.timeline.time());
+              const valB = document.querySelector('#chart-build-2 .cb-readout text[text-anchor="end"]').textContent.trim();
+              window.__tls.get('flow-path').seek(0.2);
+              const backOp = Number(getComputedStyle(document.querySelectorAll('#flow-path .fp-node')[1]).opacity);
+              const u = await import('./compositions/motion-utils.mjs'), svg = document.querySelector('#flow-path svg');
+              return { status: document.fonts.status, deadHtml: document.querySelector('#flow-path-2 svg').innerHTML, bad, sameTl, times, valB, backOp, wrapped: u.wrapLines('alpha beta gamma', 320, 26, svg).length, probes: svg.querySelectorAll('text[aria-hidden="true"]').length, flow: card('#flow-path .fp-node'), topo: card('#topology-graph .tg-node'), summary: card('#chart-build .cb-summary'), callout: card('#focus-callout .fc-card') };
+            }""")
+            assert after['status'] == 'loaded' and after['deadHtml'] == before['deadHtml'] and after['bad'] == []
+            assert after['sameTl'] is True and after['times'] == [pytest.approx(1.2)] * 5 and after['valB'] == '180' and after['backOp'] == pytest.approx(0)
+            assert after['wrapped'] >= 2 and after['probes'] == 0 and all(after[k]['ts'] >= 2 and (after[k]['h'] > before[k]['h'] or after[k]['w'] > before[k]['w']) for k in ('flow', 'topo', 'summary', 'callout'))
+            assert page.evaluate('window.__mountErrors') == [] and errors == []
+            page.close()
+    finally:
+        release.set(); server.shutdown(); server.server_close(); thread.join(timeout=5)

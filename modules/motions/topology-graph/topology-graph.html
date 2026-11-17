@@ -1,0 +1,38 @@
+<template>
+  <!--
+    Motion module: topology-graph — layered system architecture and dependency graph
+    (docs: motions/topology-graph/topology-graph.md).
+    Uses a 1:1 pixel SVG viewBox, micro-grid backdrop, translucent paper-revealing node cards,
+    port anchors, cubic Bezier pulse links, and deterministic text wrapping.
+  -->
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      font-family: var(--font-sans);
+      color: var(--c-ink);
+      background: transparent;
+      pointer-events: none;
+    }
+    #tg-stage {
+      position: absolute;
+      left: 0;
+      top: 0;
+      overflow: hidden;
+      border-radius: 14px;
+      box-shadow: 0 2px 8px color-mix(in srgb, var(--c-ink) 5%, transparent);
+    }
+    #tg-svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+  <div id="root" data-composition-id="topology-graph" data-width="1048" data-height="788">
+    <div id="tg-stage">
+      <svg id="tg-svg" xmlns="http://www.w3.org/2000/svg">
+        <defs id="tg-defs"></defs>
+      </svg>
+    </div>
+  </div>
+</template>

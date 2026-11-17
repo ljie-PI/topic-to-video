@@ -44,4 +44,4 @@
 
 ## 已有实现
 
-尚无。
+- `motions/chart-build/`（文档见 `motions/chart-build/chart-build.md`）：支持 `variant: "bar"`（横纵向自适应柱条对比）与 `variant: "line"`（趋势折线 + 渐变面积 + 实时 `tabular-nums` 跟随读数）。

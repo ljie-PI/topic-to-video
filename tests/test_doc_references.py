@@ -15,7 +15,7 @@ SCRIPT_REFERENCE = re.compile(r'(?<![\w./-])(scripts/[\w-]+\.(?:py|sh))\b')
 SCRIPT_ARGUMENT = re.compile(r'(?<![\w-])(--[a-z][a-z0-9-]*)')
 LOCAL_REFERENCE = re.compile(r'`((?:references|modules)/[^`]+)`')
 MODULE_RELATIVE_REFERENCE = re.compile(
-    r'`((?:designs|layouts|components|transitions|templates|patterns)/[^`\s]+)`'
+    r'`((?:designs|layouts|components|transitions|motions|templates|patterns)/[^`\s]+)`'
 )
 PLACEHOLDER_CHARACTERS = frozenset('<{*')
 

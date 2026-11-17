@@ -1,0 +1,38 @@
+<template>
+  <!--
+    Motion module: flow-path — directed process, timeline, and state-flow diagram
+    (docs: motions/flow-path/flow-path.md).
+    Uses a 1:1 pixel SVG viewBox, translucent paper-revealing cards, fine stroke hierarchy,
+    deterministic CJK/ASCII wrapping, and paused GSAP timeline choreography.
+  -->
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      font-family: var(--font-sans);
+      color: var(--c-ink);
+      background: transparent;
+      pointer-events: none;
+    }
+    #fp-stage {
+      position: absolute;
+      left: 0;
+      top: 0;
+      overflow: hidden;
+      border-radius: 14px;
+      box-shadow: 0 2px 8px color-mix(in srgb, var(--c-ink) 5%, transparent);
+    }
+    #fp-svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+  <div id="root" data-composition-id="flow-path" data-width="1048" data-height="788">
+    <div id="fp-stage">
+      <svg id="fp-svg" xmlns="http://www.w3.org/2000/svg">
+        <defs id="fp-defs"></defs>
+      </svg>
+    </div>
+  </div>
+</template>

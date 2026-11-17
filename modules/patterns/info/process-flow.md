@@ -43,4 +43,4 @@
 
 ## 已有实现
 
-尚无。
+- `motions/flow-path/`（文档见 `motions/flow-path/flow-path.md`）：有向流程、时间线与状态机节点渐进揭示、焦点流转及 `pathLength="1"` 连线生长，支持横竖屏自动排布，可直接挂载或拷入工程改写。

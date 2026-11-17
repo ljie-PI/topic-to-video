@@ -36,4 +36,4 @@
 
 ## 已有实现
 
-尚无。
+- `motions/chart-build/`（`variant: "metric"`，文档见 `motions/chart-build/chart-build.md`）：单点大数字冲击卡，内置超大号 `tabular-nums` 滚动计数、进度量尺生长与结论说明自适应。
