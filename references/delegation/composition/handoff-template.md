@@ -59,8 +59,8 @@
 - {{scene_config_q}}：最终视觉场景机器配置，schema 见 Required References 里的 scene-config 契约文档（version / canvas / total_s / scenes；每个 scene 有唯一 scene_id、source_scene_ids、begin_s / end_s、template 与落盘完整 regions / caption 的 layout）；时间为全片秒，主区间覆盖整段视频。它由你与 storyboard 一起产出：先按「用户要求 → 特别匹配模块 → 即时生成」的顺序逐视觉场景定方案，再落盘
 - {{subtitle_units_q}}：最终字幕单元。**在 scene-config 写出后，按各 scene 落盘的 caption 规格生成**（下面的 `align-narration.py --mode subtitles` 命令）。默认脚本生成初稿；已有用户编辑是有效输入，仅改画面 / 重渲染不要覆盖它
 - {{ws}}/composition/storyboard.md：storyboard，开头是「组件与转场使用表」，逐个记录实际使用的组件、动态模块或转场、所依据的具体模块 `.md` 文档路径及其挂载参数、`window.VIDEO` 数据来源（含采用转场时的 `cuts`，连续深讲同一张技术图的切点不加过场）；每个视觉 scene 写明 intent、template / layout 方案及理由（采用预定义模块时注明对应 `.md` 路径）、所用的 content 区域，以及实际使用的素材 ref（连续深讲同一张技术图时注明连续场景范围、无过场衔接与各段局部 zoom / 焦点）或无素材时选用的动画方案及如何演绎 `content_plan`；必用素材覆盖表按基础指令第一部分处理
-- {{ws}}/composition/index.html + {{ws}}/composition/compositions/：HyperFrames 工程与子合成
-- {{ws}}/composition/check-composition.json：check-composition 的报告（下面命令的 `--output` 写出它；最后一次运行的 verdict 必须是 pass）
+- {{ws}}/composition/index.html + {{ws}}/composition/compositions/：HyperFrames 工程与逐场景拆分的子合成（各视觉场景拆成独立 `compositions/<scene>.{html,mjs}` 逐个落盘，避免单次拼装巨型单文件）
+- {{ws}}/composition/check-composition.json：check-composition 的报告（下面命令的 `--output` 写出它；最后一次运行的 verdict 必须是 pass，并对报告中的 `warnings` 逐条复核处理）
 - {{ws}}/composition/renders/final.mp4：渲染产物
 
 先读旁白与叙事规划，按 `modules/designs/designs.md` 选定 design，初始化工程（若 `composition/` 不存在）、安装字体并写 {{design_json_q}}（不用系统字体；选定后将 `<design>` 换成实际字体包名）：

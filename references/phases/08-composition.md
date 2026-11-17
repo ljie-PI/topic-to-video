@@ -54,7 +54,7 @@
 
 `pipeline-status` 会检查字幕、报告结论、报告是否覆盖当前源文件、渲染是否比源文件新（见上）。此外：
 
-- 渲染前：`check-composition` 的 finding 是否都已改完，而不是仅在报告里标 pass。
+- 渲染前：`check-composition` 的 finding 是否都已改完（而不仅是报告里标 pass），报告中的非阻塞质量 `warnings`（缩略媒体、缩放风险、重叠/遮挡、跨区文案复读、素材复用等）是否也已逐条核对修复或在 storyboard 说明设计意图。
 - 渲染后：抽看一两个关键 scene，确认素材按宽高比放对了、字幕没有溢出、画面能对应旁白，且未在非技术深讲场景违规复用素材、无素材场景确实用视觉动画演绎了 `content_plan`。全面成片检查归 Phase 9，不要在这里重复全套。
 - 发现内容错位（场景和旁白对不上、素材用错）属于叙事或素材问题，按 `references/pipeline-control.md` 回退到对应阶段，而不是只改 HTML。
 
@@ -71,6 +71,8 @@ Phase 9（成片检查）：渲染后 QA（`check-render.py` 确定性检查 + `
 - **Composition 委派给 coding agent。** 主 agent 只运行 `scripts/prepare-handoff.py <ws> composition`：它生成 `composition-handoff.md`，把 composition 委派包（`references/delegation/composition/`）与 modules 物化到工作区；design 选择与字体安装由子 agent 完成。委派约定与指令叠加顺序见 `references/delegation/conventions.md`。
   ↳ DO NOT：手写 `composition/index.html`、挑选低层 animation / effect skill，或在本 session 里修 HyperFrames lint；除非用户明确指定，否则由 Phase 8 sub-agent 选择。
 - **Scene 设计由 composition agent 负责。** 全片 design、最终视觉切分、逐场景 template / layout（含自由布局）、构图、素材映射、视觉层级、动画、lint/inspect 与渲染迭代都发生在 Phase 8；`composition/design.json`、`composition/scene-config.json` 与 storyboard 由 agent 写出。主 agent 只固定 orientation 与用户要求（`composition_requests`），不预选 design 或任何 scene 方案；参考库的使用由 composition agent 按基础指令第四部分自行判断。
+- **单 agent 逐场景拆分子合成写盘，优先消费 catalog 元数据。** 保持单次委派单个 composition agent 负责全片一致性，由子 agent 将各视觉场景拆分为独立的 `composition/compositions/<scene>.{html,mjs}` 逐个写盘，避免在单次输出里拼接巨型单文件 `index.html` 触发 `413` 上限；素材尺寸、语义描述与 `focal_region` 默认优先读取 `material-catalog.json`，仅在元数据不足以确定裁剪边界时按需单张查看原图，避免批量打开原图触发多模态图片上限 `400`。
+  ↳ DO NOT：在单次输出中把多场景长片的全部标记与脚本塞进同一个巨型 `index.html`，或一次性用看图工具批量打开 `harvest_page/` 全部原图。
 
 ---
 
