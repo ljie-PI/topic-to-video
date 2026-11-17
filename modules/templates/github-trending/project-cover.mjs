@@ -58,6 +58,7 @@ export function init(root, { params = {}, data = null, duration = 0, gsap }) {
   const side = $("pc-side");
   if (params.logo) {
     const img = document.createElement("img");
+    img.dataset.mediaRole = "logo";
     img.src = params.logo;
     img.alt = `${repo} logo`;
     side.appendChild(img);
