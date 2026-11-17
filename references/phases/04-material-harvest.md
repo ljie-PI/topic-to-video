@@ -109,7 +109,7 @@ URL 来源（按优先级）：
 #### 运行 harvest-pages.py
 
 ```bash
-python3 scripts/harvest-pages.py \
+source .venv/bin/activate && python3 scripts/harvest-pages.py \
   --urls-file "{work_dir}/{topic_name}/harvest-urls.txt" \
   --output-dir "{work_dir}/{topic_name}/harvest_page/" \
   --profile-dir "{work_dir}/chrome_profile" \
@@ -251,16 +251,16 @@ harvest_page/
 
 ```bash
 # 对 manifest.pending_downloads 里的每一项（每项只运行这一条命令）：
-python3 scripts/video-download.py --url "<item.url>" --harvest-dir "{work_dir}/{topic_name}/harvest_page/"
+source .venv/bin/activate && python3 scripts/video-download.py --url "<item.url>" --harvest-dir "{work_dir}/{topic_name}/harvest_page/"
 ```
 
 规则：
 
 - **顺序执行**，不并行 —— yt-dlp 并行时容易被限速 / 限 IP。
-- 不传 `--output-dir` 时自动使用该项的 `suggested_output_dir`，下载到 `harvest_page/<source_slug>/videos/`。
+- 不传 `--output-dir` 时自动使用该项的 `suggested_output_dir`，先在目标目录内的独立临时子目录下载并校验有效视频流，验证通过后再移入 `harvest_page/<source_slug>/videos/`。
 - 文件名用 yt-dlp 的视频 id 加实际扩展名（如 `dQw4w9WgXcQ.webm`），字幕是同名 sidecar（如 `dQw4w9WgXcQ.en.srt`）；同一 URL 只下一个视频，被多个 entry 引用时共用这一个文件。
 - 下载成功会自动将 `download_required` 置为 `false`、加上相对 `local_path` 和可选的 `subtitle_path`、把 `id` 设为下载文件的 stem，写入媒体宽高和时长，并同步 manifest、所有引用 entry 及其 `metadata.json`。
-- 如果 `video-download.py` 返回 `{"success": false}`（地区封锁、年龄限制、410 等），保留 `download_required: true` 并跳过它；Phase 5 不会把没有本地文件的视频拿去抽帧。如果该话题正好依赖这段 clip，用 `web_search` 找一个被转发的镜像，并在清单里换成新 URL 重跑 `harvest-pages.py`。
+- 如果 `video-download.py` 返回 `{"success": false, "failure_kind": "...", "error": "..."}`（地区封锁、年龄限制、410、反机器人校验、仅返回 storyboard 等），保留 `download_required: true` 并跳过它；Phase 5 不会把没有本地文件的视频拿去抽帧。其中遇到 `failure_kind` 为 `"bot_check"`（如 `Sign in to confirm you’re not a bot` / `LOGIN_REQUIRED`）或 `"storyboard_only"`（仅返回 `.mhtml` storyboard 或无有效可播放视频流）时，**单次尝试即早停**（不要对同一受限视频反复重试），将该来源与 `failure_kind` 记入 `search-notes.md` 后直接继续下游流程。只有当话题确实依赖这段 clip 时，才用 `web_search` 找其他可用来源或转发镜像，并在清单里换成新 URL 重跑 `harvest-pages.py`。
 
 #### video-download.py 的实际输出
 
@@ -315,7 +315,15 @@ harvest_page/www-youtube-com-watch-df2c6f/videos/
 
 - 同一条 URL 从 `pending_downloads[]` 消失；引用它的每个 entry 和各自的 `metadata.json` 同步更新，**不另生成一份 download manifest**。
 - 没有字幕时 `subtitle_path` 为 `null`；视频探测不到尺寸 / 时长时对应字段为 `null`。
-- 失败时 stdout 为 `{"success": false, "error": "..."}`，退出码 1，manifest 保持不变；但输出目录里可能已经留下部分下载文件，不要假定失败就一定没产物。
+- 失败时临时子目录（`.ytdlp-*`）会自动清理，不会删改 `output_dir` 中已有的历史文件，manifest 也保持不变；退出码为 `1`，stdout 统一携带结构化 `failure_kind`（如 `bot_check`、`storyboard_only`、`login_required`、`rate_limited`、`unavailable`、`invalid_url`、`format_unavailable`、`max_filesize`、`network_error`、`extract_error`、`missing_binary`、`timeout`、`unknown`）：
+
+```json
+{
+  "success": false,
+  "failure_kind": "bot_check",
+  "error": "Video site blocked automated download with a bot check (PO Token or cookies required)."
+}
+```
 
 ### Phase 4.c — 结果筛选（进入 Phase 5 之前）
 
@@ -346,7 +354,7 @@ harvest_page/www-youtube-com-watch-df2c6f/videos/
 
 **图片：** 直接看下载下来的文件，重点看要上屏的主体、文字、公式、图表标签和 UI。尺寸够但关键内容糊成一片、压缩块明显、只有占位图、关键部分被遮挡，同样剔除。背景自然虚化、留白、线条稀疏本身不算不清楚。
 
-**视频 / 滚动录像：** 先用 `extract-frames.py` 抽少量代表帧看一眼，例如 `--max-frames 3`；怀疑某处有问题时再专门抽那一段，不要仅凭三帧下结论说整段都没用。
+**视频 / 滚动录像：** 先用 `source .venv/bin/activate && python3 scripts/extract-frames.py` 抽少量代表帧看一眼，例如 `--max-frames 3`；怀疑某处有问题时再专门抽那一段，不要仅凭三帧下结论说整段都没用。
 
 抽帧默认会把宽度缩到 512 px，**别用这个缩略预览判原片模糊**：质量检查时传 `--max-width` 不小于原视频宽度，否则会把高清源误判成模糊。
 
@@ -364,7 +372,7 @@ harvest_page/www-youtube-com-watch-df2c6f/videos/
 3. 用现有入口写回（在 skill 根目录运行；`upsert_entries` 内部已经传 `dirty_slugs`，会同步 `manifest.json` 和对应 `metadata.json`，不要手写两份文件）：
 
    ```bash
-   python3 - <<'PY'
+   source .venv/bin/activate && python3 - <<'PY'
    import sys
    from pathlib import Path
 

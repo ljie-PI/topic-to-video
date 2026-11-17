@@ -6,10 +6,16 @@
   python3 video-download.py --url "https://bilibili.com/video/BVxxx" --subtitles-only
 """
 
+from __future__ import annotations
+
 import argparse
+import os
+import shutil
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import cli
 import harvest_manifest
@@ -48,41 +54,70 @@ def tail_text(text: str, limit: int = 4000) -> str:
     return text[-limit:]
 
 
-def detect_common_issue(output: str) -> str:
-    lowered = output.lower()
-    checks = [
-        ('unsupported url', 'Unsupported or invalid video URL.'),
-        ('unsupported webpage', 'Unsupported or invalid video URL.'),
-        ('video unavailable', 'Video is unavailable or has been removed.'),
-        ('this video is private', 'Video is private and cannot be downloaded.'),
-        ('sign in to confirm your age', 'Video is age-restricted and requires login.'),
-        ('login required', 'This video requires login.'),
-        ('too many requests', 'Rate limited by the video site. Please retry later.'),
-        ('http error 429', 'Rate limited by the video site. Please retry later.'),
-        ('failed to download webpage', 'Failed to fetch video metadata. Check the URL or network access.'),
-        ('unable to extract', 'yt-dlp could not extract video information from this page.'),
-        ('requested format is not available', 'Requested video format is not available.'),
-        ('file is larger than max-filesize', 'Video exceeds the configured max file size limit.'),
-        ('certificate verify failed', 'TLS certificate verification failed while contacting the video site.'),
-    ]
-    for needle, message in checks:
+def resolve_ytdlp_binary() -> str:
+    override = (os.environ.get('YTDLP_BIN') or '').strip()
+    if override:
+        return override
+    if sys.executable:
+        exe_path = Path(sys.executable)
+        candidates = (
+            (exe_path.with_name('yt-dlp.exe'), exe_path.with_name('yt-dlp'))
+            if os.name == 'nt'
+            else (exe_path.with_name('yt-dlp'),)
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return str(candidate)
+    return shutil.which('yt-dlp') or 'yt-dlp'
+
+
+def detect_common_issue(output: str) -> Tuple[str, str]:
+    lowered = (output or '').lower()
+    if any(
+        needle in lowered
+        for needle in (
+            'confirm you\u2019re not a bot',
+            "confirm you're not a bot",
+            'not a bot',
+            'login_required',
+        )
+    ):
+        return (
+            'bot_check',
+            'Video site blocked automated download with a bot check (PO Token or cookies required).',
+        )
+    if 'only images are available' in lowered or (
+        'requested format is not available' in lowered and 'storyboard' in lowered
+    ):
+        return (
+            'storyboard_only',
+            'Only storyboard images are available; no playable video stream could be downloaded.',
+        )
+    checks: Tuple[Tuple[str, str, str], ...] = (
+        ('unsupported url', 'invalid_url', 'Unsupported or invalid video URL.'),
+        ('unsupported webpage', 'invalid_url', 'Unsupported or invalid video URL.'),
+        ('video unavailable', 'unavailable', 'Video is unavailable or has been removed.'),
+        ('this video is private', 'unavailable', 'Video is private and cannot be downloaded.'),
+        ('sign in to confirm your age', 'login_required', 'Video is age-restricted and requires login.'),
+        ('this video requires login', 'login_required', 'This video requires login.'),
+        ('login required', 'login_required', 'This video requires login.'),
+        ('too many requests', 'rate_limited', 'Rate limited by the video site. Please retry later.'),
+        ('http error 429', 'rate_limited', 'Rate limited by the video site. Please retry later.'),
+        ('requested format is not available', 'format_unavailable', 'Requested video format is not available.'),
+        ('file is larger than max-filesize', 'max_filesize', 'Video exceeds the configured max file size limit.'),
+        ('certificate verify failed', 'network_error', 'TLS certificate verification failed while contacting the video site.'),
+        ('failed to download webpage', 'network_error', 'Failed to fetch video metadata. Check the URL or network access.'),
+        ('unable to extract', 'extract_error', 'yt-dlp could not extract video information from this page.'),
+    )
+    for needle, kind, message in checks:
         if needle in lowered:
-            return message
-    return tail_text(output) or 'yt-dlp failed with an unknown error.'
+            return kind, message
+    return 'unknown', tail_text(output) or 'yt-dlp failed with an unknown error.'
 
 
-def collect_changed_files(output_dir: Path, before_stats: Dict[Path, int]) -> List[str]:
-    files: List[str] = []
-    for path in sorted(p.resolve() for p in output_dir.iterdir() if p.is_file()):
-        mtime_ns = path.stat().st_mtime_ns
-        if path not in before_stats or before_stats[path] != mtime_ns:
-            files.append(str(path))
-    return files
-
-
-def build_command(args: argparse.Namespace, output_dir: Path) -> List[str]:
+def build_command(args: argparse.Namespace, target_dir: Path) -> List[str]:
     command = [
-        'yt-dlp',
+        resolve_ytdlp_binary(),
         '--write-subs',
         '--write-auto-subs',
         '--convert-subs',
@@ -90,14 +125,47 @@ def build_command(args: argparse.Namespace, output_dir: Path) -> List[str]:
         '--sub-langs',
         'en,zh',
         '--output',
-        str(output_dir / '%(id)s.%(ext)s'),
+        str(target_dir / '%(id)s.%(ext)s'),
     ]
     if args.subtitles_only:
         command.append('--skip-download')
     else:
-        command.extend(['--max-filesize', args.max_file_size])
+        command.extend(['--format', 'bv*+ba/b', '--max-filesize', args.max_file_size])
     command.append(args.url)
     return command
+
+
+def _probe_staged_video(video_path: Path) -> Tuple[bool, Dict[str, Any]]:
+    info: Dict[str, Any] = {
+        'width': None,
+        'height': None,
+        'duration_seconds': None,
+    }
+    try:
+        probed = media.probe(video_path)
+    except media.MediaToolMissing:
+        log('media probe binary not on PATH; falling back to non-empty file check')
+        try:
+            return video_path.stat().st_size > 0, info
+        except OSError:
+            return False, info
+    except media.MediaProbeError as exc:
+        log(str(exc))
+        return False, info
+
+    width = probed['width']
+    height = probed['height']
+    duration = probed['duration_seconds']
+    valid_duration = duration if isinstance(duration, (int, float)) and duration > 0 else None
+    info.update({
+        'width': width,
+        'height': height,
+        'duration_seconds': valid_duration,
+    })
+    is_valid = bool(width and width > 0 and height and height > 0 and valid_duration is not None)
+    if is_valid:
+        log(f'  probed {video_path.name}: {width}x{height}')
+    return is_valid, info
 
 
 def main() -> int:
@@ -121,66 +189,91 @@ def main() -> int:
             raise ValueError(f'Output path is not a directory: {output_dir}')
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        before_stats = {
-            path.resolve(): path.stat().st_mtime_ns
-            for path in output_dir.iterdir()
-            if path.is_file()
-        }
-        command = build_command(args, output_dir)
         timeout = 120 if args.subtitles_only else 600
+        combined_output = ''
+        returncode = 0
+        final_files: List[str] = []
+        videos_info: List[Dict[str, Any]] = []
+        storyboard_error: Optional[str] = None
 
         log(f'Downloading {"subtitles only" if args.subtitles_only else "video+subtitles"} from {args.url} -> {output_dir}')
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-        combined_output = '\n'.join(part for part in [completed.stdout, completed.stderr] if part)
+        with tempfile.TemporaryDirectory(prefix='.ytdlp-', dir=output_dir) as raw_temp_dir:
+            temp_dir = Path(raw_temp_dir)
+            command = build_command(args, temp_dir)
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+            combined_output = '\n'.join(part for part in [completed.stdout, completed.stderr] if part)
+            returncode = completed.returncode
 
-        if completed.returncode != 0:
-            error_message = detect_common_issue(combined_output)
-            log(f'yt-dlp failed: {error_message}')
-            cli.print_json({'success': False, 'error': error_message})
+            if returncode == 0:
+                staged_files = sorted((p for p in temp_dir.iterdir() if p.is_file()), key=lambda p: p.name)
+                probed_by_name: Dict[str, Dict[str, Any]] = {}
+                valid_video_names: set[str] = set()
+
+                if not args.subtitles_only:
+                    staged_videos = [p for p in staged_files if p.suffix.lower() in harvest_manifest.VIDEO_EXTS]
+                    for video_file in staged_videos:
+                        is_valid, info = _probe_staged_video(video_file)
+                        probed_by_name[video_file.name] = info
+                        if is_valid:
+                            valid_video_names.add(video_file.name)
+                    if not valid_video_names:
+                        if any(p.suffix.lower() == '.mhtml' for p in staged_files):
+                            storyboard_error = (
+                                'yt-dlp downloaded only storyboard files (.mhtml) without a playable video stream.'
+                            )
+                        elif staged_videos:
+                            storyboard_error = (
+                                'yt-dlp produced an unplayable or empty video file without a valid video stream.'
+                            )
+                        else:
+                            storyboard_error = (
+                                'yt-dlp finished without producing a playable video file.'
+                            )
+
+                if storyboard_error is None:
+                    for src in staged_files:
+                        if (
+                            not args.subtitles_only
+                            and src.suffix.lower() in harvest_manifest.VIDEO_EXTS
+                            and src.name not in valid_video_names
+                        ):
+                            continue
+                        dest = (output_dir / src.name).resolve()
+                        os.replace(src, dest)
+                        final_path = str(dest)
+                        final_files.append(final_path)
+                        if not args.subtitles_only and src.name in valid_video_names:
+                            videos_info.append({
+                                'path': final_path,
+                                **probed_by_name[src.name],
+                            })
+
+        if returncode != 0:
+            failure_kind, error_message = detect_common_issue(combined_output)
+            log(f'yt-dlp failed ({failure_kind}): {error_message}')
+            cli.print_json({'success': False, 'failure_kind': failure_kind, 'error': error_message})
             return 1
 
-        files = collect_changed_files(output_dir, before_stats)
-        if not files:
-            files = [str(path.resolve()) for path in sorted(output_dir.iterdir()) if path.is_file()]
-        log(f'Download complete ({len(files)} file(s))')
+        if storyboard_error is not None:
+            log(f'yt-dlp failed (storyboard_only): {storyboard_error}')
+            cli.print_json({
+                'success': False,
+                'failure_kind': 'storyboard_only',
+                'error': storyboard_error,
+            })
+            return 1
 
-        videos_info = []
-        if not args.subtitles_only:
-            video_paths = [p for p in files if Path(p).suffix.lower() in harvest_manifest.VIDEO_EXTS]
-            for video_path in video_paths:
-                info: Dict[str, Any] = {
-                    'path': video_path,
-                    'width': None,
-                    'height': None,
-                    'duration_seconds': None,
-                }
-                try:
-                    probed = media.probe(video_path)
-                except media.MediaToolMissing:
-                    log('media probe binary not on PATH; skipping dimension probe')
-                except media.MediaProbeError as exc:
-                    log(str(exc))
-                else:
-                    duration = probed['duration_seconds']
-                    info.update({
-                        'width': probed['width'],
-                        'height': probed['height'],
-                        'duration_seconds': duration if duration is not None and duration > 0 else None,
-                    })
-                if info['width'] and info['height']:
-                    log(f'  probed {Path(video_path).name}: {info["width"]}x{info["height"]}')
-                videos_info.append(info)
-
+        log(f'Download complete ({len(final_files)} file(s))')
         result = {
             'success': True,
             'output_dir': str(output_dir),
-            'files': files,
+            'files': final_files,
             'videos': videos_info,
             'stdout_tail': tail_text(combined_output),
         }
@@ -191,7 +284,11 @@ def main() -> int:
         return 0
     except FileNotFoundError:
         log('yt-dlp is not installed or not available on PATH.')
-        cli.print_json({'success': False, 'error': 'yt-dlp is not installed or not available on PATH.'})
+        cli.print_json({
+            'success': False,
+            'failure_kind': 'missing_binary',
+            'error': 'yt-dlp is not installed or not available on PATH.',
+        })
         return 1
     except subprocess.TimeoutExpired as exc:
         output = '\n'.join(
@@ -201,7 +298,11 @@ def main() -> int:
         )
         message = f'yt-dlp timed out after {exc.timeout} seconds. {tail_text(output)}'.strip()
         log(message)
-        cli.print_json({'success': False, 'error': message})
+        cli.print_json({'success': False, 'failure_kind': 'timeout', 'error': message})
+        return 1
+    except Exception as exc:
+        log(f'error: {exc}')
+        cli.print_json({'success': False, 'failure_kind': 'unknown', 'error': str(exc)})
         return 1
 
 

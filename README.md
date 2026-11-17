@@ -22,17 +22,18 @@
 
 agent 首次运行时按 `SKILL.md` 检查环境，已有配置直接复用。**项目依赖可以由已授权的 agent 代装；系统级调整和云端凭据由用户负责。**
 
-- Python 3.9+（建议 3.11+；本地语音后端需要 3.10+）
-- 系统依赖：`ffmpeg` / `ffprobe`、系统 Chrome、`yt-dlp`、Node.js（`npx`，用于 HyperFrames）
+- Python 3.9+（建议 3.11+；本地语音后端需要 3.10+，新版 `yt-dlp` 需要 3.10+/3.11+）
+- 系统依赖：`ffmpeg` / `ffprobe`、系统 Chrome、Node.js（`npx`，用于 HyperFrames）
 - 语音后端二选一：本地（macOS Apple Silicon 或 Linux + NVIDIA）或云端 DashScope
 
 | 配置项 | 谁负责 |
 | --- | --- |
 | Python、系统软件及 NVIDIA 驱动 | 用户 / 宿主提供；需要安装、升级或重启时由用户 / 管理员执行 |
-| `.venv`、Python 库（含 CUDA 版 PyTorch） | agent 可在用户授权和宿主权限允许的范围内创建 / 安装，用户也可手动执行 |
+| `.venv`、Python 库（含 `yt-dlp`、PO Token 插件及 CUDA 版 PyTorch） | agent 可在用户授权和宿主权限允许的范围内创建 / 安装，用户也可手动执行 |
 | 系统 CUDA Toolkit | 默认不要求安装；需要编译 CUDA 扩展时再由用户 / 管理员按需准备 |
 | 本地模型权重 | 首次实际使用时由后端下载；agent 先说明资源需求并取得授权，也可使用用户预下载的目录 |
 | 云端 KEY / 音色 ID | 用户通过启动 agent 的环境或宿主配置提供 |
+| YouTube PO Token 服务 / `yt-dlp` 宿主配置 | 按需由用户 / 宿主配置（见下方「YouTube 下载与 PO Token 配置」） |
 
 ## 安装
 
@@ -115,6 +116,22 @@ export COSYVOICE_VOICE_ID="cosyvoice-v3.5-plus-..."
 python3 scripts/voice-clone.py --resolve-backend
 python3 scripts/transcribe.py --resolve-backend
 ```
+
+### YouTube 下载与 PO Token 配置
+
+`requirements.txt` 已将 `yt-dlp` 与 `bgutil-ytdlp-pot-provider` 一并装入项目 `.venv`。`scripts/video-download.py` 按 `YTDLP_BIN` → 当前 Python 解释器同目录的 `yt-dlp`（`.venv/bin/yt-dlp`）→ `PATH` 的顺序解析二进制，避免宿主 `PATH` 上先出现的 Homebrew / 系统 `yt-dlp` 绕过 `.venv` 而找不到插件。
+
+需注意职责边界：**同一 `.venv` 内安装 `yt-dlp` 与 `bgutil-ytdlp-pot-provider` 解决的是插件加载隔离问题；YouTube 在受限网络或风控环境下能否实际拿到可播放流，仍取决于宿主的外部 PO Token 服务、登录 cookies 或网络代理配置。**
+
+宿主侧可通过 `yt-dlp` 原生配置文件（如 `~/.config/yt-dlp/config` 或 `/etc/yt-dlp.conf`）接入本地 / 远端 bgutil PO Token HTTP 服务、代理或浏览器登录态，无需改仓库脚本或把凭据写入工作区。例如：
+
+```text
+# ~/.config/yt-dlp/config 示例（按宿主实际环境选用，勿提交凭据）
+--extractor-args "youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416"
+# 如需代理或 cookies，同样在宿主 yt-dlp 配置中声明（如 --proxy ...）
+```
+
+若宿主未部署相关解锁配置，遇到 `bot_check`（`Sign in to confirm you’re not a bot` / `LOGIN_REQUIRED`）或 `storyboard_only`（仅返回 storyboard 图片而无有效视频流）时，`video-download.py` 会在单次尝试后返回结构化 `failure_kind`，流水线记入 `search-notes.md` 后直接继续下游步骤。
 
 ### 其他配置
 

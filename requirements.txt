@@ -1,6 +1,6 @@
 # 流水线运行时依赖（所有平台）。
 #
-# 系统依赖不在 pip 里：ffmpeg / ffprobe、系统 Chrome、yt-dlp、Node.js（npx）。
+# 系统依赖不在 pip 里：ffmpeg / ffprobe、系统 Chrome、Node.js（npx）。
 # 本地语音后端按平台另外安装：
 #   macOS Apple Silicon -> requirements-macos.txt
 #   Linux + NVIDIA     -> requirements-cuda.txt
@@ -9,3 +9,5 @@ Pillow>=10
 playwright>=1.40
 requests>=2.31
 psutil>=5.9
+yt-dlp>=2025.1.15
+bgutil-ytdlp-pot-provider>=1.0.0
