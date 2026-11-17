@@ -5,6 +5,7 @@
 - Phase 8 产出的 `composition/renders/final.mp4`；
 - `composition/design.json`（Phase 8 落盘的 preset / custom 全片外观基线，QA 不看 `inputs.json` 猜设计）；
 - `composition/scene-config.json`（最终视觉场景机器配置与全片秒；本阶段 QA 的 scene_id、抽帧和反馈范围以它为准；旧单 layout 工程才沿用 `transcribe/timeline.json` 的可选叙事 scenes）；
+- `composition/check-composition.json` 与 `composition/storyboard.md`（参考 Phase 8 渲染前检查留下的非阻塞 `warnings` 及场景设计说明，供 vision 检查定向复核）；
 - `inputs.json`（`qa_level`、可选布尔开关 `bgm`）；
 - `search-notes.md`（可选，Phase 4 记录的来源限制；`bgm = false` 跳过 Phase 10 直接在本阶段交付时用于说明）。
 
@@ -86,13 +87,13 @@ python3 scripts/make-contact-sheet.py \
 
 #### 9.3 — vision 检查（`vision_check_required` 为 true 时，主 agent 执行）
 
-看 9.2 输出 JSON 的 `vision_check_required` 决定是否执行本节；为 `false` 时跳过。为 `true` 时，主 agent 自己逐张看 `qa/sheet_NNN.jpg`（用 `view` 工具；sheet 同时交给用户过目），每张核对 5 项：
+看 9.2 输出 JSON 的 `vision_check_required` 决定是否执行本节；为 `false` 时跳过。为 `true` 时，主 agent 结合 `composition/check-composition.json` 的 `warnings` 与 `composition/storyboard.md`，自己逐张看 `qa/sheet_NNN.jpg`（用 `view` 工具；sheet 同时交给用户过目），每张核对 5 项：
 
 1. 渲染是否完整（无缺帧、无渲染中断导致的残帧）；
 2. 画面与旁白、`content_plan` 是否相符——不用真实素材的视觉场景是否用具体的视觉图示与阶段动画（SVG / WebGL / Three.js / GSAP）生动讲述了内容与演进，而不是退化成静态文字卡片、纯排版列表或无关装饰图形；
-3. 素材使用是否合规——同一素材有没有在非技术深讲场景间违规跨场景复用；围绕同一张技术图连续深讲的相邻场景，切点是否保持无打断性过场，并推进局部焦点（优先 zoom in 到图片不同区域，而非整图静止只换说明文字）；
-4. 是否符合 `composition/design.json` 的 preset 或 custom 配色与观感；scene 限定的 token 覆盖是否只作用于声明的 scene，没有外泄到其他 scene；
-5. 有没有明显的空洞或错位。
+3. 素材清晰度与复用是否合规——重点结合 `check-composition.json` 的 `warnings` 复核素材可视占比是否充足、有无源文件自身失焦/高压缩马赛克或过度缩放导致的文字模糊；同一素材有没有在非技术深讲场景间违规跨场景复用；围绕同一张技术图连续深讲的相邻场景，切点是否保持无打断性过场，并推进局部焦点（优先 zoom in 到图片不同区域，而非整图静止只换说明文字）；
+4. 是否符合 `composition/design.json` 的 preset 或 custom 配色、细线层级与透纸纹质感；scene 限定的 token 覆盖是否只作用于声明的 scene，没有外泄到其他 scene；
+5. 排版与跨区信息是否清爽——有没有明显的空洞、错位、文字出框/遮挡，或主展示区与副展示区（`main` / `side`）无意义的文案重复堆砌。
 
 仅凭各 scene 单张中点帧无法确认“连续技术图切点有无被过场打断 / 局部 zoom 是否推进”或“无素材场景的分步动画是否真实演进”时，对照 `composition/storyboard.md` 按需对涉及切点或阶段前后的时间点单独抽帧核对（`strict` 档拼图已含入场帧与切点前后三帧可直接查看），仍不做全片密集抽帧；纯审美层面的缓动观感默认交给用户在预览中判断。
 
