@@ -468,7 +468,8 @@ def test_migrated_modules_init_and_seek_without_vendor_globals(tmp_path: Path):
         ('transitions/tile-wipe', None),
         ('templates/github-trending/trending-overview', None),
         ('templates/github-trending/project-cover',
-         {'owner': 'demo', 'repo': 'tool', 'nameAt': 0.5, 'taglineAt': 1.0,
+         {'owner': 'demo', 'repo': 'tool', 'logo': 'assets/brand/github-mark-white.svg',
+          'nameAt': 0.5, 'taglineAt': 1.0,
           'tagline': '一句话介绍', 'stars': 2000, 'starsAt': 2.0}),
     ]
     with composition_url_with_mounts(tmp_path, video, mounts) as url:
@@ -496,6 +497,7 @@ def test_migrated_modules_init_and_seek_without_vendor_globals(tmp_path: Path):
                 rows: trending.querySelectorAll('#to-list .row').length,
                 rank: (trending.querySelector('#to-list .rk') || {}).textContent,
                 count: cover.querySelector('#pc-count').textContent,
+                logoRole: cover.querySelector('#pc-side img')?.getAttribute('data-media-role'),
                 starState: cover.querySelector('#pc-meta .s1').style.opacity,
                 captionText: (caption.querySelector('#cb-1 span') || {}).textContent || null,
               };
@@ -518,6 +520,7 @@ def test_migrated_modules_init_and_seek_without_vendor_globals(tmp_path: Path):
             assert state['rank'] == '1'
             # past starsAt + 1.4s count-up: the number reached its target
             assert state['count'] == '+2,000'
+            assert state['logoRole'] == 'logo'
             assert float(state['starState']) == 1
             assert state['captionText'] == '本周热榜开场'
             assert errors == []

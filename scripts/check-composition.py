@@ -35,11 +35,12 @@ video/audio 元素；两者都不存在时该快照报 seek finding，静态快�
 输出约定：
   stdout: 单个 JSON 对象
     success: {"success": true, "verdict": "pass"|"fail",
-              "scenes_checked": [...], "findings": [...]}
-      每条发现：{scene_id, check, issue, time_s, frame}
+              "scenes_checked": [...], "findings": [...], "warnings": [...]}
+      每条确定性发现（阻塞）：{scene_id, check, issue, time_s, frame}
+      每条启发式质量提示（非阻塞）："[<scene_id>] <check>: <detail>"
     error:   {"success": false, "error": "..."}
   stderr: 带 [check-composition] 前缀的人类可读进度
-  exit:   0 = 运行完成（verdict 字段给出 pass/fail），
+  exit:   0 = 运行完成（verdict 字段给出 pass/fail，仅由 findings 决定），
           1 = 运行时错误，2 = 参数非法
 """
 
@@ -53,9 +54,19 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import chrome_cdp
 import cli
+import composition_warnings
 import media
 import scene_config
 import video_contract
+from composition_warnings import (
+    assign_content_region,
+    element_in_ignored_subtree,
+    element_owner_region,
+    intersection_area,
+    media_load_error as check_media_load,
+    normalize_text,
+    rects_intersect,
+)
 from timeline_scenes import normalize_scenes
 
 TOOL_NAME = 'check-composition'
@@ -282,23 +293,6 @@ def region_tokens(region: Dict[str, Any]) -> List[str]:
     return [token.lower() for token in tokens if token]
 
 
-def rects_intersect(a: Rect, b: Rect) -> bool:
-    return (
-        a['x'] < b['x'] + b['width']
-        and b['x'] < a['x'] + a['width']
-        and a['y'] < b['y'] + b['height']
-        and b['y'] < a['y'] + a['height']
-    )
-
-
-def intersection_area(a: Rect, b: Rect) -> float:
-    if not rects_intersect(a, b):
-        return 0.0
-    width = min(a['x'] + a['width'], b['x'] + b['width']) - max(a['x'], b['x'])
-    height = min(a['y'] + a['height'], b['y'] + b['height']) - max(a['y'], b['y'])
-    return max(0.0, width) * max(0.0, height)
-
-
 def subtract_rect(target: Rect, cut: Rect) -> List[Rect]:
     """target 减去 cut，表示为一组 rect（最多 4 个）。"""
     if not rects_intersect(target, cut):
@@ -383,35 +377,12 @@ DURATION_PROBE_JS = r"""
 # --- 分析 --------------------------------------------------------------------
 
 
-def element_owner_region(element: Dict[str, Any], reserved_tokens: Dict[str, List[str]]) -> Optional[str]:
-    """该元素归属的保留区域 id，经由 id / data-composition-id 链判定。"""
-    candidates = {element['id'].lower()} | {a.lower() for a in element['ancestors']}
-    for region_id, tokens in reserved_tokens.items():
-        if candidates & set(tokens):
-            return region_id
-    return None
-
-
 def is_content_element(element: Dict[str, Any]) -> bool:
     if element['isSceneRoot'] or element['layoutIgnore']:
         return False
     if element['media'] or element['ownText']:
         return True
     return bool(element['surface'])
-
-
-def element_in_ignored_subtree(element: Dict[str, Any], elements: List[Dict[str, Any]]) -> bool:
-    """当该元素位于 [data-layout-ignore] 子树内时返回 True。"""
-    by_id: Dict[str, Dict[str, Any]] = {el['id']: el for el in elements if el['id']}
-    return any(
-        by_id[ancestor_id]['layoutIgnore']
-        for ancestor_id in element['ancestors']
-        if ancestor_id in by_id
-    )
-
-
-def normalize_text(text: str) -> str:
-    return re.sub(r'\s+', '', text)
 
 
 def active_subtitle_unit(
@@ -526,17 +497,6 @@ def check_text_overflow(element: Dict[str, Any]) -> Optional[str]:
     )
 
 
-def check_media_load(element: Dict[str, Any]) -> Optional[str]:
-    media = element['media']
-    if not media:
-        return None
-    if media['tag'] == 'img' and media['complete'] and media['naturalWidth'] == 0:
-        return f'{element["selector"]} image failed to load: {media["src"]}'
-    if media['tag'] == 'video' and media['src'] and (media['error'] or media['readyState'] == 0):
-        return f'{element["selector"]} video failed to load: {media["src"]}'
-    return None
-
-
 def check_font_size(
     element: Dict[str, Any],
     owner: Optional[str],
@@ -576,19 +536,17 @@ def check_caption(
     issues: List[str] = []
     if unit is None:
         if caption_layout is not None and normalize_text(' '.join(snapshot['captionTexts'])):
-            issues.append(f'visible caption at {snapshot["time"]:.3f}s has no active subtitle unit')
+            issues.append('visible caption has no active subtitle unit')
         return issues
     on_screen = normalize_text(' '.join(snapshot['captionTexts']))
     expected = normalize_text(unit['text'])
     if not on_screen:
         issues.append(
-            f'no visible caption at {snapshot["time"]:.1f}s '
-            f'but subtitle unit {unit["text"]!r} is active'
+            f'no visible caption but subtitle unit {unit["text"]!r} is active'
         )
     elif on_screen != expected:
         issues.append(
-            f'on-screen caption {on_screen!r} does not match subtitle unit {expected!r} '
-            f'at {snapshot["time"]:.1f}s'
+            f'on-screen caption {on_screen!r} does not match subtitle unit {expected!r}'
         )
     if caption_layout is not None:
         caption = caption_layout['caption']
@@ -599,20 +557,19 @@ def check_caption(
             if abs(font_size - float(caption['font_size_px'])) > 0.5:
                 issues.append(
                     f'caption font size {font_size:.0f}px does not match layout '
-                    f'{caption["font_size_px"]}px at {snapshot["time"]:.3f}s'
+                    f'{caption["font_size_px"]}px'
                 )
             lines = int(detail.get('lineCount') or 1)
             if lines > int(caption['max_lines']):
                 issues.append(
-                    f'caption uses {lines} lines, exceeding layout max_lines={caption["max_lines"]} '
-                    f'at {snapshot["time"]:.3f}s'
+                    f'caption uses {lines} lines, exceeding layout max_lines={caption["max_lines"]}'
                 )
             caption_region = scene_config.caption_region(caption_layout)
             if caption_region is not None and detail.get('rect') and not covered_by(
                 detail['rect'], [caption_region['rect']],
             ):
                 issues.append(
-                    f'caption text is outside the active caption-text region at {snapshot["time"]:.3f}s'
+                    'caption text is outside the active caption-text region'
                 )
     return issues
 
@@ -752,6 +709,8 @@ def build_report(
                 'scene_id': scene['scene_id'], 'check': 'scene_coverage',
                 'issue': 'visual scene was not sampled', 'time_s': None, 'frame': None,
             })
+        visual_scene = visual_by_id.get(scene['scene_id'])
+        scene_regions = RegionIndex(visual_scene['layout']) if visual_scene else regions
         for snapshot in scene_snapshots:
             # sought 是三态：False = 快照时确认没有任何 seek 驱动，必报；
             # True = 正常 seek；键缺失 = 无此字段的旧录制快照，保持旧行为不判。
@@ -759,8 +718,8 @@ def build_report(
                 findings.append({
                     'scene_id': scene['scene_id'], 'check': 'seek',
                     'issue': (
-                        f'no seek driver (window.__layoutQA.seek or media elements) at '
-                        f'{snapshot["time"]:.3f}s; snapshot is not time-driven'
+                        'no seek driver (window.__layoutQA.seek or media elements); '
+                        'snapshot is not time-driven'
                     ),
                     'time_s': float(snapshot['time']), 'frame': None,
                 })
@@ -772,7 +731,6 @@ def build_report(
                     'issue': f'no visible element declares this data-scene-id at {snapshot["time"]:.3f}s',
                     'time_s': float(snapshot['time']), 'frame': None,
                 })
-            scene_regions = RegionIndex(visual_by_id[scene['scene_id']]['layout']) if visual_scenes else regions
             caption_segment = next(
                 (segment for segment in caption_segments
                  if segment['begin_s'] <= snapshot['time'] < segment['end_s']),
@@ -802,6 +760,17 @@ def build_report(
 
     scene_order = [scene['scene_id'] for scene in scenes]
     findings = dedup_findings(findings, scene_order)
+    quality_warnings = composition_warnings.collect_composition_warnings(
+        scenes=scenes,
+        snapshot_by_scene=snapshot_by_scene,
+        default_regions=regions,
+        visual_by_id=visual_by_id,
+        caption_segments=caption_segments,
+        composition_dir=composition_dir,
+        region_index_factory=RegionIndex,
+        filter_scene=visual_scenes is not None,
+    )
+    all_warnings = [*warnings, *quality_warnings]
     return {
         'success': True,
         'verdict': 'fail' if findings else 'pass',
@@ -813,7 +782,7 @@ def build_report(
         'min_ui_font_size': font_floors[1],
         'scenes_checked': checked,
         'findings': findings,
-        'warnings': warnings,
+        'warnings': all_warnings,
     }
 
 
@@ -825,7 +794,10 @@ def main() -> None:
         cli.fail(TOOL_NAME, str(exc), exit_code=2)  # 参数值非法
     try:
         if args.snapshots_from:
-            composition_dir = Path(args.composition).expanduser().resolve()
+            try:
+                composition_dir, _ = resolve_composition_path(args.composition)
+            except ValueError:
+                composition_dir = Path(args.composition).expanduser().resolve()
             index_path = None
         else:
             composition_dir, index_path = resolve_composition_path(args.composition)
