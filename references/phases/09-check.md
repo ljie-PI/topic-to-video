@@ -2,12 +2,12 @@
 
 ## 输入
 
-- Phase 8 产出的 `composition/renders/final.mp4`；
-- `composition/design.json`（Phase 8 落盘的 preset / custom 全片外观基线，QA 不看 `inputs.json` 猜设计）；
-- `composition/scene-config.json`（最终视觉场景机器配置与全片秒；本阶段 QA 的 scene_id、抽帧和反馈范围以它为准；旧单 layout 工程才沿用 `transcribe/timeline.json` 的可选叙事 scenes）；
-- `composition/check-composition.json` 与 `composition/storyboard.md`（参考 Phase 8 渲染前检查留下的非阻塞 `warnings` 及场景设计说明，供 vision 检查定向复核）；
+- `composition/renders/final.mp4`（Phase 8 渲染成片）；
+- `composition/design.json`（Phase 8 落盘的 preset / custom 外观基线）；
+- `composition/scene-config.json`（最终视觉场景机器配置与全片秒；本阶段抽帧、`scene_id` 归属与反馈范围均以它为准）；
+- `composition/check-composition.json` 与 `composition/storyboard.md`（供 vision 检查定向复核渲染前留下的非阻塞 `warnings` 及场景设计意图）；
 - `inputs.json`（`qa_level`、可选布尔开关 `bgm`）；
-- `search-notes.md`（可选，Phase 4 记录的来源限制；`bgm = false` 跳过 Phase 10 直接在本阶段交付时用于说明）。
+- `search-notes.md`（可选，Phase 4 记录的来源限制；`bgm = false` 在本阶段直接交付时一并说明）。
 
 ## 输出
 
@@ -15,36 +15,31 @@
 
 ## 完成判据
 
-- `qa/qa-report.json` 存在且只含 `findings` + `verdict` 两部分（修复轮结束后 `verdict` 为 `pass` 或 `handed_off`）；状态脚本校验通过后才将本阶段标为完成并放行下游。
+- `qa/qa-report.json` 存在且只含 `findings` + `verdict` 两个字段（修复轮收尾后 `verdict` 为 `pass` 或 `handed_off`）。
 
 ## 执行后自检
 
-本阶段的检查已经写在下面的流程里（确定性检查 + 按 `qa_level` 的 vision 检查 + 最多两轮修复），不需要额外再看别的东西。根据问题类型决定退回哪一层，而不是硬改：
+按下方 9.1–9.4 完成确定性检查、contact sheet 与按 `qa_level` 的 vision 检查后，按问题性质定向回退（最多修复 2 轮）：
 
-- catalog 阶段适用时，必用素材（catalog 的 `required_material_refs`，论文模式的关键图 / 表）没在成片里出现，或关键图 / 表看不清：交回 Phase 8 补上，不要只记一笔就放行。通用素材不要求逐条必出，但尽量保留且在符合场景内容时应优先考虑选用；若场景明明有贴合内容的可用素材却无故弃用，修复时一并交回 Phase 8 优先采用。非技术深讲的素材跨视觉场景重复出现，或围绕同一张技术图连续深讲却被过场打断、整张图原地不动只换文字而未推进局部区域：交回 Phase 8 去重、合并延长场景，或改为无过场连续镜头并 zoom in 到相应区域。
-- 不用真实素材的视觉场景退化成纯排版文字卡片、静态列表或无关装饰动画，未能用视觉动画（按 SVG → WebGL → Three.js → GSAP 优先级选择或组合）生动讲述该场景的 `content_plan`：交回 Phase 8 重做该场景的内容动画演绎。
-
-- 黑屏、冻结、音画时长不符、渲染残缺：留在本阶段，交回 composition agent 修。
-- 画面与旁白对不上：可能是叙事或场景计划的问题，按 `references/pipeline-control.md` 找到对应阶段，不要只改画面。
-- 两轮后 finding 数不再下降：把报告标为 `handed_off` 连同 sheet 交回用户，不要反复重试。
+- **交回 Phase 8 composition agent（限定受影响 scene 修复）**：黑屏、冻结、音画时长不符、渲染残缺；`required_material_refs` 必用图 / 表未上屏或看不清；贴合场景的可用通用素材被无故弃用；非技术深讲违规跨场复用素材，或连续深讲同一张技术图时加了打断性过场 / 未推进局部 zoom；无真实素材场景退化为纯排版静态卡片而未做动态内容演绎。
+- **回退更早阶段**（按 `references/pipeline-control.md` 定位）：画面与旁白逻辑错位属叙事或场景规划问题，不靠硬改画面掩盖。
+- **两轮未收敛**：2 轮修复后 finding 数未继续下降时，置 `verdict: "handed_off"` 连同 contact sheet 交由用户定夺，禁无限重试或伪造 `pass`。
 
 ## 下一步
 
 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`：
 
-- 默认（`inputs.json` 的 `bgm` 缺省或为 `true`）进入 Phase 10（`10-mix`，BGM 混音与交付），混入低音量背景乐后统一交付；
-- `inputs.json` 的 `bgm = false` 时 Phase 10 跳过（`next_phase` 为 `null`），`composition/renders/final.mp4` 即最终交付文件——直接把 `final.mp4` 与 contact sheet 交给用户过目，并按 9.5 汇总可选的素材限制。
+- `bgm` 缺省或为 `true`：进入 Phase 10（`10-mix`）混入背景乐后统一交付；
+- `bgm = false`：跳过 Phase 10（`next_phase` 为 `null`），直接交付 `composition/renders/final.mp4` 与 contact sheet，并按 9.5 汇总可选的素材限制。
 
 ## 护栏
 
-- **全程不做全片密集抽帧。** 只用 `scripts/check-render.py` 做确定性容器 / 黑屏 / 冻结检测，再用 `scripts/make-contact-sheet.py` 按最终视觉 scene 抽帧拼成 2×2 sheet 供视觉检查。
-  ↳ DO NOT：对整支视频逐秒抽帧并逐张喂给视觉模型。
-- **修复轮改过画面就必须重跑 `check-composition` 并重新渲染 `final.mp4`，且最多修复 2 轮。** 状态脚本不比对源文件修改时间；跳过重跑检查或重新渲染会让报告与成片停留在旧画面。
-  ↳ DO NOT：只改源文件却不重新渲染就重跑 `check-render.py`，或在两轮未收敛后无限重试、把未解决的问题伪造成 `pass`。
+- **全程禁止全片逐秒密集抽帧。** 统一用 `scripts/check-render.py` 做容器 / 黑屏 / 冻结检测，再用 `scripts/make-contact-sheet.py` 按视觉 scene 抽帧拼成 2×2 sheet 供视觉检查。
+- **修复轮改过画面必须重跑 `check-composition` 并重新渲染 `final.mp4`（最多 2 轮）。** 禁只改源码不重渲染就复检。
 
 ---
 
-渲染完成后，成片 QA 分确定性检查、contact sheet 拼图、vision 检查、修复轮四步，全程**不做全片抽帧**。检查集由 `inputs.json` 的 `qa_level` 决定（缺省视为 `standard`）：
+成片 QA 按 `inputs.json` 的 `qa_level`（缺省为 `standard`）分四步执行：
 
 | 档位 | 渲染前检查（Phase 8） | 确定性检查 | contact sheet | vision 检查 |
 | --- | --- | --- | --- | --- |
@@ -61,13 +56,13 @@ python3 scripts/check-render.py \
   --timeline {work_dir}/{topic_name}/composition/scene-config.json
 ```
 
-一个脚本跑完三类检查（stdout 一个 JSON，verdict 为 pass / fail）：
+脚本一次输出三类检查结果 JSON（`verdict` 为 `pass` / `fail`）：
 
-- **ffprobe 容器检查**：有音轨；容器时长与音轨时长偏差 ≤ 0.5s；分辨率等于 `inputs.json` 的 `orientation` 对应的精确画布（横屏 1920×1080；显式 9:16 为 1080×1920；竖屏 3:4 为 1080×1440）；两个竖屏比例不互相代替。
-- **黑屏检测**：ffmpeg `blackdetect`（默认 ≥ 0.5s 的黑段报警，另报片尾黑尾）。
-- **冻结检测**：ffmpeg `freezedetect`，默认阈值 4s，`--freeze-threshold` 可调。
+- **ffprobe 容器检查**：含音轨；容器与音轨时长差 ≤ 0.5s；分辨率精确匹配 `orientation`（横屏 `1920×1080`、9:16 竖屏 `1080×1920`、3:4 竖屏 `1080×1440`，两档竖屏不互代）。
+- **黑屏检测**：ffmpeg `blackdetect`（默认 ≥ 0.5s 报警，另报片尾黑尾）。
+- **冻结检测**：ffmpeg `freezedetect`（默认 ≥ 4s 报警，`--freeze-threshold` 可调）。
 
-黑屏 / 冻结的发现带 `scene_id`：按 `composition/scene-config.json` 的最终视觉场景时间范围映射（`--timeline` 直接读它的 `scenes`，只取 scene_id / begin_s / end_s）；主区间按 `[begin_s, end_s)` 归属，不在任何 scene 内时取中点最近的 scene。旧单 layout 工程没有 scene-config 时，才传入 `timeline.json` 的可选叙事 scenes（没有则为 null）。
+黑屏 / 冻结按 `composition/scene-config.json` 的 `[begin_s, end_s)` 归属 `scene_id`（落点在区间外时取中点最近的 scene）。
 
 #### 9.2 — contact sheet（所有档位都生成，quick 到此为止）
 
@@ -79,27 +74,26 @@ python3 scripts/make-contact-sheet.py \
   --output-dir {work_dir}/{topic_name}/qa
 ```
 
-脚本直接读取 `inputs.json` 的 `qa_level`：缺省、`quick`、`standard` 都按 standard 抽帧，`strict` 按 strict 抽帧；输出 JSON 的 `vision_check_required` 在 quick 档为 `false`，其余为 `true`。quick 档同样生成拼图给用户过目，只是不做 vision 检查。
+脚本按 `qa_level` 抽帧并每 4 帧拼一张 2×2 `qa/sheet_NNN.jpg`（标注 `scene_id` + 帧类型 + 时间戳；vision 调用次数约为 scene 数的 1/4）：
 
-每个最终视觉 scene 在 scene 中点抽 1 帧，每 4 帧拼一张 2×2 拼图（Pillow 标注 scene_id + 帧类型 + 时间戳），写入 `qa/sheet_NNN.jpg`。strict 档额外帧：**每个视觉 scene 一张入场帧**（scene 起点 + 0.25s）+ **每个切点三张**（下一个 scene 的实际 `begin_s` 前 0.4s / 切点 / 切点后 0.4s，切点即上一个 scene 的 `end_s`）。旧工程才用 timeline 的叙事 scenes。
-
-**vision 成本**：contact sheet 按 4 帧一张组织，vision 以 sheet 为单位调用——一支约 40 scene 的片子，standard 档抽 40 帧 ≈ `ceil(40/4)` = 10 张 sheet，vision 调用 ≈ 10 次，正好是 scene 数的四分之一。
+- `quick` / `standard`：每个视觉 scene 中点抽 1 帧（`quick` 档输出 `vision_check_required: false`，仅供用户预览）；
+- `strict`：除中点帧外，额外抽**每个视觉 scene 入场帧**（起点 + 0.25s）与**每个切点前后三帧**（切点前 0.4s / 切点 / 切点后 0.4s）。
 
 #### 9.3 — vision 检查（`vision_check_required` 为 true 时，主 agent 执行）
 
-看 9.2 输出 JSON 的 `vision_check_required` 决定是否执行本节；为 `false` 时跳过。为 `true` 时，主 agent 结合 `composition/check-composition.json` 的 `warnings` 与 `composition/storyboard.md`，自己逐张看 `qa/sheet_NNN.jpg`（用 `view` 工具；sheet 同时交给用户过目），每张核对 5 项：
+结合 `composition/check-composition.json` 的 `warnings` 与 `composition/storyboard.md`，用看图工具逐张检查 `qa/sheet_NNN.jpg`（同时交用户过目），核对 5 项：
 
-1. 渲染是否完整（无缺帧、无渲染中断导致的残帧）；
-2. 画面与旁白、`content_plan` 是否相符——不用真实素材的视觉场景是否用具体的视觉图示与阶段动画（SVG / WebGL / Three.js / GSAP）生动讲述了内容与演进，而不是退化成静态文字卡片、纯排版列表或无关装饰图形；
-3. 素材清晰度与复用是否合规——重点结合 `check-composition.json` 的 `warnings` 复核素材可视占比是否充足、有无源文件自身失焦/高压缩马赛克或过度缩放导致的文字模糊；同一素材有没有在非技术深讲场景间违规跨场景复用；围绕同一张技术图连续深讲的相邻场景，切点是否保持无打断性过场，并推进局部焦点（优先 zoom in 到图片不同区域，而非整图静止只换说明文字）；
-4. 是否符合 `composition/design.json` 的 preset 或 custom 配色、细线层级与透纸纹质感；scene 限定的 token 覆盖是否只作用于声明的 scene，没有外泄到其他 scene；
-5. 排版与跨区信息是否清爽——有没有明显的空洞、错位、文字出框/遮挡，或主展示区与副展示区（`main` / `side`）无意义的文案重复堆砌。
+1. **渲染完整性**：无缺帧或渲染中断残帧；
+2. **内容与动画演绎**：画面符合旁白与 `content_plan`；无真实素材场景已用具体视觉图示与分步动画（`SVG → WebGL → Three.js → GSAP`）生动演进，未退化为静态文字卡片、纯排版列表或无关装饰图形；
+3. **素材清晰度与单场景分配**：复核 `warnings` 中的可视占比、源片失焦/压缩马赛克或过度缩放模糊；非技术深讲未跨场重复素材；连续深讲同一张技术图的相邻场景切点无打断性过场，并推进局部 zoom 焦点（而非整图静止只换文字）；
+4. **主题质感与作用域**：符合 `composition/design.json` 的配色、细线层级与透纸纹质感，单 scene 限定的 token 覆盖未外泄；
+5. **版式清爽无复读**：无明显空洞、错位、文字出框/遮挡，主副展示区（`main` / `side`）无重复文案堆砌。
 
-仅凭各 scene 单张中点帧无法确认“连续技术图切点有无被过场打断 / 局部 zoom 是否推进”或“无素材场景的分步动画是否真实演进”时，对照 `composition/storyboard.md` 按需对涉及切点或阶段前后的时间点单独抽帧核对（`strict` 档拼图已含入场帧与切点前后三帧可直接查看），仍不做全片密集抽帧；纯审美层面的缓动观感默认交给用户在预览中判断。
+单张中点帧不足以确认“连续技术图切点无过场 / 局部 zoom 推进”或“无素材分步动画演进”时，对照 `storyboard.md` 对涉及时刻按需单点抽帧核对（`strict` 档可直接看入场帧与切点三帧）。
 
 #### 9.4 — qa-report.json 与修复轮
 
-把确定性检查结果与 vision 判断合并写入 `qa/qa-report.json`，**只含两部分**：
+合并确定性检查与 vision 结果写入 `qa/qa-report.json`（仅含两个顶层键）：
 
 ```json
 {
@@ -108,20 +102,12 @@ python3 scripts/make-contact-sheet.py \
 }
 ```
 
-所有 finding 统一为 `{"scene_id": str, "check": str, "issue": str, "time_s": float|null, "frame": str|null}`。确定性检查（check-render / check-composition）的 finding 原样拷进 qa-report；vision 检查的 finding 由主 agent 按同样形状写。`time_s` 填检测或快照时刻，没有对应时刻填 `null`；vision finding 的 `frame` 填相关 sheet 路径，确定性检查的 `frame` 为 `null`。`verdict` 为 `fail` 时进入修复轮，规则：
+每条 finding 统一为 `{"scene_id": str, "check": str, "issue": str, "time_s": float|null, "frame": str|null}`（确定性 finding 原样拷入且 `frame: null`；vision finding 的 `frame` 填对应 sheet 路径）。`verdict == "fail"` 时进入修复轮：
 
-1. 把 findings 反馈给 composition agent（Phase 8 委派约定），**只改受影响的 scene**；
-2. 修复若改了 composition 的源文件或视觉契约（`design.json`、`scene-config.json`、`index.html`、`compositions/`、`assets/`、`storyboard.md`），必须重跑 check-composition 用 `--output` 保存新报告，并**重新渲染** `final.mp4`（状态脚本不比对文件修改时间，跳过重跑检查或重新渲染会让报告与成片停留在旧画面）；然后确定性检查全片重跑；vision 只看受影响视觉 scene 的帧（单独抽帧看即可，不必重拼整组 sheet）；
-3. **最多 2 轮**；finding 数不再下降就停止，把报告标为 `handed_off` 连同 sheet 一起交还用户定夺。
-
-修复轮结束（`verdict` 为 `pass`，或 `handed_off` 交给用户）并写入 `qa/qa-report.json` 后，`pipeline-status` 才会将 `9-check` 标为完成并放行进入 Phase 10（`10-mix` BGM 混音；`bgm = false` 时跳过 Phase 10 直接结束）。
+1. 将 findings 交回 Phase 8 composition agent，**只改受影响的 scene**；
+2. 若修改了 composition 源码或契约文件，**必须重跑 `check-composition --output` 并重新渲染 `final.mp4`**；随后全片重跑 `check-render.py`，vision 仅抽帧复核受影响 scene（无需重拼整套 sheet）；
+3. **最多 2 轮**；finding 数不再下降则置 `verdict: "handed_off"` 连同 sheet 交用户定夺。
 
 #### 9.5 — 无 BGM（`bgm = false`）直接交付时的素材限制说明
 
-启用 BGM（默认）时进入 Phase 10 混音后再统一交付。若 `inputs.json` 显式设 `bgm = false`，Phase 10 跳过，直接在本阶段把 `composition/renders/final.mp4` 与 contact sheet 交给用户；此时若工作区存在 `search-notes.md`（Phase 4 写的可选记录，不是阶段产物，缺失就不提），一并说明素材阶段留下的限制：
-
-- 哪些来源未被获取（需登录 / 地区限制 / 反机器人验证 / 已下线），以及用什么替代或是否接受 B-roll 少一些。
-- 只能匿名抓到的站点：说明共享 profile 里已有登录态时会尽量用上，但登录不保证绕过平台其他限制。
-- 用户希望补抓时的入口：在 `{work_dir}/chrome_profile` 里登录后要求重跑 Phase 4（按 `references/pipeline-control.md` 登记 `--redo 4-material-harvest`），再按依赖让下游重做。
-
-这不影响 QA 结果，不写成 `qa-report.json` 的 finding，也不是新的审稿环节。
+`bgm = false` 跳过 Phase 10 直接交付 `final.mp4` 与 contact sheet 时，若工作区存在 `search-notes.md`，按 `references/phases/10-mix.md` 的「10.2 交付时说明素材限制」一并向用户说明受限来源与补抓方式（不计入 `qa-report.json`）。

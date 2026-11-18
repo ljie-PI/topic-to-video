@@ -2,7 +2,7 @@
 
 转场负责 **scene 之间的交接**：在切点遮盖或连接前后画面，让场景边界服务于叙事节奏。转场不是内容部件，不为每个 scene 单独复制一份内容，也不要求每个接缝都有显著动画。
 
-统一采用规则见 [composition 基础指令第四部分](../../references/delegation/composition/base-instructions.md#四内容演绎与模板选择)：只在用户明确指定，或现有转场与当前 scene 交接特别匹配时采用。普通接缝、直接切换或自绘的简单衔接已经能表达清楚时，保持简单即可；**自由布局不强制使用转场**。
+统一采用规则见 [composition 基础指令第四部分](../../references/delegation/composition/base-instructions.md#四内容演绎与模板选择)：仅在用户指定或与当前 scene 交接特别匹配时采用；简单接缝已清晰或使用自由布局时不强制加转场。
 
 ## 目录
 

@@ -6,7 +6,7 @@
 
 - 恰好两个需要同等比较的素材，且同屏能满足可读性 → 同屏对比（pair）。
 - 三个及以上素材，或两个素材同屏不可读 → 按时间逐个 / 分组比较（sequence）。
-- 旁白出现「相比、对比、before / after、旧方案 / 新方案、vs」；场景规划里 `layout_role = "comparison_pair"` 或 `"comparison_sequence"`。
+- 旁白出现「相比、对比、before / after、旧方案 / 新方案、vs」；`material-catalog.json` 中素材 `layout_affordance` 含 `"comparison_pair"` 或 `"comparison_sequence"`。
 
 ## 区域尺寸建议
 

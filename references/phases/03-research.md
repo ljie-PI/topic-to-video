@@ -18,84 +18,72 @@
 
 ## 执行后自检
 
-`pipeline-status` 只检查简报存在、各必需小节都在。下面这几项要自己判断：
+`pipeline-status` 仅校验文件与必需小节，执行者须核对内容：
 
-- 要用的每个关键事实、数字、日期和引文都能指到具体出处，不是从记忆里补的。
-- 没核实的点已经删掉，或在 `Open questions / contradictions` 里写清楚，不会当成事实写进旁白。
-- 用这些材料能就用户关心的几个问题讲成一段连贯的话；讲不成就是材料不够，继续搜或找用户缩小范围，不要硬写。
-- **Source URLs** 里的页面能用来找画面（官方站、文档、仓库、演示视频），不是聚合页；社交页面只取与主题相关的帖子 / 时间线，不整页凑数。
+- 每个关键事实、数字、日期和引文均有明确出处，禁凭记忆补充。
+- 未核实信息已删去，或归入 `Open questions / contradictions`（禁在旁白中当作既定事实）。
+- 现有材料足以连贯回答核心问题；不足时在搜索额度内补搜或请用户缩小范围，禁硬写。
+- **Source URLs** 均为适合取画面的具体页面（官网、文档、仓库、演示视频、具体相关社交帖），不含搜索结果页、聚合榜单或无关社交时间线。
 
-内容确实不够或讲不通时，改简报并重跑状态脚本；需要时补搜（在上面的额度内）。用户说这稿不行、但又没说改什么时先问清；确认要重写而暂无文件变化时，按 `references/pipeline-control.md` 用 `--redo 3-research` 登记，改完再 `--finish`。
+材料不足时补搜并更新简报；用户要求重写但文件未变时，按 `references/pipeline-control.md` 用 `--redo 3-research` 登记，改完 `--finish`。
 
 ## 下一步
 
-Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = false` 时，论文模式进 Phase 5（仅论文素材），其余进 Phase 6（脚本与场景规划）。brief 里的 **Source URLs** 一节是交给 Phase 4 的显式接口。
+`fetch_materials = true` 进 Phase 4（素材抓取，消费 brief 的 **Source URLs**）；`fetch_materials = false` 时论文模式进 Phase 5（仅论文素材），其余进 Phase 6。
 
 ## 护栏
 
-- **Chrome over CDP。** `harvest-pages.py` 和 `gemini-deep-research.py` 必须显式传 `--profile-dir {work_dir}/chrome_profile`。复用已运行的 CDP 时，启动参数不会生效；检查 stderr warning 和输出 JSON 的 `chrome.ignored_flags`，需要新配置就先关闭复用的 Chrome。Chrome 启动即退出通常是 profile 被别的进程占着：关掉冲突进程或换 `--profile-dir`；9222 被占用时传另一个 `--cdp-url`，比如 `http://localhost:9223`。
-- **Gemini UI 自动化很脆，失败就换调研方式。** `gemini-deep-research.py` 驱动的是消费级 web UI，selector 或流程一变就报 selector timeout / failed step / 运行时错误；这种情况不要反复重试提交，退回有针对性的 `web_search` 并把问题告诉用户。
+- **Chrome over CDP。** `harvest-pages.py` 与 `gemini-deep-research.py` 必须显式传 `--profile-dir {work_dir}/chrome_profile`。复用已运行 CDP 时启动参数不生效（检查 stderr warning 与输出 JSON 的 `chrome.ignored_flags`，需新配置先关闭复用的 Chrome）；启动即退通常因 profile 被占用（关冲突进程或换目录），9222 端口占用时传 `--cdp-url`（如 `http://localhost:9223`）。
+- **Gemini UI 自动化失败即回退。** `gemini-deep-research.py` 遇 selector timeout / failed step / 运行时错误且重试不通时，切回定向 `web_search` 并告知用户，不卡在消费级网页 UI 上。
 
 ---
 
-**每个论断都要扎根在新鲜、可引用的来源上，不要凭记忆写。**
+**每个论断必须扎根在新鲜、可引用的来源上，禁凭记忆写。**
 
 **流程：**
 
-1. **如果用户给了 URL** → 先 `web_fetch` 它。读完整内容。这是整个视频的脊椎。
-2. **先跑 Gemini Deep Research 自检，再提交调研。**
+1. **用户提供了 URL** → 先 `web_fetch` 读完原文，作为全片主干。
+2. **Gemini Deep Research 自检**（仅验登录态与入口，不提交 prompt；输出 `{"success": true, "self_check": true}` 为通过）：
    ```bash
    scripts/gemini-deep-research.py --self-check \
      --profile-dir {work_dir}/chrome_profile
    ```
-   - 自检只验证登录状态和 Deep Research 入口，不提交任何 prompt。输出 `{"success": true, "self_check": true}` 才算通过。
-   - **自检失败（未登录或入口失效，失败 JSON 带 `failed_step`）→ 不要重试提交，直接回退到人工 `web_search` 流程**（下面的 step 5-6 变成主路径），把 Gemini 的问题告诉用户。
-3. **跑 Gemini Deep Research。** 这是主要的研究主干。
-   - 论文模式（`input_mode = "paper"`）时，用文末「论文模式」小节里基于解析论文的 prompt 替换下面的标准 prompt。
-
+   - 自检失败（返回 `failed_step`）→ **不重试提交**，直接切到 step 5–6 的 `web_search` 主路径并告知用户。
+3. **运行 Gemini Deep Research**（论文模式改用文末「论文模式」prompt）：
    ```bash
    scripts/gemini-deep-research.py \
      --prompt "关于 [topic] 的全面综述：历史、关键进展、重要人物、技术细节、最新动态" \
      --output-dir {work_dir}/{topic_name}/ \
      --profile-dir {work_dir}/chrome_profile
    ```
-   - 脚本会**新开一个浏览器标签页**执行，不会导航走你已打开的标签页。
-   - 输出：`gemini_deep_research.md`（完整报告）+ `gemini_deep_research_sources.json`（引用的 URL）
-   - **提交 prompt 后，会话 URL 会立即写入** `<output-dir>/gemini_deep_research_state.json`；之后的任何失败（包括超时）JSON 里都会带 `session_url`。
-   - 读这份报告；它会成为首要 source。`sources.json` 会喂给 Phase 4 的素材抓取。
-   - **仅在以下情况跳过：** (a) 用户明确说"skip deep research"，或者 (b) 主题只是把用户提供的文本重新讲一遍、没有任何待核实的事实论断。
-   - **超时或中断后续跑（不白跑）：** 默认完成超时是 1800 秒；超时或进程被杀后，从"等待完成"（step 9）那一步续跑，带上 state 文件里保存的 URL：
-
+   - 脚本新开浏览器标签页执行，产出 `gemini_deep_research.md`（首要事实来源）+ `gemini_deep_research_sources.json`（供 Phase 4 筛选）。
+   - 提交后会话 URL 立即写入 `<output-dir>/gemini_deep_research_state.json`，后续超时（默认 1800s）或中断后可从等待完成（step 9）续跑：
      ```bash
      scripts/gemini-deep-research.py --output-dir {work_dir}/{topic_name}/ --resume \
        --profile-dir {work_dir}/chrome_profile
      ```
-   - **如果它失败了（selector timeout、运行时错误或其他步骤失败）：** 检查错误 JSON 里的 `failed_step` —— 提交前（step ≤ 6）的失败可以用 `--start-from-step N` 重试；提交后的失败用上一条的续跑命令。如果重试仍不通，回退到人工 `web_search` 流程（下面的 step 5-6 变成主路径），但不要让整个项目卡在消费级 Gemini UI 上。
-4. **解析相关论文（可选，仅论文模式）。** 如果 Deep Research 的第 7 条回答指出了 1-5 篇有可用 PDF URL 的高相关论文（例如 arXiv），在这一步解析：
-
+   - 失败恢复：提交前（`failed_step <= 6`）可用 `--start-from-step N` 重试，提交后用 `--resume`；仍不通则回退到 step 5–6 的 `web_search`。
+   - **仅在以下情况跳过**：(a) 用户明确要求 "skip deep research"；(b) 纯复述用户给定文本且无待核实事实论断。
+4. **解析相关论文（可选，仅论文模式）。** 若 Deep Research 第 7 条给出 1–5 篇带可用 PDF URL（如 arXiv）的高相关论文（用户要求只看主论文或无明显相关工作则跳过）：
    ```bash
    python3 scripts/parse-pdf.py \
      --url "https://arxiv.org/pdf/XXXX.XXXXX" \
      --slug "related-{short-name}" \
      --output-dir {work_dir}/{topic_name}/harvest_page/
    ```
-   - 最多解析 5 篇。用户说"只看主论文"或没识别出明显相关工作，则跳过。
-   - 这一步不受 `fetch_materials` 影响：相关论文的 figure / table 同样写进 manifest，供 Phase 5 使用。
-   - 读相关论文解析出的 markdown（`harvest_page/related-<short-name>/metadata.json` 的 `paper_metadata.full_markdown_path`，相对 `harvest_page/`），把结论（它的方法 / 结果与主论文的关系）写进 `research-brief.md`。
-5. **找空缺。** 不论 Gemini 跑没跑成功，先列出这段视频要讲的几个核心问题，再标出每处缺什么：定义、关键数字、原始出处，还是某个结论有冲突。写不成一句话的“核心问题”说明还没想清楚，先问用户或继续看材料。
-6. **按缺口搜索。** 每次只为最影响讲解的一个缺口搜一次：先说清这次要解决什么，再写关键词。读完结果做三件事——打开重要出处核实（搜索摘要不能当证据）、把已确认的事实补进简报草稿、据此删掉没依据的结论或标为“据报道”。然后看还有没有影响讲解的缺口，有明确目标才继续。关键词可以按结果改写：换概念的别名、直接找原始来源、限定年份或机构、找图示或演示视频。示例：
-   - "Claude Code MCP launch date" → 确认发布日期
-   - "Boris Cherny Anthropic interview Sequoia" → 核实姓名与引文
-   - "GPU vs CPU AI training memory bandwidth" → 技术数字
+   - 最多 5 篇，不受 `fetch_materials` 影响（figure / table 同步写入 manifest 供 Phase 5 使用）。
+   - 读取 `harvest_page/related-<short-name>/metadata.json` 中 `paper_metadata.full_markdown_path`（相对 `harvest_page/`），将方法 / 结果对比结论写入 `research-brief.md`。
+5. **列出缺口。** 无论 Gemini 是否成功，先列出视频要回答的核心问题，标出缺失的定义、关键数字、原始出处或冲突结论（核心问题写不清楚时先看材料或问用户）。
+6. **按缺口定向 `web_search`。** 每次只针对最关键的一个缺口搜索：先明确目标再拟关键词（可换概念别名、查原始出处、限定年份/机构、找图示/演示视频）。每次搜索后必须打开重要原始出处核实（禁把搜索摘要当证据），将核实事实补入简报，删去无据结论或标为“据报道”。示例：
+   - `"Claude Code MCP launch date"` → 确认发布日期
+   - `"Boris Cherny Anthropic interview Sequoia"` → 核实姓名与引文
+   - `"GPU vs CPU AI training memory bandwidth"` → 技术数字
 
-   **什么时候停（三种情况都算正常结束）：**
-
-   - **资料够了：** 要讲的核心问题已有足够信息，能组织成连贯的讲解；要用的数字、日期、人名和引文都能指到出处；有争议的结论已有对照说明。三项都满足就停，用了两次也是正常。
-   - **没进展：** 连续两轮换了关键词或来源，仍只得到重复、无关或不能核实的信息，就停。能舍弃的枝节舍弃；缺的正好是用户要听的核心内容时，说明缺什么，请用户补材料或确认缩小范围——不能宣布调研合格。
-   - **到上限：** 一次制作里 agent 主动搜索合计最多 8 次（调研与素材补搜共用这份次数），用满就停，未解决的问题写进简报。不要为了凑次数或凑来源数量继续搜。
-
-   计数：一次搜索查询并读完结果算一次；一批发出多个查询时每个分别计。打开来源核实不算；Gemini 自己的搜索不纳入。续跑沿用已用次数，不因换对话而重置。查过什么、为什么停，简单记在工作区的 `search-notes.md` 即可（不是阶段产物，不参与状态判断）。
-7. **合成研究 brief，落盘为 `research-brief.md`。** 格式：
+   **停止条件（满足任一即停）：**
+   - **资料充足**：核心问题可连贯讲清，所用数字、日期、人名与引文均有出处，争议结论已有对照说明。
+   - **连续无进展**：连续两轮改换关键词或来源仍无新核实信息；舍弃枝节，若缺失的是核心内容则向用户说明并请其补材料或缩小范围（不得直接判合格）。
+   - **达到上限**：单次制作主动搜索最多 **8 次**（调研与 Phase 4 补搜共用，按单条查询计，打开原网页核实与 Gemini 内部搜索不计，续跑沿用已用次数）；用满即停，未解问题记入简报。查询与停搜原因简要记入 `search-notes.md`（非阶段产物）。
+7. **合成落盘 `research-brief.md`：**
    ```
    ## Key facts (verified)
    - [fact, source]
@@ -115,25 +103,19 @@ Phase 4（素材抓取，若 `fetch_materials = true`）；`fetch_materials = fa
    - [url] — [page type]
    ...
    ```
-   **Source URLs** 一节是关键 —— 它是显式交给 Phase 4 的接口。来源：
-   1. 用户提供的 URL（永远第一条）。
-   2. 从 `gemini_deep_research_sources.json` 中筛选出符合 Phase 4 INCLUDE 类型的 URL（官方站、GitHub、docs、blog、YouTube、相关社交帖子 —— 不要聚合页或搜索结果页）。
-   3. 通过 `web_search` 发现的、符合 INCLUDE 类型的 URL。
+   **Source URLs** 是交给 Phase 4 的显式接口，按以下来源挑高质量视觉页（不为凑数添无关页，也不因“可能需登录”提前排除——登录态由 Phase 4 用共享 profile 尝试）：
+   1. 用户提供的 URL（若有时排第一条）；
+   2. `gemini_deep_research_sources.json` 中符合 Phase 4 INCLUDE 类型的 URL；
+   3. `web_search` 发现的 INCLUDE 类型 URL。
+8. **运行状态脚本。** 仅当 `next_phase.reason == "awaiting_approval"` 且 `gate == "research-brief"` 时展示 `research-brief.md` 请用户确认，确认后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve research-brief`（用户授权后续全自动时将 `inputs.json.approval_gates` 置 `[]` 再跑状态脚本）。未启用此 gate 时自动继续。
 
-   需要登录才能看全的页面不必提前排除：那是 Phase 4 用共享 profile 登录态去试的事，掉头返回会丢掉整条来源。
-
-   数量按需要来：按相关性和来源质量挑，能盖住主要视觉来源就够；不为凑数添无关页面，也不要求每个讲解点都有对应页面。
-8. **跑状态脚本，默认自动继续。** 只有 `next_phase.reason` 为 `awaiting_approval` 且 `gate` 为 `research-brief` 时，把 `research-brief.md` 给用户看，明确确认后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name} --approve research-brief`。未确认前不要自己批准或进入下游；用户明确授权后续全自动时，把 `inputs.json` 的 `approval_gates` 改为 `[]` 再跑状态脚本，不用 `--approve` 代替。未启用此 gate 时，不额外找用户审稿。
-
-**仅在以下情况跳过研究：**
-- 用户明确说"skip research, use this exact text" 且提供了完整内容
-- 主题只是把对方已经写好且整段提供的稿子重新念一遍
+**跳过整个 Phase 3 的唯一条件：** 用户明确要求 `"skip research, use this exact text"` 且提供了完整定稿，或任务仅是原样朗读用户提供的成稿。
 
 ---
 
 ## 论文模式
 
-`input_mode = "paper"` 时，跑 Gemini Deep Research（step 3）把标准研究 prompt 替换为基于解析论文的版本。`{title}` 和 `{abstract}` 从磁盘读 `harvest_page/main-paper/metadata.json`：顶层 `title` 和 `paper_metadata.abstract`（都是 parse-pdf 写出的字段；恢复会话或开新会话后 stdout 已不存在，必须从这个文件取）：
+`input_mode = "paper"` 时，从磁盘 `harvest_page/main-paper/metadata.json` 读取顶层 `title` 与 `paper_metadata.abstract`（恢复会话后 stdout 已不存在，必须读文件），将 step 3 的研究 prompt 替换为：
 
 ```
 "围绕论文《{title}》的背景调研：

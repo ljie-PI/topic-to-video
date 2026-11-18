@@ -21,39 +21,35 @@
 
 ## 执行后自检
 
-`pipeline-status` 只检查 manifest 的结构。下面几项自己看：
+`pipeline-status` 仅检查 manifest 结构，执行者须核对：
 
-- 抓到的页面真的和主题相关吗？明显无关的来源删掉并记下原因。
-- 图片是否清晰可用（缩略图、水印、占位图不算），视频是否有内容而不是错误页。
-- 返回 200 不等于内容可用：登录墙、验证码页、付费墙占位页不能当素材交给下游。
-- `material_search_requests` 里每一条都执行过吗？找到、没找到、平台不可用，都要说清楚，不能把普通网页搜索说成已完成指定平台搜索。
-- 受限来源（需登录 / 地区限制 / 反机器人验证）是否记入了 `search-notes.md`？最终交付时（Phase 10，或 `bgm = false` 时的 Phase 9）按它汇总给用户。
-- 失败项保留 `download_required: true` 即可，不要为了过关伪造下载。
-- Phase 4.c 的尺寸与清晰度筛选做了吗？不合格的素材是否已从 manifest 引用中移除，而不是只写在对话里？
+- 页面与主题相关（明显偏题来源剔除并记录原因）；HTTP 200 的登录墙、验证码页、付费墙或错误页不得当作可用素材。
+- `material_search_requests` 已逐条在目标平台执行并如实记录结果（禁拿普通网页搜索冒充指定平台搜索）。
+- 受限来源（需登录 / 地区限制 / 反机器人验证）已记入 `search-notes.md`，供最终交付时说明；下载失败项保留 `download_required: true`，禁伪造下载。
+- 已完成 Phase 4.c 的像素尺寸与清晰度筛选，并将剔除结果写回 `harvest_page/manifest.json`（不只停留在对话或笔记中）。
 
-素材明显不够或偏题，就补搜一次（仍在上限内）；还是不行就接受 B-roll 少一些，或者请用户自带素材，不以数量凑数。
+素材不足或偏题时在搜索上限内补搜一次；仍不够则接受较少 B-roll 或请用户提供素材，不拿低质素材凑数。
 
 ## 下一步
 
-Phase 5（素材 catalog）；若 `fetch_materials = false`，本 phase 跳过：标准模式下 Phase 5 也跳过，直接进入 Phase 6（脚本与场景规划，按"无素材"路径处理）；论文模式直接进入 Phase 5（仅论文素材）。
+进入 Phase 5（素材 catalog）。若 `fetch_materials = false` 则本阶段跳过：标准模式连同 Phase 5 跳过直进 Phase 6（无素材路径），论文模式进 Phase 5（仅论文素材）。
 
 ## 护栏
 
-- **素材搜索是可选但推荐的。** `inputs.json` 里 `fetch_materials = false` 或用户自带全部视觉时跳过（Phase 4 / 5 一起跳过；论文模式只跳过 Phase 4，论文自己的 figure 仍由 Phase 5 进 catalog）。
-- **Chrome over CDP。** `harvest-pages.py` 和 `gemini-deep-research.py` 必须显式传 `--profile-dir {work_dir}/chrome_profile`。复用已运行的 CDP 时，启动参数不会生效；检查 stderr warning 和输出 JSON 的 `chrome.ignored_flags`，需要新配置就先关闭复用的 Chrome。Chrome 启动即退出通常是 profile 被别的进程占着：关掉冲突进程或换 `--profile-dir`；9222 被占用时传另一个 `--cdp-url`，比如 `http://localhost:9223`。
-- **登录态靠继承，不靠用户在流程中间去登录。** 采集 context 会继承共享 profile 的 cookies，并在该站点已打开标签页时带上它的 localStorage。登录态不够时记下受限来源继续做，到最终交付再提示补抓。不要停下来要求用户登录，不要向用户索取或自存密码 / cookie，也不要把“用的是同一个 Chrome”当成已登录的证据。
-- **视频下载顺序执行。** yt-dlp 并行时会被限速。
-- **`harvest-pages.py` 返回 0 张图时先怀疑加载。** 调大 `--page-load-timeout`；仍是 0 就复用 `{work_dir}/chrome_profile` 先手动处理 cookie banner、等懒加载出来，再重跑抓取。
+- **Chrome over CDP。** 显式传 `--profile-dir {work_dir}/chrome_profile`（CDP 复用参数与端口冲突处理同 Phase 3）。
+- **登录态仅靠继承，不中断流程求登录。** 采集自动继承共享 profile 的 cookies 及已开同站标签页的 localStorage；受限时记入 `search-notes.md` 继续执行，禁向用户索取或保存密码 / cookie。
+- **视频下载必须顺序执行**，防 `yt-dlp` 并行限速。
+- **抓取返回 0 张图时先排查加载**：调大 `--page-load-timeout`；仍为 0 则在共享 profile 中处理 cookie banner / 等待懒加载后重跑。
 
 ---
 
 ### Phase 4.a — 选择 URL 并批量抓取页面
 
-agent（LLM）先汇总、筛选出一批大概率能提供丰富视觉素材的 URL 写进 `harvest-urls.txt`，再用该文件 ONE 次调用 `harvest-pages.py`。对每个普通渲染页，工具会抽出图片 / 视频，并默认录制一段自上而下的滚动视频；YouTube/Bilibili 直链页面会被列入 Phase 4.b，而不是直接在 Chrome 里打开。
+汇总高价值视觉页面写入 `harvest-urls.txt`，单次调用 `harvest-pages.py`：普通页提取图片 / 原生视频并默认录制滚动视频；YouTube / Bilibili 直链列入 `pending_downloads[]` 交由 Phase 4.b 下载。
 
 #### URL 选择规则（用来生成 URL 清单）
 
-页面质量比数量重要：按相关性和素材质量挑，不为凑数添加聚合页，也不要求每个讲解点都配到画面——某个点只靠旁白讲也正常。**INCLUDE** 以下类型的页面：
+质量优先，不为凑数添加聚合页，也不强求每个讲解点都配网页素材。**INCLUDE**：
 
 | 页面类型 | 为什么是好来源 | 期望产出 |
 |---------|---------------|---------|
@@ -66,45 +62,28 @@ agent（LLM）先汇总、筛选出一批大概率能提供丰富视觉素材的
 | 作者个人站 / about 页 | 头像、横幅 | 图片 + 滚动录像 |
 | 相关的社交帖子 / 作者时间线 | 官方账号发布的截图、演示、公告 | 图片 / 视频 + 滚动录像 |
 
-社交页面**不因“可能需要登录”提前排除**：优先具体的帖子 / 贴文（信息密度高、容易定位画面），而不是整个 feed。采集时只用与主题相关的那部分，不把无关的个人动态带进成片，也不拿别人的头像 / 私人内容源当素材。如果只能匿名访问，登录墙后的内容抓不到，按下面的受限来源规则记录并继续。
+社交来源优先选具体帖子而非整条 feed，只采集与主题相关的部分，禁将无关私人动态或他人头像当素材；匿名受限时按受限来源记录并继续。
 
-**EXCLUDE**（产出低，常被 bot 拦截）：
+**EXCLUDE**（低质或易拦截）：搜索结果页（Google / Bing）、聚合榜单页、付费墙正文页、应用商店缩略图页、PDF（PDF 由 Phase 2 `parse-pdf.py` 处理）。
 
-- 搜索结果页（Google、Bing）—— 不是目的地
-- 聚合榜单（"Top 10 AI tools..."）—— stock 图
-- 付费墙新闻正文页 —— 内容被拦
-- 应用商店 listing —— 只有小缩略图
-- PDF —— 改用 `parse-pdf.py`（Phase 2）；`harvest-pages.py` 渲染不了 PDF
+URL 来源优先级：
 
-URL 来源（按优先级）：
-
-1. 用户提供的 URL（如果有则必含）。
-2. 研究 brief **Source URLs** 一节列出的 URL —— Phase 3 阶段已按可抓取的页面类型预筛过。
-3. `gemini_deep_research_sources.json` 中所有未被上面覆盖、且匹配 INCLUDE 类型的 URL。文件存在就读完整；不存在（Gemini 未跑或失败）就跳过这一档，不因此阻塞抓取。
-4. 如果某个要讲的重点仍缺可用画面，用 `web_search` 针对该缺口找具体页面（官方图、文档插图、演讲视频）；仍不够就接受 B-roll 少一些，不要用搜索结果页顶替。
+1. 用户提供的 URL（若有则必含）；
+2. `research-brief.md` **Source URLs** 一节；
+3. `gemini_deep_research_sources.json`（存在时）中未覆盖且符合 INCLUDE 类型的 URL；
+4. 关键讲解点仍缺画面时，在搜索额度内定向 `web_search` 官方图 / 文档 / 演讲视频（仍无则接受少 B-roll，禁拿搜索结果页顶替）。
 
 #### 用户指定了搜索平台时
 
-`inputs.json` 的 `material_search_requests` 非空时，按它写的原话去做，并且在 agent 这一侧完成——`harvest-pages.py` 不会自己去搜。这个字段只是记录“用户要在哪找素材”，不会自动触发重做；用户新提出或修改这类要求时，主 agent 先按 `references/pipeline-control.md` 用 `--redo 4-material-harvest` 登记，再在本阶段执行。
+`inputs.json` 的 `material_search_requests` 非空时由 agent 侧按原话执行（新增或修改该字段须先按 `references/pipeline-control.md` 登记 `--redo 4-material-harvest`）：
 
-- **图片搜索（Google / Bing 等）：** 用浏览器或 Playwright 打开指定平台的图片搜索，按画面需求生成关键词；选中相关结果后进入原始页面，核对出处、清晰度和使用许可，再把**原始来源页面的 URL** 加入待抓列表。
-- **视频网站（YouTube / Bilibili）：** 按“项目名 + 演示 / 讲座 / 实验”之类的关键词找候选，优先官方或作者发布；确认观看页与内容后，把观看 URL 写进清单（会被列入 `pending_downloads`）或直接交给 `video-download.py`。
-- **平台打不开、需要登录或地区受限：** 先用现有登录态试，抓不到就把这个来源及其限制写进 `search-notes.md`，换其他可用来源继续；不要默认停下来请用户登录，也不要夸大成果。如果缺的正好是用户点名的核心素材且无替代，按材料不足处理，说清缺什么。
-- **搜不到合格素材：** 如实说明结果，不为了交差保留偏题、模糊或来源不明的资源。
-
-#### 受限来源的记录
-
-抓不到或抓不全的来源记在工作区的 `search-notes.md`（和调研阶段的搜索记录同一个文件，不是阶段产物）：来源 URL、目标平台、尝试方式（匿名 / 继承登录态）、结果、限制原因（登录墙 / 验证码 / 地区 / 已下线）、替代来源，以及是否值得登录后补抓。不要写入密码、cookie 或任何凭据。
-
-这条记录不会卡住流程：非关键来源失败就继续做，到最终交付时（Phase 10，或 `bgm = false` 时的 Phase 9）汇总给用户。
+- **图片搜索（Google / Bing 等）**：用浏览器或 Playwright 在目标平台搜图，进入匹配结果的**原始来源页面**核对出处与清晰度后，将原始页面 URL 加入清单。
+- **视频网站（YouTube / Bilibili）**：按“项目名 + 演示 / 讲座 / 实验”检索，优先官方或作者频道，确认后将观看页 URL 加入清单或传给 `video-download.py`。
+- **平台受限或无合格结果**：先用继承登录态尝试，失败则将来源 URL、平台、尝试方式、受限原因与替代方案记入 `search-notes.md`（禁存凭据）；仅当缺失的是用户点名的核心不可替代素材时按材料不足报告。
 
 #### 生成待抓的 URL 清单
 
-把上面筛选出的 URL 写到 `{work_dir}/{topic_name}/harvest-urls.txt`：UTF-8，一行一个，空行忽略。
-
-直接用研究文件是不行的：brief 的 **Source URLs** 是带页面类型注释的 Markdown，还没包含本阶段补搜 / 平台搜索得到的 URL；`gemini_deep_research_sources.json` 是未经素材筛选的引用列表，且可能不存在。所以清单由 agent 生成——它才是“这次实际要抓什么”的可复查记录。
-
-清单不是阶段产物，不参与 `pipeline-status` 判定；续跑仍然只看状态脚本。补抓时把清单改成这次要抓的 URL，再跑一次（已有批次会追加进 `harvest_batches`，完成过的下载不会被重置）。
+将筛选后的纯 URL 写入 `{work_dir}/{topic_name}/harvest-urls.txt`（UTF-8，一行一个，空行忽略）。清单由 agent 汇总筛选后生成，勿直接传入带注释的 `research-brief.md` 或未筛选的 `gemini_deep_research_sources.json`。清单非阶段产物；补抓时更新为新批次 URL 重跑即可（自动追加 `harvest_batches`，已完成下载不重置）。
 
 #### 运行 harvest-pages.py
 
@@ -116,15 +95,11 @@ source .venv/bin/activate && python3 scripts/harvest-pages.py \
   --viewport 1680x1680
 ```
 
-从文件读整个列表，不要在命令行上展开 URL（`--urls $(cat file)` 同样受命令行长度限制）。只有两三个 URL 的手动调试才用 `--urls`（与 `--urls-file` 互斥）。默认单 URL 失败继续；传 `--no-continue-on-error` 中断。首次调用启动 1680x1680 Chrome 于 `{work_dir}/chrome_profile`；结束后保留进程供 CDP 复用。
-
-文件读不到、不是 UTF-8 或没有有效行时，脚本在启动 Chrome 前就以参数错误（退出码 2）报错；不会建出半成品输出目录。
+一律用 `--urls-file` 读文件（禁命令行展开长列表；`--urls` 仅限两三个 URL 调试且与之互斥）。默认单 URL 失败继续（`--no-continue-on-error` 才中断）；文件不可读或无有效行时以退出码 `2` 报错；首次启动 `1680x1680` Chrome 后保留进程供 CDP 复用。
 
 #### harvest-pages.py 的实际输出
 
-它写两样东西：磁盘上的 `harvest_page/manifest.json`（累积的历史），和 stdout 上的一次批次结果。两者**不是同一个结构**：stdout 只有本批条目，`chrome` 这类运行信息也只在 stdout。
-
-目录（每个 URL 一个 slug 目录；普通渲染页才有 `page-source.html` / `images/` / `videos/` / `recording/`，视频直链条目只有空的 `videos/`）：
+脚本更新磁盘累积的 `harvest_page/manifest.json`，并在 stdout 输出本批结果（stdout 仅含本批条目与 `chrome` 运行信息）。目录结构（普通页含 `page-source.html` / `images/` / `videos/` / `recording/`，视频直链仅含空 `videos/`）：
 
 ```text
 harvest_page/
@@ -216,15 +191,12 @@ harvest_page/
 }
 ```
 
-几点容易误读的地方：
+字段要点：
+- `pending_downloads[]` 在磁盘 manifest 中常驻（无待下项时为 `[]`，stdout 无待下项时省略）；同一视频跨多页引用只列一条 pending（附 `also_referenced_by`），只下一次。
+- `scroll_recording.method` 为 `playwright`（`.webm`）或 `cdp_screencast`（`.mp4`），录制失败时整项为 `null`。
+- 非 http(s) URL 归入 `rejected[]`；整批全部失败时 `success: false` 且退出码为 `1`。
 
-- 普通页 entry 与视频直链 entry 字段集合相同；直链条目 `images` 为空、`scroll_recording` 为 `null`。
-- `pending_downloads[]` 是推导出来的，磁盘上始终保留该列表（没有待下载项时是 `[]`）；stdout 在没有待下载项时**省略**该字段。
-- 同一视频被多个页面引用时只会出现一条 pending（`source_slug` 是首次发现的页面，其余写在 `also_referenced_by`），只需下载一次。
-- `scroll_recording.method` 记录实际用的后端（`playwright` 或 `cdp_screencast`），失败时整个 `scroll_recording` 为 `null`。
-- `chrome`（`cdp_url` / `reused` / `ignored_flags`）只在 stdout，不入 manifest。
-
-同一次调用的 stdout（节选，未列出的字段与磁盘条目相同）：
+同一次调用的 stdout（节选）：
 
 ```json
 {
@@ -243,11 +215,9 @@ harvest_page/
 }
 ```
 
-非 http(s) 的 URL 不会让整批失败，而是进 `rejected[]`（同时在 stdout 顶层出现）；全部 URL 都失败时 `success` 为 `false` 且退出码为 1。
-
 ### Phase 4.b — 处理 pending video downloads
 
-`harvest-pages.py` 对 YouTube 和 Bilibili 只**列出** URL（原生 HTML5 `<video>` 片段会在发现阶段直接内联下载，因为它们需要页面的 cookie / referer；图片也会实际落盘）。agent 必须对 `pending_downloads[]` 的每一项调用 `video-download.py` 真正去下：
+原生 HTML5 `<video>` 与图片已在 4.a 内联落盘；YouTube / Bilibili 直链需逐项顺序运行 `video-download.py`：
 
 ```bash
 # 对 manifest.pending_downloads 里的每一项（每项只运行这一条命令）：
@@ -256,15 +226,14 @@ source .venv/bin/activate && python3 scripts/video-download.py --url "<item.url>
 
 规则：
 
-- **顺序执行**，不并行 —— yt-dlp 并行时容易被限速 / 限 IP。
-- 不传 `--output-dir` 时自动使用该项的 `suggested_output_dir`，先在目标目录内的独立临时子目录下载并校验有效视频流，验证通过后再移入 `harvest_page/<source_slug>/videos/`。
-- 文件名用 yt-dlp 的视频 id 加实际扩展名（如 `dQw4w9WgXcQ.webm`），字幕是同名 sidecar（如 `dQw4w9WgXcQ.en.srt`）；同一 URL 只下一个视频，被多个 entry 引用时共用这一个文件。
-- 下载成功会自动将 `download_required` 置为 `false`、加上相对 `local_path` 和可选的 `subtitle_path`、把 `id` 设为下载文件的 stem，写入媒体宽高和时长，并同步 manifest、所有引用 entry 及其 `metadata.json`。
-- 如果 `video-download.py` 返回 `{"success": false, "failure_kind": "...", "error": "..."}`（地区封锁、年龄限制、410、反机器人校验、仅返回 storyboard 等），保留 `download_required: true` 并跳过它；Phase 5 不会把没有本地文件的视频拿去抽帧。其中遇到 `failure_kind` 为 `"bot_check"`（如 `Sign in to confirm you’re not a bot` / `LOGIN_REQUIRED`）或 `"storyboard_only"`（仅返回 `.mhtml` storyboard 或无有效可播放视频流）时，**单次尝试即早停**（不要对同一受限视频反复重试），将该来源与 `failure_kind` 记入 `search-notes.md` 后直接继续下游流程。只有当话题确实依赖这段 clip 时，才用 `web_search` 找其他可用来源或转发镜像，并在清单里换成新 URL 重跑 `harvest-pages.py`。
+- **必须顺序执行**，避免 `yt-dlp` 并行限速 / 封 IP。
+- 默认使用该项 `suggested_output_dir`，先在独立临时子目录下载并校验有效视频流，通过后移入 `harvest_page/<source_slug>/videos/`；文件名为 `<video_id>.<ext>`（字幕为同名 `.srt` sidecar），跨 entry 引用同一 URL 共用同一文件。
+- 下载成功后自动将 `download_required` 置 `false`，写入相对 `local_path`、可选 `subtitle_path`、`id`（文件 stem）、宽高与时长，从 `pending_downloads[]` 移除并同步所有引用 entry 及 `metadata.json`。
+- 返回 `{"success": false, "failure_kind": "...", "error": "..."}` 时：保留 `download_required: true` 并跳过（自动清理 `.ytdlp-*` 临时目录，不改动已有文件与 manifest）。遇 `"bot_check"`（如 `Sign in to confirm you’re not a bot` / `LOGIN_REQUIRED`）或 `"storyboard_only"`（无有效视频流）时**单次尝试即早停**，记入 `search-notes.md` 后直接继续下游；仅当话题强依赖该片段时，才用 `web_search` 找替代源更新清单重跑。
 
 #### video-download.py 的实际输出
 
-下载后的目录（文件名来自 yt-dlp 的视频 id；没下到字幕时就没有 `.srt`）：
+下载目录示例：
 
 ```text
 harvest_page/www-youtube-com-watch-df2c6f/videos/
@@ -272,7 +241,7 @@ harvest_page/www-youtube-com-watch-df2c6f/videos/
 └── dQw4w9WgXcQ.en.srt
 ```
 
-成功时的 stdout（`files` / `videos[].path` 是绝对路径；宽高 / 时长来自 ffprobe，探测失败时为 `null`）：
+成功 stdout（路径为绝对路径；`ffprobe` 探测失败时宽高 / 时长为 `null`）：
 
 ```json
 {
@@ -295,7 +264,7 @@ harvest_page/www-youtube-com-watch-df2c6f/videos/
 }
 ```
 
-同一条视频在磁盘 manifest 里的变化（其余字段不变，路径变成相对 `harvest_page/`）：
+磁盘 manifest 更新后的视频条目（路径相对 `harvest_page/`；无字幕时 `subtitle_path: null`）：
 
 ```json
 {
@@ -313,9 +282,7 @@ harvest_page/www-youtube-com-watch-df2c6f/videos/
 }
 ```
 
-- 同一条 URL 从 `pending_downloads[]` 消失；引用它的每个 entry 和各自的 `metadata.json` 同步更新，**不另生成一份 download manifest**。
-- 没有字幕时 `subtitle_path` 为 `null`；视频探测不到尺寸 / 时长时对应字段为 `null`。
-- 失败时临时子目录（`.ytdlp-*`）会自动清理，不会删改 `output_dir` 中已有的历史文件，manifest 也保持不变；退出码为 `1`，stdout 统一携带结构化 `failure_kind`（如 `bot_check`、`storyboard_only`、`login_required`、`rate_limited`、`unavailable`、`invalid_url`、`format_unavailable`、`max_filesize`、`network_error`、`extract_error`、`missing_binary`、`timeout`、`unknown`）：
+失败时退出码为 `1`，stdout 携带结构化 `failure_kind`（如 `bot_check`、`storyboard_only`、`login_required`、`rate_limited`、`unavailable`、`invalid_url`、`format_unavailable`、`max_filesize`、`network_error`、`extract_error`、`missing_binary`、`timeout`、`unknown`）：
 
 ```json
 {
@@ -327,49 +294,37 @@ harvest_page/www-youtube-com-watch-df2c6f/videos/
 
 ### Phase 4.c — 结果筛选（进入 Phase 5 之前）
 
-4.a 抽出的东西和 4.b 下回来的视频不能直接交给下游：网页里的缩略图、低清粘贴图、展示横幅和登录页截图都会混在里面。本步骤把明显不能用的挑出去，只留可用素材。
-
-分工：**Phase 4 只剔除“明显不能用”的**（太小、看不清、根本不是内容）；话题相关性、VLM 评分、选哪几秒归 Phase 5。不要在这里把整套视觉分析重做一遍。
-
-适用范围：本阶段抓的 web 素材（原生视频、已下载的外部平台视频、滚动录像、网页图片）。**不**套到 Phase 2 / 3 的论文 figure 和 table 上。
+对本阶段抓取的 web 素材（网页图片、原生视频、外部下载视频、滚动录像）剔除缩略图、模糊图与登录墙等明显不可用项；**不适用于 Phase 2 / 3 的论文图表**，话题相关性与精确选片归 Phase 5。
 
 #### 尺寸条件
 
-下面的门槛是制作默认值，不是行业标准。**以文件的实际像素尺寸为准**，不用文件字节数、不用页面上的显示尺寸、不把放大后的尺寸当成像素尺寸。
+**一律以文件实际像素尺寸为准**（不用字节数、页面显示尺寸或放大后尺寸，也不按文件体积/码率/时长一刀切淘汰）：
 
 | 素材 | 默认最低条件 | 说明 |
 | --- | --- | --- |
-| 位图图片 | 宽 ≥500 px 且 高 ≥300 px | 与 harvester 初抓门槛一致；排除常见缩略图 |
-| 视频 / 滚动录像 | 短边 ≥360 px 且 长边 ≥640 px | 约 360p 下限；`640×360` 与 `360×640` 都过，`480×270` 不过 |
-| 要占满画面的大图 / 大视频 | 优先短边 ≥720 px 且 长边 ≥1280 px | 720p 以上更适合大画面；这是优选，不是所有小配图的硬门槛 |
-| SVG / 行内 SVG | 不套位图像素门槛 | 矢量图不能按声明尺寸淘汰；但仍要确认放大后内容清楚，内嵌低清位图不自动豁免 |
+| 位图图片 | 宽 ≥500 px 且 高 ≥300 px | 宽高分别比较（非长短边互换）；排除常见缩略图 |
+| 视频 / 滚动录像 | 短边 ≥360 px 且 长边 ≥640 px | 约 360p 下限（`640×360` 与 `360×640` 均合格，`480×270` 剔除） |
+| 要占满画面的大图 / 大视频 | 优先短边 ≥720 px 且 长边 ≥1280 px | 大画面优选，非小配图硬门槛 |
+| SVG / 行内 SVG | 不套位图像素门槛 | 确认放大后内容清晰；内嵌低清位图不豁免 |
 
-- 不改 `--min-image-width` / `--min-image-height` 默认值，也不新增视频尺寸参数：视频门槛写在下载完成后的执行判断里。
-- 图片门槛是宽高**分别**比较（`500×300`），不是旋转无关的长短边规则；较窄的竖图若被初抓漏掉，下一次单独讨论，不在本轮顺手改采集参数。
-- 宽高缺失或为 `null` 时先实证确认，不能把 `null` 当合格，也不能编一个尺寸填上去；媒体本身损坏走恢复流程，不当作“素材不合格”静默丢掉。
-- 不拿文件体积、码率或时长单独判模糊，也不加统一的最短视频时长要求。
-- 用户点名要的关键素材不够清：先找高清版本；真找不到就说明不足，不默默降低门槛，也不假装已合格。
+- 不修改采集脚本默认参数；宽高为 `null` 时须实测确认（禁把 `null` 当合格或编造尺寸；文件损坏走恢复流程）。
+- 用户点名的关键素材清晰度不足时先搜高清版；找不到则如实说明，禁静默降标。
 
 #### 清晰度判断
 
-**图片：** 直接看下载下来的文件，重点看要上屏的主体、文字、公式、图表标签和 UI。尺寸够但关键内容糊成一片、压缩块明显、只有占位图、关键部分被遮挡，同样剔除。背景自然虚化、留白、线条稀疏本身不算不清楚。
-
-**视频 / 滚动录像：** 先用 `source .venv/bin/activate && python3 scripts/extract-frames.py` 抽少量代表帧看一眼，例如 `--max-frames 3`；怀疑某处有问题时再专门抽那一段，不要仅凭三帧下结论说整段都没用。
-
-抽帧默认会把宽度缩到 512 px，**别用这个缩略预览判原片模糊**：质量检查时传 `--max-width` 不小于原视频宽度，否则会把高清源误判成模糊。
-
-- 关键内容持续认不出、全片找不到清楚可用的画面 → 整段剔除。
-- 只是一段运动模糊、片头很糊，其余部分清楚 → 保留，由 Phase 5 选片时避开那些位置。
-- 黑屏、登录页、验证码页、错误页不当画面用。静态演示、图表不因“不运动”被一刀切排除。
-- 不加 OpenCV、Laplacian 模糊阈值、OCR 判分或第二轮 VLM 分析：直接看图 / 代表帧，避免误伤矢量图、文字图和低纹理素材。
+- **图片**：直接查看原文件主体、文字、公式、图表标签与 UI；主体糊成一片、重度压缩块、占位图或关键内容被遮挡的一律剔除（自然背景虚化或留白除外）。
+- **视频 / 滚动录像**：用 `source .venv/bin/activate && python3 scripts/extract-frames.py` 先抽少量代表帧（如 `--max-frames 3`），**必须传不小于原视频宽度的 `--max-width`**（禁拿默认 512px 缩略帧误判高清源模糊），存疑处再抽局部确认：
+  - 全片关键内容持续无法辨认，或为黑屏 / 登录页 / 验证码页 / 错误页 → 整段剔除（静态图表或演示不因缺乏运动剔除）；
+  - 仅片头或局部运动模糊、其余清晰 → 保留，交由 Phase 5 选片避开。
+- 直接人工看图 / 代表帧判断，不加 OpenCV / Laplacian 模糊阈值、OCR 或额外 VLM 过滤。
 
 #### 筛选结果怎么落地
 
-只在对话里说“这张不要”，或者只在笔记里标注却仍把原 manifest 交给 Phase 5，都不算筛完。做法是把**筛选后的媒体清单写回同一份 manifest**，不另建排除清单，也不加新字段。
+筛选结果必须写回 `harvest_page/manifest.json`（不另建排除文件或新字段）：
 
-1. 先列不合格的：entry slug、媒体 `id` 与相对 `local_path`、尺寸、原因（`too_small` / `blurred` / `unreadable` 等），写进现有 `search-notes.md`。那只是审计说明，不是新字段，也不参与状态判定。
-2. 把已下载且确认不合格的图片 / 视频从对应 entry 的 `images[]` / `videos[]` 中移除；不合格的滚动录像设为 `scroll_recording: null`。同一个物理视频被多个 entry 引用时，所有引用一起处理。
-3. 用现有入口写回（在 skill 根目录运行；`upsert_entries` 内部已经传 `dirty_slugs`，会同步 `manifest.json` 和对应 `metadata.json`，不要手写两份文件）：
+1. 在 `search-notes.md` 记录剔除项（slug、媒体 `id`、`local_path`、尺寸与原因如 `too_small` / `blurred` / `unreadable`）及发现/保留/剔除汇总。
+2. 从对应 entry 的 `images[]` / `videos[]` 移除不合格项（同一物理视频跨多 entry 引用时一并移除），不合格滚动录像置 `scroll_recording: null`。
+3. 在 skill 根目录调用 `harvest_manifest.upsert_entries` 同步写回 `manifest.json` 与对应 `metadata.json`（禁手改两份文件）：
 
    ```bash
    source .venv/bin/activate && python3 - <<'PY'
@@ -397,9 +352,5 @@ harvest_page/www-youtube-com-watch-df2c6f/videos/
    PY
    ```
 
-   一个 entry 只需改一行（`slug` 与两个集合）；多条目不合格就按条重跑。别把不合格项留在数组里等下游自己筛：Phase 5 不会替你做这个判断。
-4. 原始媒体文件保留供复查，不重命名 `id`；保留 URL / slug、论文 entry、来源 `metrics` 和 `harvest_batches`。`metrics` 描述的是页面发现情况，不改成筛选后的数量；发现 / 保留 / 剔除的数量与原因汇总在 `search-notes.md`。
-5. 下载失败（`download_required: true`）的不是质量不合格，保留原状态和 pending；已下载却文件不见的是损坏，走恢复，不静默当成“质量不合格”跳过。
-6. 筛完不够，按现有搜索额度补找高清来源，补抓后重新筛；还是不够就接受少一些 B-roll 并如实说明。
-
-下游只读筛选后的 manifest：Phase 5 不会去翻原目录把剔除的素材捡回来。
+4. 保留原始媒体文件、原 `id`、论文 entry、来源 `metrics`（反映页面原始发现量，不改写）与 `harvest_batches`；下载失败（`download_required: true`）保留原状态，已下载文件丢失按损坏恢复。
+5. 筛后不足可在剩余搜索额度内补抓重筛；仍不足则接受较少 B-roll 并如实说明。Phase 5 只读筛选后的 manifest。

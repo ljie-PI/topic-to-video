@@ -30,8 +30,7 @@
 
 ## 护栏
 
-- **只在 Phase 9 收尾后混音，不重编码视频流、不衰减旁白。** 统一调用 `scripts/mix-bgm.py`（`-c:v copy`、`amix normalize=0`），不覆盖原 `composition/renders/final.mp4`。
-  ↳ DO NOT：在 `qa/qa-report.json` 收尾前提前混音，或手写未关闭 `normalize` 的 `ffmpeg amix` 命令导致旁白音量被减半。
+- **只在 Phase 9 `qa/qa-report.json` 收尾后调用 `scripts/mix-bgm.py` 混音。** 脚本内置 `-c:v copy`（不重编码视频流）与 `amix normalize=0`（不压低旁白），不覆盖原 `composition/renders/final.mp4`，禁手写未关 `normalize` 的 `ffmpeg amix` 命令。
 
 ---
 

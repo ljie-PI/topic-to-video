@@ -20,48 +20,39 @@
 ## 完成判据
 
 - `material-catalog.json` 存在、非空、JSON 可解析，`entries` 为非空列表；
-- 每张图片 / 每个视频都有非空字符串的 `id` 和 `semantic_description`（适配度评分 <7 或偏题的非必用素材已过滤，达标切题的通用素材尽量保留，供下游符合场景内容时优先选用；论文必用关键图 / 表按 `required_material_refs` 规则保留）；
-- 每个 `selected_clip` 都有 `clip_path`，且它指向的文件（相对工作区）存在且非空；
-- `required_material_refs` 必须是不重复、且能在本 catalog 里按 entry 解析的 ref；标准模式下它是可选的，论文模式下必须显式声明（没有适用的关键图时写 `[]`）；
-- 状态脚本检查结构、描述与文件；评分、相关性和片段内容由执行 agent 自检，不由状态脚本判定。
-- `catalog-instructions.md` 是可选上游输入：缺省时不要求创建该文件。生成 catalog 后新增、修改或删除该文件，状态脚本不会自动将本阶段标为重做；内容确实需要重建时，由主 agent 用 `--redo 5-material-catalog --reason "..."` 显式登记。
+- 每张图片 / 每个视频均有非空字符串 `id` 与 `semantic_description`；
+- 每个 `selected_clip` 均有 `clip_path`，且对应文件（相对工作区根）存在且非空；
+- `required_material_refs` 不重复且均可在本 catalog 内按 entry 解析（标准模式可选，论文模式必须显式声明，无适用关键图时写 `[]`）；
+- `catalog-instructions.md` 可选：新增、修改或删除该文件不会自动触发重做，需重建时由主 agent 用 `--redo 5-material-catalog --reason "..."` 登记。
 
 ## 执行后自检
 
-`pipeline-status` 会逐项检查引用、描述、`clip_path`。此外由委派的 catalog agent 自己（或主 agent 兜底时）判断：
+状态脚本校验结构、描述与切片文件后，由执行 agent 自检内容质量：
 
-- 每条 `semantic_description` 是否真的描述了这张图 / 这段画面，而不是照标语。
-- 非必用素材的打分是否过低（<7 / 10；量表见委派包基础指令）却仍留在 catalog 里，或者达标切题的通用素材被无故筛掉了（通用素材应尽量保留）；论文关键图 / 表不得因低分静默省略。
-- 视频是否按“粗看每请求最多 8 帧 → 局部细看每请求一张最多 16 帧的 4×4 拼图”完成分析；拼图 prompt 是否附源时间范围，`selected_clips` 的起止是否有局部帧依据，真的落在关键动作 / 界面的那几秒，而不是只用粗帧估计；长图、图表与滚动录像在有明确可见依据时是否标出了 `focal_region`（无依据时保持 `null`，不编造坐标）。
-- 论文条目是否按 caption 规则处理，缺失 caption 的是否跑了视觉分析。
-- 论文模式：方法、模型结构、关键实验结果等关键图与关键表是否都在 `required_material_refs` 里，一张不漏（确实没图的写 `[]`）；关掉网络素材抓取也不影响这批图。该字段声明“成片必须出现”，不代替 Phase 6 / Phase 8 真的把它们用上。
-
-Phase 4 已把太小、看不清的 web 素材从 manifest 中剔除；本阶段**不要**回原目录把已剔除的素材重新加回 catalog。发现被保留的素材实际不可用时，把它从 catalog 去掉（或退回 Phase 4 重做），不要拿低清素材凑数。
+- `semantic_description` 基于实际画面说明讲解用途，而非照搬标语。
+- 非必用素材适配度 `<7/10` 或偏题项已过滤，达标切题的通用素材尽量保留供下游场景优先选用；论文关键图 / 表（方法、模型结构、核心实验结果）一张不漏列入 `required_material_refs`（即使关掉网络抓取或评分偏低也不得静默省略；无图写 `[]`）。
+- 视频已完成“粗看（每请求 ≤8 帧）→ 局部细看（每请求一张 ≤16 帧的 4×4 拼图，附源时间范围）”两步分析，`selected_clips` 边界有局部帧依据；长图、图表与滚动录像在有可见依据时标出了 `focal_region`（无依据置 `null`，禁编造坐标）。
+- 论文条目区分非空 caption 复用与缺失 caption 的视觉分析。
+- 只基于 Phase 4 筛选后的 manifest 构建，禁回原目录捡回已剔除素材；仍不可用的素材从 catalog 移除或退回 Phase 4 重做。
 
 ## 下一步
 
-Phase 6（脚本与场景规划）：旁白与场景规划只引用本 phase 产出的 catalog，不直接接触素材 `local_path`。
+Phase 6（脚本与场景规划）：只通过 catalog 引用素材，不直接接触 `local_path`。
 
 ## 护栏
 
-- **每个资源都能追溯到 `material-catalog.json`。** 没有 catalog 引用 → 屏幕上不出现该资源。**视频材料一律剥音轨**：Phase 5 用 `scripts/cut-clips.py` 把每个 `selected_clip` 切成无音轨文件（`clip_path`，`-an`），composition 只用这些文件；Phase 8 HTML 嵌入时 `<video>` 标签必须带 `muted playsinline` 兜底。
-  ↳ DO NOT：嵌入整段原视频或视频的 `local_path`；切片段时不带 `-an`；`<video>` 漏 `muted`。
-- **没有 VLM 配置不是跳过视觉分析的理由。** `vision-analyze.py` 返回 `delegate_to_agent` 时，由执行 agent 用自身的看图能力按返回的 `prompt` / `context` 完成分析（委派包基础指令的 Mode 2），照样写 `semantic_description` 和 `score`；用户选择显式 VLM 路径时再按要求配置。指定模型无法完成看图时先说明，不用另一个模型代替。
+- **上屏素材必须可追溯到 `material-catalog.json`，且视频一律剥除音轨。** Phase 5 用 `scripts/cut-clips.py` 切出无音轨 `clip_path`（`-an`），下游只嵌入 `clip_path` 并在 `<video>` 加 `muted playsinline` 兜底，禁直接嵌入原视频 `local_path`。
+- **无显式 VLM 配置不得跳过视觉分析。** `vision-analyze.py` 返回 `delegate_to_agent` 时，执行 agent 用自身多模态看图能力按返回的 `prompt` / `context` 完成分析（Mode 2）；指定模型不支持看图时先报告，禁静默换模型。
 
-**素材引用采用方案 A（slug-qualified ref）。** 素材 `id` 保持 harvester 写出的文件 stem，只在所属 entry 内唯一，不改 harvester / manifest 的 id。Phase 6 的图片 / 视频 ref 必须写成 `<slug>/<id>`，视频 clip 必须写成 `<slug>/<video_id>:<start>-<end>`；`slug` 是 `entries[*].slug`，解析时只查该 entry。两个 entry 可以各有 `img_001`，同一个 video id 也可以出现在多个 entry，它们由不同 slug 明确区分；裸 id 不是有效 ref。Phase 8 按同一契约把图片解析到该 entry 的 `local_path`，把 clip 解析到该 entry 的 `selected_clips[].clip_path`。
+**素材引用格式（slug-qualified ref）：** 素材 `id` 保持文件 stem、仅在所属 entry 内唯一。Phase 6 起引用图片 / 视频必须写 `<slug>/<id>`，视频片段写 `<slug>/<video_id>:<start>-<end>`（裸 id 无效）；Phase 8 按 `slug` 定位 entry 后分别解析到图片的 `local_path` 与片段的 `selected_clips[].clip_path`。
 
 ---
 
-**用户指定本阶段的 agent / model 时必须严格遵循；未指定 agent / model 时按 `references/delegation/conventions.md` 的统一约定处理（默认目标、模型解析与派发形态都只在约定里维护）。** 本阶段需要对多张图片 / 视频帧做视觉分析。按统一约定派发；素材理解 / 素材匹配的阶段级要求记入 `inputs.json.delegation.catalog`，不能被全局默认值或已有 VLM 配置覆盖。派发 prompt 保持一句话，被委派的 catalog agent 从 handoff 读取上述输入，并按 manifest 路径读取实际图片、视频、字幕与论文 metadata，不只看素材清单。主 agent 做四件事：
+本阶段按 `references/delegation/conventions.md` 统一委派（阶段级要求记 `inputs.json.delegation.catalog`，优先于默认值与环境 VLM 配置）。被委派的 catalog agent 从 handoff 读取输入，并按 manifest 访问实际媒体、字幕与论文 metadata。主 agent 执行四步：
 
-1. **写话题 context 摘要。** 在开始视觉分析之前，主 agent 先从当前 context（研究 brief、用户输入、叙事角度）提炼一份**话题 context 摘要**，供所有视觉分析调用使用。摘要为自然语言，200 字以内，包含：
-   - 视频的核心主题与叙事角度（"这是一段关于 X 的中文解说视频，重点讲解 Y 和 Z"）
-   - 目标受众与风格基调
-   - 3-5 个核心论点或关键概念（供 VLM 判断图片能"说明"哪个论点）
+1. **写话题 context 摘要**（200 字以内自然语言，含核心主题与叙事角度、目标受众与基调、3–5 个核心论点），保存至 `vision_analyze/topic-context.txt` 作为本阶段常量传入每次视觉分析。
+2. **生成 handoff**：写妥 `inputs.json` 与可选 `catalog-instructions.md` 后，运行 `source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topic_name} catalog` 生成 `catalog-handoff.md`。
+3. **派发**：按返回 JSON 的 `coding_agent` / `coding_model` 原样派发单句 `dispatch_prompt`。
+4. **验收**：运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`；若 `next_phase` 仍为 Phase 5 且 `reason` 为 `missing` / `corrupt`，将 `next_phase.problems` 原样交回 catalog agent 修复。
 
-   这份摘要在整个 Phase 5 中作为常量传入每次视觉分析，写到 `vision_analyze/topic-context.txt` 备查。
-2. **生成 handoff。** 先把阶段级 agent / model 要求写入 `inputs.json`，用户对素材的额外要求写入 `catalog-instructions.md`（如有），再运行 `source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topic_name} catalog`。它把委派约定和 catalog 委派包物化到工作区（不复制 modules、不安装字体），生成路径全为绝对路径的 `catalog-handoff.md`。
-3. **派发。** 用输出 JSON 里的 `coding_agent` / `coding_model` 选择实际 agent / model，把 `dispatch_prompt` 原样派发，方式见 `references/delegation/conventions.md`。
-4. **验收。** catalog agent 返回后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`。`next_phase` 仍是 Phase 5 且 `reason` 为 `missing` / `corrupt` 时，把 `next_phase.problems` 原样交给 catalog agent 修复，修完再验收；主 agent 只读最终的 catalog。
-
-未指定 agent / model 且环境既不能原生委派也不能运行目标 CLI 时，主 agent 自己阅读 `references/delegation/catalog/base-instructions.md`，一次处理一条 manifest entry，逐条执行并增量写入 `material-catalog.json`，以控制 context。
+未指定 agent / model 且环境既无原生委派工具也无法运行目标 CLI 时，主 agent 自行阅读 `references/delegation/catalog/base-instructions.md`，逐条处理 manifest entry 并增量写入 `material-catalog.json`。

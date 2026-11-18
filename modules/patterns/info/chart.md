@@ -5,9 +5,8 @@
 ## 适用场景和触发信号
 
 - 旁白描述趋势、benchmark curve、成本对比、速度对比、占比、分布。
-- 屏幕文本单元 `visual_role = "chart"`；典型字段是 chart_type、series、axis labels、highlighted points、summary。
-- 旁白分别讨论一张大表里的多个独立数值维度时，可拆成多个 chart 单元逐个讲。
-- 只有现成的 `chart` 单元或表格数据明确可 chart（有 numeric series / 高亮维度）时才画 chart；没有数据不凭空发明。
+- 典型信息要素：chart_type、series、axis labels、highlighted points、summary。
+- 旁白分别讨论一张大表里的多个独立数值维度时，可拆成多个图表逐个讲；仅在有明确数值序列或表格数据时才绘制图表，禁凭空编造数据。
 
 ## 区域尺寸建议
 

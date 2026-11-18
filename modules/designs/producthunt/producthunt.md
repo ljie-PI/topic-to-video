@@ -67,8 +67,7 @@
 
 ## 3. 背景与质感
 
-- 纸纹按 `designs/github/github.md` 第 3 节的做法生成，换成粉调亚麻色系：底色 `#F4F0EC`，深纤维偏暖褐灰 `#A6988E`，四角压暗约 12 级亮度、暗部偏桃灰 `#C7B2A8`。
-- 新写场景与 `motions/` 模块可用 `color-mix(in srgb, var(--c-card) 82%, transparent)`（`80%–88%`）半透明卡片与节点底色透出粉调亚麻纹理，配轻量纸张微投影、舞台细点阵/微网格底衬及 `1–2px` 精细线宽阶梯（SVG 采用 1:1 像素 `viewBox`，细则参考 [`../designs.md`](../designs.md)）；既有模板样式保持稳定。
+- 纸纹按 `designs/github/github.md` 第 3 节生成，改用粉调亚麻色系：底色 `#F4F0EC`，深纤维偏暖褐灰 `#A6988E`，四角压暗约 12 级亮度、暗部偏桃灰 `#C7B2A8`；半透明透纸层叠、微投影、舞台微网格底衬与 `1–2px` 线宽阶梯（1:1 像素 `viewBox`）遵循 [`../designs.md`](../designs.md)。
 
 ---
 

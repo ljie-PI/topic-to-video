@@ -7,7 +7,6 @@
 - 旁白出现命令、安装、运行、日志、输出、终端、CLI → 终端块。
 - 旁白出现代码、函数、API、配置、diff、片段、参数 → 代码块。
 - 旁白出现目录、文件、路径、package、模块文件组织 → 文件树。
-- 屏幕文本单元 `visual_role = "code_block"` / `"terminal_block"` / `"file_tree"`。
 
 ## 区域尺寸建议
 

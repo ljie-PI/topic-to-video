@@ -5,7 +5,7 @@
 ## 适用场景和触发信号
 
 - 单个主图片 / screenshot / figure，且没有命中更高优先级的特殊呈现（viewport-reveal、band、detail-callout 等）。
-- 场景规划里 `layout_role = "media_first"`，或旁白以「看图说话」的方式围绕一张图展开。
+- `material-catalog.json` 中素材 `layout_affordance` 含 `"media_first"`，或旁白以「看图说话」的方式围绕一张图展开。
 - 图片证据占据内容区主体，信息在外部或分时解释；跨朝向时保留 media-first 语义，另选合法的 reveal 策略。
 
 ## 区域尺寸建议

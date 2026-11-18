@@ -66,8 +66,7 @@
 
 ## 3. 背景与质感
 
-- 纸纹按 `designs/github/github.md` 第 3 节的做法生成，换成暖燕麦色系：底色 `#F3F1EC`，深纤维偏暖灰 `#A29B91`，四角压暗约 12 级亮度、暗部偏灰薰衣草 `#B4AEC4`。
-- 新写场景与 `motions/` 模块可用 `color-mix(in srgb, var(--c-card) 82%, transparent)`（`80%–88%`）半透明卡片底透出暖燕麦棉纸纤维，搭配克制的纸感微投影（`0 2px 8px color-mix(in srgb, var(--c-ink) 5%, transparent)`）、图表/图示舞台内的低对比细点阵或微网格底衬及 `1–2px` 精细线宽阶梯（1:1 像素 `viewBox`，细则参考 [`../designs.md`](../designs.md)）；既有模板样式保持稳定。
+- 纸纹按 `designs/github/github.md` 第 3 节生成，改用暖燕麦色系：底色 `#F3F1EC`，深纤维偏暖灰 `#A29B91`，四角压暗约 12 级亮度、暗部偏灰薰衣草 `#B4AEC4`；半透明透纸层叠、微投影、舞台微网格底衬与 `1–2px` 线宽阶梯（1:1 像素 `viewBox`）遵循 [`../designs.md`](../designs.md)。
 - 代码和终端可用 `--c-chrome` 深底的局部面板；除此之外不把浅色画面切成深色分区。
 
 ---

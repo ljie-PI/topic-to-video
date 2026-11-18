@@ -6,7 +6,7 @@
 
 - 旁白出现「相比、对比、before / after、旧方案 / 新方案、优缺点、取舍、vs」→ 对比矩阵。
 - 旁白是「优点 / 缺点、利弊、该做 / 不该做、推荐 / 避免」，针对单一主体的正反两面 → 优缺点。
-- 屏幕文本单元 `visual_role = "comparison_matrix"` / `"pros_cons"`；典型字段是维度、选项、差异、positives、negatives。
+- 典型信息要素：维度、选项、差异、positives、negatives。
 
 ## 区域尺寸建议
 

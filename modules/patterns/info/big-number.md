@@ -5,7 +5,7 @@
 ## 适用场景和触发信号
 
 - 旁白给出一个冲击性数字：成本、速度、显存、排名、增长，并把它当作 hook。
-- 屏幕文本单元 `visual_role = "big_number"`；典型字段是 value、unit、label、context。
+- 典型信息要素：value、unit、label、context。
 - 多个并列数字不算本 pattern，看 `patterns/info/list-grid.md` 的指标条 / 数据块。
 
 ## 区域尺寸建议

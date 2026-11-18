@@ -1,6 +1,6 @@
 # 组件：caption-bar（底部字幕条）
 
-常驻底部字幕与深色条组件。传统单布局挂载时默认对应横屏讲解模式底部的 72px 深色条与单行字幕（左对齐，36px）；传入视觉 scene 数据 `captionSegments` 时，字幕文字框的位置、尺寸、字号、最大行数以及底部深色条的显隐和高度（如竖屏讲解的 144px 双行底条，或无主持人竖屏的无底条居中双行字幕）全部按当前 scene 的 layout 自动切换。
+常驻底部字幕与深色条组件。单布局默认模式（未传 `captionSegments`）对应横屏讲解底部的 72px 深色条与单行左对齐 36px 字幕；传入视觉 scene 数据 `captionSegments` 时，文字框位置/尺寸/字号/最大行数及底部深色条显隐高度（如竖屏讲解 144px 双行底条，或无主持人竖屏无底条居中双行字幕）均按当前 scene 的 layout 自动切换。
 
 **组件本身没有任何具体内容**：字幕都在拼视频时传入；配色和字体全部来自设计主题的变量，组件里没有写死的色值和字体名。
 
@@ -52,14 +52,12 @@ captions: [
 ]
 ```
 
-- 时间是视频时间（秒，局部秒；本组件常驻挂在 0 秒，两者一致），一般直接取配音的逐句时间。
-- 以下是没有 `captionSegments` 时的**传统兼容行为**：一句话在 `start` 出现，最早不早于 0.15 秒；在 `end + 0.1` 秒或者下一句开始时消失，取较早的那个，并至少显示 0.3 秒。
-- 传统模式入场 0.18 秒（上移 8px 淡入），出场 0.12 秒。
-- 传统模式下，一句话比文字区宽时自动缩小字号，最小 28px，不换行。
+- 时间是视频秒（本组件常驻挂在 0 秒，即局部秒），直接取配音逐句时间。
+- **单布局默认行为（未传 `captionSegments` 时）**：每句在 `max(start, 0.15)` 出现，在 `min(end + 0.1, 下一句.start)` 消失（且至少显示 0.3s）；入场 0.18s（上移 8px 淡入）、出场 0.12s；超宽时自动缩字号（最小 28px，不换行）。
 
 ## 视觉 scene 数据（`init` 的 `data.captionSegments`，工程里通常来自 `window.VIDEO.captionSegments`）
 
-视觉 scene 模式使用 `subtitle-units.json` 的两个字段，映射是固定的，不要重排时间、重新计算矩形或另写字幕规格：
+视觉 scene 模式直接使用 `subtitle-units.json` 的两个字段，禁重排时间或重算矩形：
 
 ```js
 // subtitleUnits 是 composition/assets/subtitle-units.json 解析后的对象
@@ -69,7 +67,7 @@ window.VIDEO = {
     end: unit.end_s,           // end_s → end，视频秒，原样复制
     text: unit.text,           // 原样复制
   })),
-  // 有 caption_segments 时整个数组原样暴露；没有该字段时省略此键，走传统模式。
+  // 有 caption_segments 时原样传入；省略此键则走单布局默认行为。
   captionSegments: subtitleUnits.caption_segments,
 };
 ```
@@ -87,10 +85,9 @@ window.VIDEO = {
 
 scene 模式的显示边界是确定性的：
 
-- 每句从 `captions[].start` 开始，不做传统的 0.15 秒延迟，也不保证最少 0.3 秒；
-- 每句在 `min(captions[].end, 下一句.start)` 结束，不再追加 0.1 秒；
-- 对每个与这句重叠的 `caption_segment`，在 `max(start, segment.begin_s)` 应用该段的 `caption_rect` 和 `caption`；向前或向后 seek 都得到同一状态；
-- 保留淡入 / 淡出，但时长会随短字幕可用时长缩短。场景切换只改变字幕布局，不重挂组件。
+- 每句严格在 `[captions[].start, min(captions[].end, 下一句.start)]` 显示（无 0.15s 延迟、0.3s 下限或 0.1s 延后）；
+- 对每个重叠的 `caption_segment`，在 `max(start, segment.begin_s)` 应用其 `caption_rect` 与 `caption`（正反向 seek 状态一致）；
+- 保留随短字幕自动缩短的淡入 / 淡出；场景切换只改布局，不重挂组件。
 
 ## 限制
 

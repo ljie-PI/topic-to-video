@@ -42,54 +42,42 @@
 
 ## 四、内容演绎与模板选择
 
-`scene-plan.json` 的 `intent` 与 `content_plan` 说每个 scene 要讲什么、怎样展开，`material_candidates` 给出候选素材。它们不是锁死版面的画面指令（可合并 / 拆分视觉 scene 或从 `material-catalog.json` 改选更合适的素材），但素材取舍须守第一部分：论文关键图 / 表必须出现；通用素材尽量保留，符合场景内容时优先选用真实素材，并遵守“单场景分配、仅同一张技术图深入讲解可合并长场景或做无过场连续局部 zoom”的边界（多个叙事 scene 候选了同一素材时，在最终视觉场景中去重归并，不在非技术深讲场景间重复使用）；不用真实素材的视觉场景，必须用贴合内容的视觉动画把 `content_plan` 生动讲出来。
+`scene-plan.json` 的 `intent`、`content_plan` 与 `material_candidates` 提供叙事意图、分步展开逻辑与候选素材（可合并 / 拆分视觉 scene 或从 catalog 改选更贴合的素材；素材必用、优先选用与单场景分配规则守第一部分）。
 
-默认即时生成，预定义模块是例外；阅读模块目录不等于采用模块。逐场景选择，顺序固定——对每个视觉 scene 按以下统一顺序与规则执行（用户要求 → 特别匹配模块 → 即时生成）：
+默认即时生成，预定义模块是例外；阅读模块目录不等于采用模块。对每个视觉 scene 固定按 **「用户要求 → 特别匹配模块 → 即时生成」** 执行：
 
-1. **先应用用户要求及其作用范围。** 用户在 `composition_requests` 中指定某 scene 或全片使用某个模块时，在该作用范围内采用；与朝向、事实或另一条明确要求冲突时报告冲突，不要静默换掉要求。
-2. **未指定时评估“特别匹配”，不是“勉强可用”。** 预定义模块（template、layout preset、component、motion、transition、pattern）只在与目标 scene 特别匹配或确能提升表达时才采用，至少同时满足：
-   - 模块表达的内容关系与 scene 的叙事目标一致；
-   - 素材形态、数据、画布、可读性和交互需求适合该模块；
-   - 不需要改旁白、视觉 scene、orientation 或用户要求来迁就模块；
-   - 采用它比即时生成更清楚或更可靠，而不只是少写代码。
-   采用模板后按它的 `preferred_layouts` 与用户要求确定本 scene 布局（`preferred_layouts` 是建议不是门槛）；先读 `modules/templates/templates.md` 目录，选中某个模板场景时必须读齐三份文件：`modules/templates/<t>/<t>.md`（模板组装、专属变量、资源与人物叠加演法）、`modules/templates/<t>/<t>.json`（场景与真实朗读锚点声明）和 `modules/templates/<t>/<scene>.md`（具体场景参数与数据）；采用任何通用组件（含被 template 或 layout reserved 区绑定的组件）时先读 `modules/components/components.md`，再读对应的 `modules/components/<c>/<c>.md`；采用或改写任何动态模块时先读 `modules/motions/motions.md`，再读对应的 `modules/motions/<m>/<m>.md`。凡决定采用某个预定义模块，定案与实现前必须先读取对应的具体 `.md` 说明文档，不得只看 `.json` / `.html` / `.mjs` 猜参数、`window.VIDEO` 字段或资源拷贝路径，接线统一按 `modules/modules.md` 的 `init(...)` 约定执行；不命中就不用，不为使用模块而硬套，更不要为了套模板改主题、叙事、朝向、design 或视觉 scenes。
-3. **没有特别匹配就即时生成。** 自主设计优先（即时生成指不硬套预定义模块，有符合场景内容的真实素材时仍优先选用并围绕素材构图）：先根据旁白要表达的关系、素材实际内容和各 scene 的可用区域，自主构思构图、视觉隐喻、信息展开与动效，根据 scene 要求自行设计图表、视觉机制或组件，不为使用库而使用库，再写入 storyboard。**不用真实素材的视觉场景**（无论全片无 catalog，还是该视觉场景未分配真实素材）**必须用视觉动画生动讲述该场景的 `content_plan`**：结合内容特征按 **SVG → WebGL → Three.js → GSAP** 的优先级考虑表现手段（可组合使用，例如用 GSAP 驱动 SVG 图示结构与分步状态演进；涉及三维空间、真实深度或着色器模拟时选 WebGL / Three.js），把 `content_plan` 里的具体对象、结构关系、因果链路、对比差异或分步变化画出来并随旁白推进；文字与 HTML 排版只作辅助说明，不得退化成静态文字卡片、纯排版列表、文字框轮播或与内容无关的装饰动画（阶段之间的必要停留服务于阅读理解，不要求元素无意义地持续晃动）。**采用真实素材的视觉场景**围绕素材组织构图、局部放大或外置标注，素材本身已清楚直观时简洁稳定的呈现也是有效选择；同一张技术图跨连续场景深讲时切点不加过场，优先 zoom in 到不同讲解区域（`composition_requests` 另有要求时按用户要求处理）。
-4. **按实际采用落盘。** 不用 template 时写 `template: null`；不借 layout preset 时写 `preset: null` 并落盘完整实际 `regions` / `caption`；不借 pattern / motion 时不产生借用记录；自绘组件仍须满足区域、字幕、确定性、事实和检查契约。模板选择及理由写进 storyboard，不写回 `inputs.json`。
-5. **保持模块内部依赖完整。** 一个特别匹配且被采用的 template / layout 所声明的必要组件，属于该方案的一部分；若这些组件不适合，应判定整个方案不够匹配，而不是破坏它的 reserved 区约定。
-6. **只记录实际采用。** `modules/motions/motions.md` 作为动态模块发现入口已在必读引用中给出，仅当某个动态模块与目标 scene 机制特别匹配或确能提升表达时才读对应的 `modules/motions/<m>/<m>.md` 并直接挂载或拷入工程改写；`modules/patterns/` 与 `modules/transitions/` 都是可跳过的可选参考入口，仅在已有构想对应某个非常匹配的画面形态，或确需转场交接时才定向查阅：借用画面形态时先读 `modules/patterns/patterns.md` 索引，再读匹配的 `modules/patterns/<media|info>/<p>.md`；需要转场时先读 `modules/transitions/transitions.md`，选定后再读具体的 `modules/transitions/<tr>/<tr>.md`；简单接缝已经合适时不采用转场，自由布局也不强制使用转场。默认自主设计，不为使用模块而硬套，全片不用动态模块、参考库或转场也完全合格。storyboard 只记录实际借用的模块、所依据的具体 `.md` 文档路径、用户指定依据或特别匹配理由（只在借用时用一句话记录借用内容与匹配理由）；即时生成不需要“未使用其他模块”的清单，无需填写 pattern 字段或未使用理由。
+1. **先应用用户要求及其作用范围。** `composition_requests` 指定某 scene 或全片使用某模块时在该范围内采用；与朝向、事实或另一条要求冲突时报告冲突，禁静默替换。
+2. **未指定时评估“特别匹配”，而非“勉强可用”。** 预定义模块（template、layout preset、component、motion、transition、pattern）须同时满足四项才采用：① 表达关系与叙事目标一致；② 素材形态、数据、画布、可读性与交互匹配；③ 无需改旁白、视觉 scene、orientation 或用户要求来迁就；④ 比即时生成更清晰可靠（而非只为省代码）。
+   - **采用前必读对应具体 `.md` 文档**（禁只看 `.json` / `.html` / `.mjs` 猜参数、`window.VIDEO` 键或资源路径，统一按 `modules/modules.md` 的 `init(...)` 接线）：采用模板场景须读齐 `modules/templates/<t>/<t>.md`、`<t>.json` 与 `<scene>.md`（`preferred_layouts` 为建议非硬门槛）；采用组件读 `components.md` → `<c>/<c>.md`；采用或改写动态模块读 `motions.md` → `<m>/<m>.md`；需要画面形态参考或转场时才按需查阅可选入口 `patterns.md` → `<media|info>/<p>.md`、`transitions.md` → `<tr>/<tr>.md`（自由布局与简单接缝不强制用转场）。
+3. **无特别匹配就即时生成（默认路径）。** 围绕旁白语义、素材与可用区域自主构思构图、视觉隐喻与动效：
+   - **不用真实素材的视觉场景**（无论全片无 catalog 还是该场景未分配真实素材）：**必须按 `SVG → WebGL → Three.js → GSAP` 优先级选择或组合表现手段（如用 GSAP 驱动 1:1 像素 SVG 图示结构与分步状态演进；涉及三维空间、真实深度或着色器模拟时选 WebGL / Three.js），用视觉动画生动讲述 `content_plan`**，把登场对象、结构关系、因果链路、对比差异或分步变化画出来并随旁白推进（保留必要的阅读停留，不做无意义晃动）；文字与 HTML 排版仅作辅助，**严禁退化成静态文字卡片、纯排版列表、文字框轮播或无关装饰动画**。
+   - **采用真实素材的视觉场景**：围绕素材组织构图、局部放大或外置标注（素材本身已清晰直观时简洁稳定呈现即可；连续深讲同一张技术图按第一部分保持无过场局部 zoom 衔接）。
+4. **按实际采用落盘并保持依赖完整。** 不用模板写 `template: null`；不借 layout preset 写 `preset: null` 并落盘完整 `regions` / `caption`；已采用的 template / layout 所声明的 reserved 必要组件不可拆毁（不适合则判定整套方案不匹配）。`storyboard.md` 只记录实际借用的模块、所依据的具体 `.md` 路径与匹配理由（无需列未使用清单，模板选择也不写回 `inputs.json`）。
 
 ### 表达与事实边界
 
-- **表现机制选择**：表现机制从旁白语义、素材和实际区域出发。**不用真实素材的视觉场景，必须根据内容按 SVG → WebGL → Three.js → GSAP 的优先级选择（或组合，如 SVG + GSAP）动画来生动讲述 `content_plan`**，呈现具体的对象、关系或分步状态变化，不得用纯静态排版、文字卡片淡入淡出或纯装饰图形代替内容讲述；**使用真实素材的视觉场景**以清晰呈现素材证据为主，可配合局部 zoom、高亮标注或简洁稳定的呈现。具体动态模块与 runtime 选择见 `modules/motions/motions.md`。
-- **排版与素材清晰度基线**：长图、高信息密度图表与竖屏滚动录屏结合 `material-catalog.json` 的 `focal_region` 做局部裁剪视口放大或沿长轴移动视口（如 `motions/focus-callout`、`object-view-box` 或裁剪容器），保证内容媒体在所属区域内具备充足的可视占比，避免整页微缩导致文字不可辨，也避免把低分辨率小图强行拉大（`> 1.25×`）导致像素化发虚；外置引线与标注停在素材可视边界外沿，不遮挡素材内部关键内容；SVG 节点承载框宽高须完整包住文字，同层可见元素留足间距避免压叠。
-- **创意边界**：视觉创意服务于理解，不得破坏所选 design token（含细线层级与透纸纹质感）、各 scene 实际落盘的 regions、可读性、真实语音同步或事实含义。
-- **新增屏幕事实来源**：画面中新增的屏幕事实、数字、实体、引文和标注必须能由当前 composition 输入支撑（`script.txt`、`scene-plan.json`、适用时的 `material-catalog.json` 及明确的用户要求 `composition_requests`）；需要新增上游事实时向主 agent 报告并建议回退，不得自行编造（也不要求读取未提供的 `research-brief.md`）。
-- **示意与证据边界**：图示、类比和示意可用于解释概念或关系，但不得伪装成真实数据或证据；会改变事实含义的构图、标注与动画不使用。
-
-- **时间只取真实语音。** 需要卡准秒数时，从 `timeline.json` 的段落 / cue 取；模板需要额外锚点时按下节自己声明 cue 并跑 timing 模式，不按字数估算、不另建节拍表。
-- **偏离要有理由。** 合并 / 拆分 scene、换素材或换演绎方式都行；与 `intent` / `content_plan` 的偏离写在 storyboard 里。发现是叙事或素材本身对不上，报告建议回退到 Phase 6，不要改旁白。
+- **排版与素材清晰度基线**：长图、高信息密度图表与竖屏滚动录屏结合 `focal_region` 做局部视口裁剪放大或沿长轴推拉（如 `motions/focus-callout`、`object-view-box` 或裁剪容器），保证内容媒体具备充足可视占比，避免整页微缩不可辨，也避免低清小图强拉放大（`> 1.25×`）致糊；外置引线与标注停在素材可视外框，不遮挡内部关键像素；SVG 节点承载框宽高须完整包住文字，同层可见元素留足间距防压叠（runtime 选型细节见 `modules/motions/motions.md`）。
+- **创意与事实边界**：视觉创意不得破坏落盘 design token（含细线层级与透纸纹质感）、各 scene 落盘 regions、可读性或语音同步；新增屏幕事实、数字、实体、引文与标注必须能由当前输入（`script.txt`、`scene-plan.json`、适用时的 `material-catalog.json` 及 `composition_requests`）支撑，缺上游事实时报告建议回退，禁自行编造；示意与类比不得伪装成真实数据或改变事实含义。
+- **真实语音同步与偏离说明**：卡点秒数只取 `timeline.json` 或下节模板 cue 对齐结果，禁按字数估算；合并 / 拆分 scene 或改选素材与 `intent` / `content_plan` 的偏离理由记入 `storyboard.md`（叙事或素材错位则报告建议回退 Phase 6，禁改旁白）。
 
 ## 五、模板时间锚点只能取自真正被朗读的文字
 
-模板要求的入场时间（项目名、tagline、stars 等）必须来自实际念出来的文字，不能按字数估算、也不能先写一份模板旁白让 Phase 6 去念。
+模板要求的入场时间（项目名、tagline、stars 等）必须取自旁白实际朗读时刻：
 
-1. 在 `script.txt` 里找到模板需要的字段对应的原文（项目名、tagline、star 数等），确认它确实属于某个 scene 的 `paragraphs`。
-2. 把要卡点的原句按 cue 声明的形状（`scene_id` / `paragraphs` / `cues`）写进 `composition/assets/template-cues.json`。cue 必须原样摘自显示稿；这个文件不是完整的场景规划，只需这三个字段。
-3. 跑 handoff 里的 `align-narration.py --mode timing --scene-plan composition/assets/template-cues.json --timeline-output composition/assets/template-timeline.json`，用同一套对齐拿到真实秒数。
-4. 把结果换算成组件与转场参数：全片组件与转场（`nav-bar` / `caption-bar` / `tile-wipe`）用视频秒；scene 内的参数（`nameAt` / `taglineAt` / `starsAt` 等）用相对该 scene `data-start` 的秒数。
-5. 没念到的字段不编时间：`project-cover` 可省略 `taglineAt` / `starsAt`，组件会隐藏相关部分并跳过动画；`nameAt` 和榜单每个项目的 `cue` 是必需锚点，缺失就不用对应场景 / 项目，不采用默认秒数。事实资料缺失也不编造值，更不回去改旁白迁就模板。
+1. 在 `script.txt` 找到对应原句并确认所属 scene 的 `paragraphs`，按 `{scene_id, paragraphs, cues}` 写入 `composition/assets/template-cues.json`（只含这三个字段，cue 原样摘自显示稿）。
+2. 运行 handoff 中的 `align-narration.py --mode timing --scene-plan composition/assets/template-cues.json --timeline-output composition/assets/template-timeline.json` 获取真实秒数。
+3. 时间换算：常驻组件与转场（`nav-bar` / `caption-bar` / `tile-wipe`）用全片视频秒；scene 内参数（`nameAt` / `taglineAt` / `starsAt` 等）用相对该 scene `data-start` 的局部秒。
+4. 未朗读字段禁编造秒数：`project-cover` 可省略 `taglineAt` / `starsAt`（自动隐藏对应块）；`nameAt` 与榜单每项 `cue` 为必填锚点，缺失则不用该场景 / 项目。
 
 ## 工作顺序
 
-0. **先读旁白与叙事规划，选定全片 design，初始化工程，安装字体并写 design 契约。** 先读 `script.txt`、`scene-plan.json`、timeline、素材目录与模块库入口 `modules/modules.md`，再按第二部分及 `modules/designs/designs.md` 选定全片基线（选定 preset 后必读对应的 `modules/designs/<design>/<design>.md`）；`composition/` 不存在时先运行 `npx hyperframes init composition/`，再运行 handoff 的字体安装命令并写出 `composition/design.json`；完成这些之后再逐场景选择其他模块。
-1. **决定视觉 scenes，逐场景定方案，写 scene-config。** 根据上一步读取的旁白、叙事规划、timeline 与素材目录，按实际画面需要合并 / 拆分叙事 scene。对每个视觉场景按第四部分的固定顺序选择方案：浏览目录索引（`modules/templates/templates.md`、`modules/layouts/layouts.md`、`modules/components/components.md`、`modules/motions/motions.md`）后，一旦拟采用某个模板、借用某个 layout preset（读对应的 `modules/layouts/<preset>.json` 与 `modules/layouts/<preset>.md`，`portrait-3x4` 读 `modules/layouts/portrait.md`）、挂载其中的 reserved 组件或采用某个动态模块，先读完该模块对应的具体 `.md` 文档核对锚点、区域和组件约束，再定案；也可以自主设计自由布局。把最终结果写进 `composition/scene-config.json`（schema 见契约文档），并选定 storyboard 的骨架。
-2. **生成字幕初稿**。跑 handoff 里的 `align-narration.py --mode subtitles --scene-config ... --narration-audio ...` 命令，把字幕单元切到 `composition/assets/subtitle-units.json`。已有用户编辑过的字幕是有效输入：只有缺失或当前任务明确要求重新生成时才重新生成，仅改画面 / 重渲染不要覆盖它。
-3. **自主构思并写 storyboard**：核对已读的 `modules/components/components.md` 与实际要挂载组件的 `modules/components/<c>/<c>.md`、实际采用动态模块的 `modules/motions/<m>/<m>.md`；需要转场时按第四部分先读 `modules/transitions/transitions.md`，再读所选的 `modules/transitions/<tr>/<tr>.md`。storyboard 开头先写一张「组件与转场使用表」：每个用到的组件、动态模块或转场一行，写明所依据的具体模块 `.md` 路径、挂载参数、驱动它的 `window.VIDEO` 数据从哪来（例如 `captions` 来自 `composition/assets/subtitle-units.json`，`cuts` 来自 scene-config 中需要转场的视觉 scene 切点——连续深讲同一张技术图的相邻切点不加过场）。各 reserved 区要求的组件必须出现在表里；常驻组件或转场不用在每个 scene 里重复写，scene 里只写本 scene 额外用到的组件、动态模块或转场。然后按 scene-config 逐个视觉 scene 写，记录对应的叙事 `intent` / `content_plan`、template / layout 方案（preset 或自主设计）及理由、content 区域，以及素材与演绎方案：采用真实素材的 scene 写明实际素材 `ref`（默认全片不跨 scene 重复；因深入技术讲解在相邻连续 scene 使用同一张图时，写明连续深讲必要性、涉及的连续 scene 范围、切点无过场衔接与各段局部 zoom / 焦点区域）；不用真实素材的 scene 写明选用的动画方案（按 SVG → WebGL → Three.js → GSAP 优先级或组合）以及如何把 `content_plan` 的对象、关系或步骤演出来；参考库的查阅与借用按第四部分处理。可以改选素材与演绎方式；偏离场景规划的地方写明理由；**旁白不能改**（字幕以显示稿为准，新增屏幕文字与标注守第四部分事实边界）。
-4. **组装和编写画面**。按 storyboard 和 `modules/modules.md` 的模块初始化接口（`init(...)`）组装：对照落盘 design、契约要求遵守的区域，以及已读的组件（`modules/components/<c>/<c>.md`）、动态模块（`modules/motions/<m>/<m>.md`）、转场（`modules/transitions/<tr>/<tr>.md`）和模板（`modules/templates/<t>/<t>.md` 与 `<scene>.md`）文档，实现自己确定的画面与动效，不脱离模块 `.md` 直接猜源码参数。**为避免多场景长片在单次输出中拼接巨型单文件触发 `413` 请求/输出上限，将各视觉场景拆分为独立的 `composition/compositions/<scene>.{html,mjs}` 逐个写盘，再由 `composition/index.html` 统一挂载与接线。**按 storyboard 选定的 design textures、组件、动态模块（含共用的 `modules/motions/motion-utils.mjs`）、转场和模板资源（含 `.html`、`.mjs` 与静态资产），由你自己从工作区的 `modules/` 拷进 `composition/`，严格对照各模块具体 `.md` 文档列出的清单执行。
-5. **渲染前自查**，全部通过再渲染：
-   - 运行 `npx hyperframes check`，修掉所有错误；
-   - 运行 check-composition（命令见 handoff 的 Outputs 一节）：它按 `scene-config` 在各 scene 落盘的 regions / caption 下检查确定性越界、侵入 reserved 区域、文字溢出、资源加载失败、字体未加载、字号低于 design 下限、字幕与字幕单元不一致（写入 `findings`，决定 `verdict`），同时输出非阻塞画面质量 `warnings`（`svg_text_overflow`、`media_too_small`、`media_blurry_scale`、`element_overlap`、`material_occlusion`、`region_text_duplication`、`media_reuse`）；handoff 的命令用 `--scene-config` 指定配置，并用 `--output` 把同一份报告写到 `composition/check-composition.json`（stdout 照常打印）；**除修清全部 `findings` 外，还须逐条核对 `warnings`**：属意外缩略、缩放致糊、元素重叠/遮挡、跨区文案复读或误用重复素材的当场修掉，确属设计意图的保留并在 `storyboard.md` 说明理由；改过 scene-config 或画面就重跑，**最后一次的报告必须保存在这个路径且 verdict 为 pass**（主 agent 的状态脚本读它）；
-   - 在每个视觉 scene 的中点截一张快照，自己目检一遍（区域使用、可读性、与旁白的同步）。
-6. **渲染**。用 HyperFrames 渲染出 `composition/renders/final.mp4`。完成后向主 agent 报告 `design.json`、`scene-config.json`、`storyboard.md`、`index.html`、`renders/final.mp4` 的路径，以及 hyperframes check 与 check-composition 的 verdict；主 agent 会复核产物与两个检查的通过情况。
-
-报告前自己先看一两个关键 scene 的渲染结果：素材宽高比是否对、字幕是否溢出、画面能否对应旁白；确认非技术深讲没有跨场景复用同一素材，连续深讲同一张技术图时切点无打断性过场且焦点按局部区域推进，不用真实素材的 scene 都用贴合内容的视觉动画把 `content_plan` 讲出来了而非退化成文字卡片。发现是叙事或素材的问题（场景与旁白对不上、素材用错），在报告里说清楚并建议回退到哪个阶段，不是硬改 HTML 遮过去。
+0. **选定全片 design，初始化工程并装字体**：先读 `script.txt`、`scene-plan.json`、`timeline.json`、素材目录与 `modules/modules.md`；按第二部分及 `modules/designs/designs.md` 选定 design（preset 必读 `modules/designs/<design>/<design>.md`）；`composition/` 不存在时先跑 `npx hyperframes init composition/`，再跑 handoff 的 `fonts-download.sh` 安装字体并写出 `composition/design.json`。
+1. **切分视觉 scenes 并落盘 `scene-config.json`**：按第四部分「用户要求 → 特别匹配模块 → 即时生成」逐场景定方案（浏览 `templates.md`、`layouts.md`、`components.md`、`motions.md` 目录索引后，拟采用任何 preset / 模块前先读完其具体 `.md` 与 `.json` 核对约束；或自主设计自由布局），落盘 `composition/scene-config.json`（schema 见 `scene-config.md`）。
+2. **生成字幕单元**：运行 handoff 的 `align-narration.py --mode subtitles --scene-config ... --narration-audio ...` 生成 `composition/assets/subtitle-units.json`（已有用户编辑过的字幕直接保留，仅缺失或明确要求重建时重跑）。
+3. **编写 `storyboard.md`**：开头先列「组件与转场使用表」（逐项记录实际采用的组件 / 动态模块 / 转场、所依据的具体 `.md` 路径、挂载参数及 `window.VIDEO` 数据来源，含转场 `cuts`——连续深讲同一技术图的切点不入 `cuts`；reserved 必要组件须在表内）。随后逐个视觉 scene 记录叙事 `intent` / `content_plan`、template / layout 方案与理由、所用 content 区域、实际素材 `ref`（守第一部分单场景分配与连续技术深讲局部 zoom 记录要求）或无素材时选用的动画演绎方案（守第四部分第 3 条），以及必用素材覆盖表与偏离说明。
+4. **逐场景拆分子合成编写画面**：对照落盘 design、各 scene 区域与所读模块 `.md` 文档，按 `modules/modules.md` 的 `init(...)` 接口接线实现。**将各视觉场景拆分为独立的 `composition/compositions/<scene>.{html,mjs}` 逐个写盘，再由 `composition/index.html` 统一挂载，避免多场景长片单次拼接巨型单文件触发 `413` 请求/输出上限**；按各模块 `.md` 清单将选用的 textures、组件、动态模块（含 `modules/motions/motion-utils.mjs`）、转场与模板资产从工作区 `modules/` 拷入 `composition/`。
+5. **渲染前自查（全过再渲染）**：
+   - 运行 `npx hyperframes check` 并清零错误；
+   - 运行 handoff 的 `check-composition.py --scene-config ... --output composition/check-composition.json`：清零全部阻塞 `findings`（越界、侵入 reserved 区、文字溢出、资源/字体失败、字号低于下限、字幕不一致），并**逐条核对非阻塞 `warnings`**（`svg_text_overflow`、`media_too_small`、`media_blurry_scale`、`element_overlap`、`material_occlusion`、`region_text_duplication`、`media_reuse`——属意外问题的当场修掉，确属设计意图的在 `storyboard.md` 写明理由）；改过配置或画面必须重跑，确保最终保存报告 `verdict == "pass"`；
+   - 在每个视觉 scene 中点截快照目检区域、可读性与音画同步。
+6. **渲染与复核报告**：渲染出 `composition/renders/final.mp4`，抽看 1–2 个关键 scene 核对宽高比、字幕、素材分配与动画演绎无误后，向主 agent 报告 `design.json`、`scene-config.json`、`storyboard.md`、`index.html`、`renders/final.mp4` 路径及两项检查的 verdict（发现上游叙事或素材错位则如实报告建议回退阶段）。

@@ -6,7 +6,7 @@
 
 - 单个 tall / ultra-tall / ultra-wide 素材，完整适配后不可读，但沿长轴或重点区域阅读是合理的呈现方式。
 - 有素材的重点区域证据（catalog 里的 `focal_region`、start / mid / end 关键区域说明或 avoid-region）；旁白的讲解顺序正好沿长轴推进。
-- 场景规划里 `layout_role = "viewport_reveal"`，或 media-first 遇到极端比例素材时改选本 pattern。
+- `material-catalog.json` 中素材 `layout_affordance` 含 `"viewport_reveal"`，或 media-first 遇到极端比例素材时改选本 pattern。
 
 ## 区域尺寸建议
 
@@ -35,7 +35,6 @@
 
 - 外观全部来自所选主题的 token；视口边框 / 当前位置 marker 可用 `--c-focus` 或 `--c-border`。
 - 外置信息区按 `patterns/info/` 对应信息形态的建议用色。
-- 本 pattern 没有按 visual_role 的特殊覆盖。
 
 ## 已有实现
 
