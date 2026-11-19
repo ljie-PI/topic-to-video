@@ -6,8 +6,8 @@
 - `composition/design.json`（Phase 8 落盘的 preset / custom 外观基线）；
 - `composition/scene-config.json`（最终视觉场景机器配置与全片秒；本阶段抽帧、`scene_id` 归属与反馈范围均以它为准）；
 - `composition/check-composition.json` 与 `composition/storyboard.md`（供 vision 检查定向复核渲染前留下的非阻塞 `warnings` 及场景设计意图）；
-- `inputs.json`（`qa_level`、可选布尔开关 `bgm`）；
-- `search-notes.md`（可选，Phase 4 记录的来源限制；`bgm = false` 在本阶段直接交付时一并说明）。
+- `inputs.json`（`qa_level`、可选布尔开关 `bgm` / `cover`）；
+- `search-notes.md`（可选，Phase 4 记录的来源限制；`bgm = false` 且 `cover = false` 在本阶段直接交付时一并说明）。
 
 ## 输出
 
@@ -29,8 +29,9 @@
 
 运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`：
 
-- `bgm` 缺省或为 `true`：进入 Phase 10（`10-mix`）混入背景乐后统一交付；
-- `bgm = false`：跳过 Phase 10（`next_phase` 为 `null`），直接交付 `composition/renders/final.mp4` 与 contact sheet，并按 9.5 汇总可选的素材限制。
+- `bgm` 缺省或为 `true`：进入 Phase 10（`10-mix`）混入背景乐；
+- `bgm = false` 且 `cover` 缺省或为 `true`：跳过 Phase 10，进入 Phase 11（`11-cover`）生成多尺寸封面后统一交付；
+- `bgm = false` 且 `cover = false`：跳过 Phase 10 与 Phase 11（`next_phase` 为 `null`），直接交付 `composition/renders/final.mp4` 与 contact sheet，并按 9.5 汇总可选的素材限制。
 
 ## 护栏
 
@@ -108,6 +109,6 @@ python3 scripts/make-contact-sheet.py \
 2. 若修改了 composition 源码或契约文件，**必须重跑 `check-composition --output` 并重新渲染 `final.mp4`**；随后全片重跑 `check-render.py`，vision 仅抽帧复核受影响 scene（无需重拼整套 sheet）；
 3. **最多 2 轮**；finding 数不再下降则置 `verdict: "handed_off"` 连同 sheet 交用户定夺。
 
-#### 9.5 — 无 BGM（`bgm = false`）直接交付时的素材限制说明
+#### 9.5 — 无 BGM 且无封面（`bgm = false` 且 `cover = false`）直接交付时的素材限制说明
 
-`bgm = false` 跳过 Phase 10 直接交付 `final.mp4` 与 contact sheet 时，若工作区存在 `search-notes.md`，按 `references/phases/10-mix.md` 的「10.2 交付时说明素材限制」一并向用户说明受限来源与补抓方式（不计入 `qa-report.json`）。
+`bgm = false` 且 `cover = false` 跳过 Phase 10 / 11 直接交付 `final.mp4` 与 contact sheet 时，若工作区存在 `search-notes.md`，按 `references/phases/10-mix.md` 的「10.2 交付时说明素材限制」一并向用户说明受限来源与补抓方式（不计入 `qa-report.json`）。

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """准备一个委派步骤的交接：落地其包，并填好 handoff。
 
-主 agent 把 catalog（Phase 5）、script（Phase 6）和 composition（Phase 8）三个
-步骤委派给 coding agent，由后者读取一份 handoff 文件。handoff 是确定性的，因此由
+主 agent 把 catalog（Phase 5）、script（Phase 6）、composition（Phase 8）和 cover（Phase 11）
+四个步骤委派给 coding agent，由后者读取一份 handoff 文件。handoff 是确定性的，因此由
 本脚本生成，而不是让主 agent 手填散文模板。每次调用做三件事：
 
   0. 校验（在写任何东西之前）：不要求预选 design、template 或 layout——
@@ -20,7 +20,7 @@
      运行本 skill 的脚本。缺值或不存在的输入 / 引用文件，都算错误。
 
 用法：
-  python3 scripts/prepare-handoff.py <workspace_dir> <catalog|script|composition>
+  python3 scripts/prepare-handoff.py <workspace_dir> <catalog|script|composition|cover>
       [--refresh] [--resolved-model <实际原生标识>]
 
 输出：stdout 上的一份 JSON 文档，
@@ -327,7 +327,59 @@ def composition_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool) -> Plan
     return plan
 
 
-STEP_PLANS = {'catalog': catalog_plan, 'script': script_plan, 'composition': composition_plan}
+def cover_plan(ws: Path, inputs: dict[str, Any], *, refresh: bool = False) -> Plan:
+    delegation = ws / DELEGATION
+    base = delegation / 'cover' / 'base-instructions.md'
+    presenter_wave = SKILL_ROOT / 'modules' / 'components' / 'presenter' / 'images' / 'presenter-wave.png'
+    references: list[Reference] = [
+        (
+            f'{base}（基础指令：主题一致与点击率优先、钩子与重要数字、关键帧截取、'
+            '招手主持人固定槽位、三比例独立 HTML 与缩略图验收）',
+            [base],
+        ),
+    ]
+    plan = Plan(
+        values={
+            'required_references': numbered([text for text, _ in references]),
+            'additional_instructions': request_list(inputs, 'cover'),
+            'orientation': str(inputs['orientation']),
+            'default_sizes': '、'.join(video_contract.COVER_DEFAULT_SIZES),
+        },
+        inputs=[
+            ws / 'inputs.json',
+            ws / 'research-brief.md',
+            ws / 'script.txt',
+            ws / 'scene-plan.json',
+            ws / 'transcribe' / 'timeline.json',
+            ws / 'composition' / 'design.json',
+            ws / 'composition' / 'scene-config.json',
+            ws / 'composition' / 'assets' / 'subtitle-units.json',
+            ws / 'composition' / 'renders' / 'final.mp4',
+        ],
+        references=[
+            delegation / 'conventions.md',
+            *(path for _, paths in references for path in paths),
+        ],
+        sources=[
+            SKILL_ROOT / DELEGATION / 'conventions.md',
+            SKILL_ROOT / DELEGATION / 'cover',
+            presenter_wave,
+        ],
+    )
+    if video_contract.catalog_applies(inputs):
+        plan.values['material_catalog'] = str(ws / 'material-catalog.json')
+        plan.inputs.append(ws / 'material-catalog.json')
+    else:
+        plan.values['material_catalog'] = '无（无可用素材）'
+    return plan
+
+
+STEP_PLANS = {
+    'catalog': catalog_plan,
+    'script': script_plan,
+    'composition': composition_plan,
+    'cover': cover_plan,
+}
 
 def read_template(step: str) -> str:
     path = SKILL_ROOT / DELEGATION / step / 'handoff-template.md'
@@ -376,6 +428,9 @@ def render_handoff(
         ),
         'timeline_q': shlex.quote(str(ws / 'transcribe' / 'timeline.json')),
         'check_report_q': shlex.quote(str(ws / 'composition' / 'check-composition.json')),
+        'cover_dir_q': shlex.quote(str(ws / 'cover')),
+        'cover_report_q': shlex.quote(str(ws / 'cover' / 'cover-report.json')),
+        'cover_summary_q': shlex.quote(str(ws / 'cover' / 'cover-summary.md')),
         'script_txt_q': shlex.quote(str(ws / 'script.txt')),
         'narration_q': shlex.quote(str(ws / 'narration.txt')),
         'offsets_q': shlex.quote(str(ws / 'narration-offsets.json')),

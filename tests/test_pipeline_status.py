@@ -394,11 +394,53 @@ def complete_through_check(ws: Path, **inputs_overrides) -> None:
     write_json(ws / 'qa' / 'qa-report.json', {'findings': [], 'verdict': 'pass'})
 
 
-def complete_all(ws: Path, **inputs_overrides) -> None:
+def write_cover_products(ws: Path, sizes: tuple[str, ...] = video_contract.COVER_DEFAULT_SIZES) -> dict:
+    covers = []
+    for size in sizes:
+        w_str, h_str = size.split('x')
+        rel_html = f'cover_{size}.html'
+        rel_1x = f'cover_{size}.png'
+        rel_2x = f'cover_{size}@2x.png'
+        rel_thumb = f'qa/thumb_{size}_400w.png'
+        write_text(ws / 'cover' / rel_html, '<html></html>')
+        write_blob(ws / 'cover' / rel_1x)
+        write_blob(ws / 'cover' / rel_2x)
+        write_blob(ws / 'cover' / rel_thumb)
+        covers.append({
+            'size': size,
+            'width': int(w_str),
+            'height': int(h_str),
+            'html': rel_html,
+            'image': rel_1x,
+            'image_2x': rel_2x,
+            'thumb_400w': rel_thumb,
+            'findings': [],
+        })
+    report = {
+        'success': True,
+        'verdict': 'pass',
+        'sizes': list(sizes),
+        'covers': covers,
+        'findings': [],
+        'warnings': [],
+    }
+    write_json(ws / 'cover' / 'cover-report.json', report)
+    write_text(ws / 'cover' / 'cover-summary.md', '# cover summary\n钩子、重要数字与关键帧说明。\n')
+    return report
+
+
+def complete_through_mix(ws: Path, **inputs_overrides) -> None:
     complete_through_check(ws, **inputs_overrides)
     inputs = {**INPUTS, **inputs_overrides}
     if inputs.get('bgm', True):
         write_blob(ws / 'composition' / 'renders' / 'final_with_bgm.mp4')
+
+
+def complete_all(ws: Path, **inputs_overrides) -> None:
+    complete_through_mix(ws, **inputs_overrides)
+    inputs = {**INPUTS, **inputs_overrides}
+    if inputs.get('cover', True):
+        write_cover_products(ws)
 
 
 # --- usage / workspace errors -------------------------------------------------
@@ -1063,6 +1105,7 @@ def test_all_complete(tmp_path: Path):
         '8-composition',
         '9-check',
         '10-mix',
+        '11-cover',
     ]
     assert result['next_phase'] is None
     assert result['missing_products'] == []
@@ -1187,11 +1230,12 @@ def test_inputs_json_validation_defaults_and_legacy_design_preservation(tmp_path
     assert parse_result(run_cli(str(tmp_path)))['next_phase']['id'] == '4-material-harvest'
     assert (tmp_path / 'inputs.json').read_bytes() == before
 
-    for bad_bgm in ('none', 0, 1, None, []):
-        write_json(tmp_path / 'inputs.json', {**INPUTS, 'bgm': bad_bgm})
-        bgm_res = parse_result(run_cli(str(tmp_path)))
-        assert bgm_res['next_phase']['id'] == '1-gather-inputs'
-        assert 'bgm' in bgm_res['next_phase']['problems']['inputs.json']
+    for flag in ('bgm', 'cover'):
+        for bad_bool in ('none', 0, 1, None, []):
+            write_json(tmp_path / 'inputs.json', {**INPUTS, flag: bad_bool})
+            bool_res = parse_result(run_cli(str(tmp_path)))
+            assert bool_res['next_phase']['id'] == '1-gather-inputs'
+            assert flag in bool_res['next_phase']['problems']['inputs.json']
 
 
 def test_a_design_removed_from_the_library_is_rejected_at_phase_8_even_with_a_workspace_copy(tmp_path: Path):
@@ -1269,16 +1313,88 @@ def test_phase_9_check_and_phase_10_mix_progression_and_bgm_flag(tmp_path: Path)
         assert advanced['next_phase']['doc'] == 'references/phases/10-mix.md'
         assert advanced['missing_products'] == ['composition/renders/final_with_bgm.mp4']
 
-    # bgm=False skips Phase 10 and completes immediately after Phase 9; redoing skipped 10-mix is refused.
+    # bgm=False skips Phase 10 and advances to Phase 11 when cover is enabled; redoing skipped 10-mix is refused.
     no_bgm_ws = tmp_path / 'no_bgm'
     complete_through_check(no_bgm_ws, bgm=False)
     no_bgm = parse_result(run_cli(str(no_bgm_ws)))
     assert '9-check' in no_bgm['completed_phases']
     assert '10-mix' in no_bgm['skipped_phases']
-    assert no_bgm['next_phase'] is None
+    assert no_bgm['next_phase']['id'] == '11-cover'
     assert not (no_bgm_ws / 'composition' / 'renders' / 'final_with_bgm.mp4').exists()
     redo_proc = run_cli(str(no_bgm_ws), '--redo', '10-mix', '--reason', '换音乐')
     assert redo_proc.returncode == 1 and 'skipped' in parse_result(redo_proc)['error']
+
+    # bgm=False and cover=False skips both Phase 10 and Phase 11 and completes right after Phase 9.
+    direct_ws = tmp_path / 'direct_after_9'
+    complete_through_check(direct_ws, bgm=False, cover=False)
+    direct_res = parse_result(run_cli(str(direct_ws)))
+    assert '9-check' in direct_res['completed_phases']
+    assert {'10-mix', '11-cover'} <= set(direct_res['skipped_phases'])
+    assert direct_res['next_phase'] is None
+
+
+def test_phase_11_cover_progression_report_contracts_and_cover_flag(tmp_path: Path):
+    ws = tmp_path / 'ws'
+    complete_through_mix(ws)
+
+    missing = parse_result(run_cli(str(ws)))
+    assert missing['next_phase']['id'] == '11-cover'
+    assert missing['next_phase']['doc'] == 'references/phases/11-cover.md'
+    assert set(missing['missing_products']) == {'cover/cover-report.json', 'cover/cover-summary.md'}
+
+    # Valid default 3-size covers complete Phase 11.
+    valid_report = write_cover_products(ws)
+    done = parse_result(run_cli(str(ws)))
+    assert '11-cover' in done['completed_phases']
+    assert done['next_phase'] is None
+
+    # Failing verdict or missing default size (without cover_requests) fails Phase 11.
+    write_json(ws / 'cover' / 'cover-report.json', {**valid_report, 'verdict': 'fail'})
+    fail_res = parse_result(run_cli(str(ws)))
+    assert fail_res['next_phase']['id'] == '11-cover'
+    assert 'cover/cover-report.json' in fail_res['corrupt_products']
+
+    one_size_only = [c for c in valid_report['covers'] if c['size'] == '1920x1080']
+    write_json(
+        ws / 'cover' / 'cover-report.json',
+        {**valid_report, 'sizes': ['1920x1080'], 'covers': one_size_only},
+    )
+    missing_size = parse_result(run_cli(str(ws)))
+    assert missing_size['next_phase']['id'] == '11-cover'
+    assert '1080x1440' in missing_size['next_phase']['problems']['cover/cover-report.json']
+
+    # When cover_requests explicitly narrows sizes, a single-size report is accepted.
+    write_json(ws / 'inputs.json', {**INPUTS, 'cover_requests': ['只出 1920x1080 封面']})
+    assert parse_result(run_cli(str(ws)))['next_phase'] is None
+    write_json(ws / 'inputs.json', INPUTS)
+
+    # Missing cover entry or missing/escaped physical PNG/HTML fails check_cover_report.
+    no_16x9 = [c for c in valid_report['covers'] if c['size'] != '1920x1080']
+    write_json(ws / 'cover' / 'cover-report.json', {**valid_report, 'covers': no_16x9})
+    assert '1920x1080' in parse_result(run_cli(str(ws)))['next_phase']['problems']['cover/cover-report.json']
+
+    write_json(ws / 'cover' / 'cover-report.json', valid_report)
+    (ws / 'cover' / 'cover_1080x1440@2x.png').unlink()
+    missing_png = parse_result(run_cli(str(ws)))
+    assert missing_png['next_phase']['id'] == '11-cover'
+    assert 'cover_1080x1440@2x.png' in missing_png['next_phase']['problems']['cover/cover-report.json']
+    write_blob(ws / 'cover' / 'cover_1080x1440@2x.png')
+
+    escaped = json.loads(json.dumps(valid_report))
+    escaped['covers'][0]['image'] = '../escape.png'
+    write_json(ws / 'cover' / 'cover-report.json', escaped)
+    assert 'not a relative path' in parse_result(run_cli(str(ws)))['next_phase']['problems']['cover/cover-report.json']
+    write_json(ws / 'cover' / 'cover-report.json', valid_report)
+
+    # cover=False skips Phase 11 after Phase 10 and refuses --redo 11-cover.
+    no_cover_ws = tmp_path / 'no_cover'
+    complete_through_mix(no_cover_ws, cover=False)
+    no_cover = parse_result(run_cli(str(no_cover_ws)))
+    assert '10-mix' in no_cover['completed_phases']
+    assert '11-cover' in no_cover['skipped_phases']
+    assert no_cover['next_phase'] is None
+    redo_cover = run_cli(str(no_cover_ws), '--redo', '11-cover', '--reason', '重做封面')
+    assert redo_cover.returncode == 1 and 'skipped' in parse_result(redo_cover)['error']
 
 
 def test_unreadable_file_is_corrupt_not_missing(tmp_path: Path):
@@ -1304,6 +1420,7 @@ PHASE_IDS = [
     '8-composition',
     '9-check',
     '10-mix',
+    '11-cover',
 ]
 
 
@@ -1409,7 +1526,11 @@ def test_non_gating_input_and_instruction_edits_do_not_invalidate_settled_worksp
     qa_res = parse_result(run_cli(str(tmp_path)))
     assert qa_res['next_phase'] is None and '9-check' in qa_res['completed_phases']
 
-    for field, req in (('narration_requests', ['结尾不要 CTA']), ('composition_requests', ['不要人物区'])):
+    for field, req in (
+        ('narration_requests', ['结尾不要 CTA']),
+        ('composition_requests', ['不要人物区']),
+        ('cover_requests', ['封面采用近黑深底']),
+    ):
         write_json(tmp_path / 'inputs.json', {**INPUTS, field: req})
         assert parse_result(run_cli(str(tmp_path)))['next_phase'] is None
         write_json(tmp_path / 'inputs.json', {**INPUTS, field: []})
@@ -1440,7 +1561,7 @@ def test_deleting_phase_6_products_makes_6_next_and_the_rest_pending_until_resto
 
     assert result['next_phase']['id'] == '6-script-scene-plan'
     assert result['next_phase']['reason'] == 'missing'
-    assert result['pending_phases'] == ['7-voice-subtitles', '8-composition', '9-check', '10-mix']
+    assert result['pending_phases'] == ['7-voice-subtitles', '8-composition', '9-check', '10-mix', '11-cover']
     assert result['completed_phases'] == ['1-gather-inputs', '3-research', '4-material-harvest', '5-material-catalog']
 
     # 相同的字节写回去：一切照旧。
@@ -1629,7 +1750,7 @@ def test_script_gate_records_the_confirmation_fact(tmp_path: Path):
         '把旁白和每个 scene 的 scene_id + intent + content_plan 摘要交给用户确认；确认后运行 '
         '`python3 scripts/pipeline-status.py <ws> --approve script`'
     )
-    assert waiting['pending_phases'] == ['7-voice-subtitles', '8-composition', '9-check', '10-mix']
+    assert waiting['pending_phases'] == ['7-voice-subtitles', '8-composition', '9-check', '10-mix', '11-cover']
 
     result = approve(tmp_path, 'script')
 
@@ -1871,6 +1992,16 @@ def test_finishing_phase_9_and_phase_10_redos_keep_independent_completion(tmp_pa
     assert mix_done.returncode == 0, mix_done.stderr
     assert parse_result(mix_done)['next_phase'] is None
 
+    cover_redo = redo(tmp_path, '11-cover', '增强 3:4 封面钩子对比度')
+    assert statuses(cover_redo)['9-check'] == 'completed'
+    assert statuses(cover_redo)['10-mix'] == 'completed'
+    assert cover_redo['next_phase']['id'] == '11-cover'
+    assert cover_redo['next_phase']['reason'] == 'redo'
+
+    cover_done = finish(tmp_path, '11-cover')
+    assert cover_done.returncode == 0, cover_done.stderr
+    assert parse_result(cover_done)['next_phase'] is None
+
 
 def test_finish_refuses_products_that_do_not_pass(tmp_path: Path):
     settle(tmp_path)
@@ -2057,13 +2188,14 @@ def test_request_lists_validation_at_phase_1(tmp_path: Path):
             tmp_path,
             narration_requests=value,
             composition_requests=value,
+            cover_requests=value,
             material_search_requests=value,
         )
         ok = parse_result(run_cli(str(tmp_path)))
         assert ok['completed_phases'] == ['1-gather-inputs']
         assert ok['next_phase']['id'] == '3-research'
 
-    for field in ('narration_requests', 'composition_requests', 'material_search_requests'):
+    for field in ('narration_requests', 'composition_requests', 'cover_requests', 'material_search_requests'):
         for bad_val in ('语气更口语', None, [''], ['  '], ['ok', 3]):
             complete_through_inputs(tmp_path, **{field: bad_val})
             res = parse_result(run_cli(str(tmp_path)))

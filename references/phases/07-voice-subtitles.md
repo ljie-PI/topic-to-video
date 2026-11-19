@@ -64,7 +64,7 @@ source .venv/bin/activate && python3 scripts/voice-subtitles.py {work_dir}/{topi
 | scene / cue | Phase 6 script agent：改 `scene-plan.json`，本阶段可用 `--align-only` 重建时间轴 |
 | 音色或后端（输入文件未变） | 主 agent 登记 `--redo 7-voice-subtitles --reason "..."` 后完整重跑 |
 
-重跑过配音 / 转写 / 对齐后，由主 agent 按修改影响范围显式登记 Phase 8 及成片 QA / 混音（Phase 9 / 10）重做。
+重跑过配音 / 转写 / 对齐后，由主 agent 按修改影响范围显式登记 Phase 8 及下游成片 QA / 混音 / 封面（Phase 9 / 10 / 11）重做。
 
 ## 时间戳与字幕
 

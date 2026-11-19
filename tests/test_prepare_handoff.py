@@ -60,6 +60,14 @@ def make_workspace(tmp_path: Path, step: str = 'script', **overrides) -> Path:
         write(ws / 'transcribe' / 'timeline.json', '{"paragraphs": []}')
         write(ws / 'narration.txt', '甲\n\n乙\n')
         write(ws / 'narration-offsets.json', '{"version": 1, "segments": []}')
+    if step == 'cover':
+        write(ws / 'script.txt', '甲\n\n乙\n')
+        write(ws / 'scene-plan.json', '[]')
+        write(ws / 'transcribe' / 'timeline.json', '{"paragraphs": []}')
+        write(ws / 'composition' / 'design.json', '{"version": 1}')
+        write(ws / 'composition' / 'scene-config.json', '{"version": 1}')
+        write(ws / 'composition' / 'assets' / 'subtitle-units.json', '{"units": []}')
+        write(ws / 'composition' / 'renders' / 'final.mp4')
     return ws
 
 
@@ -89,7 +97,7 @@ def handoff_sections(text: str) -> dict[str, str]:
 
 
 class TestDelegationSelection:
-    @pytest.mark.parametrize('step', ['catalog', 'script', 'composition'])
+    @pytest.mark.parametrize('step', ['catalog', 'script', 'composition', 'cover'])
     def test_exact_stage_agent_and_model_reach_handoff_and_dispatch_result(self, tmp_path: Path, step: str):
         ws = make_workspace(
             tmp_path, step, coding_agent='claude-code',
@@ -207,7 +215,8 @@ class TestRequestLists:
     @pytest.mark.parametrize('step, field', [
         ('script', 'narration_requests'),
         ('composition', 'composition_requests'),
-    ], ids=['script', 'composition'])
+        ('cover', 'cover_requests'),
+    ], ids=['script', 'composition', 'cover'])
     def test_absent_and_empty_request_lists_write_the_same_section(self, tmp_path: Path, step: str, field: str):
         absent = make_workspace(tmp_path / 'a', step)
         prepare(absent, step)
@@ -342,7 +351,7 @@ class TestAdditionalInstructions:
 
 
 class TestMaterialization:
-    @pytest.mark.parametrize('step', ['script', 'catalog'])
+    @pytest.mark.parametrize('step', ['script', 'catalog', 'cover'])
     def test_package_and_conventions_are_copied_without_modules_or_fonts(self, tmp_path: Path, step: str):
         ws = make_workspace(tmp_path, step)
 
@@ -353,10 +362,11 @@ class TestMaterialization:
         assert (delegation / 'conventions.md').read_bytes() == (source / 'conventions.md').read_bytes()
         for name in ('base-instructions.md', 'handoff-template.md'):
             assert (delegation / step / name).read_bytes() == (source / step / name).read_bytes()
-        for other_step in {'catalog', 'script', 'composition'} - {step}:
+        for other_step in {'catalog', 'script', 'composition', 'cover'} - {step}:
             assert not (delegation / other_step).exists()
         assert not (ws / 'modules').exists()
-        assert not (ws / 'composition').exists()
+        if step != 'cover':
+            assert not (ws / 'composition').exists()
         assert result['materialized'] == [str(delegation / 'conventions.md'), str(delegation / step)]
 
     @pytest.mark.parametrize('step, path_parts, unit_parts', [
@@ -463,12 +473,23 @@ COMPOSITION_GENERATED = {
 }
 
 
+COVER_PRODUCTS = {
+    'cover',
+    'cover/cover-report.json',
+    'cover/cover-summary.md',
+    'cover/qa/thumb_1080x1440_400w.png',
+    'cover/qa/thumb_1440x1080_400w.png',
+    'cover/qa/thumb_1920x1080_400w.png',
+}
+
+
 class TestHandoffContract:
     @pytest.mark.parametrize('step, products', [
         ('script', {'script.txt', 'tts-lexicon.json', 'scene-plan.json', 'narration.txt', 'narration-offsets.json'}),
         ('catalog', {'material-catalog.json', 'extract_frames', 'clips'}),
         ('composition', COMPOSITION_PRODUCTS | COMPOSITION_GENERATED),
-    ], ids=['script', 'catalog', 'composition'])
+        ('cover', COVER_PRODUCTS),
+    ], ids=['script', 'catalog', 'composition', 'cover'])
     def test_writes_handoff_and_dispatch_prompt_with_only_products_missing(
         self, tmp_path: Path, step: str, products: set[str],
     ):
@@ -534,11 +555,16 @@ class TestCompositionHandoff:
 
     def test_documented_options_of_the_commands_exist_in_the_scripts(self, tmp_path: Path):
         ws = make_workspace(tmp_path, 'composition')
+        write(ws / 'composition' / 'design.json', '{"version": 1}')
+        write(ws / 'composition' / 'scene-config.json', '{"version": 1}')
+        write(ws / 'composition' / 'assets' / 'subtitle-units.json', '{"units": []}')
+        write(ws / 'composition' / 'renders' / 'final.mp4')
         prepare(ws, 'composition')
         prepare(ws, 'script')
+        prepare(ws, 'cover')
 
         checked: set[str] = set()
-        for handoff in ('composition-handoff.md', 'script-handoff.md'):
+        for handoff in ('composition-handoff.md', 'script-handoff.md', 'cover-handoff.md'):
             text = (ws / handoff).read_text(encoding='utf-8').replace('\\\n', ' ')
             for script, tail in re.findall(r'scripts/([\w-]+\.py)((?: +\S+)+)', text):
                 source = (REPO_ROOT / 'scripts' / script).read_text(encoding='utf-8')
@@ -551,6 +577,7 @@ class TestCompositionHandoff:
                     assert f"'{option}'" in source, f'{handoff}: scripts/{script} has no {option}'
         assert 'check-composition.py' in checked  # the positional-first command is covered
         assert 'make-narration.py' in checked
+        assert 'render-cover.py' in checked
 
     @pytest.mark.parametrize('input_mode', ['standard', 'paper'])
     def test_inputs_section_lists_the_catalog_only_when_materials_are_fetched(
@@ -943,6 +970,7 @@ class TestDelegationDocs:
             ('references/phases/05-material-catalog.md', 'catalog'),
             ('references/phases/06-script-scene-plan.md', 'script'),
             ('references/phases/08-composition.md', 'composition'),
+            ('references/phases/11-cover.md', 'cover'),
         ):
             text = (REPO_ROOT / doc).read_text(encoding='utf-8')
             assert (

@@ -53,7 +53,7 @@
 
 ## 下一步
 
-Phase 9（成片检查）：运行 `check-render.py` + `make-contact-sheet.py` + 按 `qa_level` 的 vision 检查（修复轮最多 2 轮），再进 Phase 10 混入 BGM（`bgm = false` 时直接交付 `final.mp4`）。
+Phase 9（成片检查）：运行 `check-render.py` + `make-contact-sheet.py` + 按 `qa_level` 的 vision 检查（修复轮最多 2 轮），随后进入可选的 Phase 10 混入 BGM 与 Phase 11 生成多尺寸视频封面。
 
 ## 护栏
 
@@ -69,7 +69,7 @@ Phase 9（成片检查）：运行 `check-render.py` + `make-contact-sheet.py` +
 #### 8.0 — 确认全片约束与派发前置条件
 
 - 主 agent 只核对 `inputs.json` 的 `orientation` 与可选 `composition_requests`（新提出的画面要求先按 `references/pipeline-control.md` 写入 `composition_requests` 再生成 handoff）；全片 design、视觉切分与逐场景 template / layout 均由 composition agent 在本阶段产出。
-- 修改 design、视觉 scenes 或 layout 只登记 `--redo 8-composition` 及受影响的 Phase 9 / 10 重做，不重建 Phase 7 音频、transcript 与时间轴。
+- 修改 design、视觉 scenes 或 layout 只登记 `--redo 8-composition` 及受影响的 Phase 9 / 10 / 11 重做，不重建 Phase 7 音频、transcript 与时间轴。
 
 #### 8.1 — 物化委派包与 modules
 
