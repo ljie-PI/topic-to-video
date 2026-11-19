@@ -59,6 +59,8 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 状态脚本把结果 JSON 输出到 stdout，日志输出到 stderr（日志不作为阶段完成依据）。退出码：`0`=成功，`1`=运行时错误，`2`=参数非法。`scripts/pipeline-status.py` 是整条流程唯一的续跑入口，输出包含 `phases` / `completed_phases` / `skipped_phases` / `pending_phases` / `redo_phases` / `approval_gates` / `next_phase` / `missing_products` / `corrupt_products`。
 
+共享 Chrome profile：`{work_dir}/chrome_profile/` —— **不要**删除。
+
 ## 工具与依赖
 
 每一步先跑 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`；具体工具、调用示例和异常处理只读当前阶段文档。
