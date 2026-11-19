@@ -81,7 +81,7 @@ def make_workspace(tmp_path: Path, *, scene_plan: bool = True) -> Path:
         {
             'source': 'https://example.com/article',
             'input_mode': 'standard',
-            'duration': 0.15,
+            'duration': 0.1,
             'language': 'zh',
             'orientation': 'landscape',
             'design': 'default',

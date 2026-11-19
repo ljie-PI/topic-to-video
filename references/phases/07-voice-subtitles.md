@@ -21,7 +21,7 @@
 
 - `voice_clone/narration.mp3` 为存在且非空的普通文件。
 - `transcribe/transcript.json` 为非空句子列表，每句含 `begin` / `end` / `text` / `words`（`words` 为列表）。
-- `transcribe/timeline.json` 的 `paragraphs` 为非空列表（每项含数字 `index` / `begin_s` / `end_s`），可选 `scenes` / `cues` 按契约携带数字秒数。
+- `transcribe/timeline.json` 的 `paragraphs` 为非空列表（每项含数字 `index` / `begin_s` / `end_s`），可选 `scenes` / `cues` 按契约携带数字秒数；带 `beats` 的时间轴会被打回。
 
 **执行者核对（脚本判断不了）**
 
@@ -37,7 +37,7 @@ Phase 8（composition，委派）：选定 design 并安装字体，按视觉 sc
 ## 护栏
 
 - **TTS / ASR 后端由环境变量选择**（参数与依赖见 `scripts/voice-clone.py`、`scripts/transcribe.py` 顶部说明），**严禁**使用 `npx hyperframes tts` 或 `npx hyperframes transcribe`。
-- **必须产出本轮新鲜的词级时间戳 transcript**（直对齐优先，失败自动回退 ASR，成功 JSON 含 `transcript_method`；主用直对齐如 `mlx` 时也建议配置后备 ASR），禁沿用旧轮次或无词级时间的 transcript。
+- **必须产出本轮新鲜的词级时间戳 transcript**（直对齐优先，失败自动回退 ASR，成功 JSON 含 `transcript_method`；即使主用直对齐如 `mlx`，也要配置一种 ASR 后备，否则回退路径不可用），禁沿用旧轮次或无词级时间的 transcript。
 - **禁手改派生产物**（`narration.txt`、`timeline.json`）或把解说粘进源码；调整内容须回 Phase 6 修改显示稿、词表或 `scene-plan.json` 后重跑。
 - **禁用全角中文冒号 `：`**（改用 `——`、逗号或断句，避免 TTS 偶发停顿）。
 

@@ -23,7 +23,7 @@
 
 `pipeline-status` 仅检查 manifest 结构，执行者须核对：
 
-- 页面与主题相关（明显偏题来源剔除并记录原因）；HTTP 200 的登录墙、验证码页、付费墙或错误页不得当作可用素材。
+- 页面与主题相关（明显偏题来源剔除并记录原因）；图片清晰可用（缩略图、水印、占位图不算），视频有实质内容而非错误页；HTTP 200 的登录墙、验证码页、付费墙不得当作可用素材。
 - `material_search_requests` 已逐条在目标平台执行并如实记录结果（禁拿普通网页搜索冒充指定平台搜索）。
 - 受限来源（需登录 / 地区限制 / 反机器人验证）已记入 `search-notes.md`，供最终交付时说明；下载失败项保留 `download_required: true`，禁伪造下载。
 - 已完成 Phase 4.c 的像素尺寸与清晰度筛选，并将剔除结果写回 `harvest_page/manifest.json`（不只停留在对话或笔记中）。
@@ -77,7 +77,7 @@ URL 来源优先级：
 
 `inputs.json` 的 `material_search_requests` 非空时由 agent 侧按原话执行（新增或修改该字段须先按 `references/pipeline-control.md` 登记 `--redo 4-material-harvest`）：
 
-- **图片搜索（Google / Bing 等）**：用浏览器或 Playwright 在目标平台搜图，进入匹配结果的**原始来源页面**核对出处与清晰度后，将原始页面 URL 加入清单。
+- **图片搜索（Google / Bing 等）**：用浏览器或 Playwright 在目标平台搜图，进入匹配结果的**原始来源页面**核对出处、清晰度和使用许可后，将原始页面 URL 加入清单。
 - **视频网站（YouTube / Bilibili）**：按“项目名 + 演示 / 讲座 / 实验”检索，优先官方或作者频道，确认后将观看页 URL 加入清单或传给 `video-download.py`。
 - **平台受限或无合格结果**：先用继承登录态尝试，失败则将来源 URL、平台、尝试方式、受限原因与替代方案记入 `search-notes.md`（禁存凭据）；仅当缺失的是用户点名的核心不可替代素材时按材料不足报告。
 

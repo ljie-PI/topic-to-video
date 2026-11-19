@@ -19,7 +19,7 @@
 | `orientation` | `landscape`（横屏 1920×1080）/ `portrait`（竖屏 1080×1920，仅显式 9:16）/ `portrait-3:4`（1080×1440，默认竖屏） |
 | `coding_agent` | 全局委派目标；默认值与命令以 `references/delegation/conventions.md` 的统一约定为准 |
 | `delegation` | 可选，阶段级 agent / model 要求。对象的键为 `catalog` / `script` / `composition`，各值只含 `agent` 和 / 或 `model`（非空字符串）；如 `{"catalog": {"agent": "pi-coding-agent", "model": "<provider>/<model-id>"}}`。未指定 agent 时继承 `coding_agent`，未指定 model 时使用目标 agent 自身的模型配置；用户点名时严格遵循，未提就不填 |
-| `fetch_materials` | 是否联网抓取视觉素材（布尔） |
+| `fetch_materials` | 是否联网抓取视觉素材（布尔，默认 `true`；用户明确不要素材时写 `false`） |
 | `approval_gates` | 可选，默认 `[]`（全自动、不停下来审稿）；不主动询问是否审稿。用户要求审稿时按入口的表填：只看调研用 `["research-brief"]`，只看旁白用 `["script"]`，只说“中途让我审稿”就两处都填。续跑保留已有要求，用户明确改才动 |
 | `narration_requests` | 可选，字符串列表，默认不填。用户对旁白提出的长期要求（“语气更口语”“结尾不要 CTA”），逐条用他的原话记下；Phase 6 委派前读它 |
 | `composition_requests` | 可选，字符串列表，默认不填。用户对画面与视觉风格提出的长期要求（“强调方法图”“不要人物区”“用 github 主题”“仅第 2 场用深色科技风”），逐条用原话记下；Phase 8 委派前读它 |
@@ -53,12 +53,17 @@
 
 ---
 
-**特殊输入与跨项目风格处理：**
+按下面的要点把输入集齐：
 
 1. **朝向细分**：默认横屏 `landscape`（`1920×1080`）；用户只说“竖屏”未指定比例时写 `portrait-3:4`（`1080×1440`），明确要求 9:16 时才写 `portrait`（`1080×1920`）。
-2. **输入模式识别（`input_mode`）**：
-   - 来源是本地 `.pdf` 路径，或以 `.pdf` 结尾的 URL（如 arXiv PDF）→ 置 `input_mode = "paper"`（保留 PDF URL 供 `parse-pdf.py --url` 使用）；论文模式即使 `fetch_materials = false`，论文自身的关键图表仍进入视频；
-   - 其他来源 → 默认 `input_mode = "standard"`（后续跳过所有论文专属步骤）。
-3. **沿用其他项目风格**（如“用和 `xxx-video/` 一样的风格”）：读取目标项目的 `composition/design.json`，将对应主题或风格要求整理写入本项目的 `composition_requests`；本项目最终外观仍由 Phase 8 落盘为 `composition/design.json`。
+2. **视觉素材**：默认 `fetch_materials = true`（联网搜索）；用户明确不要素材时写 `false`（论文模式即使不联网搜索，论文自己的关键图也照样进视频）。用户点名要在某个平台找素材时，把原话记进 `material_search_requests`；没提就不加。
+3. **旁白、画面与背景乐的额外要求**：用户对旁白说的（“语气更口语”“结尾不要 CTA”）进 `narration_requests`；对画面、视觉风格、配色或主题说的（“强调实验对比图”“不要人物区”“全片用 github 风格”“仅第 2 场用深色科技风”）原话进 `composition_requests`，由 Phase 8 按 `modules/designs/designs.md` 处理；明确说不要背景音乐 / BGM 时置 `bgm = false`（没提就不填，默认开启）。同一件事不要两处都记。
+4. **审稿**：默认不审稿（`approval_gates` 为 `[]`）。只有用户明确要求时才填 `research-brief` / `script`，不主动询问。
+5. **输入类型识别：**
+   - 来源是 `.pdf` 文件路径 → 置 `input_mode = "paper"`
+   - 来源是以 `.pdf` 结尾的 URL（例如 arXiv） → 置 `input_mode = "paper"`，并将该 URL 保留用于 `parse-pdf.py --url`
+   - 否则 → 置 `input_mode = "standard"`（默认；后续所有 "paper mode" 段落都跳过）
+
+**如果用户要求沿用另一个项目的风格**（例如“用和 `xxx-video/` 一样的风格”），读取目标项目的 `composition/design.json`，将对应主题或风格要求整理写入本项目的 `composition_requests`。
 
 落盘 `inputs.json` 后运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}` 进入下一阶段。

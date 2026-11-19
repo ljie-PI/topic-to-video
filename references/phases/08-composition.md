@@ -43,7 +43,7 @@
 - `composition/assets/subtitle-units.json` 的 `units` 非空，`composition/storyboard.md` 非空，`composition/index.html` 存在，`composition/compositions/` 非空；
 - `composition/check-composition.json` 的 `verdict == "pass"` 且 `scenes_checked` 覆盖当前每个视觉 scene 及其 layout（改过 `scene-config` 或画面须重跑检查并重新渲染）；
 - `composition/renders/final.mp4` 存在且非空；
-- 通过下方 **8.4 主 agent 抽查**（`npx hyperframes check` 无错、storyboard 记录及素材 / 动画演绎合规）。
+- 通过下方 **8.3 主 agent 校验**（`npx hyperframes check` 无错、storyboard 记录及素材 / 动画演绎合规）。
 
 ## 执行后自检
 
@@ -63,6 +63,8 @@ Phase 9（成片检查）：运行 `check-render.py` + `make-contact-sheet.py` +
 - **单 agent 逐场景拆分子合成写盘，优先消费 catalog 元数据。** 各视觉场景拆成独立 `composition/compositions/<scene>.{html,mjs}` 逐个落盘，防单次拼装巨型 `index.html` 触发 `413` 上限；默认优先读取 `material-catalog.json` 的尺寸、语义与 `focal_region`，仅在元数据不足以确定裁剪边界时按需单张查看原图，禁批量打开 `harvest_page/` 全部原图触发多模态 `400` 上限。
 
 ---
+
+**主 agent 不读委派包里的基础指令**（`references/delegation/composition/base-instructions.md` 只给被委派的 composition agent 读）。
 
 #### 8.0 — 确认全片约束与派发前置条件
 

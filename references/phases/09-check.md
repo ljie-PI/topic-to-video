@@ -89,7 +89,7 @@ python3 scripts/make-contact-sheet.py \
 4. **主题质感与作用域**：符合 `composition/design.json` 的配色、细线层级与透纸纹质感，单 scene 限定的 token 覆盖未外泄；
 5. **版式清爽无复读**：无明显空洞、错位、文字出框/遮挡，主副展示区（`main` / `side`）无重复文案堆砌。
 
-单张中点帧不足以确认“连续技术图切点无过场 / 局部 zoom 推进”或“无素材分步动画演进”时，对照 `storyboard.md` 对涉及时刻按需单点抽帧核对（`strict` 档可直接看入场帧与切点三帧）。
+单张中点帧不足以确认“连续技术图切点无过场 / 局部 zoom 推进”或“无素材分步动画演进”时，对照 `storyboard.md` 对涉及时刻按需单点抽帧核对（`strict` 档可直接看入场帧与切点三帧）；纯审美层面的缓动观感默认交给用户在预览中判断。
 
 #### 9.4 — qa-report.json 与修复轮
 
@@ -102,7 +102,7 @@ python3 scripts/make-contact-sheet.py \
 }
 ```
 
-每条 finding 统一为 `{"scene_id": str, "check": str, "issue": str, "time_s": float|null, "frame": str|null}`（确定性 finding 原样拷入且 `frame: null`；vision finding 的 `frame` 填对应 sheet 路径）。`verdict == "fail"` 时进入修复轮：
+每条 finding 统一为 `{"scene_id": str, "check": str, "issue": str, "time_s": float|null, "frame": str|null}`：`time_s` 填检测或快照时刻，没有对应时刻填 `null`；确定性 finding 原样拷入且 `frame: null`，vision finding 的 `frame` 填对应 sheet 路径。`verdict == "fail"` 时进入修复轮：
 
 1. 将 findings 交回 Phase 8 composition agent，**只改受影响的 scene**；
 2. 若修改了 composition 源码或契约文件，**必须重跑 `check-composition --output` 并重新渲染 `final.mp4`**；随后全片重跑 `check-render.py`，vision 仅抽帧复核受影响 scene（无需重拼整套 sheet）；

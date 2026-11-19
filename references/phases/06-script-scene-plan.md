@@ -21,10 +21,10 @@
 ## 完成判据
 
 - `pipeline-status` 校验通过（Phase 6 不再是 `next_phase`）：
-- `script.txt`、`narration.txt` 存在且非空；`script.txt` 的字数（去掉所有空白）与 `inputs.json` 的 `duration`（分钟）× 60 × 5（按 5 中文字/秒计算）的偏差在 ±15% 以内；
+- `script.txt`、`narration.txt` 存在且非空；`script.txt` 的字数（去掉所有空白）与 `inputs.json` 的 `duration`（分钟）× 60 × 7（按 7 中文字/秒计算）的偏差在 ±15% 以内；
 - `tts-lexicon.json` 为非空 JSON map，键值均为非空字符串；
 - `narration-offsets.json`（`version: 1`）含非空 `segments`，且 `script_length` / `narration_length` 等于当前 `script.txt` / `narration.txt` 字符数（改 `script.txt` 必须重跑 `make-narration.py`）；
-- `scene-plan.json` 为非空列表：每项仅含契约允许字段（`scene_id`、整数 `paragraphs`、非空 `intent` / `content_plan` 及可选 `material_candidates` / `cues`；模板、pattern 与动作归 Phase 8）；全部 scene 的 `paragraphs` 并集恰好覆盖 `script.txt` 第 1 段到最后一段；`material_candidates[].ref` 均可在 catalog 按 entry 解析（图片 / 视频 `<slug>/<id>`，片段 `<slug>/<video_id>:<start>-<end>` 且与 `selected_clips` 起止误差 ≤ 0.01s，裸 id 无效；无 catalog 时为 `[]`）；`required_material_refs` 每条均至少被一个 scene 选入候选；
+- `scene-plan.json` 为非空列表：每项含 `scene_id`、整数 `paragraphs`、非空 `intent` / `content_plan`（及可选 `material_candidates` / `cues`），且不得包含 `template_scene` / `pattern_hints` / `beats`（模板、pattern 与动作归 Phase 8，出现即不合格）；全部 scene 的 `paragraphs` 并集恰好覆盖 `script.txt` 第 1 段到最后一段；`material_candidates[].ref` 均可在 catalog 按 entry 解析（图片 / 视频 `<slug>/<id>`，片段 `<slug>/<video_id>:<start>-<end>` 且与 `selected_clips` 起止误差 ≤ 0.01s，裸 id 无效；无 catalog 时为 `[]`）；`required_material_refs` 每条均至少被一个 scene 选入候选；
 - 校验通过后默认自动进入 Phase 7；仅当 `inputs.json` 的 `approval_gates` 含 `"script"` 时，先交用户确认再执行 `--approve script`。
 
 ## 执行后自检

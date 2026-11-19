@@ -17,17 +17,19 @@
 图片、视频帧与缺失 caption 的论文图表共用两种方式（任务 prompt、话题 summary 与评分量表一致；Mode 1 模型返回文本仍由执行 agent 解析核对后写入 catalog）：
 
 - **Mode 1（显式 VLM）**：用户选择此路径，或未限定模型且环境已配置 `VLM_API_KEY`、`VLM_BASE_URL`、`VLM_MODEL` 时，调用 `scripts/vision-analyze.py`（OpenAI 兼容 `/chat/completions`；指定模型传 `--model <model-id>`，不得被环境变量覆盖；配了 key 但缺 URL / model 直接报错不回退）。
-- **Mode 2（执行 agent 直接看图）**：未配 `VLM_API_KEY`（或用户明确指定用执行 agent 自身模型）时，脚本返回 `delegate_to_agent`、图片路径、`prompt` 与 `context`，由执行 agent 用自身 Read / view 工具完成多模态分析并写入 catalog。
+- **Mode 2（执行 agent 直接看图）**：未配 `VLM_API_KEY` 时，脚本返回 `delegate_to_agent`、图片路径、`prompt` 与 `context`，由执行 agent 用自身 Read / view 工具和当前指定的多模态模型完成分析并写入 catalog（不额外调 VLM API）。若用户指定使用执行 agent 自身模型、而环境已配置不同的 VLM，直接绕过脚本的 VLM 调用走自身看图路径，不让环境配置覆盖用户要求。
 
 每次调用传入 `--prompt`、`--images` 与 `--context-file vision_analyze/topic-context.txt`。**单次硬上限 10 张图（视频粗看每请求 ≤8 帧，局部细看每请求只传 1 张 4×4 拼图）**；SVG 先栅格化为 PNG 再输入（保留原 SVG 引用）。概览可用默认 `--detail low`；读小字、图表、关键 UI 与焦点区域须用 `--detail high` 并提供清晰原图 / 局部图。
 
 ### 分开理解、匹配与展示建议
 
-单次调用的 prompt 分三部分返回，结果与分项评分留存于 `vision_analyze/<slug>/`：
+单次调用的 prompt 分三部分返回：
 
 1. **视觉理解**：只记录客观可见事实（对象、文字、图表结构、动作 / 状态变化、风格、关键区域）及看不清 / 不确定处，禁按话题脑补（论文有非空 caption 时以 caption 为文本依据，不声称已看图）。
 2. **话题语义匹配**：对照用户输入与话题 summary，指出可支撑的具体概念 / 论点、画面证据与限制，生成叙事锚点 `semantic_description` 并按下表打分。
-3. **展示建议**：按内容、比例与可读性给出有第 1 步可见依据的 `layout_affordance` / `focal_region`（无依据置 `null`）。
+3. **展示建议**：按内容、比例与可读性给出有第 1 步可见依据的 `layout_affordance` / `focal_region`，理由要能追溯到第 1 步。没有证据就不标注，不把展示能力当成相关性分数。
+
+理解结果、匹配理由与分项评分保存在 `vision_analyze/<slug>/`；catalog 保持下文 schema，提供下游需要的叙事锚点与布局提示。
 
 ### 适配度评分与过滤（图片 / 视频 / 缺失 caption 的论文图表）
 
@@ -133,7 +135,7 @@ manifest 中 `source_type: "paper_pdf"` 的条目按 slug 区分（`main-paper` 
 scripts/cut-clips.py {work_dir}/{topic_name}
 ```
 
-脚本按 `harvest_page/` base 读取源视频，以 `-an` 剥除音轨（`libx264` 重编码）切出 `{work_dir}/{topic_name}/clips/<video_id>_<start:.2f>-<end:.2f>.mp4`（已存在非空文件自动跳过，支持幂等重跑），原地原子写回相对工作区根的 `clip_path`。任一片段失败时退出码为 `1`（已完成项保留），按输出 `errors` 中的 `ref` 修正窗口或路径后重跑。
+脚本按 `harvest_page/` base 读取源视频，以 `-an` 剥除音轨（`libx264` 重编码）切出 `{work_dir}/{topic_name}/clips/<video_id>_<start:.2f>-<end:.2f>.mp4`（已存在非空文件自动跳过，支持幂等重跑），原地原子写回相对工作区根的 `clip_path`。输出 JSON：`{"success": true, "clips": [{"ref": "<slug>/<video_id>:<start>-<end>", "clip_path": ..., "skipped": false}], "errors": []}`；任一片段失败时退出码为 `1`（已切好的片段保留且 catalog 增量写回），按 `errors` 中的 `ref` 与原因修 catalog（窗口、`local_path`）后重跑。
 
 **`required_material_refs`（论文模式必填，无适用图写 `[]`）：** 用不重复的 `<slug>/<id>` 声明成片必出的论文关键图 / 表（方法图、模型结构图、核心实验结果图表），禁写裸 id，也不因低分省略（缺失或看不清须在报告中说明）。
 
