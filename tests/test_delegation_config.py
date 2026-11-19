@@ -18,6 +18,7 @@ def test_resolve_delegation_scopes_stage_overrides_without_inventing_fields():
     assert resolve_delegation(inputs, 'catalog') == ('pi-coding-agent', 'provider/exact-model')
     assert resolve_delegation(inputs, 'script') == ('claude-code', None)
     assert resolve_delegation(inputs, 'composition') == ('claude-code', None)
+    assert resolve_delegation(inputs, 'cover') == ('claude-code', None)
 
     for config, expected in (
         ({}, ('pi-coding-agent', None)),

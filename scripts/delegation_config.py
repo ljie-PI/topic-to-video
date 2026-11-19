@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-STEPS = ('catalog', 'script', 'composition')
+STEPS = ('catalog', 'script', 'composition', 'cover')
 
 
 def validate_delegation(inputs: dict[str, Any]) -> None:

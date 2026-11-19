@@ -698,6 +698,8 @@ def load_inputs(ws: Path) -> tuple[CheckResult, dict[str, Any] | None]:
         return CheckResult(STATUS_CORRUPT, 'field fetch_materials is not a boolean'), None
     if 'bgm' in data and not isinstance(data['bgm'], bool):
         return CheckResult(STATUS_CORRUPT, 'field bgm is not a boolean'), None
+    if 'cover' in data and not isinstance(data['cover'], bool):
+        return CheckResult(STATUS_CORRUPT, 'field cover is not a boolean'), None
     try:
         validate_delegation(data)
     except ValueError as exc:
@@ -1155,6 +1157,79 @@ def check_qa_report(ws: Path, relpath: str) -> CheckResult:
     return OK
 
 
+COVER_SIZE_RE = re.compile(r'^\d+x\d+$')
+
+
+def check_cover_report(ws: Path, relpath: str) -> CheckResult:
+    """cover/cover-report.json：Phase 11 确定性渲染与 DOM 自检报告，verdict 必须为 pass，
+    且声明的每个尺寸的 HTML、1x PNG、@2x PNG 与 400px 缩略图均非空存在。"""
+    result, data = read_json_product(ws, relpath)
+    if not result.ok:
+        return result
+    if not isinstance(data, dict):
+        return CheckResult(STATUS_CORRUPT, 'JSON root is not an object')
+    if data.get('verdict') != 'pass':
+        return CheckResult(STATUS_CORRUPT, f'verdict must be "pass", got {data.get("verdict")!r}')
+    sizes = data.get('sizes')
+    if (
+        not isinstance(sizes, list)
+        or not sizes
+        or any(not isinstance(s, str) or not COVER_SIZE_RE.fullmatch(s) for s in sizes)
+    ):
+        return CheckResult(STATUS_CORRUPT, f'sizes must be a non-empty list of WxH strings, got {sizes!r}')
+    _, inputs = load_inputs(ws)
+    cover_requests = video_contract.request_items(inputs or {}, video_contract.COVER_REQUESTS_FIELD)
+    if not cover_requests:
+        missing_defaults = [s for s in video_contract.COVER_DEFAULT_SIZES if s not in sizes]
+        if missing_defaults:
+            return CheckResult(
+                STATUS_CORRUPT,
+                f'sizes is missing default cover size(s): {", ".join(missing_defaults)}',
+            )
+    covers = data.get('covers')
+    if not isinstance(covers, list) or not covers:
+        return CheckResult(STATUS_CORRUPT, 'covers must be a non-empty list')
+    by_size: dict[str, dict[str, Any]] = {}
+    for index, item in enumerate(covers):
+        if not isinstance(item, dict):
+            return CheckResult(STATUS_CORRUPT, f'covers[{index}] is not an object')
+        size = item.get('size')
+        if not isinstance(size, str) or not size:
+            return CheckResult(STATUS_CORRUPT, f'covers[{index}] missing string size')
+        by_size[size] = item
+    missing_sizes = [s for s in sizes if s not in by_size]
+    if missing_sizes:
+        return CheckResult(
+            STATUS_CORRUPT,
+            f'covers does not cover required size(s): {", ".join(missing_sizes)}',
+        )
+    cover_base = Path(relpath).parent
+    for size in sizes:
+        item = by_size[size]
+        for field_name in ('html', 'image', 'image_2x', 'thumb_400w'):
+            subpath = item.get(field_name)
+            if not isinstance(subpath, str) or not subpath.strip():
+                return CheckResult(
+                    STATUS_CORRUPT,
+                    f'cover {size} missing non-empty {field_name}',
+                )
+            sub = Path(subpath)
+            if sub.is_absolute() or '..' in sub.parts:
+                return CheckResult(
+                    STATUS_CORRUPT,
+                    f'cover {size} {field_name} {subpath!r} is not a relative path inside cover/',
+                )
+            ws_rel = (cover_base / sub).as_posix()
+            file_res = check_file_product(ws, ws_rel)
+            if not file_res.ok:
+                return CheckResult(
+                    STATUS_CORRUPT,
+                    f'cover artifact {ws_rel!r} is {file_res.detail or file_res.status} '
+                    '(run scripts/render-cover.py)',
+                )
+    return OK
+
+
 # --- 阶段定义 ----------------------------------------------------------------
 
 # 每个产物把它在 workspace 内的相对路径映射到某个检查器。只在部分 workspace
@@ -1184,12 +1259,17 @@ def _applies_when_bgm(inputs: dict[str, Any]) -> bool:
     return video_contract.bgm_applies(inputs)
 
 
+def _applies_when_cover(inputs: dict[str, Any]) -> bool:
+    return video_contract.cover_applies(inputs)
+
+
 APPLICABILITY: dict[str, tuple[Callable[[dict[str, Any]], bool], bool]] = {
     'always': (_applies_always, True),
     'paper': (_applies_when_paper, False),
     'fetch': (_applies_when_fetch, True),
     'fetch_or_paper': (_applies_fetch_or_paper, True),
     'bgm': (_applies_when_bgm, True),
+    'cover': (_applies_when_cover, True),
 }
 
 PHASES: list[dict[str, Any]] = [
@@ -1289,6 +1369,16 @@ PHASES: list[dict[str, Any]] = [
         'applies': 'bgm',
         'products': {
             'composition/renders/final_with_bgm.mp4': check_file_product,
+        },
+    },
+    {
+        'id': '11-cover',
+        'title': '生成封面（委派，可选）',
+        'doc': 'references/phases/11-cover.md',
+        'applies': 'cover',
+        'products': {
+            'cover/cover-report.json': check_cover_report,
+            'cover/cover-summary.md': check_text_product,
         },
     },
 ]

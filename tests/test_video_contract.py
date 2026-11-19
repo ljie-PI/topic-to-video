@@ -21,12 +21,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_phase_1_and_step_field_boundaries():
-    assert not {'design', 'layout', 'template', 'bgm'} & set(video_contract.INPUTS_BASE_FIELDS)
+    assert not {'design', 'layout', 'template', 'bgm', 'cover'} & set(video_contract.INPUTS_BASE_FIELDS)
     for name in ('source', 'input_mode', 'duration', 'language', 'orientation',
                  'coding_agent', 'fetch_materials'):
         assert name in video_contract.INPUTS_BASE_FIELDS
 
-    # bgm 默认开启，属于可选布尔字段，不强制要求旧工作区补填。
+    # bgm 与 cover 默认开启，属于可选布尔字段，不强制要求旧工作区补填。
     assert video_contract.bgm_applies({}) is True
     assert video_contract.bgm_applies({'bgm': True}) is True
     assert video_contract.bgm_applies({'bgm': False}) is False
@@ -34,17 +34,37 @@ def test_phase_1_and_step_field_boundaries():
     assert video_contract.input_field_problem('bgm', False) is None
     assert video_contract.input_field_problem('bgm', 'none') is not None
 
+    assert video_contract.cover_applies({}) is True
+    assert video_contract.cover_applies({'cover': True}) is True
+    assert video_contract.cover_applies({'cover': False}) is False
+    assert video_contract.input_field_problem('cover', True) is None
+    assert video_contract.input_field_problem('cover', False) is None
+    assert video_contract.input_field_problem('cover', 'none') is not None
+    assert video_contract.COVER_DEFAULT_SIZES == ('1080x1440', '1440x1080', '1920x1080')
+    assert video_contract.cover_presenter_slot(1080, 1440) == {'x': 724, 'y': 1084, 'size': 320}
+    assert video_contract.cover_presenter_slot(1440, 1080) == {'x': 1064, 'y': 704, 'size': 340}
+    assert video_contract.cover_presenter_slot(1920, 1080) == {'x': 1320, 'y': 664, 'size': 380}
+    # Custom portrait/landscape sizes compute deterministic 1:1 slots inside canvas bounds.
+    custom_p = video_contract.cover_presenter_slot(1080, 1920)
+    assert custom_p['size'] == 320 and custom_p['x'] + custom_p['size'] < 1080
+    custom_w = video_contract.cover_presenter_slot(1280, 720)
+    assert custom_w['x'] + custom_w['size'] <= 1280 - 220
+
     for step in ('catalog', 'script'):
         assert not {'source', 'design', 'layout', 'orientation', 'template'} & set(
             video_contract.STEP_INPUTS_FIELDS[step])
     assert 'orientation' in video_contract.STEP_INPUTS_FIELDS['composition']
+    assert 'orientation' in video_contract.STEP_INPUTS_FIELDS['cover']
     assert 'design' not in video_contract.STEP_INPUTS_FIELDS['composition']
+    assert 'design' not in video_contract.STEP_INPUTS_FIELDS['cover']
     assert 'layout' not in video_contract.STEP_INPUTS_FIELDS['composition']
     assert 'duration' not in video_contract.STEP_INPUTS_FIELDS['catalog']
+    assert 'duration' not in video_contract.STEP_INPUTS_FIELDS['cover']
     assert video_contract.STEP_REQUESTS_FIELD == {
         'catalog': None,
         'script': 'narration_requests',
         'composition': 'composition_requests',
+        'cover': 'cover_requests',
     }
 
 

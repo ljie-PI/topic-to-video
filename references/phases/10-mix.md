@@ -6,8 +6,8 @@
 
 - Phase 9（`9-check`）收尾后的 `composition/renders/final.mp4`；
 - `qa/`（`qa/qa-report.json` 与 `qa/sheet_NNN.jpg` contact sheet，交付时一并给用户过目）；
-- `inputs.json`（可选布尔字段 `bgm`）；
-- `search-notes.md`（可选，Phase 4 记录的来源限制，用于交付说明）。
+- `inputs.json`（可选布尔字段 `bgm`、`cover`）；
+- `search-notes.md`（可选，Phase 4 记录的来源限制；`cover = false` 在本阶段直接交付时一并说明）。
 
 ## 输出
 
@@ -26,7 +26,10 @@
 
 ## 下一步
 
-无——这是最后一个 phase。把 `composition/renders/final_with_bgm.mp4` 与 `qa/` 下的 contact sheet 交给用户过目。
+运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`：
+
+- `cover` 缺省或为 `true`：进入 Phase 11（`11-cover`）生成多尺寸视频封面后统一交付；
+- `cover = false`：跳过 Phase 11（`next_phase` 为 `null`），把 `composition/renders/final_with_bgm.mp4` 与 `qa/` 下的 contact sheet 交给用户过目，并按 10.2 汇总可选的素材限制。
 
 ## 护栏
 

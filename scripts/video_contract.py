@@ -34,17 +34,47 @@ STEP_INPUTS_FIELDS: dict[str, tuple[str, ...]] = {
     'script': ('coding_agent', 'duration', 'language', 'input_mode', 'fetch_materials'),
     'composition': ('coding_agent', 'duration', 'language', 'input_mode', 'fetch_materials',
                     'orientation'),
+    'cover': ('coding_agent', 'language', 'input_mode', 'fetch_materials', 'orientation'),
 }
 
 # 用户在对话里提出的长期要求，按阶段分开保存；catalog 没有要求列表。
 NARRATION_REQUESTS_FIELD = 'narration_requests'
 COMPOSITION_REQUESTS_FIELD = 'composition_requests'
-REQUESTS_FIELDS = (NARRATION_REQUESTS_FIELD, COMPOSITION_REQUESTS_FIELD)
+COVER_REQUESTS_FIELD = 'cover_requests'
+REQUESTS_FIELDS = (NARRATION_REQUESTS_FIELD, COMPOSITION_REQUESTS_FIELD, COVER_REQUESTS_FIELD)
 STEP_REQUESTS_FIELD: dict[str, str | None] = {
     'catalog': None,
     'script': NARRATION_REQUESTS_FIELD,
     'composition': COMPOSITION_REQUESTS_FIELD,
+    'cover': COVER_REQUESTS_FIELD,
 }
+
+# Phase 11 封面的默认三套尺寸（竖版 3:4、横版 4:3、横版 16:9）与招手主持人固定槽位。
+COVER_DEFAULT_SIZES: tuple[str, ...] = ('1080x1440', '1440x1080', '1920x1080')
+COVER_PRESENTER_SLOTS: dict[str, dict[str, int]] = {
+    '1080x1440': {'x': 724, 'y': 1084, 'size': 320},
+    '1440x1080': {'x': 1064, 'y': 704, 'size': 340},
+    '1920x1080': {'x': 1320, 'y': 664, 'size': 380},
+}
+
+
+def cover_presenter_slot(width: int, height: int) -> dict[str, int]:
+    """返回指定封面画布下招手主持人（presenter-wave.png）的固定像素框 {x, y, size}。"""
+    preset = COVER_PRESENTER_SLOTS.get(f'{width}x{height}')
+    if preset is not None:
+        return dict(preset)
+    if width <= height:
+        size = round(width * 0.296)
+        margin = round(width * 0.033)
+        return {'x': width - size - margin, 'y': height - size - margin, 'size': size}
+    if abs((width / height) - (16.0 / 9.0)) < 0.03:
+        size = round(height * 0.352)
+        right_clear = max(220, round(width * 220 / 1920))
+        bottom_margin = round(height * 0.033)
+        return {'x': width - right_clear - size, 'y': height - size - bottom_margin, 'size': size}
+    size = round(height * 0.315)
+    margin = round(height * 0.033)
+    return {'x': width - size - margin, 'y': height - size - margin, 'size': size}
 
 # qa_level 可选：缺省表示 standard 档，给出时必须是枚举值之一。
 QA_LEVELS = ('quick', 'standard', 'strict')
@@ -89,6 +119,11 @@ def bgm_applies(inputs: dict[str, Any]) -> bool:
     return bool(inputs.get('bgm', True))
 
 
+def cover_applies(inputs: dict[str, Any]) -> bool:
+    """封面生成默认开启；仅在 inputs.json 显式设 cover = false 时跳过。"""
+    return bool(inputs.get('cover', True))
+
+
 def input_field_problem(field: str, value: Any) -> str | None:
     """字段类型的公共规则；调用方只传入自己声明消费的字段。"""
     if field == 'orientation':
@@ -96,7 +131,7 @@ def input_field_problem(field: str, value: Any) -> str | None:
     if field == 'duration':
         if duration_minutes(value) is None:
             return f'field duration must be a positive finite length in minutes (分钟数), got {value!r}'
-    elif field in ('fetch_materials', 'bgm'):
+    elif field in ('fetch_materials', 'bgm', 'cover'):
         if not isinstance(value, bool):
             return f'field {field} must be a boolean, got {value!r}'
     elif field in ('coding_agent', 'language', 'input_mode'):

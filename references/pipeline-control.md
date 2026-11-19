@@ -6,13 +6,13 @@
 
 - 进度只看 `python3 scripts/pipeline-status.py <workspace>` 的 `next_phase`，不自行扫描工作区猜进度。
 - 状态脚本不监控文件变更或对话反馈；是否修改输入或登记重做由主 agent 判断。
-- 委派步骤（素材 catalog / 旁白与场景规划 / 画面）由执行 agent 先按阶段文档自检，再连同问题与产物报给主 agent；执行 agent 不自行批准稿件或取消审稿。
+- 委派步骤（素材 catalog / 旁白与场景规划 / 画面 / 封面）由执行 agent 先按阶段文档自检，再连同问题与产物报给主 agent；执行 agent 不自行批准稿件或取消审稿。
 
 ## 三种要求的区别
 
 | 用户或自检说了什么 | 怎么处理 |
 | --- | --- |
-| “改成 3 分钟”“语气更口语”“画面用深色”这类长期要求 | 写入 `inputs.json` 对应字段（基础字段、`narration_requests`、`composition_requests`）；受影响下游由主 agent 按修改范围显式登记重做 |
+| “改成 3 分钟”“语气更口语”“画面用深色”“封面只出 16:9”这类长期要求 | 写入 `inputs.json` 对应字段（基础字段、`narration_requests`、`composition_requests`、`cover_requests`）；受影响下游由主 agent 按修改范围显式登记重做 |
 | “这一段不满意，重写”这类一次性修复意见 | 定位阶段并用 `--redo` 登记原因，改完用 `--finish` 结束；不把单次修复意见追加为长期规则 |
 | “后面不用再审了”这类审稿策略变化 | 修改 `inputs.json` 的 `approval_gates`，不用 `--approve` 冒充用户确认 |
 
@@ -55,12 +55,13 @@ source .venv/bin/activate && python3 scripts/pipeline-status.py <workspace> --fi
 | preset / custom design 选择或契约错误、模板选错、layout 选错、版式、素材容器、字幕错位或溢出、必用图表没上、渲染不完整 | `8-composition` |
 | 黑屏、冻结、音画时长不符、成片观感 | `9-check` |
 | BGM 曲目、背景乐音量或开关变化 | `10-mix`（开关变化先改 `inputs.json` 的 `bgm`） |
+| 封面钩子、重要数字、选帧构图、尺寸或封面开关变化 | `11-cover`（开关或长期要求变化先改 `inputs.json` 的 `cover` / `cover_requests`） |
 
 反馈涉及多阶段时先登记最早阶段，完成后再按影响范围逐项登记下游（用户明确要求后续全部重做时逐项登记）。
 
 全片 design、视觉 scenes 与逐场景 template / layout 由 Phase 8 composition agent 决定并写入 `composition/design.json` 与 `composition/scene-config.json`（storyboard 记录理由）；主 agent 只维护 `orientation` 与 `composition_requests`（含作用范围），不在派发前预选 design / template / layout 或预装字体。修改画面方案只登记 Phase 8 及受影响下游重做，不重建 Phase 7 音频、transcript 与时间轴。
 
-重做由原执行者承担：委派步骤交回原 sub-agent 并附具体修改点；改旁白须重跑 `make-narration` 更新朗读稿与偏移表；改画面须重跑 `check-composition` 并重新渲染。
+重做由原执行者承担：委派步骤交回原 sub-agent 并附具体修改点；改旁白须重跑 `make-narration` 更新朗读稿与偏移表；改画面须重跑 `check-composition` 并重新渲染；改封面须重跑 `render-cover` 与 `400px` 缩略图检查。
 
 ## 记录在 .pipeline/ 里的状态
 
