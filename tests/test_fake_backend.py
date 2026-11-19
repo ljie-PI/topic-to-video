@@ -8,10 +8,10 @@ import fake_backend
 
 @pytest.mark.parametrize('text, duration', [
     pytest.param('你好', 1.0, id='one-second-floor'),
-    pytest.param('大' * 15, 2.0, id='two-seconds'),
-    pytest.param('大' * 75, 10.0, id='ten-seconds'),
-    pytest.param(' 大 \n' * 15, 2.0, id='whitespace'),
-    pytest.param('大，' * 15, 4.0, id='punctuation'),
+    pytest.param('大' * 15, 15 / 7, id='two-seconds'),
+    pytest.param('大' * 75, 75 / 7, id='ten-seconds'),
+    pytest.param(' 大 \n' * 15, 15 / 7, id='whitespace'),
+    pytest.param('大，' * 15, 30 / 7, id='punctuation'),
 ])
 def test_duration_uses_non_whitespace_characters_with_a_one_second_floor(text, duration):
     assert fake_backend.synthetic_duration_s(text) == pytest.approx(duration)
