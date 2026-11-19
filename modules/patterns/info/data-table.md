@@ -5,7 +5,7 @@
 ## 适用场景和触发信号
 
 - 旁白引用一张表格、pricing、benchmark table、hardware matrix、cost table。
-- 屏幕文本单元 `visual_role = "data_table"`；典型字段是 columns、rows、highlighted cells、summary。
+- 典型信息要素：columns、rows、highlighted cells、summary。
 - 素材本身是表格图片时，保留来源表格，配外置结论 callout（见 `patterns/media/detail-callout.md`）。
 
 ## 区域尺寸建议

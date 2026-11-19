@@ -246,4 +246,4 @@ node modules/components/presenter/make-envelope.mjs voice_clone/narration.mp3 > 
 
 - 组件只认局部秒：挂载从 0 秒开始时局部秒 = 视频秒；若 presenter 挂进一个从其他时刻开始的 scene，剧本（动作、placements、envelope）里的时间要由 adapter 统一换算成 scene 局部秒，envelope 采样基准跟着局部秒走，不另设偏移。
 - 嘴的控制有两个：张合（`open`）和嘴角上扬（`grin`）。嘴角上扬是在嘴角附近把脸部网格往上、往外提，下唇和口腔跟着走，幅度适合微笑，不适合咧嘴大笑。
-- 现在的动作都只用到头、脸和右手挥动。需要手部动作的（指向、点赞、托腮、鼓掌等），要先画一张和 `presenter-base.png` 对齐的姿势图。要新增姿势（比如指向），需要再画一张和 `presenter-base.png` 对齐的姿势图，比如 `presenter-point.png`，然后在 `presenter.html` 里加一个对应的部件，做法同 `presenter-wave.png`。
+- 现在的动作只用到头、脸和右手挥动。新增手部姿势（如指向、点赞、托腮、鼓掌）需另画一张与 `presenter-base.png` 像素对齐的姿势图（如 `presenter-point.png`），并在 `presenter.html` 增加对应部件（做法同 `presenter-wave.png`）。

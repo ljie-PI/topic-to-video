@@ -5,7 +5,7 @@
 ## 适用场景和触发信号
 
 - 旁白出现 Top N、排名、榜单、周榜、产品榜、repo 榜。
-- 屏幕文本单元 `visual_role = "leaderboard"`；典型字段是 rank、name、metric、why it matters。
+- 典型信息要素：rank、name、metric、why it matters。
 
 ## 区域尺寸建议
 

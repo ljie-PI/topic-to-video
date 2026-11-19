@@ -7,7 +7,6 @@
 - 旁白有多个并列点、功能点、限制或 takeaway，每项只有 item + 一行 detail → 列表。
 - 每项有独立标题 + benefit + proof → 功能网格。
 - 旁白包含多个数字、比例、增长、成本、时长、性能分数 → 数据块 / 指标条；单个冲击性数字用 `patterns/info/big-number.md`。
-- 屏幕文本单元 `visual_role = "list"` / `"feature_grid"` / `"data_block"` / `"metric_strip"`。
 
 ## 区域尺寸建议
 

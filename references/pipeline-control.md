@@ -1,53 +1,47 @@
 # 调度与重做（主 agent 的通用规则）
 
-状态脚本判断文件是否合格、哪些步骤需要重做；内容是否值得放进视频由 agent 和用户判断。本文说明两者怎么对接。各阶段的具体检查项写在各自的阶段文档里。
+状态脚本校验文件与结构，内容质量由 agent 与用户判断。各阶段具体检查项见对应阶段文档。
 
 ## 谁决定下一步
 
-- 进度只看 `python3 scripts/pipeline-status.py <workspace>` 的 `next_phase`，不自己扫描工作区猜。
-- 状态脚本不读自然语言：它看不到“这稿不好”“把时长改成 3 分钟”这类要求，除非有人把要求写成输入或登记成重做。把这个判断交给主 agent。
-- 委派步骤（素材 catalog / 旁白与场景规划 / 画面）里，执行 agent 自己先按阶段文档自检，再把问题和产物一起报给主 agent。执行 agent 不自行批准稿件，也不决定取消审稿。
+- 进度只看 `python3 scripts/pipeline-status.py <workspace>` 的 `next_phase`，不自行扫描工作区猜进度。
+- 状态脚本不监控文件变更或对话反馈；是否修改输入或登记重做由主 agent 判断。
+- 委派步骤（素材 catalog / 旁白与场景规划 / 画面）由执行 agent 先按阶段文档自检，再连同问题与产物报给主 agent；执行 agent 不自行批准稿件或取消审稿。
 
 ## 三种要求的区别
 
 | 用户或自检说了什么 | 怎么处理 |
 | --- | --- |
-| “改成 3 分钟”“语气更口语”“画面用深色”这类长期要求 | 写进 `inputs.json` 对应的字段（时长等基础字段、`narration_requests`、`composition_requests`）；依赖它的阶段是否重做由主 agent 按修改范围显式登记，状态脚本不从文件变化推断 |
-| “这一段不满意，重写”这类一次性修复意见 | 定位到要改的阶段，用 `--redo` 登记并写明原因；改完后用 `--finish` 结束。不要把一次修复意见当成风格规则追加进项目指令 |
-| “后面不用再审了”这类审稿策略变化 | 改 `inputs.json` 的 `approval_gates`，不要用 `--approve` 代替用户确认 |
+| “改成 3 分钟”“语气更口语”“画面用深色”这类长期要求 | 写入 `inputs.json` 对应字段（基础字段、`narration_requests`、`composition_requests`）；受影响下游由主 agent 按修改范围显式登记重做 |
+| “这一段不满意，重写”这类一次性修复意见 | 定位阶段并用 `--redo` 登记原因，改完用 `--finish` 结束；不把单次修复意见追加为长期规则 |
+| “后面不用再审了”这类审稿策略变化 | 修改 `inputs.json` 的 `approval_gates`，不用 `--approve` 冒充用户确认 |
 
-拿不准用户要哪种时先问一句；“不好看”这类没有定位的反馈，先问清是旁白、素材还是画面。
+意图不明或反馈无具体定位（如“不好看”）时先问清对象（旁白、素材还是画面）。
 
 ## 登记重做
 
-产物齐全但内容不合格、或用户要求重写时，文件本身往往还没有变化，状态脚本不可能发现。这时明确登记：
+产物齐全但内容不合格或用户要求重写时，显式登记：
 
 ```bash
 source .venv/bin/activate && python3 scripts/pipeline-status.py <workspace> --redo <phase_id> --reason "要改什么、为什么"
 ```
 
-登记后旧产物保留，但该阶段不再算完成（`next_phase.reason` 为 `redo`，并带 `redo_reason`），其后的阶段为 `pending`。普通查询不会清掉这条记录，改文件也不会：
+登记后旧产物保留，该阶段变为待重做（`next_phase.reason == "redo"`，附 `redo_reason`），后续阶段变为 `pending`。改文件或普通查询不会自动清除登记，完成后须显式结束：
 
 ```bash
 source .venv/bin/activate && python3 scripts/pipeline-status.py <workspace> --finish <phase_id>
 ```
 
-`--finish` 先清掉这条要求，再让该阶段走它平时的产物检查：全部通过才算结束。检查不过就报失败；它不要求产物字节与上次不同——确定性重跑得到相同字节也是正常结束。只影响被结束的那一个阶段：它不会替主 agent 登记下游重做，下游是否需要重做由主 agent 按已知修改范围显式登记。
+`--finish` 先清除该阶段重做记录，再运行其常规产物校验（不要求产物字节变化，确定性重跑同字节同样通过）。它只结束当前阶段，下游是否重做由主 agent 按修改范围显式登记；它也不替代阶段内容自检或用户审稿（重做带 gate 的阶段会撤销旧确认，完成后须重新找用户确认）。
 
-它不证明内容合格——内容要按该阶段文档自检；也不代替用户审稿：启用了审稿的关卡该确认还要确认，显式重做带 gate 的阶段会撤销该 gate 的旧确认，重做完成后要重新找用户确认。
+边界约束：
 
-一条重要的分工：**要不要重做由人说的话决定，不由文件变没变推定。** 脚本不会因为某个输入文字改了、或某个文件被重写，就要求某个阶段重做；反过来，只改输入就能说明白的长期要求（时长、语言、风格）也不必登记重做。
-
-几条边界：
-
-- 只改输入就能说明白的要求（时长、语言、风格）不必登记重做，改输入即可。
-- 不要用 `--approve` 跳过待重做的阶段；脚本也会拒绝。
-- 不要靠删产物触发回退：论文解析和网页抓取共用 `harvest_page/manifest.json`，删它会连带丢掉别的阶段的结果。
-- 后台中断也不丢要求：记录在 `.pipeline/redos.json`，下次查询照样报告。这份记录整个文件读不出来时，状态脚本直接报错停下，而不是当作没有要求；单条记录的格式不单独校验，因为要求最终由阶段自己的检查兑现。
+- 只改输入即可表达的长期要求（时长、语言、风格）直接改 `inputs.json`，仅对需重建产物的阶段显式登记重做。
+- 禁对处于 redo 的阶段用 `--approve` 跳过（脚本亦会拒绝）。
+- 禁靠删产物触发回退：论文解析与网页抓取共用 `harvest_page/manifest.json`，误删会丢失其他阶段结果。
+- `.pipeline/redos.json` 持久化保存重做请求，损坏不可读时状态脚本会直接报错停机。
 
 ## 把意见落到阶段
-
-先找出要紧的那一处，映射到阶段编号：
 
 | 问题 | 阶段 |
 | --- | --- |
@@ -62,17 +56,15 @@ source .venv/bin/activate && python3 scripts/pipeline-status.py <workspace> --fi
 | 黑屏、冻结、音画时长不符、成片观感 | `9-check` |
 | BGM 曲目、背景乐音量或开关变化 | `10-mix`（开关变化先改 `inputs.json` 的 `bgm`） |
 
-一次反馈涉及多个阶段时，先登记最早的那一个，后面的阶段等它完成后再按已知修改范围逐项登记；用户明确要求后面的步骤也全部重做时，逐项登记。
+反馈涉及多阶段时先登记最早阶段，完成后再按影响范围逐项登记下游（用户明确要求后续全部重做时逐项登记）。
 
-全片 design、最终视觉 scenes 与逐场景 template / layout 是 Phase 8 的画面选择，由 composition agent 分别写在 `composition/design.json` / `composition/scene-config.json`（storyboard 记录理由）；主 agent 只维护全片 orientation 与 `composition_requests`（含作用范围），不替它预选 design 或任何 scene 方案，也不要求准备 handoff 前安装字体或决定全局 template / layout。用户改画面主意时登记 Phase 8 重做并交回 composition agent；这些变化只让 Phase 8 及其登记的下游重做，音频、transcript 和时间轴都不重建。旧工作区的 `inputs.json.design` / `layout` / `template` 原样保留，但新流程不拿它们当门槛。
+全片 design、视觉 scenes 与逐场景 template / layout 由 Phase 8 composition agent 决定并写入 `composition/design.json` 与 `composition/scene-config.json`（storyboard 记录理由）；主 agent 只维护 `orientation` 与 `composition_requests`（含作用范围），不在派发前预选 design / template / layout 或预装字体。修改画面方案只登记 Phase 8 及受影响下游重做，不重建 Phase 7 音频、transcript 与时间轴。
 
-重做仍由原负责人做：委派步骤交回原执行 agent，并附上具体修改点；改旁白后要重新生成朗读稿与偏移表；改画面后要重跑渲染前检查并重新渲染。
+重做由原执行者承担：委派步骤交回原 sub-agent 并附具体修改点；改旁白须重跑 `make-narration` 更新朗读稿与偏移表；改画面须重跑 `check-composition` 并重新渲染。
 
 ## 记录在 .pipeline/ 里的状态
 
-只由状态脚本写，不要手改：
+只由状态脚本写入，禁止手改：
 
-- `approvals.json`：按 gate 记录的用户确认事实与时间，不绑定文件哈希；显式重做对应阶段时撤销该 gate 的旧确认。
-- `redos.json`：已登记、尚未完成的重做要求。
-
-状态脚本不再读写 `stamps.json`、`fpcache.json` 或任何指纹缓存：旧工作区里残留的这些文件不影响扫描，也不替用户清理。
+- `approvals.json`：按 gate 记录用户确认事实与时间（不绑定文件哈希）；显式重做对应阶段时自动撤销旧确认。
+- `redos.json`：已登记且未完成的重做请求。

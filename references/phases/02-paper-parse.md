@@ -15,17 +15,17 @@
 ## 完成判据
 
 - `harvest_page/main-paper/metadata.json` 存在、非空、JSON 可解析，`source_type = "paper_pdf"` 且 `paper_metadata` 字段齐全；
-- `harvest_page/manifest.json` 里必须有 slug 为 `main-paper` 的论文 entry；
-- 状态脚本校验上面两项；不通过则回退到本 phase 重跑——旧工作区可能只有 metadata.json 没有 manifest entry，重跑 parse-pdf 会幂等补上。
+- `harvest_page/manifest.json` 包含 slug 为 `main-paper` 的论文 entry；
+- 状态脚本校验上述两项，不通过则回退到本 phase 重跑。
 
 ## 执行后自检
 
-解析成功不等于解析对。脚本判断格式与文件是否存在，下面几项自己看一眼：
+核对解析内容质量：
 
-- `title` / `abstract` 是不是这篇论文（URL 或文件名对不上就是抓错了）。
-- 解析出的 markdown 有没有明显缺页、整段乱码、公式变空白。
-- `figure_captions` / `table_captions` 与图片文件是否对得上；某张图明显配错标题时，在 catalog 阶段前修正或标注。
-- 方法、模型结构、关键实验结果等关键图与关键表是否都抽出来了（它们后面会进 catalog 的 `required_material_refs`，在成片里必须全部出现）；解析没抽到的先补解析或从 PDF 里取，不要带着缺图进 catalog。
+- `title` / `abstract` 与目标论文 URL 或文件名一致，未抓错文献。
+- 解析出的 markdown 无明显缺页、整段乱码或公式丢失。
+- `figure_captions` / `table_captions` 与图片文件一一对应；明显错配时在进入 catalog 前修正或标注。
+- 方法、模型结构、关键实验结果等关键图与表均已抽出（后续进入 catalog 的 `required_material_refs` 并在成片必出）；缺失时先补解析或从 PDF 补提，不带缺图进 catalog。
 
 ## 下一步
 
@@ -55,7 +55,7 @@ python3 scripts/parse-pdf.py \
 
 需要环境变量 `MINERU_API_TOKEN`（来自 `.env`）。token 缺失或云端失败时会自动 fallback 到本地 `mineru` CLI。
 
-读取输出的 JSON。它提供 `title`、`abstract`、`full_markdown_path`（完整论文的解析 markdown，相对于 `harvest_page/`；旧工作区也可能是绝对路径）。这些会喂给 Phase 3 的 Deep Research prompt。
+读取输出的 JSON。它提供 `title`、`abstract`、`full_markdown_path`（完整论文的解析 markdown，相对于 `harvest_page/`），供 Phase 3 的 Deep Research prompt 使用。
 
 重要的输出字段：
 - `manifest_entry.source_type = "paper_pdf"`

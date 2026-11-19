@@ -155,9 +155,9 @@ INPUTS_FIELD_PREFIX = 'inputs.json#'
 RESEARCH_BRIEF_SECTIONS = ('Key facts', 'Quotes', 'Numbers', 'Source URLs')
 
 # Phase 6 的长度规则：展示稿的非空白字符数必须在
-# duration x 60 s x 5 字/秒 的 +-15% 之内。这是写稿预算，不是 TTS 语速参数：
+# duration x 60 s x 7 字/秒 的 +-15% 之内。这是写稿预算，不是 TTS 语速参数：
 # 实际节奏由 TTS 与 transcript 决定，流水线不指定 speech rate。
-CHARS_PER_SECOND = 5
+CHARS_PER_SECOND = 7
 SCRIPT_LENGTH_TOLERANCE = 0.15
 
 # 一个 scene-plan 片段引用 "<slug>/<video_id>:<start>-<end>" 必须在两端都

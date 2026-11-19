@@ -5,7 +5,7 @@
 ## 适用场景和触发信号
 
 - 旁白在介绍一个产品 / repo / paper 的身份：名字、tagline、类别、关键指标。
-- 屏幕文本单元 `visual_role = "product_card"`（或 `title`）；典型字段是 name、tagline、category、metric。
+- 典型信息要素：name、tagline、category、metric。
 - 长视频里出现章节切换、「接下来、第 N 部分」时，也可用同一套身份卡形态做章节标题卡。
 
 ## 区域尺寸建议

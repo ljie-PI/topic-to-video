@@ -5,7 +5,7 @@
 ## 适用场景和触发信号
 
 - 单个主视频，且没有命中更高优先级的特殊呈现；视频的行为 / 时间变化是主证据，文本只作短解释。
-- 场景规划里 `layout_role = "video_first"`，或旁白在描述一段演示、一个动态过程。
+- `material-catalog.json` 中素材 `layout_affordance` 含 `"video_first"`，或旁白在描述一段演示、一个动态过程。
 - 近静止的视频在运动上可以按静态图片处理，但版面仍可保持 video-first。
 
 ## 区域尺寸建议
@@ -35,7 +35,6 @@
 
 - 外观全部来自所选主题的 token；overlay 文字用 `--c-chrome-ink`（深底）或 `--c-ink`（浅底），保证与视频画面有足够对比。
 - 状态 label 用真实语义色（`--c-info` / `--c-warning` / `--c-danger`），不做装饰性换色。
-- 本 pattern 没有按 visual_role 的特殊覆盖。
 
 ## 已有实现
 

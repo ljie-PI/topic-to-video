@@ -17,7 +17,7 @@ import media
 from transcript_schema import transcript_from_torch_alignment
 
 # 合成的语速，以及保证极短文本不会被压成空的下限。
-CHARS_PER_SECOND = 7.5
+CHARS_PER_SECOND = 7
 MIN_DURATION_S = 1.0
 
 

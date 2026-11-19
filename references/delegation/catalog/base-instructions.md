@@ -6,39 +6,34 @@
 
 ## 输入与执行角色
 
-先读 handoff 中的 `inputs.json`（用户来源输入与阶段级 agent / model 要求）、`research-brief.md`（调研结果）、`vision_analyze/topic-context.txt`（用户输入、调研结果和叙事角度的 summary），以及 Additional Instructions 中的 `catalog-instructions.md`（用户素材要求，如有）。再按 manifest 读取实际图片、视频、字幕、页面摘录与论文 metadata。
+先读 handoff 中的 `inputs.json`（用户来源输入与阶段级 agent / model 要求）、`research-brief.md`、`vision_analyze/topic-context.txt` 及 Additional Instructions 中的 `catalog-instructions.md`（如有），再按 manifest 读取实际媒体、字幕、页面摘录与论文 metadata。
 
-**先判断能不能用：** 只有本地文件真实存在的媒体才能进入 catalog。视频带 `download_required: true`、下载失败、或 `local_path` 缺失 / 文件不存在时，跳过这个视频（不抽帧、不选片段、不写进 catalog），同一 entry 里已成功的图片 / 视频照常处理。来源未获取（地区限制、需登录、已下线）与“应该有的本地文件丢了”不同：后者是工作区损坏，按恢复流程处理，不能用跳过来掩盖。
-
-**只按 manifest 工作：** Phase 4.c 已把太小、看不清的 web 素材从 `images[]` / `videos[]` 中剔除。不要扫描 `images/` / `videos/` 目录把已被剔除的文件重新加回 catalog。保留的素材如果实际不可用（模糊、内容认不出），不要写进 catalog 凑数。论文 entry 不受这条影响。
-
-
-本文件中的**执行 agent**指承担 Phase 5 的 catalog coding agent；未委派时才是调用它的主 agent。下面的 Mode 2 由执行 agent 自己看图，不是把看图任务交回调用者。用户指定的 agent / model 优先于默认值与环境配置；无法用指定模型看图时先说明，不得无声替换。
+- **仅收录本地文件真实存在的媒体**：视频带 `download_required: true`、下载失败或 `local_path` 缺失时跳过该视频（不抽帧、不入 catalog），同 entry 已成功的媒体照常处理。受限未获取与“本应存在的本地文件丢失”区分处理，后者属工作区损坏，须走恢复流程。
+- **严格以 Phase 4.c 筛选后的 manifest 为准**：禁扫描 `images/` / `videos/` 目录捡回已被剔除的低质文件；保留项若实际模糊不可认亦剔除（论文 entry 除外）。
+- **执行角色**：本文件的执行 agent 默认为 Phase 5 catalog coding agent（未委派时才是主 agent）。Mode 2 由执行 agent 自身看图，不交回调用方；用户指定的 agent / model 优先于默认与环境配置，指定模型不支持看图时先报告，禁静默替换。
 
 ## 公共视觉分析方式
 
-图片、视频帧、缺失 caption 的论文图表共用这两种方式，具体任务分别见下文：
+图片、视频帧与缺失 caption 的论文图表共用两种方式（任务 prompt、话题 summary 与评分量表一致；Mode 1 模型返回文本仍由执行 agent 解析核对后写入 catalog）：
 
-- **Mode 1（显式 VLM）：** 用户选择此路径，或没有限定分析模型且环境已设置 `VLM_API_KEY`、`VLM_BASE_URL`、`VLM_MODEL` 时，运行 `scripts/vision-analyze.py`，走 OpenAI 兼容的 `/chat/completions`。指定视觉模型时用 `--model <model-id>` 精确传入；不可仅因环境里有另一个 `VLM_MODEL` 就替换用户指定的模型。设置了 key 但缺 URL / model 会报错，不会自动回退。
-- **Mode 2（执行 agent 直接分析）：** 未设置 `VLM_API_KEY` 时，脚本返回 `delegate_to_agent`、图片路径列表、`prompt` 和 `context`。执行 agent 用自身的 Read / view 图片工具和当前指定的多模态模型完成分析，再写入 catalog；不额外调用 VLM API。若用户指定使用执行 agent 自身模型，而环境已有不同的 VLM 配置，直接走自身看图路径，不让环境配置覆盖用户要求。
+- **Mode 1（显式 VLM）**：用户选择此路径，或未限定模型且环境已配置 `VLM_API_KEY`、`VLM_BASE_URL`、`VLM_MODEL` 时，调用 `scripts/vision-analyze.py`（OpenAI 兼容 `/chat/completions`；指定模型传 `--model <model-id>`，不得被环境变量覆盖；配了 key 但缺 URL / model 直接报错不回退）。
+- **Mode 2（执行 agent 直接看图）**：未配 `VLM_API_KEY` 时，脚本返回 `delegate_to_agent`、图片路径、`prompt` 与 `context`，由执行 agent 用自身 Read / view 工具和当前指定的多模态模型完成分析并写入 catalog（不额外调 VLM API）。若用户指定使用执行 agent 自身模型、而环境已配置不同的 VLM，直接绕过脚本的 VLM 调用走自身看图路径，不让环境配置覆盖用户要求。
 
-两种方式使用相同的任务 prompt、话题 summary 与评分量表。脚本本身没有固定评分 prompt，也不生成 catalog：Mode 1 的 `analysis` 是模型返回的文本，执行 agent 负责解析、核对和写入。
-
-每次脚本调用都传入 `--prompt`、`--images` 和 `--context-file vision_analyze/topic-context.txt`。**单次最多 10 张图（脚本硬限制）；视频粗看每请求最多 8 帧，局部细看每请求只输入一张 4×4 拼图。**SVG 先栅格化为 PNG 再输入，保留原 SVG 的 catalog 引用。脚本默认 `--detail low`；仅作概览时可用，读取小字、图表、关键 UI 与焦点区域时用 `--detail high`，并提供足够清晰的原图 / 局部图，不能靠 prompt 补回已缩掉的细节。
+每次调用传入 `--prompt`、`--images` 与 `--context-file vision_analyze/topic-context.txt`。**单次硬上限 10 张图（视频粗看每请求 ≤8 帧，局部细看每请求只传 1 张 4×4 拼图）**；SVG 先栅格化为 PNG 再输入（保留原 SVG 引用）。概览可用默认 `--detail low`；读小字、图表、关键 UI 与焦点区域须用 `--detail high` 并提供清晰原图 / 局部图。
 
 ### 分开理解、匹配与展示建议
 
-每个任务的 prompt 分三个明确部分；可一次调用返回三部分，不要求为了分层额外调用模型：
+单次调用的 prompt 分三部分返回：
 
-1. **视觉理解：** 只记录可见事实（对象、文字、图表结构、动作 / 状态变化、视觉风格、关键区域）及看不清 / 不确定之处，不根据话题猜画面。论文有 caption 时用 caption 作为文本依据，不声称已看图。
-2. **话题语义匹配：** 对照用户输入与话题 summary，指出可支撑的具体概念 / 论点、画面证据和使用限制，生成 `semantic_description` 并按下表打分。不是只问“相关不相关”。
-3. **展示建议：** 根据内容、比例和可读性给出 `layout_affordance` / `focal_region`，理由要能追溯到第 1 步。没有证据就不标注，不把展示能力当成相关性分数。
+1. **视觉理解**：只记录客观可见事实（对象、文字、图表结构、动作 / 状态变化、风格、关键区域）及看不清 / 不确定处，禁按话题脑补（论文有非空 caption 时以 caption 为文本依据，不声称已看图）。
+2. **话题语义匹配**：对照用户输入与话题 summary，指出可支撑的具体概念 / 论点、画面证据与限制，生成叙事锚点 `semantic_description` 并按下表打分。
+3. **展示建议**：按内容、比例与可读性给出有第 1 步可见依据的 `layout_affordance` / `focal_region`，理由要能追溯到第 1 步。没有证据就不标注，不把展示能力当成相关性分数。
 
 理解结果、匹配理由与分项评分保存在 `vision_analyze/<slug>/`；catalog 保持下文 schema，提供下游需要的叙事锚点与布局提示。
 
 ### 适配度评分与过滤（图片 / 视频 / 缺失 caption 的论文图表）
 
-`score` 是 **1–10 的解说素材适配度**，不是审美评分。各项相加（全为 0 时记 1），记录分项与理由：
+`score` 为 **1–10 解说素材适配度**（非审美分），四项相加（全 0 记 1）并记录分项理由：
 
 | 维度 | 分值 | 判断依据 |
 |---|---|---|
@@ -47,7 +42,7 @@
 | 可读性 / 可用性 | 0–2 | 0 关键内容看不清或缺失；1 局部放大 / reveal 后可读；2 可直接清楚展示 |
 | 具体使用价值 | 0–1 | 0 与已有素材重复且无新作用；1 能指出一个明确的讲解用途 |
 
-**过滤阈值为 7 分：`score <7/10` 或偏题的非必用素材不进入 catalog，7 分可保留。** 达标切题的通用素材尽量保留，供下游在符合场景内容时优先考虑选用，不要无故筛掉有讲解价值的真实画面；`required_material_refs` 中的论文关键图 / 表属于成片必用素材，不因评分低而剔除；缺失或看不清时如实报告，不静默省略。 关键证据看不清、caption 与画面矛盾等情况要标明不确定，不用高分掩盖。带非空 caption 的论文图表按「论文」节沿用 `score: 8` 的 caption 默认值，不把它说成模型评分。
+**过滤阈值 7 分：`score < 7` 或偏题的非必用素材剔除，`>= 7` 达标切题的通用素材尽量保留供下游场景优先选用。** `required_material_refs` 论文关键图 / 表属成片必用素材，不因低分剔除（缺失或看不清须如实报告，禁静默省略）；证据看不清或图注矛盾须标明不确定，禁高分掩盖；带非空 caption 的论文图表赋默认分 `8`（非模型评分）。
 
 ### 展示能力判断标准
 
@@ -123,29 +118,26 @@ scripts/subtitle-parse.py <subtitle> --keywords '<terms from research brief>'
 
 ## 论文
 
-**Paper-origin entries** 指 manifest 中 `source_type: "paper_pdf"` 的 entry。写进 catalog 后按 slug 辨认：`main-paper` 是主论文，`related-*` 是相关论文；catalog schema 没有 `source_type` 字段。
+manifest 中 `source_type: "paper_pdf"` 的条目按 slug 区分（`main-paper` 为主论文，`related-*` 为相关论文；catalog schema 不含 `source_type`）：
 
-- **文本依据：** PDF caption（`paper_metadata.figure_captions` / `table_captions`）非空时，直接作为 `semantic_description`，默认 `score: 8`，不做视觉分析。这是 caption 复用规则，不表示模型已验证图表内容。
-- **缺失 caption：** **caption 为空字符串等同没有 caption**；parse-pdf 会为没抽到 caption 的图表写 `''`。此时按公共 Mode 1 / Mode 2 看图：先识别坐标轴、图例、模块、表头与可见结果，再结合话题 summary 匹配和评分，不写空的 `semantic_description`，不编造实验含义。
-- **展示建议：** `width` / `height` 由 parse-pdf 用 PIL 实测，按下文推导比例；论文高表格给 `viewport_reveal` 候选。没看图时 `focal_region` 写 `null`（或按可验证的表格内容人工标注），不要把 caption 当作精确坐标证据。
-
-### 仅论文素材（`input_mode = "paper"` 且 `fetch_materials = false`）
-
-Phase 4 被跳过，manifest 只有主论文与已解析的相关论文，没有 web 页面、视频和滚动录像。论文自己的 figure / table 是首选素材；按本节处理（带非空 caption 时 `score: 8`，缺失或为空时走公共视觉分析），没有视频就不抽帧、不解析字幕、不写 `selected_clips`。布局与焦点信息也按本节处理，不另设一套流程。
+- **非空 caption 直接复用**：`paper_metadata.figure_captions` / `table_captions` 非空时直接用作 `semantic_description`，赋默认 `score: 8`，不做视觉分析。
+- **缺失或空字符串 caption**：走公共 Mode 1 / Mode 2 看图识别坐标轴、图例、模块、表头与可见结果后匹配打分，禁留空或编造实验含义。
+- **展示建议**：`width` / `height` 取 `parse-pdf` 实测值，高表格给 `viewport_reveal` 候选；未看图时 `focal_region` 置 `null`（禁把 caption 当坐标依据）。
+- **仅论文素材路径**（`input_mode = "paper"` 且 `fetch_materials = false`）：manifest 仅有论文条目，按本节处理图表，跳过抽帧、字幕解析与 `selected_clips`。
 
 ## 组合与切片段
 
-每条 harvest entry 对应一个 catalog entry；把 `entry.text_excerpt`、图片的叙事锚点描述与视频级理解结果组合，过滤低于 7 分或偏题的非必用素材，达标可用的通用素材尽量保留；论文必用关键图 / 表按 `required_material_refs` 规则保留。对视频写 `selected_clips`，元素形如 `{start, end, reason, frame_paths[]}`，只保留核对过的片段；`clip_path` 由 `cut-clips.py` 写入。
+每条 harvest entry 对应一条 catalog entry：汇总 `text_excerpt`、图片与视频结果，按前述 7 分阈值与必用规则筛选；视频写入经局部帧核对的 `selected_clips`（`{start, end, reason, frame_paths[]}`）。
 
-**所有 entry 写完后运行一次：**
+**全部 entry 写入后统一运行一次切片：**
 
 ```bash
 scripts/cut-clips.py {work_dir}/{topic_name}
 ```
 
-对 catalog 里每个视频的每个 `selected_clip`，切出 `{work_dir}/{topic_name}/clips/<video_id>_<start:.2f>-<end:.2f>.mp4`（`-an` 去掉音轨，libx264 重编码），在该 clip 上写入 `clip_path`（相对工作区），并原地更新 `material-catalog.json`（原子写、保留原文件权限）。视频的 `local_path` 以 `harvest_page/` 为 base。目标文件已存在且非空时跳过，所以改过 catalog 后可以直接重跑。输出 JSON：`{"success": true, "clips": [{"ref": "<slug>/<video_id>:<start>-<end>", "clip_path": ..., "skipped": false}], "errors": []}`；只要有一个 clip 失败就退出 1（已切好的保留且 catalog 增量写回），按 `errors` 里的 `ref` 与原因修 catalog（窗口、`local_path`）后重跑。
+脚本按 `harvest_page/` base 读取源视频，以 `-an` 剥除音轨（`libx264` 重编码）切出 `{work_dir}/{topic_name}/clips/<video_id>_<start:.2f>-<end:.2f>.mp4`（已存在非空文件自动跳过，支持幂等重跑），原地原子写回相对工作区根的 `clip_path`。输出 JSON：`{"success": true, "clips": [{"ref": "<slug>/<video_id>:<start>-<end>", "clip_path": ..., "skipped": false}], "errors": []}`；任一片段失败时退出码为 `1`（已切好的片段保留且 catalog 增量写回），按 `errors` 中的 `ref` 与原因修 catalog（窗口、`local_path`）后重跑。
 
-**`required_material_refs`（论文模式必填）：** 一个 ref 列表，声明“成片必须出现”的论文关键图 / 表——方法图、模型结构图、关键实验结果的图表。用与 `material_candidates` 相同的 `<slug>/<id>` 格式，指向本 catalog 的 entry。它不重复、不写裸 id；状态脚本会校验每条都能解析。不要因为评分低就把关键图 / 表从清单里去掉：真要有图缺失或看不清，在报告里说明，而不是偷偷省掉。
+**`required_material_refs`（论文模式必填，无适用图写 `[]`）：** 用不重复的 `<slug>/<id>` 声明成片必出的论文关键图 / 表（方法图、模型结构图、核心实验结果图表），禁写裸 id，也不因低分省略（缺失或看不清须在报告中说明）。
 
 **`material-catalog.json` 的结构：**
 

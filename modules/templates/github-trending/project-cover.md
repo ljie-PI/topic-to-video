@@ -64,7 +64,7 @@
 | `starsAt` | 无，可省略 | 第三拍：数字开始滚动；没有对应朗读时省略，数字、语言与 Star 按钮隐藏 |
 | `exitAt` | 0 | 退场时间，0 表示一直停留到场景结束。设了时间后，主展示区的元素依次上移淡出，logo 卡片随之淡出 |
 
-三个时间点必须取实际朗读的 cue 时间，减去场景开始的时间（方法见 `templates/github-trending/github-trending.md`）。它们没有猜测用的默认秒数，`0` 是合法时间。省略可选锚点会同时隐藏相关内容、跳过其动画；项目名没有可用锚点时不用该场景，不回去改旁白。
+`nameAt`、`taglineAt`、`starsAt` 均无默认猜测值（`0` 合法），必须取真实朗读 cue 秒数减去场景 `data-start`（方法见 `templates/github-trending/github-trending.md`）；无项目名锚点时不用本场景，禁倒改旁白。
 
 ## 自动适配
 

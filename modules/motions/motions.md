@@ -6,7 +6,7 @@
 - **不带写死外观**：全部颜色、字体和默认运动节奏只读设计主题变量（`--c-*`、`--font-sans`、`--font-mono`、`--motion-*`，见 `designs/designs.md`），采用半透明 `--c-card` 透出 `#ground` 纸纹肌理与 `1–2px` 精细线宽阶梯。
 - **像素 1:1 自适应排版**：每个模块读取宿主区域像素宽高、设置 `1:1` 像素 `viewBox`，并内置确定性中英文字宽估算与自动折行，保证横竖屏及长短文案下文字完整落在节点框与内容区域内。
 
-目录和 handoff 的 Required References 都是**发现入口，不是强制采用清单**。统一采用规则见 [composition 基础指令第四部分](../../references/delegation/composition/base-instructions.md#四内容演绎与模板选择)：只在用户明确指定、与当前 scene 旁白机制特别匹配或确能提升场景表达清晰度时才采用并阅读对应模块文档；既可直接按参数与数据挂载，也可拷入工程 `compositions/` 后按具体场景结构改写；无特别匹配时按第四部分自主设计即时生成动画，不为了使用模块而硬套。
+目录与 handoff 引用均为发现入口，采用规则统一见 [composition 基础指令第四部分](../../references/delegation/composition/base-instructions.md#四内容演绎与模板选择)：命中时阅读对应模块 `.md` 文档，可直接按参数挂载或拷入 `compositions/` 按场景改写；不命中时自主设计即时生成动画。
 
 转场（scene 之间的交接）不在此目录，按需见 `transitions/transitions.md`；常驻界面组件（主持人、导航栏、字幕条）见 `components/components.md`。
 

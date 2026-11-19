@@ -6,7 +6,7 @@
 
 - 单个 ultra-wide / strip 素材（时间线、全景图、横幅截图），在内容区内能形成一条足够高的可读信息带。
 - 完整展示后高度仍可读；如果只能变成一条细线，就不适合本 pattern，改看 `patterns/media/viewport-reveal.md`、分时或拆 scene。
-- 场景规划里 `layout_role = "band"`。
+- `material-catalog.json` 中素材 `layout_affordance` 含 `"band"`。
 
 ## 区域尺寸建议
 
@@ -33,7 +33,6 @@
 ## 用色
 
 - 外观全部来自所选主题的 token；带的边框用 `--c-border`，重点段 marker 可用 `--c-focus` 或真实状态色。
-- 本 pattern 没有按 visual_role 的特殊覆盖。
 
 ## 已有实现
 

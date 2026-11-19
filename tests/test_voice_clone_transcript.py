@@ -68,8 +68,8 @@ def test_fake_backend_direct_align_succeeds_without_asr(tmp_path: Path):
     assert result['transcript_method'] == 'direct_align'
     assert result['output_path'] == str((tmp_path / 'out' / 'narration.mp3').resolve())
     assert (tmp_path / 'out' / 'narration.mp3').stat().st_size > 0
-    # 15 non-whitespace characters / 7.5 per second (punctuation counts).
-    assert result['duration_s'] == pytest.approx(15 / 7.5, abs=0.15)
+    # 15 non-whitespace characters / 7 per second (punctuation counts).
+    assert result['duration_s'] == pytest.approx(15 / 7, abs=0.15)
 
     transcript_file = tmp_path / 'tr' / 'transcript.json'
     assert result['transcript_path'] == str(transcript_file.resolve())

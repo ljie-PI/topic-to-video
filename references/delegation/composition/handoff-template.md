@@ -36,12 +36,12 @@
 
 - 工作区：{{ws}}/
 - {{ws}}/voice_clone/narration.mp3：生成的配音（唯一音频来源，不重生成 TTS）
-- {{timeline_q}}：Phase 7 不可变的段落与 cue 时间轴（只提供真实语音锚点，不提供最终视觉 scene 切分）；本阶段不修改它
+- {{timeline_q}}：Phase 7 不可变的段落与 cue 时间轴（提供真实语音锚点，本阶段只读不改）
 - material-catalog.json：{{material_catalog}}
-- 素材 ref：图片 / 视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>`；按 slug 定位 entry 后，视频 clip 解析到该 entry 的 `selected_clips[].clip_path`（相对工作区根），不用视频的 `local_path`
-- {{ws}}/scene-plan.json：叙事层场景规划（仅作参考）：`intent` / `content_plan` 说明讲什么、怎样展开；可以合并 / 拆分视觉 scenes 或从 catalog 改选更贴合的素材与演绎方式（论文关键图 / 表必须出现；通用素材尽量保留，符合场景内容时优先选用，默认不跨视觉场景复用，仅同一张技术图深入讲解可延长场景或做无过场连续局部 zoom；不用素材的视觉场景按 SVG → WebGL → Three.js → GSAP 优先级用动画生动讲述 `content_plan`），最终视觉 scenes、逐场景 template / layout 与构图由你自主设计
+- 素材 ref 解析：图片 / 视频用 `<slug>/<id>`（图片 `local_path` 相对 `harvest_page/`），视频 clip 用 `<slug>/<video_id>:<start>-<end>` 并解析到相对工作区根的无音轨 `selected_clips[].clip_path`
+- {{ws}}/scene-plan.json：叙事层场景规划（供参考 `intent` / `content_plan` / `material_candidates`；可自主合并 / 拆分视觉 scenes、决定逐场景 template / layout 与演绎方式，素材与动画约束守基础指令第一、四部分）
 - {{ws}}/script.txt：显示稿（旁白与屏幕文字的文本来源，不能改）
-- {{ws}}/inputs.json：orientation {{orientation}}（全片固定画布约束）；用户对画面与视觉风格的要求见 Additional Instructions（`composition_requests`），其作用范围以用户表述为准
+- {{ws}}/inputs.json：orientation {{orientation}}（全片固定画布约束）；用户画面与风格要求见 Additional Instructions（`composition_requests`，按表述的作用范围应用）
 - 字体目录：{{ws}}/composition/assets/fonts/（选定 design 后由你安装；不使用系统字体）
 
 ### 仅供工具读取
@@ -55,12 +55,12 @@
 
 写到工作区（{{ws}}/）：
 
-- {{design_json_q}}：全片 design 机器契约（根字段 `version` / `source` / `preset` / `tokens` / `min_font_px`；默认从库内 preset 选择，仅用户要求库外风格时用 `custom`，契约细则见 `modules/designs/designs.md`）
-- {{scene_config_q}}：最终视觉场景机器配置，schema 见 Required References 里的 scene-config 契约文档（version / canvas / total_s / scenes；每个 scene 有唯一 scene_id、source_scene_ids、begin_s / end_s、template 与落盘完整 regions / caption 的 layout）；时间为全片秒，主区间覆盖整段视频。它由你与 storyboard 一起产出：先按「用户要求 → 特别匹配模块 → 即时生成」的顺序逐视觉场景定方案，再落盘
-- {{subtitle_units_q}}：最终字幕单元。**在 scene-config 写出后，按各 scene 落盘的 caption 规格生成**（下面的 `align-narration.py --mode subtitles` 命令）。默认脚本生成初稿；已有用户编辑是有效输入，仅改画面 / 重渲染不要覆盖它
-- {{ws}}/composition/storyboard.md：storyboard，开头是「组件与转场使用表」，逐个记录实际使用的组件、动态模块或转场、所依据的具体模块 `.md` 文档路径及其挂载参数、`window.VIDEO` 数据来源（含采用转场时的 `cuts`，连续深讲同一张技术图的切点不加过场）；每个视觉 scene 写明 intent、template / layout 方案及理由（采用预定义模块时注明对应 `.md` 路径）、所用的 content 区域，以及实际使用的素材 ref（连续深讲同一张技术图时注明连续场景范围、无过场衔接与各段局部 zoom / 焦点）或无素材时选用的动画方案及如何演绎 `content_plan`；必用素材覆盖表按基础指令第一部分处理
-- {{ws}}/composition/index.html + {{ws}}/composition/compositions/：HyperFrames 工程与逐场景拆分的子合成（各视觉场景拆成独立 `compositions/<scene>.{html,mjs}` 逐个落盘，避免单次拼装巨型单文件）
-- {{ws}}/composition/check-composition.json：check-composition 的报告（下面命令的 `--output` 写出它；最后一次运行的 verdict 必须是 pass，并对报告中的 `warnings` 逐条复核处理）
+- {{design_json_q}}：全片 design 机器契约（`version` / `source` / `preset` / `tokens` / `min_font_px`，规则见 `modules/designs/designs.md`）
+- {{scene_config_q}}：最终视觉场景机器配置（schema 见 scene-config 契约文档；按「用户要求 → 特别匹配模块 → 即时生成」逐视觉场景定方案后落盘完整 `regions` / `caption`）
+- {{subtitle_units_q}}：最终字幕单元（在 `scene-config` 写出后由下方命令按各 scene 落盘 `caption` 生成；保留已有用户编辑，仅改画面 / 重渲染不覆盖）
+- {{ws}}/composition/storyboard.md：storyboard（含开头的「组件与转场使用表」、逐视觉 scene 的方案/区域/素材分配或动画演绎说明，以及必用素材覆盖表；细则见基础指令）
+- {{ws}}/composition/index.html + {{ws}}/composition/compositions/：HyperFrames 工程与逐场景拆分的子合成（`compositions/<scene>.{html,mjs}` 逐个落盘，防巨型单文件超限）
+- {{ws}}/composition/check-composition.json：渲染前检查报告（最终 `verdict` 必须为 `pass`，并逐条复核处理 `warnings`）
 - {{ws}}/composition/renders/final.mp4：渲染产物
 
 先读旁白与叙事规划，按 `modules/designs/designs.md` 选定 design，初始化工程（若 `composition/` 不存在）、安装字体并写 {{design_json_q}}（不用系统字体；选定后将 `<design>` 换成实际字体包名）：

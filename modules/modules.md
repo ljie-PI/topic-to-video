@@ -11,7 +11,7 @@
 
 用模块拼视频，比每次从零写场景更快，风格也更统一。
 
-本文档是模块库的入口。模块目录和 handoff 的 Required / Optional References 都是**发现入口，不是采用清单**：阅读模块目录不等于采用模块。每个视觉 scene 的统一选择与即时生成规则见 [composition 基础指令第四部分](../references/delegation/composition/base-instructions.md#四内容演绎与模板选择)。每个模块的文档放在同一个目录里；HTML 是静态标记和样式，初始化脚本是同目录的 `.mjs`，选中采用后按各模块文档复制进视频工程并由工程接线。
+本文档是模块库入口（目录与 handoff 引用均为**发现入口，非强制采用清单**）。逐视觉 scene 的采用条件与即时生成规则统一见 [composition 基础指令第四部分](../references/delegation/composition/base-instructions.md#四内容演绎与模板选择)；决定采用某模块后，先阅读同目录对应的 `.md` 文档再把 `.html` 与 `.mjs` 拷入工程接线。
 
 ## 模块初始化接口（唯一约定）
 
@@ -187,7 +187,7 @@ window.VIDEO = {
 
 每个组件、转场和场景都有一个 `data` 参数，可以改成读别的键名。
 
-视觉 scene 的常驻组件数据不从零编写：`subtitle-units.json` 的 `units[]` 以 `begin_s → start`、`end_s → end`、`text → text` 映射为 `captions[]`，`caption_segments[]` 原样映射为 `captionSegments[]`；`scene-config.json` 的每个 scene 以原起止时间映射为 `presenter.placements[]`，regions 有人物区（`component` 为 `presenter` 的 reserved 区）时为 `visible: true`，位置取该人物区 rect。完整映射见 `layouts/layouts.md` 和两个组件文档。
+常驻组件数据直接由上游产物确定性映射（`subtitle-units.json` → `captions[]` / `captionSegments[]`，`scene-config.json` → `presenter.placements[]`），完整代码映射见 `layouts/layouts.md`、`components/caption-bar/caption-bar.md` 与 `components/presenter/presenter.md`。
 
 ## 时间约定
 

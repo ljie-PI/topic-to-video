@@ -37,10 +37,10 @@
 
 写到工作区根目录（{{ws}}/）：
 
-- {{ws}}/script.txt：显示稿，段间空行分隔（schema 见基础指令）
-- {{ws}}/tts-lexicon.json：词表，JSON map 显示形式 → 朗读形式
-- {{ws}}/scene-plan.json：叙事层场景规划（schema 见基础指令；段落并集覆盖全部段落；每个 scene 的 intent / content_plan 说清讲什么、怎样展开；不写模板 / pattern / 动作——那是 composition 的选择；素材引用必须存在于 catalog，图片 / 视频用 `<slug>/<id>`，视频 clip 用 `<slug>/<video_id>:<start>-<end>`，裸 id 无效）
-- {{ws}}/narration.txt + {{ws}}/narration-offsets.json：由脚本确定性生成，不要手写——
+- {{ws}}/script.txt：显示稿，段间空行分隔（规则见基础指令）
+- {{ws}}/tts-lexicon.json：词表，JSON map（显示形式 → 朗读形式）
+- {{ws}}/scene-plan.json：叙事层场景规划（schema 与分步 `content_plan` 规则见基础指令；素材引用用 `<slug>/<id>` 或 `<slug>/<video_id>:<start>-<end>`；仅含叙事层允许字段，不写模板 / pattern / 动作）
+- {{ws}}/narration.txt + {{ws}}/narration-offsets.json：由脚本确定性生成，禁手写——
   source {{venv_activate_q}} && python3 {{skill_root_q}}/scripts/make-narration.py \
     --script {{script_txt_q}} --lexicon {{lexicon_q}} --output-dir {{output_dir_q}}
 
