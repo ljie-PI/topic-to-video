@@ -589,6 +589,12 @@ def primary_scroll_record(ctx, page, scroll_duration: int,
     """录制已加载的 harvest 页面，然后冲刷出它的视频。"""
     rec_dir = output_dir / 'recording'
     try:
+        # 后台标签页的 setTimeout 会被节流（Chrome intensive throttling），
+        # 滚动动画会卡住不结束；录制前把该页切到前台。
+        try:
+            page.bring_to_front()
+        except Exception:
+            pass
         page.evaluate(SCROLL_RECORD_JS, scroll_duration * 1000)
     finally:
         ctx.close()  # 冲刷出 .webm
