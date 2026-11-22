@@ -68,6 +68,8 @@ SEL = {
         " | //mat-action-list//button[.//*[contains(normalize-space(text()),'Deep Research')"
         " or contains(normalize-space(text()),'深度研究')]]"
         " | //mat-action-list//button[contains(normalize-space(.),'Deep Research')]"
+        " | //gem-menu-item[contains(normalize-space(.),'Deep Research')"
+        " or contains(normalize-space(.),'深度研究')]"
     ),
     'confirm_button': "//button[@aria-label='Start research' or @data-test-id='confirm-button' or contains(normalize-space(.),'Start research') or contains(normalize-space(.),'开始研究')]",
     'last_message': "(//message-content)[last()]",
