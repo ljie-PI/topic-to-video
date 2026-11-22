@@ -78,7 +78,7 @@ window.VIDEO = {
 |---|---|---|
 | `begin_s`, `end_s` | 当前 layout 的有效显示区间 | 用 `[begin_s, end_s)` 判断区间；字幕跨过边界时在边界切换布局 |
 | `caption_rect` | 该 layout 中 `id: "caption-text"` 的 `rect` | `x` → 容器 `left`，`y` → `top`，`width` / `height` → 容器宽高；缺省矩形字段才回退到挂载参数 |
-| `caption_bar_rect` | 该 layout 中 `id: "caption-bar"` 的 `rect`（无该保留区时为 `null`） | 有矩形时定位并显示 `#cb-bar`（文字用 `--c-chrome-ink`）；为 `null` 时在区间内隐藏 `#cb-bar`（通过 CSS 变量 `--cb-ink` / `--cb-align` / `--cb-justify` 切换为 `--c-ink`；深底自由布局如需浅色文字加描边/遮罩，可直接在工程 `<head>` 样式表写 `#caption-bar .cb-line span` 覆盖） |
+| `caption_bar_rect` | 该 layout 中 `id: "caption-bar"` 的 `rect`（无该保留区时为 `null`） | 有矩形时定位并显示 `#cb-bar`（文字用 `--c-chrome-ink`）；为 `null` 时隐藏 `#cb-bar`（文字用 `--c-ink`；深底自由布局如需浅色文字加描边/遮罩，可在工程 `<head>` 写 `#caption-bar .cb-line span` 覆盖）。竖屏画布且 `max_lines > 1` 时居中，其余左对齐 |
 | `caption.width_px` | 该 layout 的 `caption` | 没有 `caption_rect.width` 时作为容器宽度 |
 | `caption.font_size_px` | 同上 | 当前区间的实际字号，**不再按文字宽度缩小** |
 | `caption.max_lines` | 同上 | `1` 时 `white-space: nowrap`；大于 `1` 时允许正常换行，最大高度为 `max_lines × font_size_px × 1.15`，多余内容裁剪 |
@@ -88,17 +88,6 @@ scene 模式的显示边界是确定性的：
 - 每句严格在 `[captions[].start, min(captions[].end, 下一句.start)]` 显示（无 0.15s 延迟、0.3s 下限或 0.1s 延后）；
 - 对每个重叠的 `caption_segment`，在 `max(start, segment.begin_s)` 应用其 `caption_rect` 与 `caption`（正反向 seek 状态一致）；
 - 保留随短字幕自动缩短的淡入 / 淡出；场景切换只改布局，不重挂组件。
-
-## 对齐：由文字框占条宽的多少决定
-
-组件不需要额外的对齐参数，直接看布局已经落盘的几何：
-
-- **无底条**（`caption_bar_rect: null`，如 `portrait` / `portrait-3x4`）：`max_lines > 1` 时居中，单行时左对齐。
-- **有底条**：文字框宽度 ≥ 条宽 **80%** 时居中，否则左对齐。
-  - 竖屏讲解模式 `940 / 1080 ≈ 87%` → 居中（人物在字下方，左右都不用让位）；
-  - 横屏讲解模式 `1166 / 1920 ≈ 61%` → 左对齐（右边界停在人物左缘前，左对齐贴着人物视线）。
-
-这样换布局、改区域宽度都会自动得到正确对齐，组件里没有写死的朝向；确需强制某一段的排法时，在工程 `<head>` 用 `#caption-bar .cb-line span { text-align: … }` 覆盖（同一处也用于深底自绘字幕的浅色文字）。
 
 ## 限制
 

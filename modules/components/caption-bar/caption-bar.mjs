@@ -14,16 +14,13 @@
 //   returns { timeline, destroy }: a paused GSAP timeline plus a teardown that
 //     kills it, so destroying/remounting leaves no driver behind.
 
-// a caption box this close to the bar's full width has no character beside it,
-// so it is centred instead of left-aligned (portrait presenter layouts: 940 of 1080)
-const FULL_WIDTH_RATIO = 0.8;
-
 export function init(root, { params = {}, data = {}, duration = 0, gsap }) {  const tl = gsap.timeline({ paused: true });
   const num = (v, d) => (v !== "" && v != null && Number.isFinite(Number(v)) ? Number(v) : d);
   // position defaults are the landscape-presenter layout's caption region
   const X = num(params.x, 96), WIDTH = num(params.width, 1166),
     Y = num(params.y, 1008), H = num(params.height, 72), FS = num(params.fontSize, 36);
   const bar = root.querySelector("#cb-bar");
+  const isPortrait = root.clientHeight > root.clientWidth;
   bar.style.top = Y + "px";
   bar.style.height = H + "px";
   const barOff = params.bar === "off";
@@ -91,12 +88,7 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {  co
         };
         if ("caption_bar_rect" in segment) {
           const hasBar = Boolean(segment.caption_bar_rect) && !barOff;
-          // Alignment follows the geometry the layout already declares: a text box
-          // that spans the whole bar has no neighbour to dodge, so it centres; a
-          // narrower box leaves room for the character and stays left-aligned.
-          const boxWidth = num(rect.width, spec.width_px != null ? num(spec.width_px, WIDTH) : WIDTH);
-          const barWidth = segment.caption_bar_rect ? num(segment.caption_bar_rect.width, boxWidth) : boxWidth;
-          const centered = !hasBar ? spec.max_lines > 1 : boxWidth >= barWidth * FULL_WIDTH_RATIO;
+          const centered = isPortrait && spec.max_lines > 1;
           lineUpdate["--cb-justify"] = centered ? "center" : "flex-start";
           lineUpdate["--cb-ink"] = hasBar ? "var(--c-chrome-ink)" : "var(--c-ink)";
           lineUpdate["--cb-align"] = centered ? "center" : "left";

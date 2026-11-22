@@ -6,10 +6,7 @@
 // timelines globally. The caller owns the returned timeline.
 //
 //   init(root, { params, data, duration, gsap })
-//     params: { logo, path, tabsX, mode, height, padX, logoSize }
-//       mode "tabs" (default, landscape) draws the chapter tab row;
-//       mode "compact" (portrait) drops the row and shows the current chapter
-//       on the right plus a progress line along the bar's bottom edge.
+//     params: { logo, path, tabsX, mode }
 //     data:   [{ label, at }] — "at" is the chapter start in local seconds
 //     All times are local seconds: 0 = the mount's start, i.e. video seconds
 //     for full-length chrome mounted at data-start="0".
@@ -19,14 +16,13 @@
 export function init(root, { params = {}, data = [], duration = 0, gsap }) {
   const tl = gsap.timeline({ paused: true });
   const $ = (selector) => root.querySelector(selector);
-  const num = (v, d) => (v !== "" && v != null && Number.isFinite(Number(v)) ? Number(v) : d);
-  const mode = params.mode === "compact" ? "compact" : "tabs";
-  const height = num(params.height, 72);
-  const padX = num(params.padX, 40);
-  const logoSize = num(params.logoSize, 40);
-  root.style.setProperty("--nb-h", height + "px");
-  root.style.setProperty("--nb-pad", padX + "px");
-  root.style.setProperty("--nb-logo", logoSize + "px");
+  const compact = params.mode === "compact";
+  const padX = compact ? 70 : 40;
+  if (compact) {
+    root.style.setProperty("--nb-h", "88px");
+    root.style.setProperty("--nb-pad", "70px");
+    root.style.setProperty("--nb-logo", "34px");
+  }
 
   // logo: an image passed in; without one the path moves to the left edge
   const logo = $("#nb-logo");
@@ -51,7 +47,7 @@ export function init(root, { params = {}, data = [], duration = 0, gsap }) {
   const left = Number(params.tabsX) || 420;
   const row = $("#nb-tabs"), line = $("#nb-line");
 
-  if (mode === "compact") {
+  if (compact) {
     row.remove();
     line.remove();
     const chapter = $("#nb-chapter"), progress = $("#nb-progress");
@@ -73,10 +69,11 @@ export function init(root, { params = {}, data = [], duration = 0, gsap }) {
       if (i > 0) tl.set(chs[i - 1], { opacity: 0 }, Math.max(0, tabs[i].at - 0.04));
       tl.set(el, { opacity: 1 }, Math.max(0, tabs[i].at - 0.04));
     });
-    // the bar's bottom line is the whole film's progress bar
     if (duration > 0) tl.fromTo(progress, { width: "0%" }, { width: "100%", duration, ease: "none" }, 0);
     return { timeline: tl, destroy() { tl.kill(); } };
   }
+  $("#nb-chapter").remove();
+  $("#nb-progress").remove();
   row.style.left = left + "px";
   const widthOf = (s) => Math.max(80, Math.round([...String(s)].reduce((w, ch) => w + (/[⺀-鿿＀-￯]/.test(ch) ? 28 : 17.5), 0)) + 44);
   const X = [], W = [], now = [], idle = [];
