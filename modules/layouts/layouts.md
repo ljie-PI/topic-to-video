@@ -12,17 +12,17 @@
 | `landscape-presenter` | 1920×1080 | 横屏，人物在右下角主持；主 / 副展示区、导航和字幕条 | 1166 / 36 / 1 | [landscape-presenter.md](landscape-presenter.md) | [landscape-presenter.json](landscape-presenter.json) |
 | `portrait` | 1080×1920 | 9:16 竖屏，无主持人和顶部导航 | 940 / 42 / 2 | [portrait.md](portrait.md) | [portrait.json](portrait.json) |
 | `portrait-3x4` | 1080×1440 | 3:4 竖屏，无主持人和顶部导航 | 940 / 40 / 2 | [portrait.md](portrait.md)（同一文档的 3:4 节） | [portrait-3x4.json](portrait-3x4.json) |
-| `portrait-presenter` | 1080×1920 | 9:16 竖屏，人物在右下角主持；全宽页眉与主展示区、底部双行字幕条 | 600 / 38 / 2 | [portrait-presenter.md](portrait-presenter.md) | [portrait-presenter.json](portrait-presenter.json) |
-| `portrait-3x4-presenter` | 1080×1440 | 3:4 竖屏，人物在右下角主持；全宽页眉与主展示区、底部双行字幕条 | 600 / 36 / 2 | [portrait-presenter.md](portrait-presenter.md)（同一文档的 3:4 节） | [portrait-3x4-presenter.json](portrait-3x4-presenter.json) |
+| `portrait-presenter` | 1080×1920 | 9:16 竖屏，人物在右下角主持；88px 顶部导航栏、全宽页眉与主展示区、主展示区下方左侧副展示区、底部全宽双行字幕条 | 940 / 38 / 2 | [portrait-presenter.md](portrait-presenter.md) | [portrait-presenter.json](portrait-presenter.json) |
+| `portrait-3x4-presenter` | 1080×1440 | 3:4 竖屏，人物在右下角主持；88px 顶部导航栏、全宽页眉与主展示区、主展示区下方左侧副展示区、底部全宽双行字幕条 | 940 / 36 / 2 | [portrait-presenter.md](portrait-presenter.md)（同一文档的 3:4 节） | [portrait-3x4-presenter.json](portrait-3x4-presenter.json) |
 
-每份 JSON 都有 `canvas` / `regions` / `caption`。`regions[]` 的 `rect` 是 `{x, y, width, height}`；`kind: "content"` 是可放场景内容的区域，`kind: "reserved"` 是保留区域，并由 `component` 指定谁可以填。`caption` 是 `{width_px, font_size_px, max_lines}`；`id: "caption-text"` 区域的 `rect` 同时决定字幕在画布上的实际位置和外框。
+每份 JSON 都有 `canvas` / `regions` / `caption`。`caption` 的 `width_px` 与 `caption-text` 区的宽度一致，字幕组件按「文字框宽度 ≥ 条宽 80% 居中、否则左对齐」自动决定排法（详见 [`caption-bar.md`](../components/caption-bar/caption-bar.md)），布局不另设对齐字段。`regions[]` 的 `rect` 是 `{x, y, width, height}`；`kind: "content"` 是可放场景内容的区域，`kind: "reserved"` 是保留区域，并由 `component` 指定谁可以填。`caption` 是 `{width_px, font_size_px, max_lines}`；`id: "caption-text"` 区域的 `rect` 同时决定字幕在画布上的实际位置和外框。
 
 ## 全片画布固定，视觉 scene 的布局可变
 
 - **画布由 `inputs.json` 的 `orientation` 在全片固定**：`landscape` = 1920×1080，`portrait` = 1080×1920，`portrait-3:4` = 1080×1440。同一个视频不能逐 scene 改画布尺寸或朝向。
 - `composition/scene-config.json` 中每个视觉 scene 落盘自己的 `layout`（可空 `preset` + 完整 `regions` / `caption`）；因此**区域坐标、保留区域和字幕规格可以随视觉 scene 改变**，rect 不得超出全片朝向固定的画布。
 - 不要回到 `inputs.json` 指定全片 `layout`：preset 是逐 scene 的可选借用，也可以自主设计自由布局（`preset: null`，无需注册）。视觉 scene 的 `begin_s` / `end_s` 使用视频秒；合法配置必须主区间有序、不重叠，从 0 覆盖到 `total_s`。
-- `landscape`、`portrait` 和 `portrait-3x4` 没有人物区；`landscape-presenter`、`portrait-presenter` 和 `portrait-3x4-presenter` 声明人物区并显示 `presenter` 组件。字幕与人物组件仍全片只挂一次，分别通过 `VIDEO.captionSegments` 与 `VIDEO.presenter.placements` 在视觉 scene 边界切换区域、显隐和字幕规格。
+- `landscape`、`portrait` 和 `portrait-3x4` 没有人物区；`landscape-presenter`、`portrait-presenter` 和 `portrait-3x4-presenter` 声明人物区并显示 `presenter` 组件。导航栏、字幕与人物组件仍全片只挂一次，分别通过 `VIDEO.captionSegments` 与 `VIDEO.presenter.placements` 在视觉 scene 边界切换区域、显隐和字幕规格。
 
 示例：
 

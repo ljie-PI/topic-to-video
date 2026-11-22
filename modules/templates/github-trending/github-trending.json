@@ -1,6 +1,6 @@
 {
   "template": "github-trending",
-  "preferred_layouts": ["landscape-presenter"],
+  "preferred_layouts": ["landscape-presenter", "portrait-presenter", "portrait-3x4-presenter"],
   "scenes": ["trending-overview", "project-cover"],
   "anchor_fields": {
     "project-cover": {"required": ["nameAt"], "optional": ["taglineAt", "starsAt"]},

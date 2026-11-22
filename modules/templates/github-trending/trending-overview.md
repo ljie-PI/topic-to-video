@@ -4,9 +4,9 @@
 
 一个场景，逐个介绍 GitHub Trending 榜单里的项目。
 
-- **布局**：横屏讲解模式（`layouts/landscape-presenter.md`）。
+- **布局**：横屏讲解模式（`layouts/landscape-presenter.md`）；竖屏用 `layouts/portrait-presenter.md` / `portrait-3x4-presenter.md`，主副展示区互换角色（主区 README、副区榜单），参数见 [`github-trending.md`](github-trending.md) 第 6 节。
   - **页眉行**：页面标题，例如“GitHub 本周热榜”，后面跟日期。
-  - **副展示区**：Trending 榜单，紧凑样式，最多 5 行。
+  - **副展示区**：Trending 榜单，紧凑样式，最多 5 行（竖屏 9:16 仍是 5 行、3:4 建议 4 行）。
   - **主展示区**：README 面板，显示当前项目的 README 截图。
 - **节奏**：
   1. 场景开始时，人物先挥手欢迎；同时标题、榜单（像信息流一样逐行出现）、README 面板依次入场。

@@ -13,32 +13,40 @@
       font-family: var(--font-sans);
       pointer-events: none;
     }
+    /* geometry comes from the init params as CSS variables; the defaults are the landscape bar */
     #nb-bar {
       position: absolute;
       left: 0;
       top: 0;
-      width: 1920px;
-      height: 72px;
+      width: 100%;
+      height: var(--nb-h, 72px);
       background: var(--c-chrome);
     }
-    #nb-logo { position: absolute; left: 40px; top: 16px; width: 40px; height: 40px; object-fit: contain; }
+    #nb-logo {
+      position: absolute;
+      left: var(--nb-pad, 40px);
+      top: calc((var(--nb-h, 72px) - var(--nb-logo, 40px)) / 2);
+      width: var(--nb-logo, 40px);
+      height: var(--nb-logo, 40px);
+      object-fit: contain;
+    }
     #nb-path {
       position: absolute;
-      left: 98px;
+      left: calc(var(--nb-pad, 40px) + var(--nb-logo, 40px) + 18px);
       top: 0;
-      line-height: 72px;
+      line-height: var(--nb-h, 72px);
       font-size: 26px;
       font-weight: 600;
       color: var(--c-chrome-ink);
       white-space: nowrap;
     }
     #nb-path em { font-style: normal; font-weight: 400; color: var(--c-chrome-muted); }
-    #nb-tabs { position: absolute; left: 420px; top: 0; height: 72px; display: flex; }
+    #nb-tabs { position: absolute; left: 420px; top: 0; height: var(--nb-h, 72px); display: flex; }
     /* each tab holds its label twice, idle and current, and crossfades between them */
     #nb-tabs .tab {
       display: grid;
-      height: 72px;
-      line-height: 72px;
+      height: var(--nb-h, 72px);
+      line-height: var(--nb-h, 72px);
       text-align: center;
       font-size: 28px;
       font-weight: 600;
@@ -51,12 +59,36 @@
     #nb-line {
       position: absolute;
       left: 420px;
-      top: 66px;
+      top: calc(var(--nb-h, 72px) - 6px);
       width: 100px;
       height: 6px;
       border-radius: 3px 3px 0 0;
       background: var(--c-chrome-active);
       transform-origin: 0 0;
+    }
+    /* compact mode (portrait layouts): no tab row, the right side names the current chapter */
+    #nb-chapter {
+      position: absolute;
+      right: var(--nb-pad, 40px);
+      top: 0;
+      height: var(--nb-h, 72px);
+      display: none;
+      font-size: 24px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: var(--c-chrome-ink);
+      white-space: nowrap;
+    }
+    #nb-chapter .ch { position: absolute; right: 0; top: 0; line-height: var(--nb-h, 72px); opacity: 0; }
+    #nb-chapter .ch em { font-style: normal; font-weight: 400; color: var(--c-chrome-muted); }
+    #nb-progress {
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      width: 0;
+      height: 6px;
+      background: var(--c-chrome-active);
+      display: none;
     }
   </style>
   <div id="root" data-composition-id="nav-bar" data-width="1920" data-height="1080">
@@ -65,6 +97,8 @@
       <div id="nb-path"></div>
       <div id="nb-tabs"></div>
       <div id="nb-line"></div>
+      <div id="nb-chapter"></div>
+      <div id="nb-progress"></div>
     </div>
   </div>
 </template>

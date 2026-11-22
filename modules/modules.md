@@ -88,7 +88,7 @@ layouts/
   landscape.md, landscape.json            布局：横屏模式（1920×1080，无主持人，主展示区贯穿，导航与底部字幕条）
   landscape-presenter.md, landscape-presenter.json  布局：横屏讲解模式（1920×1080，人物右下角主持，主 / 副展示区，上下界面条）
   portrait.md, portrait.json, portrait-3x4.json     布局：竖屏模式（1080×1920 与 1080×1440，无主持人，一文档两画布）
-  portrait-presenter.md, portrait-presenter.json, portrait-3x4-presenter.json  布局：竖屏讲解模式（1080×1920 与 1080×1440，人物右下角主持，底部双行字幕条）
+  portrait-presenter.md, portrait-presenter.json, portrait-3x4-presenter.json  布局：竖屏讲解模式（1080×1920 与 1080×1440，人物右下角主持，主 / 副展示区，上下界面条）
 components/
   components.md                           组件总览和共同约定
   presenter/presenter.md, presenter.html, presenter.mjs, images/   人物动作：组件和两张姿势图（已迁移到显式初始化）

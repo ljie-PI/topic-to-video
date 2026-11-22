@@ -679,7 +679,9 @@ class TestCompositionMaterialization:
         tpl_contract.write_text(json.dumps(contract), encoding='utf-8')
         prepare(ws, 'composition')
         prepare(ws, 'composition', '--refresh')
-        assert json.loads(tpl_contract.read_text(encoding='utf-8'))['preferred_layouts'] == ['landscape-presenter']
+        assert json.loads(tpl_contract.read_text(encoding='utf-8'))['preferred_layouts'] == [
+            'landscape-presenter', 'portrait-presenter', 'portrait-3x4-presenter',
+        ]
 
 
 class TestCompositionDesignDelegation:

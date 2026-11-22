@@ -374,8 +374,8 @@ def test_portrait_presenter_and_portrait_stage_emit_per_scene_bar_and_two_line_b
     assert proc.returncode == 0, proc.stdout + proc.stderr
     segments = units['caption_segments']
     assert [s['layout'] for s in segments] == [presenter_preset, stage_preset]
-    assert segments[0]['caption'] == {'width_px': 600, 'font_size_px': font_px, 'max_lines': 2}
-    assert segments[0]['caption_rect'] == {'x': 70, 'y': bar_y, 'width': 600, 'height': 144}
+    assert segments[0]['caption'] == {'width_px': 940, 'font_size_px': font_px, 'max_lines': 2}
+    assert segments[0]['caption_rect'] == {'x': 70, 'y': bar_y, 'width': 940, 'height': 144}
     assert segments[0]['caption_bar_rect'] == {'x': 0, 'y': bar_y, 'width': 1080, 'height': 144}
     assert segments[1]['caption_bar_rect'] is None
     for unit in units['units']:

@@ -9,8 +9,8 @@
 | 部分 | 用什么 | 说明 |
 |---|---|---|
 | 设计主题 | `designs/github/github.md`（纸本） | 也可以换成同一套变量的其他主题 |
-| 布局 | `layouts/landscape-presenter.md`（横屏讲解模式） | 区域位置固定 |
-| 顶部导航 | 组件 `nav-bar` | 参数和标签写法见第 3 节 |
+| 布局 | 横屏 `layouts/landscape-presenter.md`；竖屏 `layouts/portrait-presenter.md` / `portrait-3x4-presenter.md` | 区域位置固定；竖屏的重排见第 6 节 |
+| 顶部导航 | 组件 `nav-bar` | 横屏用标签行、竖屏用紧凑模式（右侧章节 + 进度线），参数见第 3、6 节 |
 | 底部字幕 | 组件 `caption-bar` | 字幕取配音的逐句时间 |
 | 场景转场 | 转场 `tile-wipe`（`transitions/tile-wipe/`） | 方格改成贡献图配色，卡片写法见第 3 节 |
 | 主持人 | 组件 `presenter` | 动作写法见第 5 节 |
@@ -98,3 +98,38 @@
 | 榜单总览里每个项目的 `cue` 和 `cue + 1.7` 秒 | 分别在 `cue` 瞥视 `[cue, 1.0, "U"]` 看榜单，在 `cue + 1.7` 瞥视 `[cue + 1.7, 1.0, "L"]` 看 README |
 | 封面给出了 `starsAt` 且 star 数出现时（段开始 + `starsAt`） | `["eureka", 2700]`，头顶冒出“!” |
 | 封面的介绍出现时 | 瞥视 `"L"` |
+
+## 6. 竖屏版（`portrait-presenter` / `portrait-3x4-presenter`）
+
+同一套场景与数据在竖屏下照用，只换布局、组件参数和区域分工：主副展示区互换角色，竖屏主区更高，榜单挪进副区。
+
+### 6.1 区域分工
+
+| 场景 | 横屏主区 1048×788 | 横屏副区 640×522 | 竖屏主区 940×900 / 940×630 | 竖屏副区 610×512 / 650×352 |
+|---|---|---|---|---|
+| `trending-overview` | README 截图面板 | Trending 榜单 5 行 | README 截图面板（更高，滚动余量更大） | Trending 榜单（9:16 5 行、行高约 90；3:4 建议 4 行、行高约 73） |
+| `project-cover` | 仓库头 | 项目 logo 卡 | 仓库头（标签 / 路径 / 一句话 / topic / 大 star / 语言与 Star 按钮） | 项目 logo 卡（图标 ≤ 150px / 104px） |
+
+页眉行在两档竖屏里都保留（`y = 120` / `90`）：`trending-overview` 照常写标题与日期；`project-cover` 横屏不用页眉，竖屏可留空，或改写成「GitHub 本周热榜 · #1」。
+
+### 6.2 组件与转场参数
+
+| 组件或转场 | 9:16（1080×1920） | 3:4（1080×1440） |
+|---|---|---|
+| `nav-bar` | `{"mode": "compact", "height": 88, "padX": 70, "logoSize": 34, "logo": "assets/brand/github-mark-white.svg", "path": "github / trending"}` | 同左 |
+| `caption-bar` | 不用填：布局自带 `940 / 38 / 2`、`align: "center"` | 不用填：`940 / 36 / 2`、`align: "center"` |
+| `presenter` | `{"x": 720, "y": 1476, "size": 300, "fxScale": 1.4}` | `{"x": 760, "y": 1036, "size": 260, "fxScale": 1.6}` |
+| `tile-wipe` | `{"originX": 870, "originY": 1709, "top": 88, "bottom": 1776}` | `{"originX": 890, "originY": 1238, "top": 88, "bottom": 1296}` |
+
+导航栏在竖屏只有一个实例、没有按 scene 显隐的能力：整片都用带导航栏的 presenter 布局，不要混排无导航栏的 `portrait` 场景。
+
+### 6.3 竖屏的元素尺度
+
+竖屏副区只有 610×512（3:4 为 650×352），按 [`layouts/portrait-presenter.md`](../layouts/portrait-presenter.md) 的「元素尺度」收口，本项目最常踩的两处：
+
+- `project-cover` 的 star 数字：9:16 ≤ **104px**（旁边「本周 +4,208」≥ 42px），3:4 ≤ **84px**（≥ 34px）；不要沿用横屏的 128–150px 特大数字档。
+- 副区的项目 logo：图标边长 ≤ **150px**（9:16）/ **104px**（3:4），且必须与仓库名同框，不能一个 logo 居中占满副区。
+
+### 6.4 节奏
+
+逐项目一行的讲解节奏不变：行高亮 + README 滚动 + 星标填充。竖屏副区比横屏矮，讲到第 4–5 行时注意副区不要滚出可视范围；`trending-overview` 的入场顺序（标题 → 榜单逐行 → README 面板）保持不变。
