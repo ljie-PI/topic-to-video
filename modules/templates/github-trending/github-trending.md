@@ -9,8 +9,8 @@
 | 部分 | 用什么 | 说明 |
 |---|---|---|
 | 设计主题 | `designs/github/github.md`（纸本） | 也可以换成同一套变量的其他主题 |
-| 布局 | `layouts/landscape-presenter.md`（横屏讲解模式） | 区域位置固定 |
-| 顶部导航 | 组件 `nav-bar` | 参数和标签写法见第 3 节 |
+| 布局 | 横屏 `layouts/landscape-presenter.md`；竖屏 `layouts/portrait-presenter.md` | 区域位置固定；竖屏参数见第 6 节 |
+| 顶部导航 | 组件 `nav-bar` | 参数和标签写法见第 3、6 节 |
 | 底部字幕 | 组件 `caption-bar` | 字幕取配音的逐句时间 |
 | 场景转场 | 转场 `tile-wipe`（`transitions/tile-wipe/`） | 方格改成贡献图配色，卡片写法见第 3 节 |
 | 主持人 | 组件 `presenter` | 动作写法见第 5 节 |
@@ -95,6 +95,17 @@
 
 | 时刻 | 动作 |
 |---|---|
-| 榜单总览里每个项目的 `cue` 和 `cue + 1.7` 秒 | 分别在 `cue` 瞥视 `[cue, 1.0, "U"]` 看榜单，在 `cue + 1.7` 瞥视 `[cue + 1.7, 1.0, "L"]` 看 README |
+| 榜单总览里每个项目的 `cue` 和 `cue + 1.7` 秒 | `cue` 瞥视副展示区看榜单（横屏 `"U"`，竖屏 `"L"`），`cue + 1.7` 瞥视主展示区看 README（横屏 `"L"`，竖屏 `"U"`） |
 | 封面给出了 `starsAt` 且 star 数出现时（段开始 + `starsAt`） | `["eureka", 2700]`，头顶冒出“!” |
-| 封面的介绍出现时 | 瞥视 `"L"` |
+| 封面的介绍出现时 | 瞥视主展示区（横屏 `"L"`，竖屏 `"U"`） |
+
+## 6. 竖屏版（`portrait-presenter` / `portrait-3x4-presenter`）
+
+场景内置样式（`trending-overview.html`、`project-cover.html`）的默认坐标按横屏定位；竖屏挂载时按 `portrait-presenter.json` / `portrait-3x4-presenter.json` 覆盖主副区坐标（主区放 README / 仓库头，副区放榜单 / logo 卡），元素尺寸遵守 [`designs/designs.md`](../../designs/designs.md) 的竖屏字号阶梯与尺度上限（3:4 副区榜单最多 4 行）。
+
+| 组件或转场 | 9:16（1080×1920） | 3:4（1080×1440） |
+|---|---|---|
+| `nav-bar` | `{"mode": "compact", "logo": "assets/brand/github-mark-white.svg", "path": "github / trending"}` | 同左 |
+| `caption-bar` | 不用填，由 `captionSegments` 按当前 layout 控制 | 同左 |
+| `presenter` | `{"x": 720, "y": 1476, "size": 300, "fxScale": 1.4}` | `{"x": 760, "y": 1036, "size": 260, "fxScale": 1.6}` |
+| `tile-wipe` | `{"originX": 870, "originY": 1709, "top": 88, "bottom": 1776}` | `{"originX": 890, "originY": 1238, "top": 88, "bottom": 1296}` |

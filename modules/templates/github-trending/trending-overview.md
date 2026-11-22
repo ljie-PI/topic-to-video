@@ -4,9 +4,9 @@
 
 一个场景，逐个介绍 GitHub Trending 榜单里的项目。
 
-- **布局**：横屏讲解模式（`layouts/landscape-presenter.md`）。
+- **布局**：横屏讲解模式（`layouts/landscape-presenter.md`）；竖屏用 `layouts/portrait-presenter.md` / `portrait-3x4-presenter.md`。
   - **页眉行**：页面标题，例如“GitHub 本周热榜”，后面跟日期。
-  - **副展示区**：Trending 榜单，紧凑样式，最多 5 行。
+  - **副展示区**：Trending 榜单，紧凑样式，最多 5 行（3:4 竖屏建议 4 行）。
   - **主展示区**：README 面板，显示当前项目的 README 截图。
 - **节奏**：
   1. 场景开始时，人物先挥手欢迎；同时标题、榜单（像信息流一样逐行出现）、README 面板依次入场。
@@ -85,8 +85,8 @@ trending: {
 ## 人物动作建议（写在 `window.VIDEO.presenter`，换算成视频秒）
 
 - 场景开始 0.45 秒：`["wave", 3000]`，挥手欢迎。
-- 每个 `cue`：瞥视 `[cue, 1.0, "U"]`，抬头看榜单。
-- 每个 `cue + 1.7` 秒左右：瞥视 `[cue + 1.7, 1.0, "L"]`，看 README。
+- 每个 `cue`：瞥视副展示区（横屏 `[cue, 1.0, "U"]`，竖屏 `[cue, 1.0, "L"]`），看榜单。
+- 每个 `cue + 1.7` 秒左右：瞥视主展示区（横屏 `[cue + 1.7, 1.0, "L"]`，竖屏 `[cue + 1.7, 1.0, "U"]`），看 README。
 - 如果下一个场景用贡献图转场，在场景结束前约 0.85 秒加一段 `typing`。
 
 ## 限制

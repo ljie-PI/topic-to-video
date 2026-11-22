@@ -20,6 +20,7 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {  co
   const X = num(params.x, 96), WIDTH = num(params.width, 1166),
     Y = num(params.y, 1008), H = num(params.height, 72), FS = num(params.fontSize, 36);
   const bar = root.querySelector("#cb-bar");
+  const isPortrait = root.clientHeight > root.clientWidth;
   bar.style.top = Y + "px";
   bar.style.height = H + "px";
   const barOff = params.bar === "off";
@@ -87,7 +88,7 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {  co
         };
         if ("caption_bar_rect" in segment) {
           const hasBar = Boolean(segment.caption_bar_rect) && !barOff;
-          const centered = !hasBar && spec.max_lines > 1;
+          const centered = isPortrait && spec.max_lines > 1;
           lineUpdate["--cb-justify"] = centered ? "center" : "flex-start";
           lineUpdate["--cb-ink"] = hasBar ? "var(--c-chrome-ink)" : "var(--c-ink)";
           lineUpdate["--cb-align"] = centered ? "center" : "left";

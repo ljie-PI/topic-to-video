@@ -952,8 +952,8 @@ def test_portrait_presenter_switches_bar_character_and_tile_wipe_within_portrait
     }
     mounts = [
         ('components/caption-bar', None, {'data-track-kind': 'captions'}),
-        ('components/presenter', {'x': 700, 'y': 1500, 'size': 320, 'fxScale': 1.3}),
-        ('transitions/tile-wipe', {'originX': 860, 'originY': 1748, 'top': 0, 'bottom': 1776}),
+        ('components/presenter', {'x': 720, 'y': 1476, 'size': 300, 'fxScale': 1.4}),
+        ('transitions/tile-wipe', {'originX': 870, 'originY': 1709, 'top': 88, 'bottom': 1776}),
     ]
     with composition_url_with_mounts(tmp_path, video, mounts, canvas=(1080, 1920)) as url:
         with chrome_cdp.launch_isolated() as session:
@@ -987,10 +987,10 @@ def test_portrait_presenter_switches_bar_character_and_tile_wipe_within_portrait
             assert host_state['barDisplay'] == 'block'
             assert host_state['barRect'] == {'x': 0, 'y': 1776, 'width': 1080, 'height': 144}
             assert host_state['presenterDisplay'] == 'block'
-            assert host_state['presenterRect'] == {'x': 700, 'y': 1500, 'width': 320, 'height': 320}
+            assert host_state['presenterRect'] == {'x': 720, 'y': 1476, 'width': 300, 'height': 300}
             assert host_state['plateWidth'] == 1080
-            assert host_state['plateHeight'] == 1776
-            assert host_state['textAlign'] == 'left'
+            assert host_state['plateHeight'] == 1688  # 88 (nav bar) .. 1776 (caption bar)
+            assert host_state['textAlign'] == 'center'
             assert host_state['textColor'] == 'rgb(255, 255, 255)'
 
             stage_state = page.evaluate(state_at, 4.5)
@@ -1007,7 +1007,7 @@ def test_portrait_presenter_switches_bar_character_and_tile_wipe_within_portrait
             page.evaluate("""() => {
               const main = document.querySelector('main');
               for (const [id, start, end, height] of [
-                ['host_scene', 0, 3, 1170],
+                ['host_scene', 0, 3, 900],
                 ['stage_scene', 3, 6, 1240],
               ]) {
                 const sceneEl = document.createElement('div');

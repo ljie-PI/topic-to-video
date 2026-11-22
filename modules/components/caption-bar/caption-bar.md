@@ -78,7 +78,7 @@ window.VIDEO = {
 |---|---|---|
 | `begin_s`, `end_s` | 当前 layout 的有效显示区间 | 用 `[begin_s, end_s)` 判断区间；字幕跨过边界时在边界切换布局 |
 | `caption_rect` | 该 layout 中 `id: "caption-text"` 的 `rect` | `x` → 容器 `left`，`y` → `top`，`width` / `height` → 容器宽高；缺省矩形字段才回退到挂载参数 |
-| `caption_bar_rect` | 该 layout 中 `id: "caption-bar"` 的 `rect`（无该保留区时为 `null`） | 有矩形时定位并显示 `#cb-bar`（文字用 `--c-chrome-ink`）；为 `null` 时在区间内隐藏 `#cb-bar`（通过 CSS 变量 `--cb-ink` / `--cb-align` / `--cb-justify` 切换为 `--c-ink` 与多行居中；深底自由布局如需浅色文字加描边/遮罩，可直接在工程 `<head>` 样式表写 `#caption-bar .cb-line span` 覆盖） |
+| `caption_bar_rect` | 该 layout 中 `id: "caption-bar"` 的 `rect`（无该保留区时为 `null`） | 有矩形时定位并显示 `#cb-bar`（文字用 `--c-chrome-ink`）；为 `null` 时隐藏 `#cb-bar`（文字用 `--c-ink`；深底自由布局如需浅色文字加描边/遮罩，可在工程 `<head>` 写 `#caption-bar .cb-line span` 覆盖）。竖屏画布且 `max_lines > 1` 时居中，其余左对齐 |
 | `caption.width_px` | 该 layout 的 `caption` | 没有 `caption_rect.width` 时作为容器宽度 |
 | `caption.font_size_px` | 同上 | 当前区间的实际字号，**不再按文字宽度缩小** |
 | `caption.max_lines` | 同上 | `1` 时 `white-space: nowrap`；大于 `1` 时允许正常换行，最大高度为 `max_lines × font_size_px × 1.15`，多余内容裁剪 |

@@ -9,6 +9,12 @@
       "component": "ground（视频 index.html 的 #ground，var(--ground)）"
     },
     {
+      "id": "nav-bar",
+      "kind": "reserved",
+      "rect": { "x": 0, "y": 0, "width": 1080, "height": 88 },
+      "component": "nav-bar"
+    },
+    {
       "id": "header",
       "kind": "content",
       "rect": { "x": 70, "y": 120, "width": 940, "height": 140 }
@@ -16,12 +22,17 @@
     {
       "id": "main",
       "kind": "content",
-      "rect": { "x": 70, "y": 300, "width": 940, "height": 1170 }
+      "rect": { "x": 70, "y": 300, "width": 940, "height": 900 }
+    },
+    {
+      "id": "side",
+      "kind": "content",
+      "rect": { "x": 70, "y": 1240, "width": 610, "height": 512 }
     },
     {
       "id": "person",
       "kind": "reserved",
-      "rect": { "x": 700, "y": 1500, "width": 320, "height": 320 },
+      "rect": { "x": 720, "y": 1476, "width": 300, "height": 300 },
       "component": "presenter"
     },
     {
@@ -33,9 +44,9 @@
     {
       "id": "caption-text",
       "kind": "reserved",
-      "rect": { "x": 70, "y": 1776, "width": 600, "height": 144 },
+      "rect": { "x": 70, "y": 1776, "width": 940, "height": 144 },
       "component": "caption-bar"
     }
   ],
-  "caption": { "width_px": 600, "font_size_px": 38, "max_lines": 2 }
+  "caption": { "width_px": 940, "font_size_px": 38, "max_lines": 2 }
 }
