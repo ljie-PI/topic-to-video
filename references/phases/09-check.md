@@ -85,7 +85,7 @@ python3 scripts/make-contact-sheet.py \
 结合 `composition/check-composition.json` 的 `warnings` 与 `composition/storyboard.md`，用看图工具逐张检查 `qa/sheet_NNN.jpg`（同时交用户过目），核对 5 项：
 
 1. **渲染完整性**：无缺帧或渲染中断残帧；
-2. **内容与动画演绎**：画面符合旁白与 `content_plan`；无真实素材场景已按 `SVG → Canvas 2D → Three.js` 优先级用具体视觉图示与分步动画生动演进，真实素材控制使用 `GSAP` 动画特效（均遵循 `design.json` 规范），未退化为静态文字卡片、纯排版列表或无关装饰图形；
+2. **内容与动画演绎**：画面符合旁白与 `content_plan`；无真实素材场景已使用 `SVG`、`Canvas 2D`、`Three.js` 以具体视觉图示与分步动画生动演进，真实素材控制使用 `GSAP` 动画特效（均遵循 `design.json` 规范），未退化为静态文字卡片、纯排版列表或无关装饰图形；
 3. **素材清晰度与单场景分配**：复核 `warnings` 中的可视占比、源片失焦/压缩马赛克或过度缩放模糊；非技术深讲未跨场重复素材；连续深讲同一张技术图的相邻场景切点无打断性过场，并推进局部 zoom 焦点（而非整图静止只换文字）；
 4. **主题质感与作用域**：符合 `composition/design.json` 的配色、细线层级与透纸纹质感，单 scene 限定的 token 覆盖未外泄；
 5. **版式清爽无复读**：无明显空洞、错位、文字出框/遮挡，主副展示区（`main` / `side`）无重复文案堆砌。
