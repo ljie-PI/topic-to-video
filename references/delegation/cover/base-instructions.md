@@ -1,6 +1,6 @@
 # cover 委派包 — 基础指令（视频封面设计与确定性渲染）
 
-你负责为已渲染完成的视频设计并生成**可直接发布的多尺寸位图封面**。封面一律用 HTML + CSS 排版、复用项目本地字体并经 `scripts/render-cover.py` 在系统 Chrome 确定性截图产出，禁用图像生成模型写字。主 agent 不预写 HTML 或修图；你独立完成选帧裁剪、排版渲染、机器自检与 `400px` 缩略图验收。
+你负责为已渲染完成的视频设计并生成**可直接发布的多尺寸位图封面**。封面一律用 HTML + CSS 排版、复用项目本地字体并经 `scripts/render-cover.py` 在系统 Chrome 确定性截图产出，禁用图像生成模型写字。主 agent 不预写 HTML；**严格按当前派发指令声明的尺寸与文件边界落盘，完成后立即停止并仅回复 `done` 与落盘路径清单**。
 
 先读 handoff 的 `## Inputs` 与 `## Additional Instructions`（即 `inputs.json` 的 `cover_requests`），再按下面的约束执行。指令冲突时，按 `references/delegation/conventions.md` 的叠加顺序处理：用户在 `cover_requests` 里提出的明确要求覆盖默认规则。上游关键输入缺失或损坏时立即停止并向主 agent 报告缺项，禁自行编造。
 
@@ -54,11 +54,13 @@
 
   （若用户指定了其他自定义尺寸：竖版 `W <= H` 取 `size = round(W * 0.296)`、右/下边距 `round(W * 0.033)`；16:9 横版取 `size = round(H * 0.352)`、`left = W - max(220, round(W * 220 / 1920)) - size`、下边距 `round(H * 0.033)`；其他横版取 `size = round(H * 0.315)`、右/下边距 `round(H * 0.033)`。）
 
-## 五、工作顺序与验收
+## 五、工作顺序（按派发批次边界执行）
 
-1. **定内容与选帧**：通读 `research-brief.md`、`script.txt`、`timeline.json`、`design.json`、`scene-config.json` 与 `cover_requests`，确定两行钩子、`1–3` 个重要数字与统一底色；从 `final.mp4` 前 15 秒及全片核心场景截取 `1–2` 帧关键画面（或结合 catalog 原图），用 Pillow 裁净保留区与黑边存入 `cover/assets/`，并拷入 `cover/assets/presenter-wave.png`。
-2. **编写独立 HTML**：按第四部分契约逐尺寸编写 `cover/cover_{W}x{H}.html`。
-3. **确定性渲染与机器自检**：运行 handoff 中的 `scripts/render-cover.py` 命令生成 `cover_{W}x{H}@2x.png`、`cover_{W}x{H}.png`、`cover/qa/thumb_{W}x{H}_400w.png` 与 `cover/cover-report.json`。逐条修复全部 `findings` 并复核收紧 `warnings`，每次改完重跑，确保最终 `verdict == "pass"`。
+默认采用「主会话预取 `cover/assets/` + 子会话按单尺寸并行写 `cover_{W}x{H}.html` + 主会话中心化渲染验收」（确需目检参考图时先缩至宽 `≤ 640px` 单张查看）：
+
+1. **定内容与选帧**：主会话已预取 `cover/assets/` 并给定钩子/数字口径时直接复用；未预取时通读 `research-brief.md`、`script.txt`、`timeline.json`、`design.json`、`scene-config.json` 与 `cover_requests` 定下两行钩子、`1–3` 个重要数字与统一底色，截取 `1–2` 帧裁净存入 `cover/assets/` 并拷入 `cover/assets/presenter-wave.png`。
+2. **编写独立 HTML**：按第四部分契约编写本批指定的 `cover/cover_{W}x{H}.html`（限定单尺寸派发时写完即停，不内嵌第 3–4 步）。
+3. **确定性渲染与机器自检（默认主会话执行）**：运行 handoff 中的 `scripts/render-cover.py` 命令生成 `cover_{W}x{H}@2x.png`、`cover_{W}x{H}.png`、`cover/qa/thumb_{W}x{H}_400w.png` 与 `cover/cover-report.json`。逐条修复全部 `findings` 并复核收紧 `warnings`，每次改完重跑，确保最终 `verdict == "pass"`。
 4. **`400px` 缩略图三问验收**：对每张 `cover/qa/thumb_{W}x{H}_400w.png` 运行 `scripts/vision-analyze.py`（配置了 `VLM_API_KEY` 走 Mode 1；返回 `delegate_to_agent` 时用自身看图工具直接查看），逐张核对三个客观问题：
    - **3 秒内读到的第一句话是什么？**（须等于设定的两行钩子；若遇 `400px` 小图中文近形字误认，对照 `@2x.png` 与 HTML 原文确认无截断/叠字，勿误改已核实文案）
    - **画面主体是什么、占画面大概多少？**（须能清晰辨认所截核心画面与右下招手主持人，主体占 `45%–65%`）

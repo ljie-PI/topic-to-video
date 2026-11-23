@@ -13,7 +13,7 @@ Phase 5（素材 catalog）、Phase 6（脚本与场景规划）、Phase 8（com
 
 1. **先确定目标**：按 `inputs.json.delegation` 的当前阶段要求与全局 `coding_agent` 解析目标（默认 `pi-coding-agent`），以 `prepare-handoff.py` 返回的 `coding_agent` / `coding_model` 实际派发，不得仅把模型名写进 prompt。
 2. **再选派发入口**：
-   - **当前客户端的原生 sub-agent 工具能直达该目标 agent 并选中指定模型时**：用原生委派工具，仅传入单句 prompt 与 handoff 路径。
+   - **当前客户端的原生 sub-agent 工具能直达该目标 agent 并选中指定模型时**：用原生委派工具，仅传入简短派发 prompt 与 handoff 路径。
    - **否则调用该目标自身的非交互 CLI**（原生工具若只能跑自身后端，不得用它替代 `pi` 或用户点名的其他 agent）。Pi 用 `cd <ws> && pi -p -- "<dispatch_prompt>"`；其他 agent 按其 `--help` 调用；目标未知或工具不可用时明确报告并询问用户，禁静默换 agent。
 
 Pi 已核实的 flag（`pi --help`）：
@@ -31,13 +31,16 @@ Pi 已核实的 flag（`pi --help`）：
 
   派发前先核对本机两个 skill 路径（通常与本 skill 同级）存在，缺失则报告，禁静默退回自动发现。catalog / script / cover 步骤不加这套限制，也不修改仓库外 skill 安装或用户全局配置。
 - 启动目录与访问权限：在 `<ws>` 启动即可直接读写工作区（handoff 与脚本均用绝对路径，不依赖 cwd）；`pi` 无单独目录授权 flag，勿照搬其他 CLI 参数，确需额外授权按 `pi --help` 与本地配置处理并告知用户。
-- **委派 prompt 固定只有一句话**，原样使用 `source .venv/bin/activate && python3 scripts/prepare-handoff.py <ws> <step>` 输出 JSON 的 `dispatch_prompt`：
+- **派发粒度、并行与 `413` 兜底**：
+  - 单批步骤（`catalog`、`script`）原样派发 `source .venv/bin/activate && python3 scripts/prepare-handoff.py <ws> <step>` 输出 JSON 的 `dispatch_prompt`：
 
-  ```text
-  读取 <ws>/script-handoff.md 并按它执行；完成后报告产物路径。
-  ```
+    ```text
+    读取 <ws>/script-handoff.md 并按它执行；完成后报告产物路径。
+    ```
 
-  子 agent 自行从磁盘读取 handoff、要求阅读的输入与 Required References；主 agent 不在 prompt 中复述指令或产物内容。标为「仅供工具读取」的文件只传给命令，仅在工具报错需诊断时按需读局部片段。
+  - 多批步骤（`composition`、`cover`）在 `dispatch_prompt` 后限定本批职责与文件边界（不复述指令或产物正文），相互独立的小批（不同 `scene_id` 子合成、不同尺寸封面 HTML）默认并行派发；shell 参数去反引号、每批 `≤ 1KB`，要求子会话仅回复 `done` 与落盘路径清单；
+  - 给子会话看的参考图/帧须缩至宽 `≤ 640px`（禁喂多张 `1080p` 全帧）；确定性检查与渲染收归主会话执行，子会话写盘即止；遇 `413` 或“退出码 `0` 但零输出、零落盘”一律直接拆小批重派，禁原样重试。
+  - 子 agent 自行从磁盘读取 handoff、要求阅读的输入与 Required References；标为「仅供工具读取」的文件只传给命令，仅在工具报错需诊断时按需读局部片段。
 
 ## 模型查询与近似选择
 
