@@ -8,11 +8,11 @@ r"""topic-to-video skill 的批量 URL 素材抓取器。
     因为矢量图常常只声明极小的固有尺寸
   - 所有内嵌 <video> 元素，以及 YouTube / Bilibili 的 iframe / 链接
 
-默认会为每个渲染过的页面录制一段滚动视频（用 --no-scroll-record 关闭）。
+默认为每个渲染过的页面保存完整网页长图及 DOM 坐标。
 
 直接的 YouTube / Bilibili 观看页 URL 会被短路：它们以 `download_required: true`
-记入 manifest，由 agent 调用 video-download.py；这些 URL 不打开浏览器，因此图片
-抽取与滚动录制对它们不适用。
+记入 manifest，由 agent 调用 video-download.py；这些 URL 不打开浏览器，因此长图
+截取与页面图片抽取对它们不适用。
 
 浏览器模型：通过 CDP（默认 http://localhost:9222）连到一个 Chrome 进程。若没有
 可达的 CDP 响应者，则自动以 --user-data-dir=<profile-dir> 启动系统 Chrome。所需的
@@ -45,13 +45,9 @@ profile 里已打开在该站点（同 origin）的标签页还会提供它的 l
 """
 
 import argparse
-import base64
 import mimetypes
-import os
 import re
-import shutil
 import sys
-import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
@@ -63,7 +59,6 @@ import media
 
 TOOL_NAME = 'harvest-pages'
 DEFAULT_CDP_URL = 'http://localhost:9222'
-CHROME_WINDOW_SIZE = '1680,1680'
 USER_AGENT = (
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
     '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
@@ -85,10 +80,6 @@ def parse_args() -> argparse.Namespace:
                         help='UTF-8 file with one URL per line (blank lines ignored). '
                              'Mutually exclusive with --urls.')
     p.add_argument('--output-dir', required=True, help='Batch output root (per-URL subdirs are created underneath).')
-    p.add_argument('--no-scroll-record', dest='scroll_record', action='store_false', default=True,
-                   help='Disable scroll-record (on by default). '
-                        'Note: scroll-record only applies to URLs opened in the browser; '
-                        'direct YouTube/Bilibili watch URLs are short-circuited and never recorded.')
     p.add_argument('--min-image-width', type=int, default=500,
                    help='Minimum naturalWidth (px) to keep a raster image. Default 500. '
                         'SVG / inline-SVG candidates bypass this filter.')
@@ -97,9 +88,7 @@ def parse_args() -> argparse.Namespace:
                         'SVG / inline-SVG candidates bypass this filter.')
     p.add_argument('--max-images-per-url', type=int, default=20, help='Cap on images per URL.')
     p.add_argument('--max-videos-per-url', type=int, default=5, help='Cap on videos per URL.')
-    p.add_argument('--scroll-duration', type=int, default=30,
-                   help='Scroll-record duration in seconds (capped at 60). Default 30.')
-    p.add_argument('--viewport', default='1280x720', help='Viewport WxH for new contexts. Default 1280x720.')
+    p.add_argument('--viewport', default='1680x1680', help='Content viewport WxH. Default 1680x1680 (DPR 1).')
     p.add_argument('--page-load-timeout', type=int, default=30,
                    help='Per-URL page load timeout in seconds. Default 30.')
     p.add_argument('--cdp-url', default=DEFAULT_CDP_URL, help=f'CDP endpoint (default {DEFAULT_CDP_URL}).')
@@ -150,8 +139,8 @@ def collect_urls(args: argparse.Namespace) -> Tuple[List[str], Optional[str]]:
 
 def parse_viewport(s: str) -> Tuple[int, int]:
     m = re.match(r'^(\d+)x(\d+)$', s)
-    if not m:
-        raise ValueError(f'Invalid --viewport {s!r}, expected WxH (e.g. 1280x720)')
+    if not m or min(int(m.group(1)), int(m.group(2))) <= 0:
+        raise ValueError(f'Invalid --viewport {s!r}, expected positive WxH (e.g. 1680x1680)')
     return int(m.group(1)), int(m.group(2))
 
 
@@ -163,15 +152,69 @@ AUTO_SCROLL_JS = """
 async () => {
   const step = 400;
   const delay = 80;
-  let lastH = -1;
   for (let i = 0; i < 200; i++) {
-    if (window.scrollY + window.innerHeight >= document.body.scrollHeight) break;
-    window.scrollBy(0, step);
+    const height = document.documentElement.scrollHeight;
+    if (window.scrollY + window.innerHeight >= height) break;
+    window.scrollBy({ top: step, behavior: 'instant' });
     await new Promise(r => setTimeout(r, delay));
-    if (document.body.scrollHeight === lastH && i > 4) break;
-    lastH = document.body.scrollHeight;
   }
-  window.scrollTo(0, 0);
+  window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  await new Promise(r => setTimeout(r, delay));
+}
+"""
+
+PAGE_CAPTURE_JS = r"""
+async () => {
+  // Bound readiness waits: broken fonts/images must not stall the batch.
+  await Promise.race([
+    Promise.all([
+      document.fonts.ready,
+      ...Array.from(document.images, img => img.decode().catch(() => {})),
+    ]),
+    new Promise(resolve => setTimeout(resolve, 5000)),
+  ]);
+  const selectorFor = el => {
+    if (el.id) return '#' + CSS.escape(el.id);
+    const parts = [];
+    while (el && el !== document.documentElement) {
+      const siblings = Array.from(el.parentElement.children).filter(s => s.tagName === el.tagName);
+      parts.unshift(el.localName + ':nth-of-type(' + (siblings.indexOf(el) + 1) + ')');
+      el = el.parentElement;
+    }
+    return 'html > ' + parts.join(' > ');
+  };
+  const elements = [];
+  const seen = new Set();
+  const push = (el, text) => {
+    const r = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    if (r.width <= 0 || r.height <= 0 || style.display === 'none' || style.visibility === 'hidden') return;
+    const selector = selectorFor(el);
+    if (seen.has(selector)) return;
+    seen.add(selector);
+    elements.push({
+      selector,
+      tag: el.localName,
+      text: (text ?? el.getAttribute('alt') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 120),
+      bbox: { x: r.x + scrollX, y: r.y + scrollY, w: r.width, h: r.height },
+    });
+  };
+  for (const el of document.querySelectorAll('main, article, [role="main"], h1, h2, h3')) {
+    if (elements.length >= 200) break;
+    push(el);
+  }
+  for (const el of document.querySelectorAll('section, figure, table, pre, img, tr, li')) {
+    if (elements.length >= 200) break;
+    if ((el.localName === 'section' || el.localName === 'li') && el.getBoundingClientRect().height < 48) continue;
+    push(el);
+  }
+  elements.sort((a, b) => a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x);
+  return {
+    viewport: { width: innerWidth, height: innerHeight },
+    device_scale_factor: devicePixelRatio,
+    coordinate_space: 'document-css-px',
+    elements,
+  };
 }
 """
 
@@ -302,31 +345,6 @@ EXTRACT_VIDEOS_JS = r"""
 }
 """
 
-SCROLL_RECORD_JS = """
-async (durationMs) => {
-  // 顶部短暂停顿
-  await new Promise(r => setTimeout(r, 600));
-  const start = performance.now();
-  const totalH = Math.max(0, document.body.scrollHeight - window.innerHeight);
-  const step = 1000 / 60;
-  return await new Promise(resolve => {
-    const tick = () => {
-      const elapsed = performance.now() - start;
-      const t = Math.min(1, elapsed / durationMs);
-      window.scrollTo(0, totalH * t);
-      if (t < 1) {
-        setTimeout(tick, step);
-      } else {
-        // 底部短暂停顿
-        setTimeout(resolve, 600);
-      }
-    };
-    tick();
-  });
-}
-"""
-
-
 # -----------------------------------------------------------------------------
 # 单个 URL 的处理
 # -----------------------------------------------------------------------------
@@ -439,7 +457,7 @@ def download_native_video(request_ctx, url: str, dest_dir: Path, index: int, max
 
 
 # -----------------------------------------------------------------------------
-# 滚动录制
+# 共享 profile 登录态快照
 # -----------------------------------------------------------------------------
 
 DEFAULT_PORTS = {'http': 80, 'https': 443}
@@ -554,27 +572,21 @@ def profile_storage_state(profile_context, origins: Sequence[str] = ()
     return {'cookies': cookies, 'origins': state_origins}, warning
 
 
-def new_harvest_context(browser, viewport: Tuple[int, int], record_dir: Optional[Path] = None,
+def new_harvest_context(browser, viewport: Tuple[int, int],
                         storage_state: Optional[Dict[str, Any]] = None):
-    """创建 harvest 与兜底路径共用的那一份 context 配置。
+    """创建每个 URL 采集用的 browser context。
 
-    `storage_state` 是调用方从同一个 profile context 读到的快照；主路径、录屏
-    重试路径和 CDP 兜底路径传同一份，以免兜底重新变成匿名页。导入被拒绝时
+    `storage_state` 是调用方从同一个 profile context 读到的快照。导入被拒绝时
     退回匿名抓取并告警，不因单条 cookie 使整批失败，也不假装已登录。
     """
     vp_w, vp_h = viewport
     options: Dict[str, Any] = {
         'viewport': {'width': vp_w, 'height': vp_h},
+        'device_scale_factor': 1,
         'user_agent': USER_AGENT,
         'locale': 'zh-CN',
         'extra_http_headers': {'Accept-Language': 'zh-CN,en;q=0.9'},
     }
-    if record_dir is not None:
-        record_dir.mkdir(parents=True, exist_ok=True)
-        options.update({
-            'record_video_dir': str(record_dir),
-            'record_video_size': {'width': vp_w, 'height': vp_h},
-        })
     if storage_state:
         try:
             return browser.new_context(**options, storage_state=storage_state)
@@ -582,105 +594,6 @@ def new_harvest_context(browser, viewport: Tuple[int, int], record_dir: Optional
             log(f'  profile login state rejected ({type(exc).__name__}: {exc}); '
                 f'continuing anonymously')
     return browser.new_context(**options)
-
-
-def primary_scroll_record(ctx, page, scroll_duration: int,
-                          output_dir: Path) -> Tuple[Optional[Path], Optional[str]]:
-    """录制已加载的 harvest 页面，然后冲刷出它的视频。"""
-    rec_dir = output_dir / 'recording'
-    try:
-        # 后台标签页的 setTimeout 会被节流（Chrome intensive throttling），
-        # 滚动动画会卡住不结束；录制前把该页切到前台。
-        try:
-            page.bring_to_front()
-        except Exception:
-            pass
-        page.evaluate(SCROLL_RECORD_JS, scroll_duration * 1000)
-    finally:
-        ctx.close()  # 冲刷出 .webm
-
-    # 找出 rec_dir 中最新的 .webm
-    webms = sorted(rec_dir.glob('*.webm'), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not webms:
-        return None, 'playwright_no_video'
-    target = rec_dir / f'scroll-{int(time.time())}.webm'
-    webms[0].rename(target)
-    return target, 'playwright'
-
-
-def cdp_screencast_record(browser, url: str, viewport: Tuple[int, int], scroll_duration: int,
-                          page_load_timeout: int, output_dir: Path,
-                          storage_state: Optional[Dict[str, Any]] = None) -> Tuple[Optional[Path], Optional[str]]:
-    try:
-        media.ensure_binary(os.environ.get('FFMPEG_BIN', 'ffmpeg'))
-    except media.MediaToolMissing:
-        return None, 'cdp_no_ffmpeg'
-    rec_dir = output_dir / 'recording'
-    frames_dir = rec_dir / 'frames'
-    frames_dir.mkdir(parents=True, exist_ok=True)
-    vp_w, vp_h = viewport
-
-    ctx = new_harvest_context(browser, viewport, storage_state=storage_state)
-    frame_idx = [0]
-    try:
-        page = ctx.new_page()
-        page.set_default_timeout(page_load_timeout * 1000)
-        page.goto(url, wait_until='domcontentloaded', timeout=page_load_timeout * 1000)
-        log(f'loaded {url}')
-        try:
-            page.wait_for_load_state('networkidle', timeout=5000)
-        except Exception:
-            pass
-
-        cdp = ctx.new_cdp_session(page)
-
-        def on_frame(params):
-            try:
-                data = base64.b64decode(params['data'])
-                frame_idx[0] += 1
-                (frames_dir / f'f_{frame_idx[0]:06d}.jpg').write_bytes(data)
-                cdp.send('Page.screencastFrameAck', {'sessionId': params['sessionId']})
-            except Exception as exc:
-                log(f'  screencast frame error: {exc}')
-
-        cdp.on('Page.screencastFrame', on_frame)
-        cdp.send('Page.startScreencast', {
-            'format': 'jpeg',
-            'quality': 70,
-            'maxWidth': vp_w,
-            'maxHeight': vp_h,
-            'everyNthFrame': 1,
-        })
-        page.evaluate(SCROLL_RECORD_JS, scroll_duration * 1000)
-        cdp.send('Page.stopScreencast')
-    finally:
-        ctx.close()
-
-    if frame_idx[0] == 0:
-        return None, 'cdp_no_frames'
-
-    out_mp4 = rec_dir / f'scroll-{int(time.time())}.mp4'
-    cmd = [
-        'ffmpeg', '-y', '-loglevel', 'error',
-        '-framerate', '30',
-        '-pattern_type', 'glob',
-        '-i', str(frames_dir / 'f_*.jpg'),
-        '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
-        str(out_mp4),
-    ]
-    try:
-        media.run_ffmpeg(cmd[1:], timeout=180)
-    except media.FfmpegError as exc:
-        log(f'  ffmpeg failed: {exc.stderr_tail[:300]}')
-        return None, 'ffmpeg_failed'
-
-    # 清理帧文件
-    try:
-        shutil.rmtree(frames_dir)
-    except Exception:
-        pass
-
-    return out_mp4, 'cdp_screencast'
 
 
 # -----------------------------------------------------------------------------
@@ -696,28 +609,14 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
     images_dir.mkdir(parents=True, exist_ok=True)
     videos_dir.mkdir(parents=True, exist_ok=True)
 
-    record_dir = slug_dir / 'recording' if args.scroll_record else None
-    ctx = new_harvest_context(browser, viewport, record_dir=record_dir, storage_state=storage_state)
+    ctx = new_harvest_context(browser, viewport, storage_state=storage_state)
     metrics = {}
     title = ''
     text_excerpt = ''
     images_meta: List[Dict[str, Any]] = []
     videos_meta: List[Dict[str, Any]] = []
-    scroll_recording: Optional[Dict[str, Any]] = None
-    primary_error: Optional[Exception] = None
     try:
-        try:
-            page = ctx.new_page()
-        except Exception as exc:
-            if not args.scroll_record:
-                raise
-            # Playwright 录像需要它自带的 ffmpeg。当这个可选二进制不可用时，
-            # 保留历史上一直存在的 CDP 兜底路径。
-            primary_error = exc
-            log(f'  primary scroll-record raised ({type(exc).__name__}: {exc})')
-            ctx.close()
-            ctx = new_harvest_context(browser, viewport, storage_state=storage_state)
-            page = ctx.new_page()
+        page = ctx.new_page()
         page.set_default_timeout(args.page_load_timeout * 1000)
         page.goto(url, wait_until='domcontentloaded', timeout=args.page_load_timeout * 1000)
         log(f'loaded {url}')
@@ -737,6 +636,29 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
             page.evaluate(AUTO_SCROLL_JS)
         except Exception as exc:
             log(f'  autoscroll failed: {exc}')
+
+        # Keep screenshots in images[] so catalog/ref/path handling stays unchanged.
+        try:
+            from PIL import Image
+
+            capture = page.evaluate(PAGE_CAPTURE_JS)
+            screenshot = images_dir / 'page.png'
+            page.screenshot(path=str(screenshot), full_page=True, scale='css')
+            with Image.open(screenshot) as image:
+                width, height = image.size
+            images_meta.append({
+                'id': screenshot.stem,
+                'url': url,
+                'local_path': str(screenshot.resolve()),
+                'type': 'page-screenshot',
+                'width': width,
+                'height': height,
+                'alt': page.title(),
+                'capture': capture,
+            })
+            log(f'  full-page PNG: {width}x{height}')
+        except Exception as exc:
+            log(f'  full-page screenshot failed: {exc}')
 
         metrics = page.evaluate(METRICS_JS) or {}
         title = metrics.pop('title', '')
@@ -846,45 +768,6 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
                     meta['downloaded'] = False
                     meta['error'] = 'native download failed'
             videos_meta.append(meta)
-
-        if args.scroll_record:
-            capped = min(60, max(5, args.scroll_duration))
-            # 抽取与 Playwright 录制共用这个页面和 context。
-            # 只有录制失败才允许打开兜底 context 并重新加载。
-            record_path: Optional[Path] = None
-            method = 'not-attempted'
-            if primary_error is None:
-                try:
-                    record_path, method = primary_scroll_record(ctx, page, capped, slug_dir)
-                except Exception as exc:
-                    log(f'  primary scroll-record raised ({type(exc).__name__}: {exc})')
-                    record_path, method = None, f'{type(exc).__name__}'
-            else:
-                method = f'{type(primary_error).__name__}'
-            if record_path is None:
-                log(f'  primary scroll-record failed ({method}); trying CDP screencast fallback')
-                try:
-                    record_path, method = cdp_screencast_record(
-                        browser, url, viewport, capped, args.page_load_timeout, slug_dir, storage_state
-                    )
-                except Exception as exc:
-                    log(f'  CDP fallback raised ({type(exc).__name__}: {exc})')
-                    record_path, method = None, f'{type(exc).__name__}'
-            if record_path is None:
-                log(f'  scroll-record failed ({method}); continuing without recording')
-            else:
-                try:
-                    dur = media.probe_duration(record_path)
-                except (media.MediaProbeError, media.MediaToolMissing):
-                    dur = float(capped)
-                scroll_recording = {
-                    'local_path': str(record_path.resolve()),
-                    'duration_seconds': round(dur, 3),
-                    'width': viewport[0],
-                    'height': viewport[1],
-                    'method': method,
-                }
-                log(f'  scroll-record OK via {method}: {record_path}')
     finally:
         try:
             ctx.close()
@@ -900,7 +783,6 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
         'metrics': metrics,
         'images': images_meta,
         'videos': videos_meta,
-        'scroll_recording': scroll_recording,
     }
     return entry
 
@@ -1011,7 +893,7 @@ def main() -> None:
                 args.cdp_url,
                 args.profile_dir,
                 headless=args.explicit_headless,
-                window_size=CHROME_WINDOW_SIZE,
+                window_size=f'{viewport[0]},{viewport[1]}',
                 no_sandbox=args.no_sandbox,
                 chrome_path=args.chrome_path,
             )
@@ -1024,7 +906,7 @@ def main() -> None:
         log('No URL requires browser rendering — skipping Chrome/CDP setup.')
 
     # 登录态必须在创建任何采集 context 之前从 profile 的默认 context 读快照，
-    # 且整批只读一次：主路径、录屏重试路径与 CDP 兜底共用同一份快照。
+    # 且整批只读一次供所有渲染页面共用。
     profile_context = browser.contexts[0] if browser is not None and browser.contexts else None
     rendered_origins = sorted({
         origin
@@ -1067,7 +949,6 @@ def main() -> None:
                             'download_required': True,
                             'suggested_output_dir': str(videos_dir.resolve()),
                         }],
-                        'scroll_recording': None,
                     }
                 else:
                     entry = harvest_one(browser, url, slug, slug_dir, args, viewport, storage_state)

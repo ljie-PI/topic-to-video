@@ -77,7 +77,7 @@ def prepare(tmp_path: Path):
     harvest_dir = tmp_path / 'harvest_page'
     harvest_manifest.upsert_entries(harvest_dir, [{
         'slug': 'source', 'url': 'https://example.com/', 'success': True,
-        'images': [], 'scroll_recording': None,
+        'images': [],
         'videos': [{
             'url': URL, 'platform': 'youtube', 'download_required': True,
             'suggested_output_dir': 'source/videos',

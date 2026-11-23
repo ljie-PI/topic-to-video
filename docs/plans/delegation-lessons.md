@@ -1,7 +1,7 @@
 # 子 agent 委派复盘经验与改造专题
 
 日期：2026-11-23  
-状态：推进中（第一部分已由 #208 落地；专题一已由 #211 落地；专题三已由 #210 落地；专题四随本分支落地；专题二推进中）。
+状态：已完成（第一部分 #208、专题一 #211、专题二 #209、专题三 #210 均已落地；专题四随本分支落地）。
 
 ## 落地推进状态与合并改造专题
 
@@ -9,7 +9,7 @@
 | --- | --- | --- | --- |
 | **已落地：旁白科普口语化与实际场景驱动** | 第一部分（1–6） | **已完成（#208）** | 不采用逐词打补丁，改为在 `references/delegation/script/base-instructions.md` 与 `references/phases/06-script-scene-plan.md` 建立通用引导：面对面科普口语、结合具体实际场景讲述、严禁无主语汇报体与列表短句，并将具体现场、具象对象与分步状态变化同步落实到 `scene-plan.json` 的 `content_plan`。 |
 | **专题一：Phase 8 溢出治理与布局检查** | **2.2 + 3.5** | **已完成（#211）** | ① **字号契约、动画分工与主题对齐**：将 `min_font_px.ui` 下限统一降至 `20px`，明确内联 SVG（禁写死 `#hex`）及 `Canvas 2D` / `Three.js` / `GSAP` 统一遵循 `designs` 规范，并将动画分工统一为“非图片视频元素使用 `SVG` / `Canvas 2D` / `Three.js`，真实素材控制使用 `GSAP`”。<br>② **单检查器整合**：将临时脚本 `scripts/dense-layout-audit.py` 的核心能力（默认 8 点/场景密集采样、不限 `overflow` 的 HTML 盒溢出判定、大面板文字逃逸阻塞项 `panel_escape`）直接合入 `scripts/check-composition.py` 并删除 `dense-layout-audit.py`，单次起 Chrome、自动兼容横竖屏并直连 `pipeline-status.py` 门禁。 |
-| **专题二：网页高清长图采集与视口演绎边界** | **3.3 + 3.4 + 3.1** | 待实施 | 打通 **Phase 4 采集 → Phase 5 入库 → Phase 8 演绎** 同一条素材链路：<br>① **上游采集（3.3 + 3.4）**：网页滚动录屏文字易糊且节奏锁死，且 `scripts/harvest-pages.py` 当前默认 viewport 偏小（`1280x720`）；改为显式高分 viewport + full-page 完整长图截取 + 记录 DOM 元素 bbox（网页默认不再录滚动视频，视频仅保留真实动态过程的源 MP4，禁二次录屏；更新 `harvest-pages.py`、`04-material-harvest.md`、`05-material-catalog.md`）。<br>② **下游演绎（3.3 后半 + 3.1）**：网页长图 / 榜单巡讲用 **GSAP 匀速慢滚 + 停顿**以保留完整上下文，禁止跟 cue 逐条乱推 zoom；**zoom-in 仅用于大图小焦点的一次性细节强调**（更新 `composition/base-instructions.md`、`focus-callout.md`、`viewport-reveal.md`）。 |
+| **专题二：网页高清长图采集与视口演绎边界** | **3.3 + 3.4 + 3.1** | **已完成（#209）** | 打通 **Phase 4 采集 → Phase 5 入库 → Phase 8 演绎** 同一条素材链路：<br>① **上游采集与分区入库（3.3 + 3.4）**：全仓移除 `scroll_recording`，`scripts/harvest-pages.py` 默认 `1680x1680`（DPR 1）截取 full-page 完整网页长图并记录按纵向排序的 DOM bbox；Phase 5 按 `capture.elements` + 局部裁切输出归一化 `regions`（视频仅保留源视频下载，禁二次录屏）。<br>② **下游演绎与模块解耦（3.3 后半 + 3.1）**：网页长图单区裁切定位、跨区/榜单巡讲用 **GSAP 匀速慢滚 + 停顿**（`viewport-reveal.md`）；`focus-callout` 解耦为仅负责大图小焦点的单次 zoom-in 推近与外置标注（`detail-callout.md`）。 |
 | **专题三：委派拆批、并行与 Storyboard 硬关卡** | **2.1 + 3.6** | **已完成（#210）** | 用阶段切分同时解决“跳过 storyboard 直奔写码”与“大包派发触发 `413` / 静默死亡”：<br>① **Storyboard 前置硬关卡（2.1）**：把「产出 `design.json` + `scene-config.json` + `storyboard.md`」拆为独立前置批次，主会话验收 `storyboard.md` 完备后再放行写场景代码，杜绝事后反向补写。<br>② **默认早拆小批 + 并行 + 中心化验收（3.6）**：场景编写与 Phase 11 多尺寸封面默认按小批次并行派发；传给子会话的参考帧缩略至 `≤640px`；验证环节收归主会话确定性执行；将“exit 0 但零输出零落盘”统一按 `413` 拆批处理（更新 `references/delegation/conventions.md`、`08-composition.md`、`composition/base-instructions.md`、`11-cover.md`、`cover/base-instructions.md`）。 |
 | **专题四：SVG / Canvas 2D 制图质感升级** | **第四部分（4.1–4.5）** | **已完成（本 PR）** | 在 `modules/designs/designs.md` 确立四项 H.264 友好的纸本制图质感基线（透明舞台 + `84%–90%` 半透明双层纸卡与 `1px` 内高光、45° 斜线 `<pattern>` / Canvas 斜线填充与径向渐隐十字微点阵、外白内实心端口圆环与同色低透明面积渐变、分步主次景深退让），并在 `modules/motions/motion-utils.mjs` 提供 `readThemeTokens`、`ensureHatchPattern`、`createCanvasHatchPattern`、`ensureAreaGradient`、`appendCraftCard`、`appendPortRing` 共用辅助函数，同步升级全部四个 `motions/*` 模块。 |
 | *复盘说明（无需单独立项）* | *3.2* | *机制已具备* | 对“为何过滤大量网页图片/视频”的机制解释：贴当前句意、单场景不复用、清晰度门槛与 catalog 7 分去重在现有 `catalog` / `composition` 指令中均已落地；视频节奏匹配问题并入专题二（3.3）。 |

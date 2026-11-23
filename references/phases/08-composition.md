@@ -60,7 +60,7 @@ Phase 9（成片检查）：运行 `check-render.py` + `make-contact-sheet.py` +
 - **字体由 composition agent 选定 design 后通过脚本安装到 `composition/assets/fonts/`**，写入 `composition/design.json` 并引入字体 CSS，禁用系统字体，主 agent 不介入字体与 HTML 编写。
 - **字幕默认脚本生成，已有用户编辑不覆盖。** 仅改画面或重渲染时不重跑覆盖已编辑字幕；禁止跨不同版面切点切断英文词或数字。
 - **Storyboard 前置硬关卡与分批并行委派**：画面设计委派给 coding agent（仅加载 `hyperframes` 与 `hyperframes-cli` 两个外部 skill，见 `references/delegation/conventions.md`），主 agent 禁手写或修补 `composition/index.html` 与 `compositions/*`；**须先独立派发规划批落盘并通过 `storyboard.md` 验收，再分批并行写场景代码**，确定性检查与渲染由主 agent 执行。
-- **优先消费 catalog 元数据，严格控图。** 默认优先读取 `material-catalog.json` 的尺寸、语义与 `focal_region`，仅在元数据不足以确定裁剪边界时单张查看缩至 `≤ 640px` 宽的参考图，禁批量打开 `harvest_page/` 全部原图触发多模态 `400` / `413` 上限。
+- **优先消费 catalog 元数据，严格控图。** 默认优先读取 `material-catalog.json` 的尺寸、语义与 `regions` / `focal_region`，仅在元数据不足以确定裁剪边界时按需裁局部或单张查看缩至 `≤ 640px` 宽的参考图，禁批量打开 `harvest_page/` 全部原图触发多模态 `400` / `413` 上限。
 
 ---
 
@@ -91,7 +91,7 @@ source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topi
 1. **Storyboard 与素材演绎核对**（catalog 适用时含素材核对）：
    - `storyboard.md` 逐场景完整记录了 template / layout 方案与理由、content 区域、素材分配 / 动画演绎方案及实际借用的模块 `.md` 路径；
    - 论文模式 `required_material_refs` 关键图 / 表在 storyboard 覆盖表与实际画面中全部出现（禁以“选为候选”冒充已上屏）；
-   - 符合场景内容的通用素材已优先考虑采用；真实素材遵守单场景分配（非技术深讲未跨场重复；同一张技术图深入讲解已合并延长场景，或在相邻连续场景间保持无过场衔接并推进局部 zoom 焦点）；
+   - 符合场景内容的通用素材已优先考虑采用；真实素材遵守单场景分配（非技术深讲未跨场重复；同一张技术图深入讲解已合并延长场景，或在相邻连续场景间保持无过场视口衔接）；
    - 无真实素材的视觉场景均使用 `SVG`、`Canvas 2D`、`Three.js` 做视觉动画生动演绎 `content_plan`（真实素材控制使用 `GSAP` 动画特效，且全部动画遵循落盘 design 规范），未退化为纯排版文字卡片。
 2. **中心化检查与渲染**：主 agent 运行 `cd {work_dir}/{topic_name}/composition && npx hyperframes check` 与 `composition-handoff.md` 中的 `scripts/check-composition.py ... --output {work_dir}/{topic_name}/composition/check-composition.json`，阻塞 `findings` 或意外 `warnings` 按 `scene_id` 派小批修复后重检至 `verdict == "pass"`，随后在 `composition/` 渲染出 `composition/renders/final.mp4`。
 3. **状态脚本验收**：运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`。若 `next_phase` 仍为 Phase 8（`missing` / `corrupt` 看 `problems`，`redo` 看 `redo_reason`），派小批限定范围修复并重检/重渲染，修完 `--finish` 后进入 Phase 9。
