@@ -1,6 +1,6 @@
-# 动态模块：focus-callout（重点视口推拉与外沿引线标注）
+# 动态模块：focus-callout（局部 zoom-in 推近放大与外沿引线标注）
 
-**用于大图小焦点的单次细节强调，或围绕目标区域外框做零遮挡标注；网页 / 榜单巡讲改用 `patterns/media/viewport-reveal.md` 固定缩放慢滚。**
+**用于真实图片素材的大图小焦点单次 zoom-in 推近强调，或围绕目标区域外框做零遮挡引线标注（对应 `patterns/media/detail-callout.md`）。**
 
 1. 舞台自动划分**主视口区**与**外置标注带**（横屏默认左图右标注列，竖屏默认上图下标注带，也可显式传入 `targetRect` 与 `stops[].side`），保证标注卡与引线始终位于视口外侧，**不遮挡主画面内部任何关键像素**。
 2. 传入 `params.src` 时，模块在主视口内渲染带 `1.5px` `--c-border` 圆角框的图片，并按各停靠点 `stops[].crop` 在语音时刻 `at` 平滑推拉缩放至当前讲解区域；省略 `params.src` 时，可围绕 `data.targetRect` 绘制外沿锚点与引线。

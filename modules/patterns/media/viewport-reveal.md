@@ -36,7 +36,6 @@
 - 外观全部来自所选主题的 token；视口边框 / 当前位置 marker 可用 `--c-focus` 或 `--c-border`。
 - 外置信息区按 `patterns/info/` 对应信息形态的建议用色。
 
-## 已有实现
+## 实现方式
 
-- 网页慢滚：裁剪容器 + 固定尺寸图片的 GSAP 位移，不用 `focus-callout` 的多停靠点 zoom。
-- `motions/focus-callout/`：大图小焦点的单次推近 / 外置标注，见 `motions/focus-callout/focus-callout.md`。
+- 裁剪容器（`overflow: hidden`）+ 固定可读缩放图片的 GSAP 沿长轴位移（写入可 seek 的 `timeline`）。

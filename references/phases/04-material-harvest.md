@@ -99,7 +99,7 @@ source .venv/bin/activate && python3 scripts/harvest-pages.py \
 
 #### harvest-pages.py 的实际输出
 
-脚本更新磁盘累积的 `harvest_page/manifest.json`，并在 stdout 输出本批结果（stdout 仅含本批条目与 `chrome` 运行信息）。目录结构（普通页含 `page-source.html` / `images/` / `videos/`，视频直链仅含空 `videos/`）：
+脚本更新磁盘累积的 `harvest_page/manifest.json`，并在 stdout 输出本批结果（stdout 仅含本批条目与 `chrome` 运行信息）。目录结构（普通页含 `page-source.html` / `images/` / 内联下载了原生 `<video>` 的 `videos/`；YouTube / Bilibili 直链在 4.a 短路跳过浏览器、仅先建 `videos/` 并登记 `pending_downloads[]`，由 4.b `video-download.py` 下载落盘）：
 
 ```text
 harvest_page/
@@ -109,10 +109,10 @@ harvest_page/
 │   ├── page-source.html
 │   ├── images/page.png         # 完整网页长图
 │   ├── images/img_001.png
-│   └── videos/
+│   └── videos/native_001.mp4   # 页面内嵌原生 <video>，4.a 直接下载落盘
 └── www-youtube-com-watch-df2c6f/
     ├── metadata.json
-    └── videos/                # 尚未下载；下载后落在这里
+    └── videos/                # 4.a 仅登记 pending；4.b 下载后落在这里
 ```
 
 磁盘上的 manifest（同一批的两种 entry；媒体路径相对 `harvest_page/`）：
@@ -153,7 +153,19 @@ harvest_page/
           "id": "img_001"
         }
       ],
-      "videos": []
+      "videos": [
+        {
+          "url": "https://anthropic.com/videos/claude-code-demo.mp4",
+          "platform": "native",
+          "download_required": false,
+          "downloaded": true,
+          "local_path": "anthropic-com-news-claude-code-d30296/videos/native_001.mp4",
+          "id": "native_001",
+          "width": 1920,
+          "height": 1080,
+          "duration_seconds": 18.4
+        }
+      ]
     },
     {
       "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",

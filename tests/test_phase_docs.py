@@ -86,7 +86,10 @@ def test_phase_4_output_examples_are_parseable_and_match_slugs_and_backends():
         for image in entry['images']:
             assert image['local_path'].startswith(f'{entry["slug"]}/')
         for video in entry['videos']:
-            assert video['suggested_output_dir'] == f'{entry["slug"]}/videos'
+            if video.get('download_required'):
+                assert video['suggested_output_dir'] == f'{entry["slug"]}/videos'
+            else:
+                assert video['local_path'].startswith(f'{entry["slug"]}/videos/')
 
     video_slug = manifest['pending_downloads'][0]['source_slug']
     assert download['output_dir'].endswith(f'{video_slug}/videos')
