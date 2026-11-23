@@ -37,7 +37,7 @@ const numNode = (parent, x, y, size, weight, fill, anchor = "start", maxW) => {
 
 export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
   const variant = String(params.variant || data?.variant || "bar").toLowerCase(), title = params.title || (variant !== "metric" && data?.title) || "";
-  return prepareStage(root, params, gsap, { prefix: "cb", padX: 28, baseTop: 26, title }, ({ tl, uid, svg, defs, width: W, height: H, isPortrait, enterDuration, easing, padX, contentTop }) => {
+  return prepareStage(root, params, gsap, { prefix: "cb", padX: 28, baseTop: 26, backdrop: { opacity: 0.72 }, title }, ({ tl, uid, svg, defs, width: W, height: H, isPortrait, enterDuration, easing, padX, contentTop }) => {
     const series = normSeries(data), prefix = params.prefix != null ? String(params.prefix) : "", unit = params.unit != null ? String(params.unit) : data?.unit ? String(data.unit) : "";
     const fmt = (v, dec, suf = unit) => formatMetricValue(v, { decimals: dec, prefix, suffix: suf });
     const stepText = (it, p, suf = unit) => p >= 0.995 && it.displayValue != null ? it.displayValue : fmt(it.value * p, it.decimals, suf);

@@ -1322,26 +1322,38 @@ def test_motion_modules_relayout_on_delayed_wide_font_and_isolate_destroy(tmp_pa
               for (const e of window.__instances) for (const ts of e.host.querySelectorAll('tspan[data-max-width]')) if (ts.hasAttribute('lengthAdjust') || ts.getComputedTextLength() > Number(ts.getAttribute('data-max-width')) + 1) bad.push(ts.textContent);
               const sameTl = window.__instances.every((e) => e.instance.timeline === window.__tls.get(e.host.id)), times = window.__instances.map((e) => e.instance.timeline.time());
               const valB = document.querySelector('#chart-build-2 .cb-readout text[text-anchor="end"]').textContent.trim();
-              const recededOp = Number(getComputedStyle(document.querySelectorAll('#flow-path .fp-node')[0]).opacity);
+              const node0 = document.querySelectorAll('#flow-path .fp-node')[0];
+              const recededState = {
+                op: Number(getComputedStyle(node0).opacity),
+                filter: getComputedStyle(node0.querySelector('rect')).filter,
+                titleVar: node0.style.getPropertyValue('--node-title').trim(),
+              };
               window.__tls.get('flow-path').seek(0.2);
               const backOp = Number(getComputedStyle(document.querySelectorAll('#flow-path .fp-node')[1]).opacity);
               const u = await import('./compositions/motion-utils.mjs'), svg = document.querySelector('#flow-path svg');
               const toks = u.readThemeTokens(document.documentElement);
               const cv = document.createElement('canvas'), ctx = cv.getContext('2d');
               const cvPat = u.createCanvasHatchPattern(ctx, { color: toks.border, alpha: 0.22 });
+              const hatchLine = document.querySelector('#topology-graph defs pattern[id$="-band-hatch"] line');
+              const backdropRect = svg.querySelector('.m-backdrop > rect');
+              const fcKids = Array.from(document.querySelector('#focus-callout .fc-leader-item')?.children || []).map((c) => c.tagName.toLowerCase());
+              const svgOrder = Array.from(svg.children).map((c) => c.getAttribute('class') || c.tagName.toLowerCase());
               const craft = {
                 hasMask: Boolean(svg.querySelector('mask[id$="-grid-mask"]')),
+                lightStageVeil: (backdropRect?.getAttribute('fill') || '').includes('38%'),
                 hasTrim: Boolean(document.querySelector('#flow-path .fp-node .m-card-trim')),
                 hasPort: Boolean(document.querySelector('#topology-graph .tg-node .m-port')),
-                hasHatch: Boolean(document.querySelector('#topology-graph defs pattern[id$="-band-hatch"]')),
+                portsAboveNodes: svgOrder.indexOf('fp-ports') > svgOrder.indexOf('fp-nodes'),
+                pinAboveLeader: fcKids.indexOf('g') > fcKids.indexOf('path'),
+                hatchCentered: Number(hatchLine?.getAttribute('x1')) > 0,
                 tokFocus: Boolean(toks.focus && toks.enterDuration > 0 && toks.easing),
                 canvasPattern: Boolean(cvPat && typeof cvPat === 'object'),
               };
-              return { status: document.fonts.status, deadHtml: document.querySelector('#flow-path-2 svg').innerHTML, bad, sameTl, times, valB, recededOp, backOp, craft, wrapped: u.wrapLines('alpha beta gamma', 320, 26, svg).length, probes: svg.querySelectorAll('text[aria-hidden="true"]').length, flow: card('#flow-path .fp-node'), topo: card('#topology-graph .tg-node'), summary: card('#chart-build .cb-summary'), callout: card('#focus-callout .fc-card') };
+              return { status: document.fonts.status, deadHtml: document.querySelector('#flow-path-2 svg').innerHTML, bad, sameTl, times, valB, recededState, backOp, craft, wrapped: u.wrapLines('alpha beta gamma', 320, 26, svg).length, probes: svg.querySelectorAll('text[aria-hidden="true"]').length, flow: card('#flow-path .fp-node'), topo: card('#topology-graph .tg-node'), summary: card('#chart-build .cb-summary'), callout: card('#focus-callout .fc-card') };
             }""")
             assert after['status'] == 'loaded' and after['deadHtml'] == before['deadHtml'] and after['bad'] == []
             assert after['sameTl'] is True and after['times'] == [pytest.approx(1.2)] * 5 and after['valB'] == '180' and after['backOp'] == pytest.approx(0)
-            assert after['recededOp'] == pytest.approx(0.64) and all(after['craft'].values()), after['craft']
+            assert after['recededState'] == {'op': pytest.approx(1.0), 'filter': 'none', 'titleVar': 'var(--c-ink2)'} and all(after['craft'].values()), (after['recededState'], after['craft'])
             assert after['wrapped'] >= 2 and after['probes'] == 0 and all(after[k]['ts'] >= 2 and (after[k]['h'] > before[k]['h'] or after[k]['w'] > before[k]['w']) for k in ('flow', 'topo', 'summary', 'callout'))
             assert page.evaluate('window.__mountErrors') == [] and errors == []
             page.close()

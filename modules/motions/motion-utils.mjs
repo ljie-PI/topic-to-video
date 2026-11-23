@@ -143,8 +143,9 @@ export function readThemeTokens(el = typeof document !== "undefined" ? document.
 export function ensureHatchPattern(defs, id, { color = "var(--c-border)", opacity = 0.22, step = 8, strokeWidth = 1 } = {}) {
   if (!defs) return "none";
   if (!defs.querySelector(`[id="${id}"]`)) {
+    const mid = +(step / 2).toFixed(2);
     const pat = createSvg("pattern", { id, width: step, height: step, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" }, defs);
-    createSvg("line", { x1: 0, y1: 0, x2: 0, y2: step, stroke: color, "stroke-width": strokeWidth, "stroke-opacity": opacity }, pat);
+    createSvg("line", { x1: mid, y1: 0, x2: mid, y2: step, stroke: color, "stroke-width": strokeWidth, "stroke-opacity": opacity }, pat);
   }
   return `url(#${id})`;
 }
@@ -180,9 +181,10 @@ export function appendCraftCard(parent, {
   stroke = "var(--c-border)", strokeWidth = "1.35",
   accent = null, shadow = true,
 }) {
+  const defaultShadow = "drop-shadow(0 1px 2px rgba(18,22,28,0.045)) drop-shadow(0 5px 12px rgba(18,22,28,0.032))";
   const rect = createSvg("rect", {
     x, y, width, height, rx, fill, stroke, "stroke-width": strokeWidth,
-    ...(shadow ? { style: "filter:drop-shadow(0 1px 2px rgba(18,22,28,0.045)) drop-shadow(0 5px 12px rgba(18,22,28,0.032))" } : {}),
+    ...(shadow ? { style: `filter:var(--card-filter, ${defaultShadow})` } : {}),
   }, parent);
   const trim = createSvg("g", { class: "m-card-trim", "data-layout-ignore": "true" }, parent);
   const insetX = Math.max(4, Math.round(rx * 0.85));
@@ -249,7 +251,7 @@ export function prepareStage(root, params = {}, gsap, opts = {}, renderFn = opts
     if (svg) { svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("width", W); svg.setAttribute("height", H); }
 
     if (backdrop && svg && defs) {
-      const step = backdrop.step || 24, arm = 3.5;
+      const step = backdrop.step || 24, arm = 3.5, veil = Math.round(clamp(num(backdrop.opacity, 0.38), 0, 0.92) * 100);
       const pat = createSvg("pattern", { id: `${uid}-grid`, width: step, height: step, patternUnits: "userSpaceOnUse" }, defs);
       createSvg("path", { d: `M 0 ${step} L 0 0 L ${step} 0`, fill: "none", stroke: "var(--c-border)", "stroke-width": "1", "stroke-opacity": "0.18" }, pat);
       const half = step / 2;
@@ -261,9 +263,12 @@ export function prepareStage(root, params = {}, gsap, opts = {}, renderFn = opts
       const mask = createSvg("mask", { id: `${uid}-grid-mask` }, defs);
       createSvg("rect", { x: 0, y: 0, width: W, height: H, fill: `url(#${uid}-grid-fade)` }, mask);
       const bg = createSvg("g", { class: "m-backdrop" }, svg);
-      createSvg("rect", { x: 1, y: 1, width: W - 2, height: H - 2, rx: 14, fill: "color-mix(in srgb, var(--c-card) 85%, transparent)", stroke: "var(--c-border)", "stroke-width": "1.5" }, bg);
+      createSvg("rect", {
+        x: 1, y: 1, width: W - 2, height: H - 2, rx: 14,
+        fill: veil > 0 ? `color-mix(in srgb, var(--c-card) ${veil}%, transparent)` : "transparent",
+        stroke: "var(--c-border)", "stroke-width": "1.25", "stroke-opacity": "0.78",
+      }, bg);
       createSvg("rect", { x: 2, y: 2, width: W - 4, height: H - 4, rx: 13, fill: `url(#${uid}-grid)`, mask: `url(#${uid}-grid-mask)` }, bg);
-      createSvg("line", { x1: 15, y1: "2.25", x2: W - 15, y2: "2.25", stroke: "#ffffff", "stroke-opacity": "0.72", "stroke-width": "1", "data-layout-ignore": "true" }, bg);
     }
 
     let contentTop = baseTop;

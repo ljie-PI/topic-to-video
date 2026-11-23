@@ -124,12 +124,12 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
       const fill = node.emphasis ? emp.fill : "color-mix(in srgb, var(--c-card) 86%, transparent)";
       const stroke = node.emphasis ? emp.stroke : "var(--c-border)", sw = node.emphasis ? "1.7" : "1.35";
       const g = createSvg("g", { class: "tg-node", id: `${uid}-n-${idx}` }, nodesLayer);
-      g.style.setProperty("--node-fill", fill); g.style.setProperty("--node-stroke", stroke); g.style.setProperty("--node-sw", sw);
+      g.style.setProperty("--node-fill", fill); g.style.setProperty("--node-stroke", stroke); g.style.setProperty("--node-sw", sw); g.style.setProperty("--node-title", "var(--c-ink)");
       appendCraftCard(g, { x: b.x, y: b.y, width: b.w, height: b.h, rx: 10, fill: "var(--node-fill)", stroke: "var(--node-stroke)", strokeWidth: "var(--node-sw)", accent: node.emphasis ? "var(--node-stroke)" : null });
       appendPortRing(g, { cx: Math.round(b.x + b.w / 2), cy: b.y, r: 4, color: "var(--node-stroke)" });
       appendPortRing(g, { cx: Math.round(b.x + b.w / 2), cy: b.y + b.h, r: 4, color: "var(--node-stroke)" });
       const th = b.lbl.height + (b.det ? 6 + b.det.height : 0), ty = Math.round(b.y + (b.h - th) / 2);
-      appendTextBlock(g, b.lbl, { x: Math.round(b.x + b.w / 2), topY: ty, maxWidth: b.iw, anchor: "middle", fill: "var(--c-ink)", weight: 700 });
+      appendTextBlock(g, b.lbl, { x: Math.round(b.x + b.w / 2), topY: ty, maxWidth: b.iw, anchor: "middle", fill: "var(--node-title)", weight: 700 });
       if (b.det) appendTextBlock(g, b.det, { x: Math.round(b.x + b.w / 2), topY: ty + b.lbl.height + 6, maxWidth: b.iw, anchor: "middle", fill: "var(--c-ink2)", weight: 500, ui: true });
       if (node.at > 0) { tl.set(g, { opacity: 0, y: 12 }, 0); tl.fromTo(g, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: enterDuration, ease: easing }, node.at); }
       else tl.set(g, { opacity: 1, y: 0 }, 0);
