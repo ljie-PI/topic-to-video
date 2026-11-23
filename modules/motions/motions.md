@@ -19,7 +19,7 @@
 | `chart-build` | `motions/chart-build/chart-build.md`；`motions/chart-build/` | 柱状对比、趋势折线面积与单点大数字指标构建，`1px` 坐标辅助线与等宽数字动态计数 | `patterns/info/chart.md`、`patterns/info/big-number.md` | `VIDEO.chartBuild`（或参数指定键） |
 | `focus-callout` | `motions/focus-callout/focus-callout.md`；`motions/focus-callout/` | 素材视口平滑推拉裁切与外沿非遮挡引线标注：引线锚定视口外边框，标注卡置于外置信息带 | `patterns/media/detail-callout.md`、`patterns/media/viewport-reveal.md` | `VIDEO.focusCallout`（或参数指定键） |
 
-共用排版与几何工具：`motions/motion-utils.mjs`（1:1 舞台与标题初始化 `prepareStage`、确定性字宽估算与 `document.fonts.ready` 实测重排、零截断多行 `<tspan>` 折行、唯一 `<defs>` ID 与可逆状态驱动）。
+共用排版、主题读取与制图质感工具：`motions/motion-utils.mjs`（1:1 舞台与径向渐隐十字微点阵初始化 `prepareStage`、`:root` 主题颜色/字体/`--motion-*` 解析 `readThemeTokens`、SVG 45° 斜线印刷底纹 `ensureHatchPattern`、Canvas 2D 斜线填充 `createCanvasHatchPattern`、同色低透明面积渐变 `ensureAreaGradient`、带 `1px` 内高光与侧边强调条的双层纸卡 `appendCraftCard`、外白内实心端口圆环 `appendPortRing`、确定性字宽估算与 `document.fonts.ready` 实测重排、零截断多行 `<tspan>` 折行及可逆状态驱动；自定义 SVG / Canvas 2D 子合成同样可直接拷入并 import 复用）。
 
 ## 选定后怎么接入
 
@@ -71,4 +71,4 @@
   - `<名>.md`：说明适用场景、文件清单、依赖的主题变量、安装接入、`params` 表、`data` 示例与时间线行为；
   - `<名>.html`：`<template>` 包裹静态标记和样式，根节点 `#root` 带固定 `data-composition-id="<名>"`，背景保持透明以限制可见内容在舞台矩形内；
   - `<名>.mjs`：零外部网络依赖，仅使用宿主注入的 `gsap`、浏览器原生 SVG / Canvas / DOM 与 `motions/motion-utils.mjs`，导出符合 `modules.md` 唯一约定的 `init(root, { params, data, duration, gsap })` 并返回 `{ timeline, destroy }`（及可选 `ready` / `seek(t)`）。
-- 视觉与排版基线：颜色和字体只读主题 token，卡片与面板遵循 `designs/designs.md` 的半透明透纸质感与 `1–2px` 线宽阶梯；SVG 舞台采用与像素宽高 `1:1` 的 `viewBox`；阅读文字 `>= 26px`、带 `data-text-role="ui"` 的界面辅助小字 `>= 20px`，长文案通过确定性字宽模型自动折行并撑开或缩放承载框，严禁文字出框或越出宿主区域。
+- 视觉与排版基线：颜色和字体只读主题 token，卡片与面板遵循 `designs/designs.md` 的半透明双层纸卡、`1px` 顶边内高光、45° 斜线/渐隐十字印刷底纹、端口圆环、主次景深退让与 `1–2px` 线宽阶梯；SVG 舞台采用与像素宽高 `1:1` 的 `viewBox`；阅读文字 `>= 26px`、带 `data-text-role="ui"` 的界面辅助小字 `>= 20px`，长文案通过确定性字宽模型自动折行并撑开或缩放承载框，严禁文字出框或越出宿主区域。
