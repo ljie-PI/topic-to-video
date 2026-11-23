@@ -31,14 +31,13 @@
 
 - 先读 `script.txt`、`scene-plan.json`、timeline、素材目录与 `composition_requests` 了解全片内容与用户要求，再按 `modules/designs/designs.md` 选择并落盘 `composition/design.json`：默认从库内注册 preset 中选择与内容最匹配的主题（无特定专题匹配选通用的 `default`；用户在 `composition_requests` 点名注册主题时按作用范围采用，仅当明确要求库外风格时才生成 `custom`）。选定 preset 后必读 `modules/designs/<design>/<design>.md` 并安装字体。
 - 颜色、字体只取落盘 design 的 token；默认时长、缓动与列表间隔跟随主题 token，具体运动编排由你设计。字号守 `composition/design.json` 的 `min_font_px`（界面小字加 `data-text-role="ui"`，细则见 `designs.md`）。
-- **代码与长英文大面板容器**：含多行代码、CLI 命令、日志或长英文标识符的视觉场景，优先采用带明确边界的 HTML IDE / terminal 大面板容器（如顶栏三圆点与文件名标签、行号列、面板占 `main` 区宽 `70%+` 并设 `overflow: hidden` 或可控裁切），代码文字用 `20–24px` 等宽细体（`--font-mono`，`weight 400–500`）并标 `data-text-role="ui"`；**严禁在窄卡片或无边界裸 SVG `<text>` 里堆砌长代码行**。
 - 模板专属变量写在 design 之后，只增补不替换语义且仅作用于采用它的 scene；用户把某 preset 限定到单个 scene 时，只在该 scene 根作用域覆盖相应 token 并在 storyboard 记录，不自动传播到其他 scene。
 
 ## 三、必须遵守各 scene 的 layout 区域
 
 - 每个视觉 scene 的画面只能使用它在 `scene-config.json` 里落盘的 `regions`：content 区域自由放内容；reserved 区域只放各自 `component` 声明的组件（如导航栏区只放 `nav-bar`、字幕区只放 `caption-bar`、人物区只放 `presenter`）。区域坐标可以来自 `modules/layouts/layouts.md` 中借用的 preset（`preset` 记录出处；借用时必须同时读对应的 `modules/layouts/<preset>.json` 与说明文档 `modules/layouts/<preset>.md`，其中 `portrait-3x4` 共用 `modules/layouts/portrait.md`），也可以完全自主设计；检查一律以落盘的 rect 为准。采用 `landscape-presenter` 时默认只排 `header` + `main`，**一般不放 `side` 副展示区**；仅在存在独立大块文本 / 榜单元素，或只放 `header` 和 `main` 画面明显太空旷时才启用 `side`，且 `side` 内容不得与 `main` 或 `header` 文字重复。
 - storyboard 里**每个视觉 scene 都要写明它的区域方案**：借用了哪个 preset（或自主设计）、用了哪些 content 区域、reserved 区各挂什么组件。
-- 每个视觉 scene 的根挂载必须带与声明一致的 `data-scene-id`、`data-scene-start`、`data-scene-end`，供 QA 采样使用；调整 `scene-config.json` 或字幕时间边界后，必须同步更新 `index.html` 中所有场景挂载点（`data-scene-start` / `data-scene-end` / `data-start` / `data-duration`）及常驻组件（`presenter` placements、`nav-bar`、`caption-bar`、`tile-wipe`）的时间参数。
+- 每个视觉 scene 的根挂载必须带与声明一致的 `data-scene-id`、`data-scene-start`、`data-scene-end`，供 QA 采样使用。
 - scene 的 regions 有人物区（`component` 为 `presenter` 的 reserved 区）时必须挂 `presenter`；`presenter` 仍是全片唯一常驻实例，没有人物区的 scene 不强制显示 `presenter`（通过 `placements` 隐藏，如 `visible: false`）。`VIDEO.presenter` 的动作与通用演法按 `modules/components/presenter/presenter.md` 编排，有模板时再叠加模板的演法。
 
 ## 四、内容演绎与模板选择

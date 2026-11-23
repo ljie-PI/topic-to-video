@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """composition 的渲染前检查（通过 Chrome + Playwright 保证 DOM 一致性）。
 
-为 composition 步骤跑密集渲染期检查：默认在每个 scene 内均匀采 8 个时间点加载
-composition/index.html，seek 到该秒，然后测量 DOM。检查项：
+为 composition 步骤跑密集渲染期检查：启动一次无头浏览器加载 composition/index.html，
+默认在每个 scene 内均匀采 8 个时间点依次 seek 并测量当前时刻的 DOM，对每个采样快照执行全部检查项：
 
   - outside_content_regions : 某个可见内容元素没有完全落在 layout 的内容区域内；
   - reserved_region_intrusion : 某个元素侵入保留区域，却不属于该区域的组件；
