@@ -76,8 +76,8 @@ def composition_design_problem(
         return 'min_font_px must contain exactly reading and ui'
     if not all(_positive_int(floors[name]) for name in FONT_FLOOR_KEYS):
         return 'min_font_px.reading and min_font_px.ui must be positive integers'
-    if source == 'custom' and floors['ui'] < 22:
-        return 'min_font_px.ui must be at least 22px for a custom design'
+    if source == 'custom' and floors['ui'] < 20:
+        return 'min_font_px.ui must be at least 20px for a custom design'
 
     if source == 'preset':
         try:

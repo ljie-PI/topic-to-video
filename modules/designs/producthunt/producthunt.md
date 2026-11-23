@@ -49,12 +49,12 @@
 - 标题、正文、屏幕文字和字幕都用 `NotoSansSC`，不使用 `NotoSansSC` / `IBMPlexMono` 以外的字体。
 - 数字、upvote 数和英文数据用 `IBMPlexMono` 600。
 - 字重：正文 400–500，标签和按钮 600，标题、产品名和数字 700。
-- **字号下限**：阅读文字不小于 26px，界面小字不小于 22px；字幕字号由各 scene 的 `layout.caption.font_size_px` 决定（阶梯与缩放规则见 [`../designs.md`](../designs.md)）。
+- **字号下限**：阅读文字不小于 26px，界面小字不小于 20px；字幕字号由各 scene 的 `layout.caption.font_size_px` 决定（阶梯与缩放规则见 [`../designs.md`](../designs.md)）。
 - 安装本主题字体后，在 `index.html` 的 `<head>` 引入 `<link rel="stylesheet" href="assets/fonts/producthunt-fonts.css">`（安装与维护见 [`../designs.md`](../designs.md)）：
 
 ```json
 {
-  "min_font_px": {"reading": 26, "ui": 22},
+  "min_font_px": {"reading": 26, "ui": 20},
   "fonts": {
     "css_filename": "producthunt-fonts.css",
     "rename": {"Noto Sans SC": "NotoSansSC", "IBM Plex Mono": "IBMPlexMono"},

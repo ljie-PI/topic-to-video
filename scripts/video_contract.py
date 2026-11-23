@@ -279,8 +279,8 @@ def parse_design_markdown(path: Path) -> dict[str, Any]:
         raise ValueError(f'design {path}: min_font_px must contain exactly reading and ui')
     if not all(_positive_int(floors[key]) for key in DESIGN_FLOOR_KEYS):
         raise ValueError(f'design {path}: min_font_px.reading and min_font_px.ui must be positive integers')
-    if floors['ui'] < 22:
-        raise ValueError(f'design {path}: min_font_px.ui must be at least 22px')
+    if floors['ui'] < 20:
+        raise ValueError(f'design {path}: min_font_px.ui must be at least 20px')
 
     fonts = meta['fonts']
     if not isinstance(fonts, dict) or set(fonts) != DESIGN_FONT_KEYS:
