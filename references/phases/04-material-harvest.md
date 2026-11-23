@@ -92,10 +92,10 @@ source .venv/bin/activate && python3 scripts/harvest-pages.py \
   --urls-file "{work_dir}/{topic_name}/harvest-urls.txt" \
   --output-dir "{work_dir}/{topic_name}/harvest_page/" \
   --profile-dir "{work_dir}/chrome_profile" \
-  --viewport 1920x1080
+  --viewport 1680x1680
 ```
 
-一律用 `--urls-file` 读文件（`--urls` 仅限两三个 URL 调试）。默认单 URL 失败继续；文件不可读或为空时退出码 `2`。viewport 是内容区，不是物理屏幕或窗口大小；默认 `1920×1080`、DPR 1，长页面用 full-page。网页滚动交 Phase 8 演绎；真实动态过程用下载的源视频（优先 MP4），禁二次录屏。
+一律用 `--urls-file` 读文件（`--urls` 仅限两三个 URL 调试）。默认单 URL 失败继续；文件不可读或为空时退出码 `2`。viewport 是内容区，不是物理屏幕或窗口大小；窗口启动尺寸与 viewport 默认均为 `1680×1680`、DPR 1，长页面用 full-page。网页滚动交 Phase 8 演绎；真实动态过程用下载的源视频（优先 MP4），禁二次录屏。
 
 #### harvest-pages.py 的实际输出
 
@@ -134,13 +134,13 @@ harvest_page/
           "url": "https://anthropic.com/news/claude-code",
           "local_path": "anthropic-com-news-claude-code-d30296/images/page.png",
           "type": "page-screenshot",
-          "width": 1920,
+          "width": 1680,
           "height": 4800,
           "capture": {
-            "viewport": {"width": 1920, "height": 1080},
+            "viewport": {"width": 1680, "height": 1680},
             "device_scale_factor": 1,
             "coordinate_space": "document-css-px",
-            "elements": [{"selector": "main", "text": "Claude Code", "bbox": {"x": 400, "y": 160, "w": 1120, "h": 4400}}]
+            "elements": [{"selector": "main", "text": "Claude Code", "bbox": {"x": 280, "y": 160, "w": 1120, "h": 4400}}]
           }
         },
         {

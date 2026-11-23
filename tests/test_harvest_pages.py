@@ -293,8 +293,8 @@ def test_local_page_harvests_media_with_available_recording_backend(
         reused_entry = reused_manifest['entries'][0]
         assert reused_entry['scroll_recording'] is None
         screenshot = reused_entry['images'][0]
-        assert screenshot['width'] == 1920 and screenshot['height'] >= 1080
-        assert screenshot['capture']['viewport'] == {'width': 1920, 'height': 1080}
+        assert screenshot['width'] == 1680 and screenshot['height'] >= 1680
+        assert screenshot['capture']['viewport'] == {'width': 1680, 'height': 1680}
         assert screenshot['capture']['device_scale_factor'] == 1
         assert screenshot['capture']['coordinate_space'] == 'document-css-px'
         assert reused_manifest['chrome'] == {
@@ -538,10 +538,10 @@ def test_harvest_inherits_the_profile_login_state_for_pages_and_media(
         assert len(entry['images']) == 2
         screenshot = entry['images'][0]
         assert screenshot['id'] == 'page' and screenshot['type'] == 'page-screenshot'
-        assert screenshot['width'] == 1920 and screenshot['height'] > 2400
+        assert screenshot['width'] == 1680 and screenshot['height'] > 2400
         capture = screenshot['capture']
         main = next(el for el in capture['elements'] if el['selector'] == 'html > body:nth-of-type(1) > main:nth-of-type(1)')
-        assert main['bbox'] == {'x': 600, 'y': 8, 'w': 720, 'h': 2400}
+        assert main['bbox'] == {'x': 480, 'y': 8, 'w': 720, 'h': 2400}
         heading = next(el for el in capture['elements'] if el['selector'] == '#who')
         assert heading['text'] == 'logged-in'
         assert all(Path(output_dir / image['local_path']).is_file() for image in entry['images'])

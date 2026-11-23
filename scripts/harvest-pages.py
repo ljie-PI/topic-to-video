@@ -99,7 +99,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--max-videos-per-url', type=int, default=5, help='Cap on videos per URL.')
     p.add_argument('--scroll-duration', type=int, default=30,
                    help='Scroll-record duration in seconds (capped at 60). Default 30.')
-    p.add_argument('--viewport', default='1920x1080', help='Content viewport WxH. Default 1920x1080 (DPR 1).')
+    p.add_argument('--viewport', default='1680x1680', help='Content viewport WxH. Default 1680x1680 (DPR 1).')
     p.add_argument('--page-load-timeout', type=int, default=30,
                    help='Per-URL page load timeout in seconds. Default 30.')
     p.add_argument('--cdp-url', default=DEFAULT_CDP_URL, help=f'CDP endpoint (default {DEFAULT_CDP_URL}).')
@@ -151,7 +151,7 @@ def collect_urls(args: argparse.Namespace) -> Tuple[List[str], Optional[str]]:
 def parse_viewport(s: str) -> Tuple[int, int]:
     m = re.match(r'^(\d+)x(\d+)$', s)
     if not m or min(int(m.group(1)), int(m.group(2))) <= 0:
-        raise ValueError(f'Invalid --viewport {s!r}, expected positive WxH (e.g. 1920x1080)')
+        raise ValueError(f'Invalid --viewport {s!r}, expected positive WxH (e.g. 1680x1680)')
     return int(m.group(1)), int(m.group(2))
 
 

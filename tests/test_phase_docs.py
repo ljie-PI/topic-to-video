@@ -67,7 +67,7 @@ def test_phase_4_output_examples_are_parseable_and_match_slugs_and_backends():
     screenshot = page_entry['images'][0]
     assert screenshot['type'] == 'page-screenshot' and page_entry['scroll_recording'] is None
     assert screenshot['capture']['coordinate_space'] == 'document-css-px'
-    assert screenshot['capture']['viewport'] == {'width': 1920, 'height': 1080}
+    assert screenshot['capture']['viewport'] == {'width': 1680, 'height': 1680}
     assert video_entry['images'] == [] and video_entry['scroll_recording'] is None
     assert video_entry['videos'][0]['download_required'] is True
     assert manifest['pending_downloads'][0]['source_slug'] == video_entry['slug']
