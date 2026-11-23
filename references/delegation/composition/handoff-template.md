@@ -53,14 +53,15 @@
 
 ## Outputs
 
-写到工作区（{{ws}}/；按派发限定的批次与文件落盘，`storyboard.md` 验收前禁创建 `composition/compositions/` 文件）：
+写到工作区（{{ws}}/）：
 
-- {{design_json_q}}：全片 design 机器契约（`version` / `source` / `preset` / `tokens` / `min_font_px`，见 `modules/designs/designs.md`）
-- {{scene_config_q}}：最终视觉场景机器配置（按「用户要求 → 特别匹配模块 → 即时生成」定方案并落盘完整 `regions` / `caption`）
-- {{subtitle_units_q}}：最终字幕单元（由下方命令按落盘 `caption` 生成；保留已有用户编辑）
-- {{ws}}/composition/storyboard.md：前置硬关卡 storyboard（组件与转场表、逐场景方案/区域/素材或动画说明、必用素材覆盖表；规划批写完即停）
-- {{ws}}/composition/index.html + {{ws}}/composition/compositions/：HyperFrames 工程与分批子合成（`compositions/<scene>.{html,mjs}` 独立写盘）
-- {{ws}}/composition/check-composition.json + {{ws}}/composition/renders/final.mp4：检查报告（`verdict == "pass"`）与成片（默认主会话执行）
+- {{design_json_q}}：全片 design 机器契约（`version` / `source` / `preset` / `tokens` / `min_font_px`，规则见 `modules/designs/designs.md`）
+- {{scene_config_q}}：最终视觉场景机器配置（schema 见 scene-config 契约文档；按「用户要求 → 特别匹配模块 → 即时生成」逐视觉场景定方案后落盘完整 `regions` / `caption`）
+- {{subtitle_units_q}}：最终字幕单元（在 `scene-config` 写出后由下方命令按各 scene 落盘 `caption` 生成；保留已有用户编辑，仅改画面 / 重渲染不覆盖）
+- {{ws}}/composition/storyboard.md：storyboard（含开头的「组件与转场使用表」、逐视觉 scene 的方案/区域/素材分配或动画演绎说明，以及必用素材覆盖表；细则见基础指令）
+- {{ws}}/composition/index.html + {{ws}}/composition/compositions/：HyperFrames 工程与逐场景拆分的子合成（`compositions/<scene>.{html,mjs}` 逐个落盘，防巨型单文件超限）
+- {{ws}}/composition/check-composition.json：渲染前检查报告（最终 `verdict` 必须为 `pass`，并逐条复核处理 `warnings`）
+- {{ws}}/composition/renders/final.mp4：渲染产物
 
 先读旁白与叙事规划，按 `modules/designs/designs.md` 选定 design，初始化工程（若 `composition/` 不存在）、安装字体并写 {{design_json_q}}（不用系统字体；选定后将 `<design>` 换成实际字体包名）：
 
@@ -90,7 +91,7 @@
     --scene-plan {{template_cues_q}} \
     --timeline-output {{template_timeline_q}}
 
-渲染前检查（主会话中心化执行，全部通过再渲染）：
+渲染前自查（全部通过再渲染）：
 
 - cd {{composition_dir_q}} && npx hyperframes check
 - source {{venv_activate_q}} && python3 {{skill_root_q}}/scripts/check-composition.py {{composition_dir_q}} \
@@ -98,6 +99,7 @@
     --design {{design_json_q}} \
     --subtitle-units {{subtitle_units_q}} \
     --output {{check_report_q}}
+- 每个 scene 的中点截一张快照目检
 
 ## Required References
 
