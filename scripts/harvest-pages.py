@@ -63,7 +63,6 @@ import media
 
 TOOL_NAME = 'harvest-pages'
 DEFAULT_CDP_URL = 'http://localhost:9222'
-CHROME_WINDOW_SIZE = '1680,1680'
 USER_AGENT = (
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
     '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
@@ -1076,7 +1075,7 @@ def main() -> None:
                 args.cdp_url,
                 args.profile_dir,
                 headless=args.explicit_headless,
-                window_size=CHROME_WINDOW_SIZE,
+                window_size=f'{viewport[0]},{viewport[1]}',
                 no_sandbox=args.no_sandbox,
                 chrome_path=args.chrome_path,
             )
