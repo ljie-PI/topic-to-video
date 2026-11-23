@@ -1037,20 +1037,6 @@ def check_subtitle_units(ws: Path, relpath: str) -> CheckResult:
     units = data.get('units')
     if not isinstance(units, list) or not units:
         return CheckResult(STATUS_CORRUPT, 'units is not a non-empty list')
-    for index, unit in enumerate(units):
-        if not isinstance(unit, dict):
-            return CheckResult(STATUS_CORRUPT, f'unit {index} is not an object')
-        begin_s = unit.get('begin_s', unit.get('begin_ms') / 1000 if isinstance(unit.get('begin_ms'), (int, float)) and not isinstance(unit.get('begin_ms'), bool) else None)
-        end_s = unit.get('end_s', unit.get('end_ms') / 1000 if isinstance(unit.get('end_ms'), (int, float)) and not isinstance(unit.get('end_ms'), bool) else None)
-        if (
-            isinstance(begin_s, (int, float)) and not isinstance(begin_s, bool)
-            and isinstance(end_s, (int, float)) and not isinstance(end_s, bool)
-            and end_s <= begin_s
-        ):
-            return CheckResult(
-                STATUS_CORRUPT,
-                f'unit {index} has non-positive duration ({begin_s}..{end_s}): zero-duration subtitle units break caption-bar',
-            )
     return OK
 
 

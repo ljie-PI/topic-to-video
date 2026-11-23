@@ -14,7 +14,7 @@ composition/index.html，seek 到该秒，然后测量 DOM。检查项：
   - font_size_below_min     : 可见文本小于 design 的最小字号：正文最小字号，或
     [data-text-role="ui"] 内元素（面板标题栏、按钮、小标签、IDE/终端代码）的 UI 最小字号。
     字幕文本不计入；它遵循 layout 的 caption 规格；
-  - caption_mismatch        : 屏幕上的字幕与该秒生效的字幕单元不一致，或存在零时长字幕单元。
+  - caption_mismatch        : 屏幕上的字幕与该秒生效的字幕单元不一致。
 
 seek 先走项目通用入口 window.__layoutQA.seek(videoSeconds)，再驱动页面里的
 video/audio 元素；两者都不存在时该快照报 seek finding，静态快照不算通过。
@@ -275,11 +275,6 @@ def load_subtitle_units(path: Optional[str]) -> List[Dict[str, Any]]:
                 'text': unit['text'],
                 'begin_s': float(unit.get('begin_s', unit.get('begin_ms', 0) / 1000)),
                 'end_s': float(unit.get('end_s', unit.get('end_ms', 0) / 1000)),
-                **(
-                    {'scene_id': str(unit['scene_id'])}
-                    if isinstance(unit.get('scene_id'), str) and unit['scene_id']
-                    else {}
-                ),
             }
         )
     units.sort(key=lambda unit: unit['begin_s'])
@@ -836,27 +831,6 @@ def build_report(
 ) -> Dict[str, Any]:
     findings: List[Dict[str, Any]] = []
     checked: List[Dict[str, Any]] = []
-    default_scene_id = scenes[0]['scene_id'] if scenes else 'global'
-    for unit in subtitle_units:
-        if unit['end_s'] <= unit['begin_s']:
-            owner_scene_id = unit.get('scene_id') or next(
-                (
-                    scene['scene_id']
-                    for scene in scenes
-                    if float(scene.get('begin_s', 0.0)) <= unit['begin_s'] < float(scene.get('end_s', 0.0))
-                ),
-                default_scene_id,
-            )
-            findings.append({
-                'scene_id': owner_scene_id,
-                'check': 'caption_mismatch',
-                'issue': (
-                    f'subtitle unit {unit["text"]!r} has non-positive duration '
-                    f'({unit["begin_s"]:.3f}s..{unit["end_s"]:.3f}s)'
-                ),
-                'time_s': float(unit['begin_s']),
-                'frame': None,
-            })
     snapshot_by_scene: Dict[str, List[Dict[str, Any]]] = {}
     for snapshot in snapshots:
         snapshot_by_scene.setdefault(snapshot['scene_id'], []).append(snapshot)

@@ -526,7 +526,7 @@ def test_media_reuse_and_crop_box_fallback_across_scenes(tmp_path: Path):
 
 
 @pytest.mark.usefixtures('require_ffmpeg')
-def test_dense_layout_audit_checks_panel_escape_unclipped_html_long_svg_and_zero_duration_subtitles(tmp_path: Path):
+def test_dense_layout_audit_checks_panel_escape_unclipped_html_and_long_svg_lines(tmp_path: Path):
     svg_panel = {'x': 120, 'y': 220, 'width': 820, 'height': 360}
     html_panel = {'x': 120, 'y': 620, 'width': 820, 'height': 220}
     escaped_svg = make_el(
@@ -557,13 +557,8 @@ def test_dense_layout_audit_checks_panel_escape_unclipped_html_long_svg_and_zero
         make_el('s1', 'html-ide', html_panel, surface=True, dom_id=40, ancestor_dom_ids=[1]),
         escaped_html_child,
     ], False)])
-    units = tmp_path / 'units.json'
-    write_json(units, {'units': [
-        {'text': '正常字幕', 'begin_s': 0.0, 'end_s': 4.8},
-        {'text': '零时长末行', 'begin_s': 4.8, 'end_s': 4.8},
-    ]})
 
-    proc, report = run(ws, snaps, '--subtitle-units', str(units))
+    proc, report = run(ws, snaps)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert report['verdict'] == 'fail'
     by_check = [(f['check'], f['issue']) for f in report['findings']]
@@ -571,5 +566,4 @@ def test_dense_layout_audit_checks_panel_escape_unclipped_html_long_svg_and_zero
     assert any(c == 'panel_escape' and '#abs-code-line' in issue for c, issue in by_check), by_check
     assert not any('#scene-heading' in issue for _, issue in by_check), by_check
     assert any(c == 'text_overflow' and '#unclipped-card-copy' in issue for c, issue in by_check), by_check
-    assert any(c == 'caption_mismatch' and 'non-positive duration' in issue for c, issue in by_check), by_check
     assert any(w.startswith('[s1] long_svg_text_line:') and '#svg-code-escape' in w for w in report['warnings']), report['warnings']

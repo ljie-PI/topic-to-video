@@ -70,10 +70,6 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {  co
     const start = dynamic ? c.start : Math.max(c.start, 0.15);
     const next = cues[i + 1] ? cues[i + 1].start : c.end;
     const end = dynamic ? Math.min(c.end, next) : Math.max(start + 0.3, Math.min(c.end + 0.1, next));
-    if (!(end > start)) {
-      line.remove();
-      return;
-    }
     if (dynamic) {
       for (const segment of segments) {
         if (segment.end_s <= start || segment.begin_s >= end) continue;

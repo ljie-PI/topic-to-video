@@ -38,7 +38,7 @@
 
 - 每个视觉 scene 的画面只能使用它在 `scene-config.json` 里落盘的 `regions`：content 区域自由放内容；reserved 区域只放各自 `component` 声明的组件（如导航栏区只放 `nav-bar`、字幕区只放 `caption-bar`、人物区只放 `presenter`）。区域坐标可以来自 `modules/layouts/layouts.md` 中借用的 preset（`preset` 记录出处；借用时必须同时读对应的 `modules/layouts/<preset>.json` 与说明文档 `modules/layouts/<preset>.md`，其中 `portrait-3x4` 共用 `modules/layouts/portrait.md`），也可以完全自主设计；检查一律以落盘的 rect 为准。采用 `landscape-presenter` 时默认只排 `header` + `main`，**一般不放 `side` 副展示区**；仅在存在独立大块文本 / 榜单元素，或只放 `header` 和 `main` 画面明显太空旷时才启用 `side`，且 `side` 内容不得与 `main` 或 `header` 文字重复。
 - storyboard 里**每个视觉 scene 都要写明它的区域方案**：借用了哪个 preset（或自主设计）、用了哪些 content 区域、reserved 区各挂什么组件。
-- 每个视觉 scene 的根挂载必须带与声明一致的 `data-scene-id`、`data-scene-start`、`data-scene-end`，供 QA 采样使用；调整 `scene-config.json` 或字幕时间边界后，必须同步更新 `index.html` 中所有场景挂载点（`data-scene-start` / `data-scene-end` / `data-start` / `data-duration`）及常驻组件（`presenter` placements、`nav-bar`、`caption-bar`、`tile-wipe`）的时间参数，且每条字幕单元须保持正时长窗口（`end_s > begin_s`），禁止零时长单元。
+- 每个视觉 scene 的根挂载必须带与声明一致的 `data-scene-id`、`data-scene-start`、`data-scene-end`，供 QA 采样使用；调整 `scene-config.json` 或字幕时间边界后，必须同步更新 `index.html` 中所有场景挂载点（`data-scene-start` / `data-scene-end` / `data-start` / `data-duration`）及常驻组件（`presenter` placements、`nav-bar`、`caption-bar`、`tile-wipe`）的时间参数。
 - scene 的 regions 有人物区（`component` 为 `presenter` 的 reserved 区）时必须挂 `presenter`；`presenter` 仍是全片唯一常驻实例，没有人物区的 scene 不强制显示 `presenter`（通过 `placements` 隐藏，如 `visible: false`）。`VIDEO.presenter` 的动作与通用演法按 `modules/components/presenter/presenter.md` 编排，有模板时再叠加模板的演法。
 
 ## 四、内容演绎与模板选择
