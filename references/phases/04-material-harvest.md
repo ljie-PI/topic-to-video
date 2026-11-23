@@ -45,7 +45,7 @@
 
 ### Phase 4.a — 选择 URL 并批量抓取页面
 
-汇总高价值视觉页面写入 `harvest-urls.txt`，单次调用 `harvest-pages.py`：普通页提取图片 / 原生视频并默认录制滚动视频；YouTube / Bilibili 直链列入 `pending_downloads[]` 交由 Phase 4.b 下载。
+汇总高价值视觉页面写入 `harvest-urls.txt`，单次调用 `harvest-pages.py`：普通页保存完整网页 PNG（含 DOM bbox）并提取图片 / 原生视频；YouTube / Bilibili 直链列入 `pending_downloads[]` 交由 Phase 4.b 下载。
 
 #### URL 选择规则（用来生成 URL 清单）
 
@@ -53,14 +53,14 @@
 
 | 页面类型 | 为什么是好来源 | 期望产出 |
 |---------|---------------|---------|
-| 官方产品 / 项目首页 | 主视觉、截图、产品视频 | 图片 / 视频 + 滚动录像 |
-| GitHub 仓库主页 | README 截图、demo gif、社交预览图 | 图片 / 视频 + 滚动录像 |
-| 官方文档落地页 | 架构图、解释性长文 | 图片 / SVG + 滚动录像 |
-| 官方博客 / 发布公告 | 内联图片、嵌入的 YouTube | 图片 / 视频 + 滚动录像 |
-| Wikipedia 词条（成熟话题） | infobox 图片、整洁的散文 | 图片 + 滚动录像 |
+| 官方产品 / 项目首页 | 主视觉、截图、产品视频 | 图片 / 视频 + 长图 |
+| GitHub 仓库主页 | README 截图、demo gif、社交预览图 | 图片 / 视频 + 长图 |
+| 官方文档落地页 | 架构图、解释性长文 | 图片 / SVG + 长图 |
+| 官方博客 / 发布公告 | 内联图片、嵌入的 YouTube | 图片 / 视频 + 长图 |
+| Wikipedia 词条（成熟话题） | infobox 图片、整洁的散文 | 图片 + 长图 |
 | 会议演讲 / keynote 的 YouTube 页 | 通过 yt-dlp 下载 | pending video download |
-| 作者个人站 / about 页 | 头像、横幅 | 图片 + 滚动录像 |
-| 相关的社交帖子 / 作者时间线 | 官方账号发布的截图、演示、公告 | 图片 / 视频 + 滚动录像 |
+| 作者个人站 / about 页 | 头像、横幅 | 图片 + 长图 |
+| 相关的社交帖子 / 作者时间线 | 官方账号发布的截图、演示、公告 | 图片 / 视频 + 长图 |
 
 社交来源优先选具体帖子而非整条 feed，只采集与主题相关的部分，禁将无关私人动态或他人头像当素材；匿名受限时按受限来源记录并继续。
 
@@ -95,11 +95,11 @@ source .venv/bin/activate && python3 scripts/harvest-pages.py \
   --viewport 1680x1680
 ```
 
-一律用 `--urls-file` 读文件（禁命令行展开长列表；`--urls` 仅限两三个 URL 调试且与之互斥）。默认单 URL 失败继续（`--no-continue-on-error` 才中断）；文件不可读或无有效行时以退出码 `2` 报错；首次启动 `1680x1680` Chrome 后保留进程供 CDP 复用。
+一律用 `--urls-file` 读文件（`--urls` 仅限两三个 URL 调试）；单 URL 失败继续，文件不可读或为空退出码 `2`。窗口启动与内容 viewport 默认均为 `1680×1680`（DPR 1，full-page 截图）；网页滚动交 Phase 8 演绎，真实动态过程只下源视频，禁二次录屏。
 
 #### harvest-pages.py 的实际输出
 
-脚本更新磁盘累积的 `harvest_page/manifest.json`，并在 stdout 输出本批结果（stdout 仅含本批条目与 `chrome` 运行信息）。目录结构（普通页含 `page-source.html` / `images/` / `videos/` / `recording/`，视频直链仅含空 `videos/`）：
+脚本更新磁盘累积的 `harvest_page/manifest.json`，并在 stdout 输出本批结果（stdout 仅含本批条目与 `chrome` 运行信息）。目录结构（普通页含 `page-source.html` / `images/` / 内联下载了原生 `<video>` 的 `videos/`；YouTube / Bilibili 直链在 4.a 短路跳过浏览器、仅先建 `videos/` 并登记 `pending_downloads[]`，由 4.b `video-download.py` 下载落盘）：
 
 ```text
 harvest_page/
@@ -107,12 +107,12 @@ harvest_page/
 ├── anthropic-com-news-claude-code-d30296/
 │   ├── metadata.json          # 该 entry 的镜像，内容与 manifest.entries[i] 相同
 │   ├── page-source.html
+│   ├── images/page.png         # 完整网页长图
 │   ├── images/img_001.png
-│   ├── recording/scroll-1762012345.webm   # playwright 录制是 .webm，CDP 兜底是 .mp4
-│   └── videos/
+│   └── videos/native_001.mp4   # 页面内嵌原生 <video>，4.a 直接下载落盘
 └── www-youtube-com-watch-df2c6f/
     ├── metadata.json
-    └── videos/                # 尚未下载；下载后落在这里
+    └── videos/                # 4.a 仅登记 pending；4.b 下载后落在这里
 ```
 
 磁盘上的 manifest（同一批的两种 entry；媒体路径相对 `harvest_page/`）：
@@ -130,6 +130,20 @@ harvest_page/
       "metrics": {"word_count": 812, "video_count": 1},
       "images": [
         {
+          "id": "page",
+          "url": "https://anthropic.com/news/claude-code",
+          "local_path": "anthropic-com-news-claude-code-d30296/images/page.png",
+          "type": "page-screenshot",
+          "width": 1680,
+          "height": 4800,
+          "capture": {
+            "viewport": {"width": 1680, "height": 1680},
+            "device_scale_factor": 1,
+            "coordinate_space": "document-css-px",
+            "elements": [{"selector": "main", "tag": "main", "text": "Claude Code", "bbox": {"x": 280, "y": 160, "w": 1120, "h": 4400}}]
+          }
+        },
+        {
           "url": "https://anthropic.com/images/hero.png",
           "width": 1680,
           "height": 945,
@@ -139,14 +153,19 @@ harvest_page/
           "id": "img_001"
         }
       ],
-      "videos": [],
-      "scroll_recording": {
-        "local_path": "anthropic-com-news-claude-code-d30296/recording/scroll-1762012345.webm",
-        "duration_seconds": 30.0,
-        "width": 1680,
-        "height": 1680,
-        "method": "playwright"
-      }
+      "videos": [
+        {
+          "url": "https://anthropic.com/videos/claude-code-demo.mp4",
+          "platform": "native",
+          "download_required": false,
+          "downloaded": true,
+          "local_path": "anthropic-com-news-claude-code-d30296/videos/native_001.mp4",
+          "id": "native_001",
+          "width": 1920,
+          "height": 1080,
+          "duration_seconds": 18.4
+        }
+      ]
     },
     {
       "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -163,8 +182,7 @@ harvest_page/
           "download_required": true,
           "suggested_output_dir": "www-youtube-com-watch-df2c6f/videos"
         }
-      ],
-      "scroll_recording": null
+      ]
     }
   ],
   "pending_downloads": [
@@ -193,7 +211,7 @@ harvest_page/
 
 字段要点：
 - `pending_downloads[]` 在磁盘 manifest 中常驻（无待下项时为 `[]`，stdout 无待下项时省略）；同一视频跨多页引用只列一条 pending（附 `also_referenced_by`），只下一次。
-- `scroll_recording.method` 为 `playwright`（`.webm`）或 `cdp_screencast`（`.mp4`），录制失败时整项为 `null`。
+- 长图在 `images[]` 中（`type: "page-screenshot"`），`capture` 记录 viewport / DPR 及按纵向排序的正文、`h1–h3` 与高 ≥48px 节块 / 列表 / 表格 / 代码 / 图片的文档 CSS 像素 bbox；DPR 1 且 `scale=css`，可直接按 bbox 裁图，归一化除以实际 PNG 宽高。截图失败仅告警。
 - 非 http(s) URL 归入 `rejected[]`；整批全部失败时 `success: false` 且退出码为 `1`。
 
 同一次调用的 stdout（节选）：
@@ -294,7 +312,7 @@ harvest_page/www-youtube-com-watch-df2c6f/videos/
 
 ### Phase 4.c — 结果筛选（进入 Phase 5 之前）
 
-对本阶段抓取的 web 素材（网页图片、原生视频、外部下载视频、滚动录像）剔除缩略图、模糊图与登录墙等明显不可用项；**不适用于 Phase 2 / 3 的论文图表**，话题相关性与精确选片归 Phase 5。
+对本阶段抓取的 web 素材（网页长图与图片、原生视频、外部下载视频）剔除缩略图、模糊图与登录墙等明显不可用项；**不适用于 Phase 2 / 3 的论文图表**，话题相关性与精确选片归 Phase 5。
 
 #### 尺寸条件
 
@@ -303,7 +321,7 @@ harvest_page/www-youtube-com-watch-df2c6f/videos/
 | 素材 | 默认最低条件 | 说明 |
 | --- | --- | --- |
 | 位图图片 | 宽 ≥500 px 且 高 ≥300 px | 宽高分别比较（非长短边互换）；排除常见缩略图 |
-| 视频 / 滚动录像 | 短边 ≥360 px 且 长边 ≥640 px | 约 360p 下限（`640×360` 与 `360×640` 均合格，`480×270` 剔除） |
+| 视频 | 短边 ≥360 px 且 长边 ≥640 px | 约 360p 下限（`640×360` 与 `360×640` 均合格，`480×270` 剔除） |
 | 要占满画面的大图 / 大视频 | 优先短边 ≥720 px 且 长边 ≥1280 px | 大画面优选，非小配图硬门槛 |
 | SVG / 行内 SVG | 不套位图像素门槛 | 确认放大后内容清晰；内嵌低清位图不豁免 |
 
@@ -313,7 +331,7 @@ harvest_page/www-youtube-com-watch-df2c6f/videos/
 #### 清晰度判断
 
 - **图片**：直接查看原文件主体、文字、公式、图表标签与 UI；主体糊成一片、重度压缩块、占位图或关键内容被遮挡的一律剔除（自然背景虚化或留白除外）。
-- **视频 / 滚动录像**：用 `source .venv/bin/activate && python3 scripts/extract-frames.py` 先抽少量代表帧（如 `--max-frames 3`），**必须传不小于原视频宽度的 `--max-width`**（禁拿默认 512px 缩略帧误判高清源模糊），存疑处再抽局部确认：
+- **视频**：用 `source .venv/bin/activate && python3 scripts/extract-frames.py` 先抽少量代表帧（如 `--max-frames 3`），**必须传不小于原视频宽度的 `--max-width`**（禁拿默认 512px 缩略帧误判高清源模糊），存疑处再抽局部确认：
   - 全片关键内容持续无法辨认，或为黑屏 / 登录页 / 验证码页 / 错误页 → 整段剔除（静态图表或演示不因缺乏运动剔除）；
   - 仅片头或局部运动模糊、其余清晰 → 保留，交由 Phase 5 选片避开。
 - 直接人工看图 / 代表帧判断，不加 OpenCV / Laplacian 模糊阈值、OCR 或额外 VLM 过滤。
@@ -323,7 +341,7 @@ harvest_page/www-youtube-com-watch-df2c6f/videos/
 筛选结果必须写回 `harvest_page/manifest.json`（不另建排除文件或新字段）：
 
 1. 在 `search-notes.md` 记录剔除项（slug、媒体 `id`、`local_path`、尺寸与原因如 `too_small` / `blurred` / `unreadable`）及发现/保留/剔除汇总。
-2. 从对应 entry 的 `images[]` / `videos[]` 移除不合格项（同一物理视频跨多 entry 引用时一并移除），不合格滚动录像置 `scroll_recording: null`。
+2. 从对应 entry 的 `images[]` / `videos[]` 移除不合格项（同一物理视频跨多 entry 引用时一并移除）。
 3. 在 skill 根目录调用 `harvest_manifest.upsert_entries` 同步写回 `manifest.json` 与对应 `metadata.json`（禁手改两份文件）：
 
    ```bash
@@ -338,7 +356,6 @@ harvest_page/www-youtube-com-watch-df2c6f/videos/
    slug = '<slug>'
    drop_images = {'img_003'}      # 不合格的图片 id
    drop_videos = {'<video-id>'}   # 不合格的视频 id 或 url
-   drop_recording = False         # 滚动录像也不合格时改成 True
 
    def dropped(item, keys):
        return any(key in keys for key in (item.get('id'), item.get('url')) if key)
@@ -346,8 +363,6 @@ harvest_page/www-youtube-com-watch-df2c6f/videos/
    entry = next(e for e in harvest_manifest.load(harvest_dir)['entries'] if e['slug'] == slug)
    entry['images'] = [im for im in entry['images'] if not dropped(im, drop_images)]
    entry['videos'] = [v for v in entry['videos'] if not dropped(v, drop_videos)]
-   if drop_recording:
-       entry['scroll_recording'] = None
    harvest_manifest.upsert_entries(harvest_dir, [entry])
    PY
    ```

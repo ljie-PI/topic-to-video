@@ -1,6 +1,6 @@
-# 动态模块：focus-callout（重点视口推拉与外沿引线标注）
+# 动态模块：focus-callout（局部 zoom-in 推近放大与外沿引线标注）
 
-**用于真实图片素材的局部视口平滑推拉（pan/zoom），或围绕目标区域外边框做零遮挡引线标注。**
+**用于真实图片素材的大图小焦点单次 zoom-in 推近强调，或围绕目标区域外框做零遮挡引线标注（对应 `patterns/media/detail-callout.md`）。**
 
 1. 舞台自动划分**主视口区**与**外置标注带**（横屏默认左图右标注列，竖屏默认上图下标注带，也可显式传入 `targetRect` 与 `stops[].side`），保证标注卡与引线始终位于视口外侧，**不遮挡主画面内部任何关键像素**。
 2. 传入 `params.src` 时，模块在主视口内渲染带 `1.5px` `--c-border` 圆角框的图片，并按各停靠点 `stops[].crop` 在语音时刻 `at` 平滑推拉缩放至当前讲解区域；省略 `params.src` 时，可围绕 `data.targetRect` 绘制外沿锚点与引线。
@@ -61,7 +61,7 @@ focusCallout: {
       at: 0.2,
     },
     {
-      crop: { x: 0.35, y: 0.42, w: 0.55, h: 0.48 },
+      crop: { x: 0.30, y: 0.35, w: 0.65, h: 0.65 },
       anchor: { x: 0.9, y: 0.64 },
       label: "稀疏注意力路由核",
       detail: "视口推进聚焦关键算子，外沿引线同步切换",
@@ -72,5 +72,5 @@ focusCallout: {
 }
 ```
 
-- `stops[].crop`：`0..1` 归一化矩形（或配合 `intrinsicWidth` / `intrinsicHeight` 传原图像素坐标），省略时保持全图适配视口。
+- `stops[].crop`：`0..1` 归一化矩形（或配 `intrinsicWidth` / `intrinsicHeight` 传像素坐标），省略时全图适配。细节推近只做一次、起止停稳，缩放比宜 ≤1.6；推近时长为 `--motion-enter-duration × 1.3`（需 ≥1.2s 时局部覆盖）。
 - `stops[].anchor`：`0..1` 归一化锚点（或舞台像素坐标），自动投影到对应侧视口**外边框**作为引线起点，避免压入画面内部。

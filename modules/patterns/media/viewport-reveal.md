@@ -27,15 +27,15 @@
 
 ## 动效候选与应避免
 
-候选：沿素材长轴 pan / scroll，跟随旁白到达重点；scrub 读数；marker 沿路径移动指示当前位置。
+网页 / 榜单：按 catalog `regions` 或 `capture.elements[].bbox` 定正文裁剪与起止区域（归一化坐标乘实际 PNG 宽高），禁整页微缩上屏；单区域直接定位，跨区域固定可读缩放并用可 seek 的 GSAP `ease: "none"` 沿长轴慢滚（按展示 px/s 计速，条目间停约 1s，首尾停稳），保留相邻上下文，可配位置 marker。
 
-避免：视口内 slide 后又缩回导致重点一闪而过；只扫过素材的一部分却声称讲完了整张图；用 3D 倾斜或过小的缩放降低可读性。
+避免：按 cue 逐条 zoom；真实滚动网页或二次录屏；只扫局部却称讲完整图；3D 倾斜或过小缩放。
 
 ## 用色
 
 - 外观全部来自所选主题的 token；视口边框 / 当前位置 marker 可用 `--c-focus` 或 `--c-border`。
 - 外置信息区按 `patterns/info/` 对应信息形态的建议用色。
 
-## 已有实现
+## 实现方式
 
-- `motions/focus-callout/`（文档见 `motions/focus-callout/focus-callout.md`）：通过 `stops[].crop` 在主视口内沿素材重点区域平滑推拉缩放（pan/zoom），并同步联动外置说明卡。
+- 裁剪容器（`overflow: hidden`）+ 固定可读缩放图片的 GSAP 沿长轴位移（写入可 seek 的 `timeline`）。

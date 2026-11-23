@@ -441,7 +441,6 @@ def process_mineru_output(
         },
         'images': images_meta,
         'videos': [],
-        'scroll_recording': None,
     }
 
     return entry

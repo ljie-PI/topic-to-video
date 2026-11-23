@@ -17,7 +17,7 @@
 | `flow-path` | `motions/flow-path/flow-path.md`；`motions/flow-path/` | 有向流程、时间线与状态机节点渐进揭示、焦点流转与 `pathLength="1"` 连线生长（横竖屏自动排布） | `patterns/info/process-flow.md` | `VIDEO.flowPath`（或参数指定键） |
 | `topology-graph` | `motions/topology-graph/topology-graph.md`；`motions/topology-graph/` | 分层架构与依赖拓扑图：微网格舞台、模块端口锚点、依赖连线脉冲绘制与局部焦点切换 | `patterns/info/architecture.md` | `VIDEO.topologyGraph`（或参数指定键） |
 | `chart-build` | `motions/chart-build/chart-build.md`；`motions/chart-build/` | 柱状对比、趋势折线面积与单点大数字指标构建，`1px` 坐标辅助线与等宽数字动态计数 | `patterns/info/chart.md`、`patterns/info/big-number.md` | `VIDEO.chartBuild`（或参数指定键） |
-| `focus-callout` | `motions/focus-callout/focus-callout.md`；`motions/focus-callout/` | 素材视口平滑推拉裁切与外沿非遮挡引线标注：引线锚定视口外边框，标注卡置于外置信息带 | `patterns/media/detail-callout.md`、`patterns/media/viewport-reveal.md` | `VIDEO.focusCallout`（或参数指定键） |
+| `focus-callout` | `motions/focus-callout/focus-callout.md`；`motions/focus-callout/` | 素材局部 zoom-in 推近裁切与外沿非遮挡引线标注：引线锚定视口外边框，标注卡置于外置信息带 | `patterns/media/detail-callout.md` | `VIDEO.focusCallout`（或参数指定键） |
 
 共用排版与几何工具：`motions/motion-utils.mjs`（1:1 舞台与标题初始化 `prepareStage`、确定性字宽估算与 `document.fonts.ready` 实测重排、零截断多行 `<tspan>` 折行、唯一 `<defs>` ID 与可逆状态驱动）。
 

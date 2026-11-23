@@ -36,7 +36,7 @@
 写到工作区根目录（{{ws}}/）：
 
 - {{ws}}/material-catalog.json：每条 harvest entry 对应一条 catalog entry（schema 见基础指令）
-- {{ws}}/extract_frames/：视频与滚动录像的抽帧结果，含局部细看的 4×4 拼图及帧时间映射（拼接命令见基础指令）
+- {{ws}}/extract_frames/：视频抽帧结果，含局部细看的 4×4 拼图及帧时间映射（拼接命令见基础指令）
 - {{ws}}/vision_analyze/：视觉分析结果与话题 context 摘要
 - {{ws}}/clips/：无音轨片段文件；所有 entry 写入 catalog 后运行一次——
   source {{venv_activate_q}} && python3 {{skill_root_q}}/scripts/cut-clips.py {{ws_q}}

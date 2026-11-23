@@ -1,7 +1,6 @@
 """CLI and shared-profile tests for the page harvester."""
 from __future__ import annotations
 
-import argparse
 import base64
 import importlib.util
 import json
@@ -25,11 +24,13 @@ PIXEL_PNG = base64.b64decode(
     '+A8AAQUBAScY42YAAAAASUVORK5CYII='
 )
 # The fixture asks the server whether the page saw the profile's localStorage:
-# a fetch keeps the answer out of the harvested media, so the entry still holds
-# exactly one image.
+# a fetch keeps the answer out of the downloaded media. A tall centered main
+# also exercises full-page capture and document-coordinate metadata.
 LOGIN_PAGE = b'''<!doctype html><title>Gated fixture</title>
-<div id="who">anonymous</div>
+<main style="display:flow-root;width:720px;margin:auto;height:2400px">
+<h1 id="who">anonymous</h1>
 <img src="/gated.png">
+</main>
 <script>
   const logged = localStorage.getItem('user') === 'alice';
   document.getElementById('who').textContent = logged ? 'logged-in' : 'anonymous';
@@ -192,7 +193,7 @@ def _close_test_chrome(cdp_url: str) -> None:
         browser.new_browser_cdp_session().send('Browser.close')
 
 
-def test_local_page_harvests_media_with_available_recording_backend(
+def test_local_page_harvests_media_and_reuses_cdp(
     tmp_path: Path,
     require_chrome: None,
     require_ffmpeg: None,
@@ -217,7 +218,7 @@ def test_local_page_harvests_media_with_available_recording_backend(
                 '--cdp-url', cdp_url,
                 '--headless', 'on',
                 '--no-sandbox',
-                '--scroll-duration', '5',
+                '--viewport', '1280x720',
                 '--min-image-width', '1',
                 '--min-image-height', '1',
             ],
@@ -231,28 +232,17 @@ def test_local_page_harvests_media_with_available_recording_backend(
         manifest = json.loads((output_dir / 'manifest.json').read_text(encoding='utf-8'))
         entry = next(item for item in manifest['entries'] if item['url'] == url)
         assert entry['success'] is True
-        recording = entry['scroll_recording']
-        assert recording is not None
-        assert recording['method'] in {'playwright', 'cdp_screencast'}
-        # Playwright recording needs its own ffmpeg, not just the system ffmpeg.
-        # Its documented CDP fallback reloads the page after primary recording fails.
-        expected_loads = 1 if recording['method'] == 'playwright' else 2
-        if recording['method'] == 'cdp_screencast':
-            assert 'primary scroll-record failed' in proc.stderr
-        assert recording['duration_seconds'] > 0
-        assert 'duration_sec' not in recording
-        assert recording['width'] == 1280
-        assert recording['height'] == 720
-        assert Path(output_dir / recording['local_path']).is_file()
-        assert server.page_requests == expected_loads
-        assert proc.stderr.count(f'loaded {url}') == expected_loads
+        assert server.page_requests == 1
+        assert proc.stderr.count(f'loaded {url}') == 1
         assert json.loads(proc.stdout)['chrome'] == {
             'cdp_url': cdp_url,
             'reused': False,
             'ignored_flags': [],
         }
-        assert len(entry['images']) == 1
-        assert Path(output_dir / entry['images'][0]['local_path']).is_file()
+        assert len(entry['images']) == 2
+        assert entry['images'][0]['type'] == 'page-screenshot'
+        assert entry['images'][0]['capture']['viewport'] == {'width': 1280, 'height': 720}
+        assert all(Path(output_dir / image['local_path']).is_file() for image in entry['images'])
         assert len(entry['videos']) == 1
         native = entry['videos'][0]
         assert native['width'] == 64
@@ -272,7 +262,6 @@ def test_local_page_harvests_media_with_available_recording_backend(
                 '--cdp-url', cdp_url,
                 '--headless', 'on',
                 '--no-sandbox',
-                '--no-scroll-record',
                 '--min-image-width', '1',
                 '--min-image-height', '1',
             ],
@@ -285,6 +274,12 @@ def test_local_page_harvests_media_with_available_recording_backend(
         assert 'warning' in reused.stderr.lower()
         assert '--headless' in reused.stderr
         reused_manifest = json.loads(reused.stdout)
+        reused_entry = reused_manifest['entries'][0]
+        screenshot = reused_entry['images'][0]
+        assert screenshot['width'] == 1680 and screenshot['height'] >= 1680
+        assert screenshot['capture']['viewport'] == {'width': 1680, 'height': 1680}
+        assert screenshot['capture']['device_scale_factor'] == 1
+        assert screenshot['capture']['coordinate_space'] == 'document-css-px'
         assert reused_manifest['chrome'] == {
             'cdp_url': cdp_url,
             'reused': True,
@@ -508,7 +503,6 @@ def test_harvest_inherits_the_profile_login_state_for_pages_and_media(
             '--output-dir', str(output_dir),
             '--profile-dir', str(tmp_path / 'ignored-profile'),
             '--cdp-url', cdp_url,
-            '--scroll-duration', '5',
             '--min-image-width', '1',
             '--min-image-height', '1',
         )
@@ -519,54 +513,22 @@ def test_harvest_inherits_the_profile_login_state_for_pages_and_media(
         # localStorage 与 cookie 都必须真正落到采集 context 上。
         assert 'logged-in' in entry['text_excerpt']
         harvest_loads = server.login_page_requests
-        assert harvest_loads >= 1
-        assert server.logged_markers == ['yes'] * harvest_loads
+        assert harvest_loads == 1
+        assert server.logged_markers == ['yes']
         assert server.gated_anonymous == 0
-        assert len(entry['images']) == 1
-        assert Path(output_dir / entry['images'][0]['local_path']).is_file()
-    finally:
-        session.close()
-        _stop_fixture_server(server, server_thread)
-        _close_test_chrome(cdp_url)
-
-
-def test_cdp_fallback_recording_keeps_the_profile_login_state(
-    tmp_path: Path, require_chrome: None, require_ffmpeg: None, monkeypatch,
-):
-    module = _load_harvester()
-    server, server_thread = _start_fixture_server()
-    page_url = f'http://127.0.0.1:{server.server_port}/login-required'
-    session, cdp_url, _page = _launch_logged_in_chrome(tmp_path, page_url)
-    _reset_fixture_counters(server)
-    try:
-        browser = session.browser
-        storage_state, state_warning = module.profile_storage_state(
-            browser.contexts[0], [module.page_origin(page_url)],
-        )
-        assert state_warning is None
-        assert storage_state and storage_state['origins']
-
-        def forced_primary_failure(*args, **kwargs):
-            raise RuntimeError('forced primary recording failure')
-
-        monkeypatch.setattr(module, 'primary_scroll_record', forced_primary_failure)
-        entry = module.harvest_one(
-            browser, page_url, 'gated', tmp_path / 'harvest_page' / 'gated',
-            argparse.Namespace(
-                scroll_record=True, scroll_duration=5, page_load_timeout=30,
-                max_images_per_url=20, max_videos_per_url=5,
-                min_image_width=1, min_image_height=1,
-            ),
-            (1280, 720), storage_state,
-        )
-
-        recording = entry['scroll_recording']
-        assert recording is not None and recording['method'] == 'cdp_screencast'
-        # 主路径与兜底路径各加载一次；两次都必须看到登录态。
-        harvest_loads = server.login_page_requests
-        assert harvest_loads == 2
-        assert server.logged_markers == ['yes', 'yes']
-        assert server.gated_anonymous == 0
+        assert len(entry['images']) == 2
+        screenshot = entry['images'][0]
+        assert screenshot['id'] == 'page' and screenshot['type'] == 'page-screenshot'
+        assert screenshot['width'] == 1680 and screenshot['height'] > 2400
+        capture = screenshot['capture']
+        main = next(el for el in capture['elements'] if el['selector'] == 'html > body:nth-of-type(1) > main:nth-of-type(1)')
+        assert main['tag'] == 'main' and main['bbox'] == {'x': 480, 'y': 8, 'w': 720, 'h': 2400}
+        heading = next(el for el in capture['elements'] if el['selector'] == '#who')
+        assert heading['tag'] == 'h1' and heading['text'] == 'logged-in'
+        assert all(Path(output_dir / image['local_path']).is_file() for image in entry['images'])
+        persisted = harvest_manifest.load(output_dir)['entries'][0]
+        metadata = json.loads((output_dir / entry['slug'] / 'metadata.json').read_text())
+        assert persisted['images'][0] == metadata['images'][0] == screenshot
     finally:
         session.close()
         _stop_fixture_server(server, server_thread)

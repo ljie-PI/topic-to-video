@@ -27,7 +27,6 @@ def web_entry(harvest_dir: Path, slug: str, url: str = URL) -> dict:
             'download_required': True,
             'suggested_output_dir': str(harvest_dir / slug / 'videos'),
         }],
-        'scroll_recording': None,
     }
 
 
