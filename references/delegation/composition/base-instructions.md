@@ -56,7 +56,7 @@
 
 ### 表达与事实边界
 
-- **网页长图与细节清晰度**：网页长图禁整页微缩上屏——对齐 `regions` / `capture.elements`，单区域直接裁切定位；跨区域 / 榜单巡讲固定可读缩放，用可 seek 的 GSAP `ease: "none"` 慢滚 + 停顿（约 1s）保留相邻上下文，禁按 cue 逐条 zoom 或重录滚动。zoom 仅用于大图小焦点单次强调（推近 ≥1.2s、起止停稳）；图表结合 `focal_region` 且不裁必要图例，禁低清强拉（`>1.25×`），外置标注不遮关键像素，SVG 框包住文字、同层留足间距。
+- **排版、素材呈现与清晰度基线**：普通图片 / 视频 clip 按 `width` / `height` 保持真实宽高比，结合 `layout_affordance` 与 `focal_region` 裁剪定位并保证充足可视占比（不缩成过小配图，也不将低清源强拉 `>1.25×` 致糊）；视频只嵌无音轨 `selected_clips[].clip_path` 并对齐场景时间窗，图表保留必要图例；网页长图禁整页微缩上屏——对齐 `regions` / `capture.elements`，单区域直接裁切定位，跨区域 / 榜单巡讲固定可读缩放并用可 seek 的 GSAP `ease: "none"` 慢滚 + 停顿（约 1s）保留相邻上下文，禁按 cue 逐条 zoom。zoom 仅用于大图小焦点单次强调（推近 ≥1.2s、起止停稳）；外置标注停在可视外框不遮关键像素，SVG 框包住文字、同层留足间距。
 - **创意与事实边界**：视觉创意不得破坏落盘 design token（含细线层级与透纸纹质感）、各 scene 落盘 regions、可读性或语音同步；新增屏幕事实、数字、实体、引文与标注必须能由当前输入（`script.txt`、`scene-plan.json`、适用时的 `material-catalog.json` 及 `composition_requests`）支撑，缺上游事实时报告建议回退，禁自行编造；示意与类比不得伪装成真实数据或改变事实含义。
 - **真实语音同步与偏离说明**：卡点秒数只取 `timeline.json` 或下节模板 cue 对齐结果，禁按字数估算；合并 / 拆分 scene 或改选素材与 `intent` / `content_plan` 的偏离理由记入 `storyboard.md`（叙事或素材错位则报告建议回退 Phase 6，禁改旁白）。
 
