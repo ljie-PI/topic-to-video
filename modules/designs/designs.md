@@ -5,7 +5,7 @@
 ## 选择与落盘契约（`composition/design.json`）
 
 - **在 Phase 8 根据内容选择，默认从库内注册 preset 中选择**：composition agent 读完旁白、叙事规划、素材与 `composition_requests` 后，默认从下表选择与全片内容气质最匹配的注册 preset（无特定专题匹配时选通用的 `default`）。用户在 `composition_requests` 点名注册主题时按作用范围采用（限定到单个 scene 时，全片仍按内容选基线 preset，只在该 scene 根作用域覆盖相应 token 并在 storyboard 记录，不自动传播到其他 scene）；仅当用户在 `composition_requests` 中明确要求库内 preset 无法覆盖的库外视觉风格时，才生成 `custom` design。
-- **落盘 `composition/design.json`**：根字段恰好为 `version: 1` / `source` / `preset` / `tokens` / `min_font_px`。`source: "preset"` 时记录注册名，`tokens` 与 `min_font_px` 必须与所选 `<主题>.md` 中的声明完全一致；`source: "custom"` 时 `preset` 为 `null`，仍须写完整共享 tokens 与正整数 `reading` / `ui` 下限（`ui` 不低于 22px）。`fonts` 维护清单不写入该产物。
+- **落盘 `composition/design.json`**：根字段恰好为 `version: 1` / `source` / `preset` / `tokens` / `min_font_px`。`source: "preset"` 时记录注册名，`tokens` 与 `min_font_px` 必须与所选 `<主题>.md` 中的声明完全一致；`source: "custom"` 时 `preset` 为 `null`，仍须写完整共享 tokens 与正整数 `reading` / `ui` 下限（`ui` 不低于 20px）。`fonts` 维护清单不写入该产物。
 
 ### 现有主题
 
@@ -82,14 +82,14 @@
 | 小标题 | 44–48px | 标题条名称、转场卡片标题 |
 | 强调正文 | 30–36px / 600–700 | 步骤标题、tagline、指标说明 |
 | 正文 | 26–28px / 500 | 描述、列表文字、标签页（28px / 600） |
-| 界面小字 | 22–26px / 600 | 面板标题栏、按钮、小标签（须加 `data-text-role="ui"`） |
+| 界面小字 | 20–26px / 400–600 | 面板标题栏、按钮、小标签、IDE/终端代码行（须加 `data-text-role="ui"`） |
 
 - **竖屏缩放**：竖屏画布（1080×1920、1080×1440）开场标题、大标题、标题、小标题四档按上表 `× 0.85`（取整到偶数），特大数字收至 `88–104px`；强调正文、正文、界面小字及字号下限不变。
 - **数字对齐**：会滚动或需要对齐的数字（排名、计数、日期、标签）一律用等宽数字（`font-variant-numeric: tabular-nums`）。
 - **单个元素的尺度上限**：图标 / logo 与指标数字必须与名称 / 说明同框，不得单个元素占满整个区域——
   - 图标 / logo：行内用「所在行字号 × 0.8–0.9」；区域主图形边长 `≤ min(区域短边 × 30%, 160px)`，整片仅一次的封面大 logo `≤ 240px`；
   - 指标数字：字号 `≤ min(阶梯上限, 2.5 × 同框说明字号, 区域高 × 12%)`；封面核心数字只守阶梯上限（横屏 `128–150px`、竖屏 `88–104px`）。
-- **字号下限与溢出处理**：`check-composition` 按 `min_font_px.reading` 与 `min_font_px.ui` 检查：界面小字只适用于带 `data-text-role="ui"` 的元素，任何主题（含 custom）`ui` 下限不得低于 **22px**（HyperFrames 对 28px 以下文字报警告时，阅读文字须处理，界面小字可忽略）；字幕字号由各 scene 的 `layout.caption.font_size_px` 决定，不占主题下限。文字放不下时缩小字号，不要溢出；素材说明放在素材外，不压住素材关键区域。
+- **字号下限与溢出处理**：`check-composition` 按 `min_font_px.reading` 与 `min_font_px.ui` 检查：界面小字只适用于带 `data-text-role="ui"` 的元素，任何主题（含 custom）`ui` 下限不得低于 **20px**（HyperFrames 对 28px 以下文字报警告时，阅读文字须处理，界面小字可忽略）；字幕字号由各 scene 的 `layout.caption.font_size_px` 决定，不占主题下限。文字放不下时缩小字号，不要溢出；素材说明放在素材外，不压住素材关键区域。
 
 ### 纸面、形状、图标与通用元素
 
@@ -113,7 +113,7 @@
 
 ```json
 {
-  "min_font_px": {"reading": 26, "ui": 22},
+  "min_font_px": {"reading": 26, "ui": 20},
   "fonts": {
     "css_filename": "<主题>-fonts.css",
     "rename": {"Google 家族名": "主题字体别名"},

@@ -76,18 +76,18 @@ def test_public_reader_rejects_invalid_contracts(tmp_path: Path, mutate, message
         composition_design.load_composition_design(path, skill_root=REPO_ROOT)
 
 
-def test_custom_contract_enforces_null_preset_and_22px_ui_floor(tmp_path: Path):
+def test_custom_contract_enforces_null_preset_and_20px_ui_floor(tmp_path: Path):
     bad_preset = custom_design()
     bad_preset['preset'] = 'github'
     with pytest.raises(ValueError, match='preset must be null'):
         load(tmp_path / 'composition' / 'design.json', bad_preset)
 
     payload = custom_design()
-    payload['min_font_px']['ui'] = 21
-    with pytest.raises(ValueError, match='ui must be at least 22px'):
+    payload['min_font_px']['ui'] = 19
+    with pytest.raises(ValueError, match='ui must be at least 20px'):
         load(tmp_path / 'composition' / 'design.json', payload)
 
-    payload['min_font_px']['ui'] = 22
+    payload['min_font_px']['ui'] = 20
     assert load(tmp_path / 'composition' / 'design.json', payload) == payload
 
 

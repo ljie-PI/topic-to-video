@@ -68,4 +68,4 @@
   - `<名>.md`：说明适用场景、文件清单、依赖的主题变量、安装接入、`params` 表、`data` 示例与时间线行为；
   - `<名>.html`：`<template>` 包裹静态标记和样式，根节点 `#root` 带固定 `data-composition-id="<名>"`，背景保持透明以限制可见内容在舞台矩形内；
   - `<名>.mjs`：零外部网络依赖，仅使用宿主注入的 `gsap`、浏览器原生 SVG / Canvas / DOM 与 `motions/motion-utils.mjs`，导出符合 `modules.md` 唯一约定的 `init(root, { params, data, duration, gsap })` 并返回 `{ timeline, destroy }`（及可选 `ready` / `seek(t)`）。
-- 视觉与排版基线：颜色和字体只读主题 token，卡片与面板遵循 `designs/designs.md` 的半透明透纸质感与 `1–2px` 线宽阶梯；SVG 舞台采用与像素宽高 `1:1` 的 `viewBox`；阅读文字 `>= 26px`、带 `data-text-role="ui"` 的界面辅助小字 `>= 22px`，长文案通过确定性字宽模型自动折行并撑开或缩放承载框，严禁文字出框或越出宿主区域。
+- 视觉与排版基线：颜色和字体只读主题 token，卡片与面板遵循 `designs/designs.md` 的半透明透纸质感与 `1–2px` 线宽阶梯；SVG 舞台采用与像素宽高 `1:1` 的 `viewBox`；阅读文字 `>= 26px`、带 `data-text-role="ui"` 的界面辅助小字 `>= 20px`，长文案通过确定性字宽模型自动折行并撑开或缩放承载框，严禁文字出框或越出宿主区域。

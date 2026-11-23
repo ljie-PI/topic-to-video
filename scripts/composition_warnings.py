@@ -19,6 +19,7 @@ def _discover_transition_tokens() -> frozenset[str]:
 
 
 MEDIA_MIN_CONTENT_INTRINSIC_W = 400
+DEFAULT_LONG_SVG_LINE_PX = 520
 EXEMPT_MEDIA_ROLES = frozenset({'logo', 'icon'})
 TRANSITION_TOKENS = _discover_transition_tokens()
 _DUP_STRIP_RE = re.compile(r'[\s，。；：！？、,;:!?\-—–•·|()（）【】\[\]"\'“”‘’`]+|(?<!\d)\.(?!\d)')
@@ -155,11 +156,22 @@ def canonical_media_key(media_info: dict[str, Any], composition_dir: Path) -> st
         return fs_path.as_posix()
 
 
-def _check_snapshot_entries(sid: str, candidates: list[dict[str, Any]], scene_regions: Any) -> list[WarningEntry]:
+def _check_snapshot_entries(
+    sid: str, candidates: list[dict[str, Any]], scene_regions: Any, *, long_line_px: int = DEFAULT_LONG_SVG_LINE_PX,
+) -> list[WarningEntry]:
     out: list[WarningEntry] = []
     related = lambda a, b: a is b or _is_ancestor_of(a, b) or _is_ancestor_of(b, a)  # noqa: E731
     for el in candidates:
-        if el.get('tag') != 'text' or not isinstance(el.get('svgGroupRect'), dict) or not (txt := str(el.get('text') or '').strip()):
+        tag = el.get('tag')
+        if tag in ('text', 'tspan') and el.get('ownText') and (txt := str(el.get('text') or '').strip()):
+            ascii_ratio = sum(1 for ch in txt if ord(ch) < 128) / max(1, len(txt))
+            if ascii_ratio > 0.7 and el['rect']['width'] > long_line_px:
+                out.append((
+                    sid, 'long_svg_text_line', (el['selector'], txt[:32]),
+                    f'{el["selector"]} ({txt[:32]!r}) renders {el["rect"]["width"]:.0f}px wide (> {long_line_px}px); '
+                    'wrap or place code/long English lines inside a bounded HTML IDE/terminal panel',
+                ))
+        if tag != 'text' or not isinstance(el.get('svgGroupRect'), dict) or not (txt := str(el.get('text') or '').strip()):
             continue
         tr, rr = el['rect'], _as_rect(el['svgGroupRect'])
         if rr['width'] * rr['height'] > tr['width'] * tr['height'] and intersection_area(tr, rr) > 0 and (
@@ -253,6 +265,7 @@ def collect_composition_warnings(
     *, scenes: list[dict[str, Any]], snapshot_by_scene: dict[str, list[dict[str, Any]]],
     default_regions: Any, visual_by_id: dict[str, dict[str, Any]], caption_segments: list[dict[str, Any]],
     composition_dir: Path, region_index_factory: Callable[[dict[str, Any]], Any], filter_scene: bool = False,
+    long_line_px: int = DEFAULT_LONG_SVG_LINE_PX,
 ) -> list[str]:
     """按场景中点优先采样收集全部非阻塞质量 warnings 并按场景顺序去重。"""
     entries: list[WarningEntry] = []
@@ -277,7 +290,7 @@ def collect_composition_warnings(
         ]
         mid = len(snap_cands) // 2
         for cands in (snap_cands[mid], *snap_cands[:mid], *snap_cands[mid + 1:]):
-            entries.extend(_check_snapshot_entries(sid, cands, s_regions))
+            entries.extend(_check_snapshot_entries(sid, cands, s_regions, long_line_px=long_line_px))
         if len(scenes) >= 2:
             for cands in snap_cands:
                 per_snap: dict[str, list[tuple[str, dict[str, float]]]] = {}

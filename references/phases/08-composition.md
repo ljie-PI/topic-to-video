@@ -40,14 +40,14 @@
 - `pipeline-status` 校验通过（Phase 8 不再是 `next_phase`）：
 - `composition/design.json` 通过公共接口校验（默认用注册 preset，仅 `composition_requests` 要求库外风格时允许 `custom`，tokens 与字号下限合法）；
 - `composition/scene-config.json` 通过公共接口校验（画布匹配 `orientation`、`scene_id` 唯一、`[begin_s, end_s)` 有序不重叠覆盖 `[0, total_s]`、`source_scene_ids` 有效、`regions` 几何与 `caption` 合法、声明的模板存在）；
-- `composition/assets/subtitle-units.json` 的 `units` 非空，`composition/storyboard.md` 非空，`composition/index.html` 存在，`composition/compositions/` 非空；
+- `composition/assets/subtitle-units.json` 的 `units` 非空且每条具备正时长（`end_s > begin_s`），`composition/storyboard.md` 非空，`composition/index.html` 存在，`composition/compositions/` 非空；
 - `composition/check-composition.json` 的 `verdict == "pass"` 且 `scenes_checked` 覆盖当前每个视觉 scene 及其 layout（改过 `scene-config` 或画面须重跑检查并重新渲染）；
 - `composition/renders/final.mp4` 存在且非空；
 - 通过下方 **8.3 主 agent 校验**（`npx hyperframes check` 无错、storyboard 记录及素材 / 动画演绎合规）。
 
 ## 执行后自检
 
-- 渲染前：`check-composition` 的阻塞 `findings` 已全部清零，非阻塞质量 `warnings`（缩略媒体、缩放致糊、元素重叠/遮挡、跨区文案复读、素材复用等）已逐条修复或在 `storyboard.md` 说明设计意图。
+- 渲染前：`check-composition`（默认每场景 8 点密集采样）的阻塞 `findings`（含越界、保留区侵入、HTML 文字裁剪/溢出、大面板文字逃逸 `panel_escape`、最小字号、字幕一致性与非零时长等）已全部清零，非阻塞质量 `warnings`（含超宽 SVG 英文/代码行 `long_svg_text_line`、缩略媒体、缩放致糊、元素重叠/遮挡、跨区文案复读、素材复用等）已逐条修复或在 `storyboard.md` 说明设计意图。
 - 渲染后：抽看 1–2 个关键 scene，确认素材宽高比正确、字幕未溢出、音画同步、未违规跨场复用素材、无素材场景已用动态图示演绎 `content_plan`（全面成片检查归 Phase 9）。
 - 场景与旁白错位或素材本身不符属上游问题，按 `references/pipeline-control.md` 回退对应阶段，禁只改 HTML 掩盖。
 

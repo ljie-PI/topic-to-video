@@ -237,7 +237,7 @@ def test_clean_fixture_passes_and_dumps_snapshots(tmp_path: Path):
     assert result['verdict'] == 'pass'
     assert result['findings'] == []
     snapshots = json.loads(dump_path.read_text(encoding='utf-8'))
-    assert isinstance(snapshots, list) and len(snapshots) == 6
+    assert isinstance(snapshots, list) and len(snapshots) == 16
     assert {snapshot['scene_id'] for snapshot in snapshots} == {'s1', 's2'}
     assert all(isinstance(snapshot['time'], (int, float)) for snapshot in snapshots)
     assert all(isinstance(snapshot['elements'], list) for snapshot in snapshots)

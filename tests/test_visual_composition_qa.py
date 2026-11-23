@@ -171,8 +171,11 @@ def test_adjacent_subtitle_units_and_scene_mode_exact_bounds_do_not_false_positi
 def test_short_scene_sampling_stays_inside_its_range():
     module = load_script_module('check-composition.py', 'check_composition')
     times = module.scene_check_times({'begin_s': 2.0, 'end_s': 2.1})
-    assert len(times) == 3
+    assert len(times) == 8
     assert all(2.0 < time < 2.1 for time in times)
+    custom = module.scene_check_times({'begin_s': 2.0, 'end_s': 2.1}, samples=3)
+    assert len(custom) == 3
+    assert all(2.0 < time < 2.1 for time in custom)
 
 
 def free_layout() -> dict:
@@ -520,3 +523,53 @@ def test_media_reuse_and_crop_box_fallback_across_scenes(tmp_path: Path):
         '[s3] media_reuse: non-adjacent reuse of ref:paper/fig2 (previously used in s1)',
         '[s4] media_reuse: adjacent reuse of image materials/pan.png without focal zoom/pan shift (previously used in s3)',
     ]
+
+
+@pytest.mark.usefixtures('require_ffmpeg')
+def test_dense_layout_audit_checks_panel_escape_unclipped_html_long_svg_and_zero_duration_subtitles(tmp_path: Path):
+    svg_panel = {'x': 120, 'y': 220, 'width': 820, 'height': 360}
+    html_panel = {'x': 120, 'y': 620, 'width': 820, 'height': 220}
+    escaped_svg = make_el(
+        's1', 'svg-code-escape', {'x': 160, 'y': 280, 'width': 810, 'height': 28},
+        tag='tspan', own_text=True,
+        text='export const veryLongIdentifierThatEscapesPanelRightEdge = computeLayoutMetrics(config);',
+        dom_id=21, ancestor_dom_ids=[20, 1],
+    )
+    distant_title = make_el(
+        's1', 'scene-heading', {'x': 120, 'y': 112, 'width': 500, 'height': 48},
+        tag='text', own_text=True, text='面板外部标题不应误判为逃逸', dom_id=22, ancestor_dom_ids=[1],
+    )
+    unclipped_html = make_el(
+        's1', 'unclipped-card-copy', {'x': 1020, 'y': 240, 'width': 320, 'height': 40},
+        own_text=True, text='未设 overflow:hidden 的定宽容器横向溢出', dom_id=30, ancestor_dom_ids=[1],
+    )
+    unclipped_html['scrollWidth'] = 540  # exceeds clientWidth=320 by >4px even with overflow:visible
+    escaped_html_child = make_el(
+        's1', 'abs-code-line', {'x': 150, 'y': 660, 'width': 820, 'height': 28},
+        own_text=True, text='positioned child extending past HTML IDE panel right edge',
+        dom_id=41, ancestor_dom_ids=[40, 1],
+    )
+    ws, snaps = scenes_ws(tmp_path, [('s1', 'landscape', [
+        make_el('s1', 'ide-bg', svg_panel, tag='rect', surface=True, dom_id=20, ancestor_dom_ids=[1]),
+        escaped_svg,
+        distant_title,
+        unclipped_html,
+        make_el('s1', 'html-ide', html_panel, surface=True, dom_id=40, ancestor_dom_ids=[1]),
+        escaped_html_child,
+    ], False)])
+    units = tmp_path / 'units.json'
+    write_json(units, {'units': [
+        {'text': '正常字幕', 'begin_s': 0.0, 'end_s': 4.8},
+        {'text': '零时长末行', 'begin_s': 4.8, 'end_s': 4.8},
+    ]})
+
+    proc, report = run(ws, snaps, '--subtitle-units', str(units))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert report['verdict'] == 'fail'
+    by_check = [(f['check'], f['issue']) for f in report['findings']]
+    assert any(c == 'panel_escape' and '#svg-code-escape' in issue for c, issue in by_check), by_check
+    assert any(c == 'panel_escape' and '#abs-code-line' in issue for c, issue in by_check), by_check
+    assert not any('#scene-heading' in issue for _, issue in by_check), by_check
+    assert any(c == 'text_overflow' and '#unclipped-card-copy' in issue for c, issue in by_check), by_check
+    assert any(c == 'caption_mismatch' and 'non-positive duration' in issue for c, issue in by_check), by_check
+    assert any(w.startswith('[s1] long_svg_text_line:') and '#svg-code-escape' in w for w in report['warnings']), report['warnings']

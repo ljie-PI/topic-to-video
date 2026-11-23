@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """composition 的渲染前检查（通过 Chrome + Playwright 保证 DOM 一致性）。
 
-为 composition 步骤跑渲染期检查：在每个 scene 的起点 / 中点 / 终点加载
+为 composition 步骤跑密集渲染期检查：默认在每个 scene 内均匀采 8 个时间点加载
 composition/index.html，seek 到该秒，然后测量 DOM。检查项：
 
   - outside_content_regions : 某个可见内容元素没有完全落在 layout 的内容区域内；
   - reserved_region_intrusion : 某个元素侵入保留区域，却不属于该区域的组件；
-  - text_overflow : 被裁剪 / 滚动的溢出使某元素的 scroll 尺寸超出 client 尺寸；
+  - text_overflow : HTML 文本元素的 scroll 尺寸超出 client 尺寸（含被裁剪及未设
+    overflow:hidden 的定宽/定高容器溢出）；
+  - panel_escape  : 文字元素与场景内大面板容器相交或位于其内部，却探出面板边界；
   - media_load_failure : 某个 img/video 加载失败；
   - fonts_not_loaded        : document.fonts 尚未完成加载；
   - font_size_below_min     : 可见文本小于 design 的最小字号：正文最小字号，或
-    [data-text-role="ui"] 内元素（面板标题栏、按钮、小标签）的 UI 最小字号。
+    [data-text-role="ui"] 内元素（面板标题栏、按钮、小标签、IDE/终端代码）的 UI 最小字号。
     字幕文本不计入；它遵循 layout 的 caption 规格；
-  - caption_mismatch        : 屏幕上的字幕与该秒生效的字幕单元不一致。
+  - caption_mismatch        : 屏幕上的字幕与该秒生效的字幕单元不一致，或存在零时长字幕单元。
 
 seek 先走项目通用入口 window.__layoutQA.seek(videoSeconds)，再驱动页面里的
 video/audio 元素；两者都不存在时该快照报 seek finding，静态快照不算通过。
@@ -78,6 +80,11 @@ MIN_INTRUSION_AREA_PX2 = 4.0
 # （抗锯齿 / 亚像素边缘）。
 COVERED_LEFTOVER_FLOOR_PX2 = 4.0
 OVERFLOW_TOLERANCE_PX = 2.0
+HTML_UNCLIPPED_OVERFLOW_TOLERANCE_PX = 4.0
+PANEL_ESCAPE_TOLERANCE_PX = 8.0
+PANEL_MIN_HEIGHT_PX = 120.0
+PANEL_CLUSTER_GAP_PX = 12.0
+DEFAULT_SAMPLES_PER_SCENE = 8
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SNAPSHOT_JS_PATH = SCRIPT_DIR / 'check-composition-snapshot.js'
@@ -124,6 +131,10 @@ def parse_args() -> argparse.Namespace:
                         help='subtitle-units.json used for the caption check (optional).')
     parser.add_argument('--timeline', default=None,
                         help='timeline.json whose scenes list drives scene timing (optional).')
+    parser.add_argument('--samples', type=int, default=DEFAULT_SAMPLES_PER_SCENE,
+                        help=f'Number of evenly spaced sample timestamps per scene (default: {DEFAULT_SAMPLES_PER_SCENE}).')
+    parser.add_argument('--long-line-px', type=int, default=composition_warnings.DEFAULT_LONG_SVG_LINE_PX,
+                        help=f'SVG ASCII line width threshold in px for long_svg_text_line warnings (default: {composition_warnings.DEFAULT_LONG_SVG_LINE_PX}).')
     parser.add_argument('--output', default=None,
                         help='Optional path to also write the JSON report.')
     parser.add_argument('--chrome-path', default=None,
@@ -154,6 +165,10 @@ def parse_args() -> argparse.Namespace:
         parser.error('--min-font-size must be positive')
     if args.min_ui_font_size is not None and args.min_ui_font_size <= 0:
         parser.error('--min-ui-font-size must be positive')
+    if args.samples <= 0:
+        parser.error('--samples must be positive')
+    if args.long_line_px <= 0:
+        parser.error('--long-line-px must be positive')
     return args
 
 
@@ -260,6 +275,11 @@ def load_subtitle_units(path: Optional[str]) -> List[Dict[str, Any]]:
                 'text': unit['text'],
                 'begin_s': float(unit.get('begin_s', unit.get('begin_ms', 0) / 1000)),
                 'end_s': float(unit.get('end_s', unit.get('end_ms', 0) / 1000)),
+                **(
+                    {'scene_id': str(unit['scene_id'])}
+                    if isinstance(unit.get('scene_id'), str) and unit['scene_id']
+                    else {}
+                ),
             }
         )
     units.sort(key=lambda unit: unit['begin_s'])
@@ -482,19 +502,108 @@ def check_reserved_intrusion(
 
 
 def check_text_overflow(element: Dict[str, Any]) -> Optional[str]:
-    if not element['ownText'] or not any(
-        style in element['overflowStyle'] for style in ('hidden', 'clip', 'scroll', 'auto')
-    ):
+    if not element['ownText'] or element.get('isCaption') or element['tag'] in ('svg', 'text', 'tspan'):
         return None
-    overflow_h = element['scrollHeight'] - element['clientHeight']
-    overflow_w = element['scrollWidth'] - element['clientWidth']
-    if overflow_h <= OVERFLOW_TOLERANCE_PX and overflow_w <= OVERFLOW_TOLERANCE_PX:
+    client_w = element.get('clientWidth', 0) or 0
+    client_h = element.get('clientHeight', 0) or 0
+    clipped = any(style in element['overflowStyle'] for style in ('hidden', 'clip', 'scroll', 'auto'))
+    if not clipped and (client_w <= 0 or client_h <= 0):
+        return None
+    h_tolerance = OVERFLOW_TOLERANCE_PX if clipped else HTML_UNCLIPPED_OVERFLOW_TOLERANCE_PX
+    v_tolerance = (
+        OVERFLOW_TOLERANCE_PX
+        if clipped
+        else max(HTML_UNCLIPPED_OVERFLOW_TOLERANCE_PX, 0.15 * float(element.get('fontSize') or 0))
+    )
+    overflow_h = (element.get('scrollHeight', 0) or 0) - client_h
+    overflow_w = (element.get('scrollWidth', 0) or 0) - client_w
+    if overflow_h <= v_tolerance and overflow_w <= h_tolerance:
         return None
     return (
         f'{element["selector"]} text overflows its box '
         f'(scroll {element["scrollWidth"]}x{element["scrollHeight"]} vs '
-        f'client {element["clientWidth"]}x{element["clientHeight"]})'
+        f'client {client_w}x{client_h})'
     )
+
+
+def _cluster_panel_rects(rects: List[Rect]) -> List[Rect]:
+    """把重叠或紧贴（间距 <= 12px，如顶栏 + 面板主体）的大面板 rect 聚合成外接框；
+    相距较远的独立双面板保持独立，避免中间空隙漏检。"""
+    clusters = [dict(rect) for rect in rects]
+    merged = True
+    while merged:
+        merged = False
+        next_clusters: List[Rect] = []
+        used = [False] * len(clusters)
+        for i, first in enumerate(clusters):
+            if used[i]:
+                continue
+            cur = dict(first)
+            for j in range(i + 1, len(clusters)):
+                if used[j]:
+                    continue
+                other = clusters[j]
+                expanded = {
+                    'x': cur['x'] - PANEL_CLUSTER_GAP_PX,
+                    'y': cur['y'] - PANEL_CLUSTER_GAP_PX,
+                    'width': cur['width'] + 2 * PANEL_CLUSTER_GAP_PX,
+                    'height': cur['height'] + 2 * PANEL_CLUSTER_GAP_PX,
+                }
+                if rects_intersect(expanded, other):
+                    x0 = min(cur['x'], other['x'])
+                    y0 = min(cur['y'], other['y'])
+                    x1 = max(cur['x'] + cur['width'], other['x'] + other['width'])
+                    y1 = max(cur['y'] + cur['height'], other['y'] + other['height'])
+                    cur = {'x': x0, 'y': y0, 'width': x1 - x0, 'height': y1 - y0}
+                    used[j] = True
+                    merged = True
+            next_clusters.append(cur)
+        clusters = next_clusters
+    return clusters
+
+
+def _escapes_box(rect: Rect, box: Rect, tolerance: float = PANEL_ESCAPE_TOLERANCE_PX) -> bool:
+    return (
+        rect['x'] < box['x'] - tolerance
+        or rect['y'] < box['y'] - tolerance
+        or rect['x'] + rect['width'] > box['x'] + box['width'] + tolerance
+        or rect['y'] + rect['height'] > box['y'] + box['height'] + tolerance
+    )
+
+
+def check_panel_escape(
+    element: Dict[str, Any],
+    svg_panels: List[Rect],
+    html_panels_by_dom_id: Dict[int, Rect],
+) -> Optional[str]:
+    if not element.get('ownText') or element.get('isCaption'):
+        return None
+    text = (element.get('text') or '').strip()
+    if not text:
+        return None
+    rect = element['rect']
+    if rect['width'] <= 2 or rect['height'] <= 2:
+        return None
+    if element['tag'] in ('text', 'tspan'):
+        for panel in svg_panels:
+            if intersection_area(rect, panel) > 0 and _escapes_box(rect, panel):
+                return (
+                    f'{element["selector"]} ({text[:48]!r}) escapes SVG panel '
+                    f'({rect["x"]:.0f},{rect["y"]:.0f} {rect["width"]:.0f}x{rect["height"]:.0f} vs '
+                    f'{panel["x"]:.0f},{panel["y"]:.0f} {panel["width"]:.0f}x{panel["height"]:.0f})'
+                )
+        return None
+    for anc_id in element.get('ancestorDomIds') or ():
+        panel = html_panels_by_dom_id.get(anc_id)
+        if panel is not None:
+            if _escapes_box(rect, panel):
+                return (
+                    f'{element["selector"]} ({text[:48]!r}) escapes ancestor panel '
+                    f'({rect["x"]:.0f},{rect["y"]:.0f} {rect["width"]:.0f}x{rect["height"]:.0f} vs '
+                    f'{panel["x"]:.0f},{panel["y"]:.0f} {panel["width"]:.0f}x{panel["height"]:.0f})'
+                )
+            break
+    return None
 
 
 def check_font_size(
@@ -580,6 +689,7 @@ def analyze_snapshot(
     font_floors: Tuple[float, float],
     subtitle_units: List[Dict[str, Any]],
     *,
+    viewport: Tuple[int, int] = (1920, 1080),
     caption_regions: Optional[RegionIndex] = None,
     filter_scene: bool = False,
 ) -> List[Dict[str, Any]]:
@@ -599,6 +709,33 @@ def analyze_snapshot(
             )
 
     elements = snapshot['elements']
+    min_panel_w = min(700.0, viewport[0] * 0.55)
+    raw_svg_panels: List[Rect] = []
+    html_panels_by_dom_id: Dict[int, Rect] = {}
+    for candidate in elements:
+        if candidate['tag'] in ('html', 'body') or candidate.get('isSceneRoot') or candidate.get('layoutIgnore'):
+            continue
+        if filter_scene and candidate.get('sceneId') not in (None, scene_id):
+            continue
+        if candidate.get('isCaption') or element_in_ignored_subtree(candidate, elements):
+            continue
+        if element_owner_region(candidate, regions.reserved_tokens):
+            continue
+        tokens = {
+            str(candidate.get('id') or '').lower(),
+            str(candidate.get('compositionId') or '').lower(),
+            *(str(anc).lower() for anc in (candidate.get('ancestors') or ())),
+        } - {''}
+        if tokens & composition_warnings.TRANSITION_TOKENS:
+            continue
+        crect = candidate['rect']
+        if crect['width'] < min_panel_w or crect['height'] < PANEL_MIN_HEIGHT_PX:
+            continue
+        if candidate['tag'] == 'rect':
+            raw_svg_panels.append(crect)
+        elif candidate['tag'] not in ('svg', 'text', 'tspan') and candidate.get('surface') and candidate.get('domId') is not None:
+            html_panels_by_dom_id[int(candidate['domId'])] = crect
+    svg_panels = _cluster_panel_rects(raw_svg_panels)
 
     for element in elements:
         if element['tag'] in ('html', 'body'):
@@ -616,6 +753,8 @@ def analyze_snapshot(
         for detail in check_reserved_intrusion(element, owner, element_regions):
             add('reserved_region_intrusion', detail)
         add('text_overflow', check_text_overflow(element))
+        if owner is None:
+            add('panel_escape', check_panel_escape(element, svg_panels, html_panels_by_dom_id))
         add('media_load_failure', check_media_load(element))
         add('font_size_below_min', check_font_size(element, owner, element_regions, font_floors))
 
@@ -643,11 +782,17 @@ def dedup_findings(findings: List[Dict[str, Any]], scene_order: List[str]) -> Li
     return unique
 
 
-def scene_check_times(scene: Dict[str, Any]) -> List[float]:
-    begin, end = scene['begin_s'], scene['end_s']
+def scene_check_times(scene: Dict[str, Any], samples: int = DEFAULT_SAMPLES_PER_SCENE) -> List[float]:
+    begin, end = float(scene['begin_s']), float(scene['end_s'])
     duration = end - begin
+    if samples <= 1:
+        return [begin + duration / 2]
     epsilon = min(0.1, duration / 10)
-    return [begin + epsilon, begin + duration / 2, end - epsilon]
+    lo, hi = begin + epsilon, end - epsilon
+    if hi <= lo:
+        return [begin + duration / 2]
+    step = (hi - lo) / (samples - 1)
+    return [round(lo + index * step, 6) for index in range(samples)]
 
 
 def resolve_scenes(page: Any, timeline_scenes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -687,9 +832,31 @@ def build_report(
     viewport_mismatch: bool,
     *,
     visual_scenes: Optional[List[Dict[str, Any]]] = None,
+    long_line_px: int = composition_warnings.DEFAULT_LONG_SVG_LINE_PX,
 ) -> Dict[str, Any]:
     findings: List[Dict[str, Any]] = []
     checked: List[Dict[str, Any]] = []
+    default_scene_id = scenes[0]['scene_id'] if scenes else 'global'
+    for unit in subtitle_units:
+        if unit['end_s'] <= unit['begin_s']:
+            owner_scene_id = unit.get('scene_id') or next(
+                (
+                    scene['scene_id']
+                    for scene in scenes
+                    if float(scene.get('begin_s', 0.0)) <= unit['begin_s'] < float(scene.get('end_s', 0.0))
+                ),
+                default_scene_id,
+            )
+            findings.append({
+                'scene_id': owner_scene_id,
+                'check': 'caption_mismatch',
+                'issue': (
+                    f'subtitle unit {unit["text"]!r} has non-positive duration '
+                    f'({unit["begin_s"]:.3f}s..{unit["end_s"]:.3f}s)'
+                ),
+                'time_s': float(unit['begin_s']),
+                'frame': None,
+            })
     snapshot_by_scene: Dict[str, List[Dict[str, Any]]] = {}
     for snapshot in snapshots:
         snapshot_by_scene.setdefault(snapshot['scene_id'], []).append(snapshot)
@@ -739,7 +906,7 @@ def build_report(
             caption_regions = RegionIndex(caption_segment['layout_data']) if caption_segment else None
             findings.extend(analyze_snapshot(
                 snapshot, scene_regions, font_floors, subtitle_units,
-                caption_regions=caption_regions, filter_scene=visual_scenes is not None,
+                viewport=viewport, caption_regions=caption_regions, filter_scene=visual_scenes is not None,
             ))
             if visual_scenes and caption_segment and snapshot['scene_id'] == caption_segment['scene_id']:
                 has_person_region = any(
@@ -769,6 +936,7 @@ def build_report(
         composition_dir=composition_dir,
         region_index_factory=RegionIndex,
         filter_scene=visual_scenes is not None,
+        long_line_px=long_line_px,
     )
     all_warnings = [*warnings, *quality_warnings]
     return {
@@ -849,15 +1017,15 @@ def main() -> None:
                 checks = [
                     {'scene_id': scene['scene_id'], 'time': time}
                     for scene in scenes
-                    for time in scene_check_times(scene)
+                    for time in scene_check_times(scene, args.samples)
                 ]
                 if visual_scenes:
-                    # 明确覆盖每个视觉 scene 的首中尾；scene 的 regions / caption
+                    # 明确覆盖每个视觉 scene 的采样点；scene 的 regions / caption
                     # 一律以 scene-config 落盘的实际值为准。
                     for scene in visual_scenes:
                         checks.extend(
                             {'scene_id': scene['scene_id'], 'time': time}
-                            for time in scene_check_times(scene)
+                            for time in scene_check_times(scene, args.samples)
                         )
                 checks = list({(check['scene_id'], check['time']): check for check in checks}.values())
                 snapshots = page.evaluate(load_snapshot_js(), {'checks': checks})
@@ -880,6 +1048,7 @@ def main() -> None:
             warnings,
             viewport_mismatch,
             visual_scenes=visual_scenes,
+            long_line_px=args.long_line_px,
         )
         if args.output:
             output_path = Path(args.output).expanduser().resolve()

@@ -933,6 +933,14 @@ def test_missing_or_corrupt_subtitle_units_falls_back_to_phase_8(tmp_path: Path)
     assert corrupt['next_phase']['id'] == '8-composition'
     assert 'composition/assets/subtitle-units.json' in corrupt['corrupt_products']
 
+    write_json(tmp_path / 'composition' / 'assets' / 'subtitle-units.json', {
+        'units': [{'text': '零时长', 'begin_s': 2.0, 'end_s': 2.0}],
+    })
+    zero_dur = parse_result(run_cli(str(tmp_path)))
+    assert zero_dur['next_phase']['id'] == '8-composition'
+    assert 'composition/assets/subtitle-units.json' in zero_dur['corrupt_products']
+    assert 'non-positive duration' in zero_dur['next_phase']['problems']['composition/assets/subtitle-units.json']
+
     (tmp_path / 'composition' / 'assets' / 'subtitle-units.json').unlink()
     missing = parse_result(run_cli(str(tmp_path)))
     # 最终字幕依赖 layout，所以它属于 Phase 8，而不是 Phase 7。
