@@ -66,7 +66,7 @@
 
 - **理解：** 图中实际内容、可读文字、图表结构与视觉风格；标出关键局部和不可读部分。
 - **匹配：** “这张图可用于解释话题 summary 中哪个具体概念 / 论点？画面中的依据是什么？”输出叙事锚点描述、分项分数与总分。
-- **展示：** 透传 `width` / `height`；网页长图（`type: "page-screenshot"`）禁整张送视觉模型读小字：保留 `type` / `capture`，先按 `capture.elements`（`tag` / `text` / `bbox`）定位正文与章节，再用 `PIL.Image` 按候选 bbox 裁局部图（`--detail high`）核对文字与内容，写入归一化 `regions: [{id, x, y, w, h, summary}]`（坐标除以实际 PNG 宽高，按阅读序排列）及主区域 `focal_region`；`semantic_description` 概括可用区域。长图巡讲优先 `viewport_reveal`；其他图表无可见坐标依据时 `focal_region` 置 `null`，不猜坐标。
+- **展示：** 透传 `width` / `height`；网页长图（`type: "page-screenshot"`）保留 `type` / `capture`，禁整张直喂视觉模型读小字——按 `capture.elements` 定位章节并用 `PIL.Image` 裁局部（`--detail high`）核对，写入按阅读序排列的归一化 `regions: [{id, x, y, w, h, summary}]`（除以实际 PNG 宽高）、主区 `focal_region`，并在 `semantic_description` 概括可用区域，巡讲优先标 `viewport_reveal`；其他图表无可见坐标依据时 `focal_region` 置 `null`。
 
 ## 视频与滚动录像
 

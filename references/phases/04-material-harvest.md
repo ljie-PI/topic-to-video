@@ -95,7 +95,7 @@ source .venv/bin/activate && python3 scripts/harvest-pages.py \
   --viewport 1680x1680
 ```
 
-一律用 `--urls-file` 读文件（`--urls` 仅限两三个 URL 调试）。默认单 URL 失败继续；文件不可读或为空时退出码 `2`。viewport 是内容区，不是物理屏幕或窗口大小；窗口启动尺寸与 viewport 默认均为 `1680×1680`、DPR 1，长页面用 full-page。网页滚动交 Phase 8 演绎；真实动态过程用下载的源视频（优先 MP4），禁二次录屏。
+一律用 `--urls-file` 读文件（`--urls` 仅限两三个 URL 调试）；单 URL 失败继续，文件不可读或为空退出码 `2`。窗口启动与内容 viewport 默认均为 `1680×1680`（DPR 1，full-page 截图）；网页滚动交 Phase 8 演绎，真实动态过程只下源视频，禁二次录屏。
 
 #### harvest-pages.py 的实际输出
 
@@ -201,8 +201,8 @@ harvest_page/
 
 字段要点：
 - `pending_downloads[]` 在磁盘 manifest 中常驻（无待下项时为 `[]`，stdout 无待下项时省略）；同一视频跨多页引用只列一条 pending（附 `also_referenced_by`），只下一次。
-- 长图在 `images[]` 中，`type: "page-screenshot"`；`capture` 记录 viewport / DPR，以及按纵向排序的正文、标题（`h1–h3`）与高 ≥48px 的节块、列表项、表格、代码和图片 DOM bbox（文档 CSS 像素，非视口坐标）。DPR 1 且截图 `scale=css`，可直接按 bbox 裁图，归一化用实际 PNG 宽高。截图失败会告警，不登记假素材。
-- `scroll_recording` 默认 `null`；兼容选项 `--scroll-record` 可生成旧式录像，不用于网页巡讲。
+- 长图在 `images[]` 中（`type: "page-screenshot"`），`capture` 记录 viewport / DPR 及按纵向排序的正文、`h1–h3` 与高 ≥48px 节块 / 列表 / 表格 / 代码 / 图片的文档 CSS 像素 bbox；DPR 1 且 `scale=css`，可直接按 bbox 裁图，归一化除以实际 PNG 宽高。截图失败仅告警。
+- `scroll_recording` 默认 `null`（`--scroll-record` 仅作旧式兼容）。
 - 非 http(s) URL 归入 `rejected[]`；整批全部失败时 `success: false` 且退出码为 `1`。
 
 同一次调用的 stdout（节选）：
