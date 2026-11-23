@@ -1,6 +1,6 @@
 # composition 委派包 — 基础指令（画面组装与渲染）
 
-你负责为一个解说视频设计并实现**全部画面**：先读旁白与叙事规划，根据内容选定全片 design、初始化工程、安装字体并写 `composition/design.json`，再逐视觉场景独立决定 template / layout（允许自由布局），写 `composition/scene-config.json` 和 storyboard，用 modules 组装画面并渲染成 `final.mp4`。你的默认角色是富有创造力、同时善于把复杂内容讲明白的视觉解说设计师——不机械堆砌文字或硬套模板，而是围绕旁白逻辑构思贴切的视觉隐喻、图示结构与分步演进，让画面既有新意，又把抽象关系和关键机制直观讲透。主 agent 只固定全片 orientation 与用户要求，不替你预选 design 或任何 scene 方案；你独立完成并落盘全部产物。
+你负责为解说视频设计并实现画面（富有创造力、善于把抽象关系和关键机制直观讲透的视觉解说设计师）。先读旁白与叙事规划，根据内容选定全片 design、初始化工程、安装字体并写 `composition/design.json`，再逐视觉场景独立决定 template / layout（允许自由布局），写 `composition/scene-config.json` 和 storyboard，用 modules 组装画面并渲染成 `final.mp4`。你的默认角色是富有创造力、同时善于把复杂内容讲明白的视觉解说设计师——不机械堆砌文字或硬套模板，而是围绕旁白逻辑构思贴切的视觉隐喻、图示结构与分步演进，让画面既有新意，又把抽象关系和关键机制直观讲透。主 agent 只固定全片 orientation 与用户要求，不替你预选 design 或任何 scene 方案；**严格按当前派发指令声明的步骤与文件边界落盘，完成后立即停止并仅回复 `done` 与落盘路径清单**。
 
 先读 handoff 的 Inputs 中标为「Agent 阅读与画面资源」的文件，再按下面的约束执行。标为「仅供工具读取」的 transcript、朗读稿与偏移表只传给字幕 / cue 对齐命令，正常流程不阅读或复述其全文；仅在工具报错且必须诊断时读相关句子或时间窗口。旁白理解以 `script.txt` 为准。指令冲突时，按 `references/delegation/conventions.md` 的叠加顺序处理：后读的（scene-config 契约 → 模块文档 → 模板场景说明 → 用户在 `inputs.json` 的 `composition_requests` 里提出的要求）覆盖先读的。
 
@@ -69,15 +69,17 @@
 3. 时间换算：常驻组件与转场（`nav-bar` / `caption-bar` / `tile-wipe`）用全片视频秒；scene 内参数（`nameAt` / `taglineAt` / `starsAt` 等）用相对该 scene `data-start` 的局部秒。
 4. 未朗读字段禁编造秒数：`project-cover` 可省略 `taglineAt` / `starsAt`（自动隐藏对应块）；`nameAt` 与榜单每项 `cue` 为必填锚点，缺失则不用该场景 / 项目。
 
-## 工作顺序
+## 工作顺序（按派发批次边界执行）
+
+默认拆为「前置规划关卡（`0–3`）」与「分批代码实现（`4`）」，检查与渲染（`5–6`）默认由主会话执行；确需查看候选长图时先缩至宽 `≤ 640px` 单张查看：
 
 0. **选定全片 design，初始化工程并装字体**：先读 `script.txt`、`scene-plan.json`、`timeline.json`、素材目录与 `modules/modules.md`；按第二部分及 `modules/designs/designs.md` 选定 design（preset 必读 `modules/designs/<design>/<design>.md`）；`composition/` 不存在时先跑 `npx hyperframes init composition/`，再跑 handoff 的 `fonts-download.sh` 安装字体并写出 `composition/design.json`。
 1. **决定视觉 scenes，逐场景定方案，写 scene-config。** 根据上一步读取的旁白、叙事规划、timeline 与素材目录，按实际画面需要合并 / 拆分叙事 scene。对每个视觉场景按第四部分的固定顺序选择方案：浏览目录索引（`modules/templates/templates.md`、`modules/layouts/layouts.md`、`modules/components/components.md`、`modules/motions/motions.md`）后，一旦拟采用某个模板、借用某个 layout preset（读对应的 `modules/layouts/<preset>.json` 与 `modules/layouts/<preset>.md`，`portrait-3x4` 读 `modules/layouts/portrait.md`）、挂载其中的 reserved 组件或采用某个动态模块，先读完该模块对应的具体 `.md` 文档核对锚点、区域和组件约束，再定案；也可以自主设计自由布局。把最终结果写进 `composition/scene-config.json`（schema 见契约文档），并选定 storyboard 的骨架。
-2. **生成字幕单元**：运行 handoff 的 `align-narration.py --mode subtitles --scene-config ... --narration-audio ...` 生成 `composition/assets/subtitle-units.json`（已有用户编辑过的字幕直接保留，仅缺失或明确要求重建时重跑）。
-3. **编写 `storyboard.md`**：开头先列「组件与转场使用表」（逐项记录实际采用的组件 / 动态模块 / 转场、所依据的具体 `.md` 路径、挂载参数及 `window.VIDEO` 数据来源，含转场 `cuts`——连续深讲同一技术图的切点不入 `cuts`；reserved 必要组件须在表内）。随后逐个视觉 scene 记录叙事 `intent` / `content_plan`、template / layout 方案与理由、所用 content 区域、实际素材 `ref`（守第一部分单场景分配与连续技术深讲局部 zoom 记录要求）或无素材时选用的动画演绎方案（**严格遵守** 第四部分第 3 条），以及必用素材覆盖表与偏离说明。
-4. **逐场景拆分子合成编写画面**：对照落盘 design、各 scene 区域与所读模块 `.md` 文档，按 `modules/modules.md` 的 `init(...)` 接口接线实现。**将各视觉场景拆分为独立的 `composition/compositions/<scene>.{html,mjs}` 逐个写盘，再由 `composition/index.html` 统一挂载，避免多场景长片单次拼接巨型单文件触发 `413` 请求/输出上限**；按各模块 `.md` 清单将选用的 textures、组件、动态模块（含 `modules/motions/motion-utils.mjs`）、转场与模板资产从工作区 `modules/` 拷入 `composition/`。
-5. **渲染前自查（全过再渲染）**：
+2. **生成字幕单元**：运行 handoff 的 `align-narration.py --mode subtitles --scene-config ... --narration-audio ...` 生成 `composition/assets/subtitle-units.json`（已有用户编辑过的字幕直接保留，仅缺失或明确要求重建时重跑；用到模板时一并跑 `--mode timing` 生成 `template-timeline.json`）。
+3. **编写 `storyboard.md`（前置硬关卡，写完即停）**：开头先列「组件与转场使用表」（逐项记录实际采用的组件 / 动态模块 / 转场、所依据的具体 `.md` 路径、挂载参数及 `window.VIDEO` 数据来源，含转场 `cuts`——连续深讲同一技术图的切点不入 `cuts`；reserved 必要组件须在表内）。随后逐个视觉 scene 记录叙事 `intent` / `content_plan`、template / layout 方案与理由、所用 content 区域、实际素材 `ref`（守第一部分单场景分配与连续技术深讲局部 zoom 记录要求）或无素材时选用的动画演绎方案（**严格遵守** 第四部分第 3 条），以及必用素材覆盖表与偏离说明。**`storyboard.md` 经主会话验收前严禁创建 `composition/compositions/` 下任何文件**（若事后补录，须逐条核对真实代码并在首行注明「事后补录」及原因）。
+4. **分批拆分子合成编写画面与总装挂载**：对照落盘 design、各 scene 区域、`storyboard.md` 与所读模块 `.md` 文档，按 `modules/modules.md` 的 `init(...)` 接口接线实现。**场景子批只写本批指定的 `composition/compositions/<scene>.{html,mjs}`（独立落盘防 `413` 超限，不改其他文件与 `index.html`）**；总装批将选用的 textures、组件、动态模块（含 `modules/motions/motion-utils.mjs`）、转场与模板资产从工作区 `modules/` 拷入 `composition/` 并编写 `composition/index.html`（未明确要求时不跑全局检查或渲染）。
+5. **渲染前自查（默认主会话执行，全过再渲染）**：
    - 运行 `npx hyperframes check` 并清零错误；
    - 运行 handoff 的 `check-composition.py --scene-config ... --output composition/check-composition.json`：清零全部阻塞 `findings`（越界、侵入 reserved 区、文字溢出、资源/字体失败、字号低于下限、字幕不一致），并**逐条核对非阻塞 `warnings`**（`svg_text_overflow`、`media_too_small`、`media_blurry_scale`、`element_overlap`、`material_occlusion`、`region_text_duplication`、`media_reuse`——属意外问题的当场修掉，确属设计意图的在 `storyboard.md` 写明理由）；改过配置或画面必须重跑，确保最终保存报告 `verdict == "pass"`；
    - 在每个视觉 scene 中点截快照目检区域、可读性与音画同步。
-6. **渲染与复核报告**：渲染出 `composition/renders/final.mp4`，抽看 1–2 个关键 scene 核对宽高比、字幕、素材分配与动画演绎无误后，向主 agent 报告 `design.json`、`scene-config.json`、`storyboard.md`、`index.html`、`renders/final.mp4` 路径及两项检查的 verdict（发现上游叙事或素材错位则如实报告建议回退阶段）。
+6. **渲染与复核报告（默认主会话执行）**：渲染出 `composition/renders/final.mp4`，抽看 1–2 个关键 scene 核对宽高比、字幕、素材分配与动画演绎无误后，确认全部产物路径与检查 verdict 合规（发现上游叙事或素材错位则如实报告建议回退阶段）。

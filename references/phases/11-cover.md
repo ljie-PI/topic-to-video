@@ -47,7 +47,7 @@
 ## 护栏
 
 - **禁用图像生成模型写字或直出带字封面。** 封面一律由 HTML+CSS 排版、复用 `composition/assets/fonts/` 本地字体并通过 `scripts/render-cover.py` 在系统 Chrome 确定性截图产出。
-- **全部选帧裁剪、HTML 排版、机器自检与缩略图测试委派给 coding agent 完成**，主 agent 只准备 handoff、派发并验收，禁手写或修补 `cover/*.html`。
+- **预取素材 + 单尺寸并行委派 + 中心化渲染验收**：主 agent 定共享口径并预取裁净 `cover/assets/`（禁手写或修补 `cover/*.html`），子 agent 按单尺寸小批并行编写 `cover/cover_{W}x{H}.html`（传参考图须缩至宽 `≤ 640px`），渲染自检与缩略图验收由主 agent 执行。
 - **每套尺寸单独一份固定像素 HTML，招手主持人锁定各尺寸固定槽位**，禁缩放同一份 HTML 换尺寸、禁用 `vw` / `vh`、禁改动上游 `script.txt` / 配音 / 成片视频。
 
 ---
@@ -59,7 +59,9 @@
 - 主 agent 核对 `inputs.json` 的可选 `cover_requests`（新提出的尺寸或封面重点要求先按 `references/pipeline-control.md` 写入 `cover_requests` 再生成 handoff）。
 - 仅修改封面文案、构图或尺寸时，只登记 `--redo 11-cover`，不重跑 Phase 8 渲染、Phase 9 成片 QA 或 Phase 10 BGM 混音。
 
-#### 11.1 — 物化委派包与生成 handoff
+#### 11.1 — 预取封面素材并生成 handoff
+
+主 agent 对照 `research-brief.md`、`script.txt`、`transcribe/timeline.json` 与 `composition/scene-config.json` 定下共享两行钩子、`1–3` 个已核实数字与统一底色，从 `composition/renders/final.mp4` 前 15 秒及核心场景截取 `1–2` 帧（或取 catalog 原图）用 Pillow 按 `regions` 裁净写入 `{work_dir}/{topic_name}/cover/assets/` 并拷入 `presenter-wave.png`，随后生成 handoff：
 
 ```bash
 source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topic_name} cover
@@ -67,16 +69,14 @@ source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topi
 
 脚本将委派包（`conventions.md` + `cover/`）物化到工作区（已有副本不覆盖，更新规则传 `--refresh`），并生成绝对路径的 `cover-handoff.md`。用户请求了阶段级模型（`inputs.json.delegation.cover.model`）时，先按 `references/delegation/conventions.md` 经目标 CLI 解析出支持看图的原生标识并传 `--resolved-model`。
 
-#### 11.2 — 委派 cover agent
+#### 11.2 — 按单尺寸并行委派 cover agent
 
-按 `prepare-handoff.py` 输出 JSON 的 `coding_agent` / `coding_model` 原样派发单句 `dispatch_prompt`（见 `references/delegation/conventions.md`）。
+按 `prepare-handoff.py` 输出 JSON 的 `coding_agent` / `coding_model` 与 `dispatch_prompt`，对每个目标尺寸各起一个子会话并行派发（守 `references/delegation/conventions.md`）：给定本批唯一尺寸 `{W}x{H}`、已就绪 `cover/assets/` 与共享钩子/数字口径，仅编写 `cover/cover_{W}x{H}.html`（末批一并写 `cover/cover-summary.md`），不内嵌渲染或看图。
 
-子 agent 自行读取 handoff 与工作区副本：定下两行核心钩子、`1–3` 个重要数字与统一主题配色；从 `final.mp4` 前 15 秒及全片核心场景截取 `1–2` 帧关键画面并用 Pillow 裁净写入 `cover/assets/`，拷入 `presenter-wave.png`；逐尺寸编写独立 HTML 并挂载固定槽位的招手主持人；运行 `scripts/render-cover.py` 清零全部 `findings`（`verdict == "pass"`）；对 `cover/qa/thumb_*_400w.png` 完成 `400px` 缩略图三问验收并写出 `cover/cover-summary.md`。
+#### 11.3 — 主 agent 中心化渲染、校验与最终交付
 
-#### 11.3 — 主 agent 校验与最终交付
-
-1. **状态脚本验收**：运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`。若 `next_phase` 仍为 Phase 11（`missing` / `corrupt` 看 `problems`，`redo` 看 `redo_reason`），原样交回 cover agent 修复，修完 `--finish 11-cover` 后重验。
-2. **内容与缩略图复核**：阅读 `cover/cover-summary.md` 并抽查 `cover/qa/thumb_*_400w.png`，确认钩子与 `1–3` 个重要数字忠实于 `research-brief.md`、关键帧选取贴切、各尺寸在 `400px` 缩略图上清晰易读且无遮挡裁切。不合格项指明原因交回 cover agent 重做。
+1. **中心化渲染与机器验收**：全部尺寸 HTML 落盘后，主 agent 运行 `cover-handoff.md` 中的 `scripts/render-cover.py {work_dir}/{topic_name}/cover --output {work_dir}/{topic_name}/cover/cover-report.json` 与 `scripts/vision-analyze.py`，不合格尺寸派单尺寸小批修妥重跑至 `verdict == "pass"`。
+2. **状态脚本验收与复核**：运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`（redo 时传 `--finish 11-cover`），并阅读 `cover/cover-summary.md`、抽查 `cover/qa/thumb_*_400w.png` 确认钩子与 `1–3` 个重要数字忠实于 `research-brief.md` 且 `400px` 缩略图清晰无遮挡。
 3. **统一最终交付**：全部通过（`next_phase` 为 `null`）后，向用户交付：
    - 最终视频成片（`final_with_bgm.mp4` 或 `final.mp4`）与 `qa/` contact sheet（若 `qa/qa-report.json` 的 `verdict` 为 `handed_off`，一并附上未收敛 findings 供用户定夺）；
    - `cover/` 下各尺寸成品 `cover_{W}x{H}.png`、对应 `@2x.png`、HTML 源文件及 `cover/cover-summary.md` 摘要；
