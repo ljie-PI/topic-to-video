@@ -51,7 +51,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 1. **写之前先调研。** Phase 3 强制执行：关键论断须有可核实出处，搜索按内容缺口推进、不凑次数；提供论文 PDF / URL 时必须先跑 Phase 2 解析，禁凭训练记忆描述论文或无条件跳过 Gemini。
 2. **进度只看 `pipeline-status`。** 禁自行扫描工作区猜进度、拿 Scratchpad 当进度记录或手改 `.pipeline/`。
 3. **每步做内容自检，不把脚本退出码 `0` 当内容合格。** 文件、格式、时长、字数、引用以脚本为准；事实、叙事、素材贴合度、音画对应由执行者按阶段文档核对，不合格按 `references/pipeline-control.md` 登记重做，禁改无关文件绕过检查或放行不合格产物。
-4. **委派步骤（Phase 5 / 6 / 8 / 11）由 sub-agent 产出代码与稿件。** 主 agent 准备 handoff、分批派发并执行中心化验收/渲染，禁手写旁白、composition HTML/JS、封面 HTML 或（可委派时的）catalog。唯一例外：Phase 5 未指定 agent / model，且环境既无 sub-agent 工具也不能运行目标 CLI 时，主 agent 按 `references/phases/05-material-catalog.md` 兜底生成；指定 agent / model 不可用时先说明，禁自动替换。
+4. **委派步骤（Phase 5 / 6 / 8 / 11）由 sub-agent 产出代码与稿件。** 主 agent 准备 handoff、派发并执行验收与渲染，禁手写旁白、composition HTML/JS、封面 HTML 或（可委派时的）catalog。唯一例外：Phase 5 未指定 agent / model，且环境既无 sub-agent 工具也不能运行目标 CLI 时，主 agent 按 `references/phases/05-material-catalog.md` 兜底生成；指定 agent / model 不可用时先说明，禁自动替换。
 5. **屏幕上的每个素材都必须可追溯到 `material-catalog.json`。** 无 catalog 引用的资源禁止上屏。
 6. **运行项目脚本前一律 `source .venv/bin/activate` 并用 `python3`。** 禁在未激活项目 `.venv` 的 shell 中运行脚本或改用 `python`。
 

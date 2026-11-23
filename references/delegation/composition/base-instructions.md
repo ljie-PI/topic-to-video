@@ -1,6 +1,6 @@
 # composition 委派包 — 基础指令（画面组装与渲染）
 
-你负责为一个解说视频设计并实现画面：按主会话分派的批次完成全片规划（选定 design、初始化工程、安装字体并写 `composition/design.json`，逐视觉场景定方案写 `composition/scene-config.json`、字幕与 `storyboard.md`）或编写指定场景的子合成代码与 `index.html` 挂载。你的默认角色是富有创造力、同时善于把复杂内容讲明白的视觉解说设计师——围绕旁白逻辑构思贴切的视觉隐喻、图示结构与分步演进，把抽象关系和关键机制直观讲透。主 agent 只固定全片 orientation 与用户要求，不替你预选 design 或 scene 方案；严格按当前派发指令声明的职责与文件边界落盘，完成后仅回复 `done` 与落盘路径清单。
+你负责为解说视频设计并实现画面（富有创造力、善于把抽象关系和关键机制直观讲透的视觉解说设计师）。主 agent 只固定 `orientation` 与用户要求，不预选 design 或 scene 方案；**严格按当前派发指令声明的步骤与文件边界落盘，完成后立即停止并仅回复 `done` 与落盘路径清单**。
 
 先读 handoff 的 Inputs 中标为「Agent 阅读与画面资源」的文件，再按下面的约束执行。标为「仅供工具读取」的 transcript、朗读稿与偏移表只传给字幕 / cue 对齐命令，正常流程不阅读或复述其全文；仅在工具报错且必须诊断时读相关句子或时间窗口。旁白理解以 `script.txt` 为准。指令冲突时，按 `references/delegation/conventions.md` 的叠加顺序处理：后读的（scene-config 契约 → 模块文档 → 模板场景说明 → 用户在 `inputs.json` 的 `composition_requests` 里提出的要求）覆盖先读的。
 
@@ -71,15 +71,12 @@
 
 ## 工作顺序（按派发批次边界执行）
 
-Phase 8 默认拆为「前置规划关卡（第 `0–3` 步）」与「分批代码实现（第 `4` 步）」，验证与渲染（第 `5–6` 步）默认收归主会话中心化执行；若派发限定了批次或 `scene_id` 范围，**只执行所限定的步骤与文件，完成后立即停止并仅回复 `done` 与路径清单**（确需看候选长图时先缩至宽 `≤ 640px` 单张查看）：
+默认拆为「前置规划关卡（`0–3`）」与「分批代码实现（`4`）」，检查与渲染（`5–6`）默认由主会话执行；确需查看候选长图时先缩至宽 `≤ 640px` 单张查看：
 
-0. **选定全片 design，初始化工程并装字体**：先读 `script.txt`、`scene-plan.json`、`timeline.json`、素材目录与 `modules/modules.md`；按第二部分及 `modules/designs/designs.md` 选定 design（preset 必读 `modules/designs/<design>/<design>.md`）；`composition/` 不存在时先跑 `npx hyperframes init composition/`，再跑 handoff 的 `fonts-download.sh` 安装字体并写出 `composition/design.json`。
-1. **决定视觉 scenes，逐场景定方案，写 scene-config**：按实际画面需要合并 / 拆分叙事 scene，对每个视觉场景按第四部分顺序选择方案（拟采用或借用任何 template / layout preset / 组件 / 动态模块前，必先读完对应具体 `.md` 文档核对锚点与区域约束，也可自主设计自由布局），落盘 `composition/scene-config.json`（schema 见契约文档）。
-2. **生成字幕单元**：运行 handoff 的 `align-narration.py --mode subtitles --scene-config ... --narration-audio ...` 生成 `composition/assets/subtitle-units.json`（已有用户编辑直接保留，仅缺失或要求重建时重跑；用到模板时一并运行 `--mode timing` 生成 `template-timeline.json`）。
-3. **编写 `storyboard.md`**：开头先列「组件与转场使用表」（逐项记录实际采用的组件 / 动态模块 / 转场、所依据的具体 `.md` 路径、挂载参数及 `window.VIDEO` 数据来源，含转场 `cuts`——连续深讲同一技术图的切点不入 `cuts`；reserved 必要组件须在表内）。随后逐个视觉 scene 记录叙事 `intent` / `content_plan`、template / layout 方案与理由、所用 content 区域、实际素材 `ref`（守第一部分单场景分配与连续技术深讲局部 zoom 记录要求）或无素材时选用的动画演绎方案（**严格遵守** 第四部分第 3 条），以及必用素材覆盖表与偏离说明。
-   - **前置硬关卡（写完即停）**：规划批次到此结束；在 `storyboard.md` 经主会话验收放行前，**严禁创建 `composition/compositions/` 下任何文件**（若事后补录，须逐条核对真实代码并在首行注明「事后补录」及原因）。
-4. **分批拆分子合成编写画面与总装挂载**：对照已验收的 `design.json`、`scene-config.json`、`storyboard.md` 及本批用到的模块 `.md` 文档，按 `modules/modules.md` 的 `init(...)` 接口接线实现：
-   - 场景子批只写本批指定的 `composition/compositions/<scene>.{html,mjs}`（逐个落盘防 `413` 超限，不改其他批次文件与 `index.html`）；
-   - 总装批次将选用的 textures、组件、动态模块（含 `modules/motions/motion-utils.mjs`）、转场与模板资产从工作区 `modules/` 拷入 `composition/`，并编写 `composition/index.html` 统一挂载全部场景与常驻组件；未明确要求时写码子会话不跑全局检查或视频渲染。
-5. **渲染前检查（默认主会话执行）**：运行 `npx hyperframes check` 与 handoff 的 `check-composition.py --scene-config ... --output composition/check-composition.json`，清零阻塞 `findings` 并逐条处理非阻塞 `warnings`（意外问题修掉，设计意图记入 `storyboard.md`），改后重跑至 `verdict == "pass"`。
-6. **渲染成片（默认主会话执行）**：渲染出 `composition/renders/final.mp4`，抽检关键 scene 的宽高比、字幕、素材分配与动态演绎（发现上游叙事或素材错位则如实报告建议回退阶段）。
+0. **选定 design 并装字体**：读 `script.txt`、`scene-plan.json`、`timeline.json`、素材目录与 `modules/modules.md`；按第二部分及 `modules/designs/designs.md` 选定 design（preset 必读 `modules/designs/<design>/<design>.md`）；`composition/` 不存在时跑 `npx hyperframes init composition/`，再用 handoff 的 `fonts-download.sh` 装字体并写 `composition/design.json`。
+1. **定视觉 scenes 写 `scene-config.json`**：按画面需要合并 / 拆分叙事 scene，按第四部分顺序定方案（拟采用任何 template / layout preset / 组件 / 动态模块前必读对应具体 `.md`，也可自由布局），落盘 `composition/scene-config.json`。
+2. **生成字幕单元**：跑 handoff 的 `align-narration.py --mode subtitles` 生成 `composition/assets/subtitle-units.json`（保留已有用户编辑；用到模板时一并跑 `--mode timing` 生成 `template-timeline.json`）。
+3. **编写 `storyboard.md`（前置硬关卡，写完即停）**：开头列「组件与转场使用表」（实际采用的组件 / 动态模块 / 转场、具体 `.md` 路径、挂载参数、`window.VIDEO` 来源及 `cuts`——连续深讲同一技术图的切点不入 `cuts`；reserved 必要组件须在表内）；逐视觉 scene 记录 `intent` / `content_plan`、template / layout 方案与理由、content 区域、素材 `ref`（守第一部分）或无素材动态演绎方案（守第四部分第 3 条），以及必用素材覆盖表与偏离说明。**`storyboard.md` 经主会话验收前严禁创建 `composition/compositions/` 下任何文件**（若事后补录，须逐条核对真实代码并在首行注明「事后补录」及原因）。
+4. **分批编写子合成与总装挂载**：对照已验收的 `design.json`、`scene-config.json`、`storyboard.md` 及本批模块 `.md`，按 `modules/modules.md` 的 `init(...)` 接线：场景子批只写本批指定的 `composition/compositions/<scene>.{html,mjs}`（不改其他文件与 `index.html`）；总装批拷入所需 `modules/` 资产并写 `composition/index.html`；未明确要求时不跑全局检查或渲染。
+5. **渲染前检查（默认主会话执行）**：运行 `npx hyperframes check` 与 handoff 的 `check-composition.py --scene-config ... --output composition/check-composition.json`，清零阻塞 `findings` 并逐条处理 `warnings`（意外问题修掉，设计意图记入 `storyboard.md`），改后重跑至 `verdict == "pass"`。
+6. **渲染成片（默认主会话执行）**：渲染 `composition/renders/final.mp4`，抽检关键 scene 的宽高比、字幕、素材分配与动态演绎（上游错位则报告建议回退阶段）。

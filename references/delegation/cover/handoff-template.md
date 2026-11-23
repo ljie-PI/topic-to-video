@@ -41,14 +41,14 @@
 
 ## Outputs
 
-写到工作区封面目录（{{ws}}/cover/；按派发指令限定的尺寸与文件边界落盘，主会话已预取 `cover/assets/` 时直接复用）：
+写到工作区封面目录（{{ws}}/cover/；按派发限定的尺寸与文件落盘，已预取 `cover/assets/` 时直接复用）：
 
-- 独立 HTML 源文件：`cover/cover_{W}x{H}.html`（默认按单尺寸小批并行覆盖 {{default_sizes}} 共 3 份独立 HTML，禁缩放同一份 HTML 换尺寸）
+- 独立 HTML 源文件：`cover/cover_{W}x{H}.html`（默认按单尺寸并行覆盖 {{default_sizes}} 共 3 份独立 HTML，禁缩放同一份 HTML 换尺寸）
 - 成品位图、高清母版与 `400px` 缩略图：`cover/cover_{W}x{H}.png`、`cover/cover_{W}x{H}@2x.png`、`cover/qa/thumb_{W}x{H}_400w.png`
-- {{cover_report_q}}：确定性渲染与 DOM 机器自检报告（最终 `verdict` 必须为 `pass`）
-- {{cover_summary_q}}：封面交付说明（记录钩子文案、`1–3` 个重要数字口径、所截 `1–2` 帧时间点与场景来源、各尺寸成品路径及 `400px` 缩略图三问结论）
+- {{cover_report_q}}：确定性渲染与 DOM 机器自检报告（最终 `verdict == "pass"`）
+- {{cover_summary_q}}：封面交付说明（钩子、`1–3` 个重要数字口径、关键帧来源、成品路径及 `400px` 缩略图三问结论）
 
-全部目标尺寸 HTML 落盘后，运行确定性渲染与机器自检（默认由主会话中心化执行）：
+全部目标尺寸 HTML 落盘后运行确定性渲染与自检（默认主会话执行）：
 
 - source {{venv_activate_q}} && python3 {{skill_root_q}}/scripts/render-cover.py {{cover_dir_q}} \
     --output {{cover_report_q}}

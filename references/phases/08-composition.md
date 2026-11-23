@@ -57,19 +57,18 @@ Phase 9（成片检查）：运行 `check-render.py` + `make-contact-sheet.py` +
 
 ## 护栏
 
-- **字体由规划批次选定 design 后通过脚本安装到 `composition/assets/fonts/`**，写入 `composition/design.json` 并引入字体 CSS，禁用系统字体，主 agent 不介入字体与 HTML 编写。
-- **字幕默认脚本生成，已有用户编辑不覆盖。** 仅改画面或重渲染时不重跑覆盖已编辑字幕；禁止跨不同版面切点切断英文词或数字。
-- **Storyboard 前置硬关卡与分批并行委派**：全部画面设计由 coding agent 完成（仅加载 `hyperframes` 与 `hyperframes-cli`，见 `references/delegation/conventions.md`），主 agent 禁手写或修补 `composition/index.html` 与 `compositions/*`；**必须先独立派发规划批次落盘并通过 `storyboard.md` 验收，再并行派发场景代码批次**（`storyboard.md` 验收前禁创建任何 `composition/compositions/` 文件），确定性校验与最终渲染收归主 agent 统一执行。
-- **优先消费 catalog 元数据，严格控图。** 默认读取 `material-catalog.json` 的尺寸、语义与 `focal_region`；仅当元数据不足以确定裁剪边界时单张查看缩至 `≤ 640px` 宽的参考图，禁批量打开 `harvest_page/` 原图触发多模态 `400` / `413`。
+- **字体由规划批次安装到 `composition/assets/fonts/`**，写入 `composition/design.json` 并引入字体 CSS，禁用系统字体，主 agent 不介入字体与 HTML/JS 编写。
+- **字幕默认脚本生成，保留已有用户编辑**；禁止跨不同版面切点切断英文词或数字。
+- **Storyboard 前置硬关卡与分批并行**：画面设计委派 coding agent（仅加载 `hyperframes` 与 `hyperframes-cli`，见 `references/delegation/conventions.md`），先通过独立规划批次的 `storyboard.md` 验收再并行写场景代码，校验与渲染由主 agent 执行。
+- **优先消费 catalog 元数据，严格控图**：仅当 `focal_region` 等元数据不足以定裁剪边界时，单张查看缩至 `≤ 640px` 宽的参考图，禁批量打开 `harvest_page/` 原图。
 
 ---
 
-**主 agent 不读委派包里的基础指令**（`references/delegation/composition/base-instructions.md` 只给被委派的 composition agent 读）。
+**主 agent 不读 `references/delegation/composition/base-instructions.md`**。
 
-#### 8.0 — 确认全片约束与派发前置条件
+#### 8.0 — 确认全片约束
 
-- 主 agent 只核对 `inputs.json` 的 `orientation` 与可选 `composition_requests`（新提出的画面要求先按 `references/pipeline-control.md` 写入 `composition_requests` 再生成 handoff）；全片 design、视觉切分与逐场景 template / layout 均由 composition agent 在本阶段产出。
-- 修改 design、视觉 scenes 或 layout 只登记 `--redo 8-composition` 及受影响的 Phase 9 / 10 / 11 重做，不重建 Phase 7 音频、transcript 与时间轴。
+- 核对 `inputs.json` 的 `orientation` 与可选 `composition_requests`（新要求先按 `references/pipeline-control.md` 写入再生成 handoff）；改画面方案只登记 `--redo 8-composition` 及受影响下游，不重建 Phase 7 产物。
 
 #### 8.1 — 物化委派包与 modules
 
@@ -77,16 +76,16 @@ Phase 9（成片检查）：运行 `check-render.py` + `make-contact-sheet.py` +
 source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topic_name} composition
 ```
 
-脚本将委派包（`conventions.md` + `composition/`）与整个 `modules/` 物化到工作区（已有副本不覆盖，更新规则传 `--refresh`），并生成绝对路径的 `composition-handoff.md`（返回 JSON 含 `coding_agent`、`coding_model` 与基准 `dispatch_prompt`）。
+生成 `composition-handoff.md` 并物化委派包与 `modules/`（更新规则传 `--refresh`），返回 `coding_agent`、`coding_model` 与基准 `dispatch_prompt`。
 
 #### 8.2 — 分阶段委派与 Storyboard 硬关卡
 
-按 `prepare-handoff.py` 输出的 `coding_agent` / `coding_model` 与 `dispatch_prompt`，守 `references/delegation/conventions.md` 分两阶段派发：
+按返回的 `coding_agent` / `coding_model` 与 `dispatch_prompt`，守 `references/delegation/conventions.md` 分两阶段派发：
 
-1. **批次 A（前置硬关卡：design + scene-config + 字幕 + storyboard，写完即停）**：限定仅执行基础指令第 `0–3` 步（初始化工程、装字体写 `design.json`、写 `scene-config.json`、跑 `align-narration.py` 生成字幕与按需模板时间、写完 `storyboard.md` 即停；**禁创建 `composition/compositions/` 下任何文件**）。主 agent 验收 `storyboard.md` 完备性（组件与转场使用表、逐场景 `template`/`layout` 方案与理由、区域、`required_material_refs` 覆盖与单场景分配、无素材动态演绎方案）；未达标交回补齐，**禁事后反向补写**。
-2. **批次 B（按场景并行写子合成 + 总装挂载）**：将 `scene-config.json` 拆成若干同构/相邻 `scene_id` 小批，以 `--no-session` 并行派发落盘各自 `composition/compositions/<scene>.{html,mjs}`（不改 `index.html`、不跑检查）；全部落盘后派发轻量总装小批拷入所需 `modules/` 资产并编写 `composition/index.html`。
+1. **批次 A（前置硬关卡，写完即停）**：限定仅执行基础指令第 `0–3` 步（初始化工程、装字体写 `design.json`、写 `scene-config.json`、跑 `align-narration.py` 生成字幕与按需模板时间、写出 `storyboard.md`；**禁创建 `composition/compositions/` 下任何文件**）。主 agent 验收 `storyboard.md` 完备性（组件与转场表、逐场景 `template`/`layout` 与区域、`required_material_refs` 全覆盖与单场景分配、无素材动态演绎方案），未达标交回补齐，**禁事后补写**。
+2. **批次 B（并行写子合成 + 总装挂载）**：将 `scene-config.json` 拆成若干同构/相邻 `scene_id` 小批，`--no-session` 并行落盘各自 `composition/compositions/<scene>.{html,mjs}`（不改 `index.html`、不跑检查）；落盘后派轻量总装小批拷入所需 `modules/` 资产并写 `composition/index.html`。
 
 #### 8.3 — 主 agent 中心化校验与渲染
 
-1. **确定性检查**：主 agent 运行 `cd {work_dir}/{topic_name}/composition && npx hyperframes check` 与 `composition-handoff.md` 中的 `scripts/check-composition.py ... --output {work_dir}/{topic_name}/composition/check-composition.json`；有阻塞 `findings` 或意外 `warnings` 时按 `scene_id` 派小批修复后重检至 `verdict == "pass"`。
-2. **渲染与状态验收**：主 agent 在 `composition/` 渲染出 `composition/renders/final.mp4`，抽看 1–2 个关键 scene 核对宽高比、字幕与演绎后，运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`（redo 时跑 `--finish 8-composition`）通过即进入 Phase 9。
+1. **确定性检查**：运行 `cd {work_dir}/{topic_name}/composition && npx hyperframes check` 与 `composition-handoff.md` 中的 `scripts/check-composition.py ... --output {work_dir}/{topic_name}/composition/check-composition.json`；阻塞 `findings` 或意外 `warnings` 按 `scene_id` 派小批修复后重检至 `verdict == "pass"`。
+2. **渲染与验收**：在 `composition/` 渲染出 `composition/renders/final.mp4`，抽看 1–2 个关键 scene 无误后，运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`（redo 时传 `--finish 8-composition`）进入 Phase 9。

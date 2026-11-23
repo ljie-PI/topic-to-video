@@ -53,14 +53,14 @@
 
 ## Outputs
 
-写到工作区（{{ws}}/；按派发指令限定的批次与文件范围落盘，未达 `storyboard.md` 验收前禁创建 `composition/compositions/` 文件）：
+写到工作区（{{ws}}/；按派发限定的批次与文件落盘，`storyboard.md` 验收前禁创建 `composition/compositions/` 文件）：
 
-- {{design_json_q}}：全片 design 机器契约（`version` / `source` / `preset` / `tokens` / `min_font_px`，规则见 `modules/designs/designs.md`）
-- {{scene_config_q}}：最终视觉场景机器配置（schema 见 scene-config 契约文档；按「用户要求 → 特别匹配模块 → 即时生成」逐视觉场景定方案后落盘完整 `regions` / `caption`）
-- {{subtitle_units_q}}：最终字幕单元（在 `scene-config` 写出后由下方命令按各 scene 落盘 `caption` 生成；保留已有用户编辑，仅改画面 / 重渲染不覆盖）
-- {{ws}}/composition/storyboard.md：前置硬关卡 storyboard（含开头的「组件与转场使用表」、逐视觉 scene 的方案/区域/素材分配或动画演绎说明，以及必用素材覆盖表；规划批次写完即停交主会话验收）
-- {{ws}}/composition/index.html + {{ws}}/composition/compositions/：HyperFrames 工程与按场景拆批实现的子合成（`compositions/<scene>.{html,mjs}` 独立写盘，防超限）
-- {{ws}}/composition/check-composition.json + {{ws}}/composition/renders/final.mp4：渲染前检查报告（最终 `verdict == "pass"` 并处理完 `warnings`）与成片（默认由主会话中心化执行）
+- {{design_json_q}}：全片 design 机器契约（`version` / `source` / `preset` / `tokens` / `min_font_px`，见 `modules/designs/designs.md`）
+- {{scene_config_q}}：最终视觉场景机器配置（按「用户要求 → 特别匹配模块 → 即时生成」定方案并落盘完整 `regions` / `caption`）
+- {{subtitle_units_q}}：最终字幕单元（由下方命令按落盘 `caption` 生成；保留已有用户编辑）
+- {{ws}}/composition/storyboard.md：前置硬关卡 storyboard（组件与转场表、逐场景方案/区域/素材或动画说明、必用素材覆盖表；规划批写完即停）
+- {{ws}}/composition/index.html + {{ws}}/composition/compositions/：HyperFrames 工程与分批子合成（`compositions/<scene>.{html,mjs}` 独立写盘）
+- {{ws}}/composition/check-composition.json + {{ws}}/composition/renders/final.mp4：检查报告（`verdict == "pass"`）与成片（默认主会话执行）
 
 先读旁白与叙事规划，按 `modules/designs/designs.md` 选定 design，初始化工程（若 `composition/` 不存在）、安装字体并写 {{design_json_q}}（不用系统字体；选定后将 `<design>` 换成实际字体包名）：
 
