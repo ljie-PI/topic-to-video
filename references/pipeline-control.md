@@ -6,7 +6,7 @@
 
 - 进度只看 `python3 scripts/pipeline-status.py <workspace>` 的 `next_phase`，不自行扫描工作区猜进度。
 - 状态脚本不监控文件变更或对话反馈；是否修改输入或登记重做由主 agent 判断。
-- 委派步骤（素材 catalog / 旁白与场景规划 / 画面 / 封面）由执行 agent 先按阶段文档自检，再连同问题与产物报给主 agent；执行 agent 不自行批准稿件或取消审稿。
+- 委派步骤（素材 catalog / 旁白与场景规划 / 画面 / 封面）按对应阶段文档划分职责（Phase 8 / 11 采用小批并行写盘 + 主会话中心化校验渲染）；执行 agent 不自行批准稿件或取消审稿。
 
 ## 三种要求的区别
 
@@ -61,7 +61,7 @@ source .venv/bin/activate && python3 scripts/pipeline-status.py <workspace> --fi
 
 全片 design、视觉 scenes 与逐场景 template / layout 由 Phase 8 composition agent 决定并写入 `composition/design.json` 与 `composition/scene-config.json`（storyboard 记录理由）；主 agent 只维护 `orientation` 与 `composition_requests`（含作用范围），不在派发前预选 design / template / layout 或预装字体。修改画面方案只登记 Phase 8 及受影响下游重做，不重建 Phase 7 音频、transcript 与时间轴。
 
-重做由原执行者承担：委派步骤交回原 sub-agent 并附具体修改点；改旁白须重跑 `make-narration` 更新朗读稿与偏移表；改画面须重跑 `check-composition` 并重新渲染；改封面须重跑 `render-cover` 与 `400px` 缩略图检查。
+重做按阶段职责分工执行：委派产物交回对应 sub-agent 小批定向修改；改旁白须重跑 `make-narration` 更新朗读稿与偏移表；改画面须由主会话重跑 `check-composition` 并重新渲染；改封面须由主会话重跑 `render-cover` 与 `400px` 缩略图检查。
 
 ## 记录在 .pipeline/ 里的状态
 

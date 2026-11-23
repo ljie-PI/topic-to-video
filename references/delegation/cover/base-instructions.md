@@ -1,6 +1,6 @@
 # cover 委派包 — 基础指令（视频封面设计与确定性渲染）
 
-你负责为已渲染完成的视频设计并生成**可直接发布的多尺寸位图封面**。封面一律用 HTML + CSS 排版、复用项目本地字体并经 `scripts/render-cover.py` 在系统 Chrome 确定性截图产出，禁用图像生成模型写字。主 agent 不预写 HTML 或修图；你独立完成选帧裁剪、排版渲染、机器自检与 `400px` 缩略图验收。
+你负责为已渲染完成的视频设计并编写指定尺寸的封面 HTML（默认覆盖 `1080x1440`、`1440x1080`、`1920x1080` 三套独立尺寸，通常按单尺寸小批次并行派发）。封面一律用 HTML + CSS 排版、复用项目本地字体，并由 `scripts/render-cover.py` 在系统 Chrome 确定性截图产出，禁用图像生成模型写字。主 agent 不预写 HTML 或修图；严格按当前派发指令限定的尺寸与文件边界落盘，完成后仅回复 `done` 与落盘路径清单。
 
 先读 handoff 的 `## Inputs` 与 `## Additional Instructions`（即 `inputs.json` 的 `cover_requests`），再按下面的约束执行。指令冲突时，按 `references/delegation/conventions.md` 的叠加顺序处理：用户在 `cover_requests` 里提出的明确要求覆盖默认规则。上游关键输入缺失或损坏时立即停止并向主 agent 报告缺项，禁自行编造。
 
@@ -21,12 +21,12 @@
 2. **重要数字（`.stats` 内的 `1–3` 个 `[data-num]`）**：从 `research-brief.md` 与 `script.txt` 挑出 **`1–3` 个最关键的已核实数字**（如核心性能指标、同口径对照 `50.0% → 95.8%`、耗时/成本/规模数据），每个独立数字项标注 `data-num`（总数 `1..3`；仅调研简报确无核实数字时传 `--allow-zero-num`）。
 3. **证据边界**：所有事实、数字、单位与对照条件必须可追溯到 `research-brief.md` 且与 `script.txt` 口径一致；禁用 `Open questions / contradictions` 中的未核实数据，禁用“震惊 / 最强 / 碾压 / 彻底颠覆”等无出处形容词。
 
-## 三、关键帧截取与素材预处理
+## 三、关键帧素材与预处理
 
-1. **截取前 15 秒与全片最重要的 `1–2` 帧**：对照 `script.txt`、`transcribe/timeline.json` 与 `composition/scene-config.json`，从 `composition/renders/final.mp4` 的**前 15 秒（开场钩子画面）以及全片最核心的内容场景**中截取最具代表性的 **`1–2` 帧关键画面**（若 `material-catalog.json` 中有对应场景的更高清原图，可结合使用；图片 `local_path` 相对 `harvest_page/`）。
-2. **Pillow 裁净保留区与黑边**：所有预处理文件写入 `{ws}/cover/assets/`，严禁修改上游原文件：
-   - 对照 `scene-config.json` 对应场景的 `regions`，裁掉正片 `nav-bar`、`caption-bar` 及内嵌 `presenter` 保留区（避免与封面主持人重影），并切掉录制黑边（逐行/逐列像素均值 `< 12`）；
-   - 避开明显遮挡主体的鼠标指针或系统 HUD 残影，按目标构图框用 `PIL.Image` 裁出清晰局部特写（单帧大图，或主次分明的 1–2 帧组合），禁把远景小字原图直接塞进小框。
+若主会话已在 `{ws}/cover/assets/` 预取并裁净关键画面、拷入 `presenter-wave.png` 且给定了共享钩子/数字口径，**直接复用既有 `cover/assets/` 素材与口径编写本批尺寸 HTML，不重复抽帧或批量看 `1080p` 全帧**（确需目检素材构图时，先缩至宽 `≤ 640px` 再单张查看）。仅当 `cover/assets/` 尚未准备时，按以下规则预处理：
+
+1. **截取前 15 秒与全片最重要的 `1–2` 帧**：对照 `script.txt`、`transcribe/timeline.json` 与 `composition/scene-config.json` 用时间坐标从 `composition/renders/final.mp4` 前 15 秒及核心场景截取 `1–2` 帧关键画面（或结合 `material-catalog.json` 对应原图；图片 `local_path` 相对 `harvest_page/`）。
+2. **Pillow 裁净保留区与黑边**：写入 `{ws}/cover/assets/`，禁改上游原文件——对照 `scene-config.json` 的 `regions` 裁掉正片 `nav-bar`、`caption-bar`、内嵌 `presenter` 保留区及黑边（逐行/逐列像素均值 `< 12`），按目标构图框裁出清晰局部特写，禁把远景小字原图直接塞进小框。
 3. **准备招手主持人立绘**：将 `modules/components/presenter/images/presenter-wave.png` 原样复制到 `cover/assets/presenter-wave.png`（`1:1` 透明底 PNG，禁止裁切或改比例）。
 
 ## 四、分尺寸版式、固定主持人位与 DOM 契约
@@ -54,14 +54,11 @@
 
   （若用户指定了其他自定义尺寸：竖版 `W <= H` 取 `size = round(W * 0.296)`、右/下边距 `round(W * 0.033)`；16:9 横版取 `size = round(H * 0.352)`、`left = W - max(220, round(W * 220 / 1920)) - size`、下边距 `round(H * 0.033)`；其他横版取 `size = round(H * 0.315)`、右/下边距 `round(H * 0.033)`。）
 
-## 五、工作顺序与验收
+## 五、工作顺序（按派发批次边界执行）
 
-1. **定内容与选帧**：通读 `research-brief.md`、`script.txt`、`timeline.json`、`design.json`、`scene-config.json` 与 `cover_requests`，确定两行钩子、`1–3` 个重要数字与统一底色；从 `final.mp4` 前 15 秒及全片核心场景截取 `1–2` 帧关键画面（或结合 catalog 原图），用 Pillow 裁净保留区与黑边存入 `cover/assets/`，并拷入 `cover/assets/presenter-wave.png`。
-2. **编写独立 HTML**：按第四部分契约逐尺寸编写 `cover/cover_{W}x{H}.html`。
-3. **确定性渲染与机器自检**：运行 handoff 中的 `scripts/render-cover.py` 命令生成 `cover_{W}x{H}@2x.png`、`cover_{W}x{H}.png`、`cover/qa/thumb_{W}x{H}_400w.png` 与 `cover/cover-report.json`。逐条修复全部 `findings` 并复核收紧 `warnings`，每次改完重跑，确保最终 `verdict == "pass"`。
-4. **`400px` 缩略图三问验收**：对每张 `cover/qa/thumb_{W}x{H}_400w.png` 运行 `scripts/vision-analyze.py`（配置了 `VLM_API_KEY` 走 Mode 1；返回 `delegate_to_agent` 时用自身看图工具直接查看），逐张核对三个客观问题：
-   - **3 秒内读到的第一句话是什么？**（须等于设定的两行钩子；若遇 `400px` 小图中文近形字误认，对照 `@2x.png` 与 HTML 原文确认无截断/叠字，勿误改已核实文案）
-   - **画面主体是什么、占画面大概多少？**（须能清晰辨认所截核心画面与右下招手主持人，主体占 `45%–65%`）
-   - **整张图有几个明显的视觉块？**（须 `<= 5`，且标题与数字对比清晰）
-   任一项不达标即回退调整构图、裁剪或压暗后重跑第 3–4 步。
-5. **写出摘要并报告**：写出 `{ws}/cover/cover-summary.md`（写明钩子文案、`1–3` 个重要数字口径、所截 `1–2` 帧的时间点与场景来源、各尺寸成品路径及 `400px` 缩略图三问结论），向主 agent 报告 `cover/cover-report.json`、`cover/cover-summary.md` 与各尺寸封面路径。
+Phase 11 默认采用「主会话预取 `cover/assets/` + 子会话按单尺寸并行写 `cover_{W}x{H}.html` + 主会话中心化渲染验收」。若派发指令限定了单个尺寸 `{W}x{H}`，**只写该尺寸 HTML（及指令要求的 `cover-summary.md`），不内嵌 `render-cover.py` 或多模态看图，落盘后立即停止并仅回复 `done` 与路径清单**：
+
+1. **核对口径与素材**：读取 `design.json`、`cover_requests` 及派发给定的钩子/数字与 `cover/assets/` 素材（仅未预取时按第三部分从 `research-brief.md`、`script.txt`、`timeline.json`、`scene-config.json` 定口径并裁净素材）。
+2. **编写目标尺寸独立 HTML**：按第四部分契约编写本批指定的 `cover/cover_{W}x{H}.html`（精确锁死像素框与固定主持人位，禁 `vw`/`vh` 与裸 `img` 选择器）。
+3. **确定性渲染与机器自检（默认主会话中心化执行）**：全部尺寸 HTML 落盘后运行 handoff 的 `scripts/render-cover.py` 生成 `@2x.png`、`1× .png`、`cover/qa/thumb_{W}x{H}_400w.png` 与 `cover/cover-report.json`；有 `findings` 时按尺寸定向修复重跑至 `verdict == "pass"`。
+4. **`400px` 缩略图三问验收与摘要（默认主会话中心化执行）**：对 `cover/qa/thumb_{W}x{H}_400w.png` 运行 `scripts/vision-analyze.py` 核对三问（① 3 秒读出的第一句话等于两行钩子；② 核心主体与右下招手主持人清晰、主体占 `45%–65%`；③ 明显视觉块 `<= 5` 且对比清晰），不达标则定向调优 HTML 重跑，最后确认 `{ws}/cover/cover-summary.md` 完整记录钩子、数字口径、关键帧来源与三问结论。

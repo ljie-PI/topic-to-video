@@ -41,7 +41,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 续跑、回退与重做均由状态脚本驱动。状态脚本不比对文件哈希或修改时间，上游改动不会自动使下游过期。状态由三部分组成：`inputs.json`、各 phase 产物，以及 `.pipeline/`（审稿确认和重做请求，**只由状态脚本写，禁手改**）。
 
 - 产物缺失或损坏时，脚本自动回退到该 phase（`reason` 为 `missing` / `corrupt`）。
-- 上游改动后重做哪些下游 phase，由主 agent 按已知修改范围显式登记：改了 `script.txt` 须重跑 `make-narration` 并按需登记下游；改了 `composition/scene-config.json` 的视觉时间 / scene 方案须登记 Phase 8 重做，交回 composition agent 重跑 `check-composition` 并重新渲染，交付含成片或封面时再显式登记 / 执行 Phase 9（及启用时的 Phase 10 / Phase 11）。
+- 上游改动后重做哪些下游 phase，由主 agent 按已知修改范围显式登记：改了 `script.txt` 须重跑 `make-narration` 并按需登记下游；改了 `composition/scene-config.json` 的视觉时间 / scene 方案须登记 Phase 8 重做，按批次修复后重跑 `check-composition` 并重新渲染，交付含成片或封面时再显式登记 / 执行 Phase 9（及启用时的 Phase 10 / Phase 11）。
 - 产物齐全但内容不合格时，用 `--redo <phase_id> --reason "..."` 登记（`reason` 为 `redo`，带 `redo_reason`），改完用 `--finish <phase_id>` 结束。`--finish` 先清除该登记再按阶段常规检查验收（只作用于当前阶段，不要求产物字节变化）。重做带审稿 gate 的阶段会撤销该 gate 旧确认，完成后须重新确认；详见 `references/pipeline-control.md`。
 - `next_phase` 之后的 phase 一律为 `pending`（不进 `completed_phases`、暂不检查）。
 - 用户要求 "redo phase N" 时先登记 `--redo`；仅在确需丢弃旧产物时才删文件。
@@ -51,7 +51,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 1. **写之前先调研。** Phase 3 强制执行：关键论断须有可核实出处，搜索按内容缺口推进、不凑次数；提供论文 PDF / URL 时必须先跑 Phase 2 解析，禁凭训练记忆描述论文或无条件跳过 Gemini。
 2. **进度只看 `pipeline-status`。** 禁自行扫描工作区猜进度、拿 Scratchpad 当进度记录或手改 `.pipeline/`。
 3. **每步做内容自检，不把脚本退出码 `0` 当内容合格。** 文件、格式、时长、字数、引用以脚本为准；事实、叙事、素材贴合度、音画对应由执行者按阶段文档核对，不合格按 `references/pipeline-control.md` 登记重做，禁改无关文件绕过检查或放行不合格产物。
-4. **委派步骤（Phase 5 / 6 / 8 / 11）由 sub-agent 产出。** 主 agent 只准备 handoff、派发并验收，禁手写旁白、composition HTML、封面 HTML 或（可委派时的）catalog。唯一例外：Phase 5 未指定 agent / model，且环境既无 sub-agent 工具也不能运行目标 CLI 时，主 agent 按 `references/phases/05-material-catalog.md` 兜底生成；指定 agent / model 不可用时先说明，禁自动替换。
+4. **委派步骤（Phase 5 / 6 / 8 / 11）由 sub-agent 产出代码与稿件。** 主 agent 准备 handoff、分批派发并执行中心化验收/渲染，禁手写旁白、composition HTML/JS、封面 HTML 或（可委派时的）catalog。唯一例外：Phase 5 未指定 agent / model，且环境既无 sub-agent 工具也不能运行目标 CLI 时，主 agent 按 `references/phases/05-material-catalog.md` 兜底生成；指定 agent / model 不可用时先说明，禁自动替换。
 5. **屏幕上的每个素材都必须可追溯到 `material-catalog.json`。** 无 catalog 引用的资源禁止上屏。
 6. **运行项目脚本前一律 `source .venv/bin/activate` 并用 `python3`。** 禁在未激活项目 `.venv` 的 shell 中运行脚本或改用 `python`。
 
