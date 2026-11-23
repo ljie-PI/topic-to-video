@@ -27,9 +27,9 @@
 
 ## 动效候选与应避免
 
-候选：沿素材长轴 pan / scroll，跟随旁白到达重点；scrub 读数；marker 沿路径移动指示当前位置。
+网页 / 榜单：按 `capture.elements[].bbox` 定正文裁剪，以实际 PNG 宽高换算坐标；固定可读缩放，GSAP `ease: "none"` 沿长轴慢滚，条目间停约 1s。速度用展示像素 / 秒定义（如 65px/s），按真实旁白窗口调整位移；首尾停稳，运动与停顿全写入 timeline，确保任意 seek 可复现。保留相邻条目上下文，可加当前位置 marker。
 
-避免：视口内 slide 后又缩回导致重点一闪而过；只扫过素材的一部分却声称讲完了整张图；用 3D 倾斜或过小的缩放降低可读性。
+避免：按 cue 逐条 zoom；真实滚动网页或二次录屏；只扫部分却声称讲完整图；3D 倾斜或整页微缩损害可读性。
 
 ## 用色
 
@@ -38,4 +38,5 @@
 
 ## 已有实现
 
-- `motions/focus-callout/`（文档见 `motions/focus-callout/focus-callout.md`）：通过 `stops[].crop` 在主视口内沿素材重点区域平滑推拉缩放（pan/zoom），并同步联动外置说明卡。
+- 网页慢滚：裁剪容器 + 固定尺寸图片的 GSAP 位移，不用 `focus-callout` 的多停靠点 zoom。
+- `motions/focus-callout/`：大图小焦点的单次推近 / 外置标注，见 `motions/focus-callout/focus-callout.md`。

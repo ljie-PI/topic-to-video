@@ -45,7 +45,7 @@
 
 ### Phase 4.a — 选择 URL 并批量抓取页面
 
-汇总高价值视觉页面写入 `harvest-urls.txt`，单次调用 `harvest-pages.py`：普通页提取图片 / 原生视频并默认录制滚动视频；YouTube / Bilibili 直链列入 `pending_downloads[]` 交由 Phase 4.b 下载。
+汇总高价值视觉页面写入 `harvest-urls.txt`，单次调用 `harvest-pages.py`：普通页保存完整网页 PNG（含 DOM bbox）并提取图片 / 原生视频；YouTube / Bilibili 直链列入 `pending_downloads[]` 交由 Phase 4.b 下载。
 
 #### URL 选择规则（用来生成 URL 清单）
 
@@ -53,14 +53,14 @@
 
 | 页面类型 | 为什么是好来源 | 期望产出 |
 |---------|---------------|---------|
-| 官方产品 / 项目首页 | 主视觉、截图、产品视频 | 图片 / 视频 + 滚动录像 |
-| GitHub 仓库主页 | README 截图、demo gif、社交预览图 | 图片 / 视频 + 滚动录像 |
-| 官方文档落地页 | 架构图、解释性长文 | 图片 / SVG + 滚动录像 |
-| 官方博客 / 发布公告 | 内联图片、嵌入的 YouTube | 图片 / 视频 + 滚动录像 |
-| Wikipedia 词条（成熟话题） | infobox 图片、整洁的散文 | 图片 + 滚动录像 |
+| 官方产品 / 项目首页 | 主视觉、截图、产品视频 | 图片 / 视频 + 长图 |
+| GitHub 仓库主页 | README 截图、demo gif、社交预览图 | 图片 / 视频 + 长图 |
+| 官方文档落地页 | 架构图、解释性长文 | 图片 / SVG + 长图 |
+| 官方博客 / 发布公告 | 内联图片、嵌入的 YouTube | 图片 / 视频 + 长图 |
+| Wikipedia 词条（成熟话题） | infobox 图片、整洁的散文 | 图片 + 长图 |
 | 会议演讲 / keynote 的 YouTube 页 | 通过 yt-dlp 下载 | pending video download |
-| 作者个人站 / about 页 | 头像、横幅 | 图片 + 滚动录像 |
-| 相关的社交帖子 / 作者时间线 | 官方账号发布的截图、演示、公告 | 图片 / 视频 + 滚动录像 |
+| 作者个人站 / about 页 | 头像、横幅 | 图片 + 长图 |
+| 相关的社交帖子 / 作者时间线 | 官方账号发布的截图、演示、公告 | 图片 / 视频 + 长图 |
 
 社交来源优先选具体帖子而非整条 feed，只采集与主题相关的部分，禁将无关私人动态或他人头像当素材；匿名受限时按受限来源记录并继续。
 
@@ -92,14 +92,14 @@ source .venv/bin/activate && python3 scripts/harvest-pages.py \
   --urls-file "{work_dir}/{topic_name}/harvest-urls.txt" \
   --output-dir "{work_dir}/{topic_name}/harvest_page/" \
   --profile-dir "{work_dir}/chrome_profile" \
-  --viewport 1680x1680
+  --viewport 1920x1080
 ```
 
-一律用 `--urls-file` 读文件（禁命令行展开长列表；`--urls` 仅限两三个 URL 调试且与之互斥）。默认单 URL 失败继续（`--no-continue-on-error` 才中断）；文件不可读或无有效行时以退出码 `2` 报错；首次启动 `1680x1680` Chrome 后保留进程供 CDP 复用。
+一律用 `--urls-file` 读文件（`--urls` 仅限两三个 URL 调试）。默认单 URL 失败继续；文件不可读或为空时退出码 `2`。viewport 是内容区，不是物理屏幕或窗口大小；默认 `1920×1080`、DPR 1，长页面用 full-page。网页滚动交 Phase 8 演绎；真实动态过程用下载的源视频（优先 MP4），禁二次录屏。
 
 #### harvest-pages.py 的实际输出
 
-脚本更新磁盘累积的 `harvest_page/manifest.json`，并在 stdout 输出本批结果（stdout 仅含本批条目与 `chrome` 运行信息）。目录结构（普通页含 `page-source.html` / `images/` / `videos/` / `recording/`，视频直链仅含空 `videos/`）：
+脚本更新磁盘累积的 `harvest_page/manifest.json`，并在 stdout 输出本批结果（stdout 仅含本批条目与 `chrome` 运行信息）。目录结构（视频直链不截图；`recording/` 仅在显式 `--scroll-record` 时生成）：
 
 ```text
 harvest_page/
@@ -107,8 +107,8 @@ harvest_page/
 ├── anthropic-com-news-claude-code-d30296/
 │   ├── metadata.json          # 该 entry 的镜像，内容与 manifest.entries[i] 相同
 │   ├── page-source.html
+│   ├── images/page.png         # 完整网页长图
 │   ├── images/img_001.png
-│   ├── recording/scroll-1762012345.webm   # playwright 录制是 .webm，CDP 兜底是 .mp4
 │   └── videos/
 └── www-youtube-com-watch-df2c6f/
     ├── metadata.json
@@ -130,6 +130,20 @@ harvest_page/
       "metrics": {"word_count": 812, "video_count": 1},
       "images": [
         {
+          "id": "page",
+          "url": "https://anthropic.com/news/claude-code",
+          "local_path": "anthropic-com-news-claude-code-d30296/images/page.png",
+          "type": "page-screenshot",
+          "width": 1920,
+          "height": 4800,
+          "capture": {
+            "viewport": {"width": 1920, "height": 1080},
+            "device_scale_factor": 1,
+            "coordinate_space": "document-css-px",
+            "elements": [{"selector": "main", "text": "Claude Code", "bbox": {"x": 400, "y": 160, "w": 1120, "h": 4400}}]
+          }
+        },
+        {
           "url": "https://anthropic.com/images/hero.png",
           "width": 1680,
           "height": 945,
@@ -140,13 +154,7 @@ harvest_page/
         }
       ],
       "videos": [],
-      "scroll_recording": {
-        "local_path": "anthropic-com-news-claude-code-d30296/recording/scroll-1762012345.webm",
-        "duration_seconds": 30.0,
-        "width": 1680,
-        "height": 1680,
-        "method": "playwright"
-      }
+      "scroll_recording": null
     },
     {
       "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -193,7 +201,8 @@ harvest_page/
 
 字段要点：
 - `pending_downloads[]` 在磁盘 manifest 中常驻（无待下项时为 `[]`，stdout 无待下项时省略）；同一视频跨多页引用只列一条 pending（附 `also_referenced_by`），只下一次。
-- `scroll_recording.method` 为 `playwright`（`.webm`）或 `cdp_screencast`（`.mp4`），录制失败时整项为 `null`。
+- 长图在 `images[]` 中，`type: "page-screenshot"`；`capture` 记录 viewport / DPR 与最多 200 个正文、标题、表格行、代码和图片的 DOM bbox（文档 CSS 像素，非视口坐标）。DPR 1 且截图 `scale=css`，可直接按 bbox 裁图，归一化用实际 PNG 宽高。截图失败会告警，不登记假素材。
+- `scroll_recording` 默认 `null`；兼容选项 `--scroll-record` 可生成旧式录像，不用于网页巡讲。
 - 非 http(s) URL 归入 `rejected[]`；整批全部失败时 `success: false` 且退出码为 `1`。
 
 同一次调用的 stdout（节选）：

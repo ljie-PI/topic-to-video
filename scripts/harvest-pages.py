@@ -8,7 +8,7 @@ r"""topic-to-video skill 的批量 URL 素材抓取器。
     因为矢量图常常只声明极小的固有尺寸
   - 所有内嵌 <video> 元素，以及 YouTube / Bilibili 的 iframe / 链接
 
-默认会为每个渲染过的页面录制一段滚动视频（用 --no-scroll-record 关闭）。
+默认为每个渲染过的页面保存完整长图及 DOM 坐标；滚动录屏仅在 --scroll-record 时启用。
 
 直接的 YouTube / Bilibili 观看页 URL 会被短路：它们以 `download_required: true`
 记入 manifest，由 agent 调用 video-download.py；这些 URL 不打开浏览器，因此图片
@@ -85,10 +85,11 @@ def parse_args() -> argparse.Namespace:
                         help='UTF-8 file with one URL per line (blank lines ignored). '
                              'Mutually exclusive with --urls.')
     p.add_argument('--output-dir', required=True, help='Batch output root (per-URL subdirs are created underneath).')
-    p.add_argument('--no-scroll-record', dest='scroll_record', action='store_false', default=True,
-                   help='Disable scroll-record (on by default). '
-                        'Note: scroll-record only applies to URLs opened in the browser; '
-                        'direct YouTube/Bilibili watch URLs are short-circuited and never recorded.')
+    recording = p.add_mutually_exclusive_group()
+    recording.add_argument('--scroll-record', action='store_true', default=False,
+                           help='Opt in to legacy scroll-recording; full-page PNG is always captured.')
+    recording.add_argument('--no-scroll-record', dest='scroll_record', action='store_false',
+                           help='Disable legacy scroll-recording (the default).')
     p.add_argument('--min-image-width', type=int, default=500,
                    help='Minimum naturalWidth (px) to keep a raster image. Default 500. '
                         'SVG / inline-SVG candidates bypass this filter.')
@@ -99,7 +100,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--max-videos-per-url', type=int, default=5, help='Cap on videos per URL.')
     p.add_argument('--scroll-duration', type=int, default=30,
                    help='Scroll-record duration in seconds (capped at 60). Default 30.')
-    p.add_argument('--viewport', default='1280x720', help='Viewport WxH for new contexts. Default 1280x720.')
+    p.add_argument('--viewport', default='1920x1080', help='Content viewport WxH. Default 1920x1080 (DPR 1).')
     p.add_argument('--page-load-timeout', type=int, default=30,
                    help='Per-URL page load timeout in seconds. Default 30.')
     p.add_argument('--cdp-url', default=DEFAULT_CDP_URL, help=f'CDP endpoint (default {DEFAULT_CDP_URL}).')
@@ -150,8 +151,8 @@ def collect_urls(args: argparse.Namespace) -> Tuple[List[str], Optional[str]]:
 
 def parse_viewport(s: str) -> Tuple[int, int]:
     m = re.match(r'^(\d+)x(\d+)$', s)
-    if not m:
-        raise ValueError(f'Invalid --viewport {s!r}, expected WxH (e.g. 1280x720)')
+    if not m or min(int(m.group(1)), int(m.group(2))) <= 0:
+        raise ValueError(f'Invalid --viewport {s!r}, expected positive WxH (e.g. 1920x1080)')
     return int(m.group(1)), int(m.group(2))
 
 
@@ -163,15 +164,55 @@ AUTO_SCROLL_JS = """
 async () => {
   const step = 400;
   const delay = 80;
-  let lastH = -1;
   for (let i = 0; i < 200; i++) {
-    if (window.scrollY + window.innerHeight >= document.body.scrollHeight) break;
-    window.scrollBy(0, step);
+    const height = document.documentElement.scrollHeight;
+    if (window.scrollY + window.innerHeight >= height) break;
+    window.scrollBy({ top: step, behavior: 'instant' });
     await new Promise(r => setTimeout(r, delay));
-    if (document.body.scrollHeight === lastH && i > 4) break;
-    lastH = document.body.scrollHeight;
   }
-  window.scrollTo(0, 0);
+  window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  await new Promise(r => setTimeout(r, delay));
+}
+"""
+
+PAGE_CAPTURE_JS = r"""
+async () => {
+  // Bound readiness waits: broken fonts/images must not stall the batch.
+  await Promise.race([
+    Promise.all([
+      document.fonts.ready,
+      ...Array.from(document.images, img => img.decode().catch(() => {})),
+    ]),
+    new Promise(resolve => setTimeout(resolve, 5000)),
+  ]);
+  const selectorFor = el => {
+    if (el.id) return '#' + CSS.escape(el.id);
+    const parts = [];
+    while (el && el !== document.documentElement) {
+      const siblings = Array.from(el.parentElement.children).filter(s => s.tagName === el.tagName);
+      parts.unshift(el.localName + ':nth-of-type(' + (siblings.indexOf(el) + 1) + ')');
+      el = el.parentElement;
+    }
+    return 'html > ' + parts.join(' > ');
+  };
+  const elements = [];
+  for (const el of document.querySelectorAll('main, article, [role="main"], h1, h2, h3, table, tr, pre, figure, img')) {
+    const r = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    if (r.width <= 0 || r.height <= 0 || style.display === 'none' || style.visibility === 'hidden') continue;
+    elements.push({
+      selector: selectorFor(el),
+      text: (el.getAttribute('alt') || el.textContent || '').trim().slice(0, 120),
+      bbox: { x: r.x + scrollX, y: r.y + scrollY, w: r.width, h: r.height },
+    });
+    if (elements.length >= 200) break;
+  }
+  return {
+    viewport: { width: innerWidth, height: innerHeight },
+    device_scale_factor: devicePixelRatio,
+    coordinate_space: 'document-css-px',
+    elements,
+  };
 }
 """
 
@@ -565,6 +606,7 @@ def new_harvest_context(browser, viewport: Tuple[int, int], record_dir: Optional
     vp_w, vp_h = viewport
     options: Dict[str, Any] = {
         'viewport': {'width': vp_w, 'height': vp_h},
+        'device_scale_factor': 1,
         'user_agent': USER_AGENT,
         'locale': 'zh-CN',
         'extra_http_headers': {'Accept-Language': 'zh-CN,en;q=0.9'},
@@ -737,6 +779,29 @@ def harvest_one(browser, url: str, slug: str, slug_dir: Path, args: argparse.Nam
             page.evaluate(AUTO_SCROLL_JS)
         except Exception as exc:
             log(f'  autoscroll failed: {exc}')
+
+        # Keep screenshots in images[] so catalog/ref/path handling stays unchanged.
+        try:
+            from PIL import Image
+
+            capture = page.evaluate(PAGE_CAPTURE_JS)
+            screenshot = images_dir / 'page.png'
+            page.screenshot(path=str(screenshot), full_page=True, scale='css')
+            with Image.open(screenshot) as image:
+                width, height = image.size
+            images_meta.append({
+                'id': screenshot.stem,
+                'url': url,
+                'local_path': str(screenshot.resolve()),
+                'type': 'page-screenshot',
+                'width': width,
+                'height': height,
+                'alt': page.title(),
+                'capture': capture,
+            })
+            log(f'  full-page PNG: {width}x{height}')
+        except Exception as exc:
+            log(f'  full-page screenshot failed: {exc}')
 
         metrics = page.evaluate(METRICS_JS) or {}
         title = metrics.pop('title', '')

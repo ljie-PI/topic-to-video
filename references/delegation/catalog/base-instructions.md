@@ -66,7 +66,7 @@
 
 - **理解：** 图中实际内容、可读文字、图表结构与视觉风格；标出关键局部和不可读部分。
 - **匹配：** “这张图可用于解释话题 summary 中哪个具体概念 / 论点？画面中的依据是什么？”输出叙事锚点描述、分项分数与总分。
-- **展示：** 透传 `width` / `height`，计算比例分桶，按上表判断布局能力。长图、高信息密度图表与极端比例（tall / ultra-tall）素材优先评估局部裁剪或 `viewport_reveal` 候选；有明确可见依据时写出归一化 `focal_region`（`{x, y, w, h, reason}`）、start / mid / end 阅读顺序或 avoid-region，供 Phase 8 免开原图直接规划视口放大与避让，无明确依据时保持 `null` 并注明限制，不猜测坐标。
+- **展示：** 透传 `width` / `height`；网页长图（`type: "page-screenshot"`）同时原样保留 `type` / `capture`，按 DOM bbox 定位正文与讲解对象，局部看图核对后除以实际图片宽高写入 `focal_region`（`{x, y, w, h, reason}`）。长图巡讲优先 `viewport_reveal` 并记录阅读顺序；其他图表按可见证据评估局部裁剪 / 展示能力，无坐标依据置 `null`，不猜坐标。
 
 ## 视频与滚动录像
 
