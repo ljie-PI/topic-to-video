@@ -51,12 +51,12 @@
 
 - 只用 Noto Sans 家族：英文和数字用 `Noto Sans`，中文回落到 `Noto Sans SC`，代码和文件名用 `Noto Sans Mono`。
 - 字重：正文 400–500，标签和按钮 600，标题和数字 700–800。
-- **字号下限**：阅读文字不小于 26px，界面小字不小于 22px；字幕字号由各 scene 的 `layout.caption.font_size_px` 决定（阶梯与缩放规则见 [`../designs.md`](../designs.md)）。
+- **字号下限**：阅读文字不小于 26px，界面小字不小于 20px；字幕字号由各 scene 的 `layout.caption.font_size_px` 决定（阶梯与缩放规则见 [`../designs.md`](../designs.md)）。
 - 安装本主题字体后，在 `index.html` 的 `<head>` 引入 `<link rel="stylesheet" href="assets/fonts/github-fonts.css">`（安装与维护见 [`../designs.md`](../designs.md)）：
 
 ```json
 {
-  "min_font_px": {"reading": 26, "ui": 22},
+  "min_font_px": {"reading": 26, "ui": 20},
   "fonts": {
     "css_filename": "github-fonts.css",
     "rename": {},
