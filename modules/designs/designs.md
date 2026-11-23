@@ -5,7 +5,7 @@
 ## 选择与落盘契约（`composition/design.json`）
 
 - **在 Phase 8 根据内容选择，默认从库内注册 preset 中选择**：composition agent 读完旁白、叙事规划、素材与 `composition_requests` 后，默认从下表选择与全片内容气质最匹配的注册 preset（无特定专题匹配时选通用的 `default`）。用户在 `composition_requests` 点名注册主题时按作用范围采用（限定到单个 scene 时，全片仍按内容选基线 preset，只在该 scene 根作用域覆盖相应 token 并在 storyboard 记录，不自动传播到其他 scene）；仅当用户在 `composition_requests` 中明确要求库内 preset 无法覆盖的库外视觉风格时，才生成 `custom` design。
-- **落盘 `composition/design.json`**：根字段恰好为 `version: 1` / `source` / `preset` / `tokens` / `min_font_px`。`source: "preset"` 时记录注册名，`tokens` 与 `min_font_px` 必须与所选 `<主题>.md` 中的声明完全一致；`source: "custom"` 时 `preset` 为 `null`，仍须写完整共享 tokens 与正整数 `reading` / `ui` 下限（`ui` 不低于 22px）。`fonts` 维护清单不写入该产物。
+- **落盘 `composition/design.json`**：根字段恰好为 `version: 1` / `source` / `preset` / `tokens` / `min_font_px`。`source: "preset"` 时记录注册名，`tokens` 与 `min_font_px` 必须与所选 `<主题>.md` 中的声明完全一致；`source: "custom"` 时 `preset` 为 `null`，仍须写完整共享 tokens 与正整数 `reading` / `ui` 下限（`ui` 不低于 20px）。`fonts` 维护清单不写入该产物。
 
 ### 现有主题
 
@@ -65,7 +65,7 @@
 | `--motion-easing` | 入场缓动（GSAP 风格 ease 名），如 `power2.out` |
 | `--motion-list-interval` | 列表逐行入场的行间隔（秒），如 `0.1s` |
 
-这三个变量给组件和模板的默认动效定节奏；个别强调动效见各主题文档。所有动画只由时间决定：不用 `repeat: -1`，不用随机数；需要随机的地方用固定种子。
+这三个变量给组件、模板及 `GSAP` / `SVG` / `Canvas 2D` / `Three.js` 动画的默认动效定节奏；个别强调动效见各主题文档。所有动画只由时间决定：不用 `repeat: -1`，不用随机数；需要随机的地方用固定种子。
 
 ## 共享排版、形状与通用元素基线
 
@@ -82,14 +82,14 @@
 | 小标题 | 44–48px | 标题条名称、转场卡片标题 |
 | 强调正文 | 30–36px / 600–700 | 步骤标题、tagline、指标说明 |
 | 正文 | 26–28px / 500 | 描述、列表文字、标签页（28px / 600） |
-| 界面小字 | 22–26px / 600 | 面板标题栏、按钮、小标签（须加 `data-text-role="ui"`） |
+| 界面小字 | 20–26px / 400–600 | 面板标题栏、按钮、小标签、IDE/终端代码行（须加 `data-text-role="ui"`） |
 
 - **竖屏缩放**：竖屏画布（1080×1920、1080×1440）开场标题、大标题、标题、小标题四档按上表 `× 0.85`（取整到偶数），特大数字收至 `88–104px`；强调正文、正文、界面小字及字号下限不变。
 - **数字对齐**：会滚动或需要对齐的数字（排名、计数、日期、标签）一律用等宽数字（`font-variant-numeric: tabular-nums`）。
 - **单个元素的尺度上限**：图标 / logo 与指标数字必须与名称 / 说明同框，不得单个元素占满整个区域——
   - 图标 / logo：行内用「所在行字号 × 0.8–0.9」；区域主图形边长 `≤ min(区域短边 × 30%, 160px)`，整片仅一次的封面大 logo `≤ 240px`；
   - 指标数字：字号 `≤ min(阶梯上限, 2.5 × 同框说明字号, 区域高 × 12%)`；封面核心数字只守阶梯上限（横屏 `128–150px`、竖屏 `88–104px`）。
-- **字号下限与溢出处理**：`check-composition` 按 `min_font_px.reading` 与 `min_font_px.ui` 检查：界面小字只适用于带 `data-text-role="ui"` 的元素，任何主题（含 custom）`ui` 下限不得低于 **22px**（HyperFrames 对 28px 以下文字报警告时，阅读文字须处理，界面小字可忽略）；字幕字号由各 scene 的 `layout.caption.font_size_px` 决定，不占主题下限。文字放不下时缩小字号，不要溢出；素材说明放在素材外，不压住素材关键区域。
+- **字号下限与溢出处理**：`check-composition` 按 `min_font_px.reading` 与 `min_font_px.ui` 检查：界面小字只适用于带 `data-text-role="ui"` 的元素，任何主题（含 custom）`ui` 下限不得低于 **20px**（HyperFrames 对 28px 以下文字报警告时，阅读文字须处理，界面小字可忽略）；字幕字号由各 scene 的 `layout.caption.font_size_px` 决定，不占主题下限。文字放不下时缩小字号，不要溢出；素材说明放在素材外，不压住素材关键区域。
 
 ### 纸面、形状、图标与通用元素
 
@@ -98,7 +98,7 @@
   - **主面板外框与主干焦点路径**：`1.5–2px`（外框用 `--c-border`，主焦点路径用 `--c-focus` 或真实语义色）；
   - **小节点框、数据柱与标签描边**：`1.25–1.5px` `--c-border`（激活态可提至 `1.6–1.8px` `--c-focus`）；
   - **内部坐标刻度、辅助网格与引导虚线**：`1–1.25px` `--c-border` / `--c-ink2`。
-  - **SVG 像素对齐要求**：所有 SVG 舞台须采用与宿主容器像素宽高 **1:1 对应的 `viewBox`**（如宿主 `W×H` px 则设 `viewBox="0 0 W H"`），或在缩放图元上显式声明 `vector-effect: non-scaling-stroke`，禁止在小 `viewBox` 上画粗描边后再放大导致线条发虚变粗。
+  - **SVG 与 Canvas 2D / Three.js / GSAP 规范对齐**：所有 SVG 舞台须采用与宿主容器像素宽高 **1:1 对应的 `viewBox`**（如宿主 `W×H` px 则设 `viewBox="0 0 W H"`），或在缩放图元上显式声明 `vector-effect: non-scaling-stroke`，禁止在小 `viewBox` 上画粗描边后再放大导致线条发虚变粗；内联 SVG 的 `fill` / `stroke` / `font-family` 也必须写 `var(--c-*)` / `var(--font-*)`，禁写死 `#hex` 色值；`Canvas 2D` 与 `Three.js` 经 `getComputedStyle` 读取 `:root` 主题变量以严格遵循相同的填充、边框、字体、字号下限与线宽阶梯，`GSAP` 动效遵循 `--motion-*` 节奏变量。
 - **面板栏与界面条**：面板顶部标题栏用 `--c-surface`（或 `86%` 半透明 `--c-surface`）底 + 下边 `1.5–2px` 线，高 56–60px；界面条用 `--c-chrome` 深色底（横屏顶部导航栏与单行底部字幕条各高 72px、上下对称；竖屏讲解布局顶部导航栏高 88px，右侧显示当前章节、底边是整片进度线，底部双行字幕条高 144px，高度以当前 scene 布局区域为准），主字 `chrome-ink`、次字 `chrome-muted`、当前项下划线 6px `chrome-active`。
 - **图标**：16×16 线性图标，`fill: currentColor`，尺寸为所在行字号的 0.8–0.9 倍，颜色跟随文字或真实语义色。
 - **高亮行、指标药丸与步骤时间线**：高亮行用 `--c-focus-tint` 底 + 左侧 6px `--c-focus` 竖条，行首编号/排名变焦点色；指标小标签用 `positive-tint` 底 / `positive-solid` 边 / `positive-text` 字（不直接用 `--c-positive` 做标签字），焦点小标签用 `focus-tint` 底 + `focus` 字；步骤时间线与流转路径主干用 `1.5–2px` 线串联节点，当前步填 `--c-focus`、已完成盖 `--c-done` 对勾。
@@ -113,7 +113,7 @@
 
 ```json
 {
-  "min_font_px": {"reading": 26, "ui": 22},
+  "min_font_px": {"reading": 26, "ui": 20},
   "fonts": {
     "css_filename": "<主题>-fonts.css",
     "rename": {"Google 家族名": "主题字体别名"},

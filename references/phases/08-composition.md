@@ -47,7 +47,7 @@
 
 ## 执行后自检
 
-- 渲染前：`check-composition` 的阻塞 `findings` 已全部清零，非阻塞质量 `warnings`（缩略媒体、缩放致糊、元素重叠/遮挡、跨区文案复读、素材复用等）已逐条修复或在 `storyboard.md` 说明设计意图。
+- 渲染前：`check-composition`（默认每场景 8 点密集采样）的阻塞 `findings`（含越界、保留区侵入、HTML 文字裁剪/溢出、大面板文字逃逸 `panel_escape`、最小字号、字幕一致性等）已全部清零，非阻塞质量 `warnings`（缩略媒体、缩放致糊、元素重叠/遮挡、跨区文案复读、素材复用等）已逐条修复或在 `storyboard.md` 说明设计意图。
 - 渲染后：抽看 1–2 个关键 scene，确认素材宽高比正确、字幕未溢出、音画同步、未违规跨场复用素材、无素材场景已用动态图示演绎 `content_plan`（全面成片检查归 Phase 9）。
 - 场景与旁白错位或素材本身不符属上游问题，按 `references/pipeline-control.md` 回退对应阶段，禁只改 HTML 掩盖。
 
@@ -90,6 +90,6 @@ source .venv/bin/activate && python3 scripts/prepare-handoff.py {work_dir}/{topi
 1. **素材与演绎抽查**（catalog 适用时含素材核对）：
    - 论文模式 `required_material_refs` 关键图 / 表在 storyboard 覆盖表与实际画面中全部出现（禁以“选为候选”冒充已上屏）；
    - 符合场景内容的通用素材已优先考虑采用；真实素材遵守单场景分配（非技术深讲未跨场重复；同一张技术图深入讲解已合并延长场景，或在相邻连续场景间保持无过场衔接并推进局部 zoom 焦点）；
-   - 无真实素材的视觉场景均按 `SVG → WebGL → Three.js → GSAP` 优先级或组合生动演绎 `content_plan`，未退化为纯排版文字卡片。
+   - 无真实素材的视觉场景均使用 `SVG`、`Canvas 2D`、`Three.js` 做视觉动画生动演绎 `content_plan`（真实素材控制使用 `GSAP` 动画特效，且全部动画遵循落盘 design 规范），未退化为纯排版文字卡片。
 2. **状态脚本验收**：运行 `python3 scripts/pipeline-status.py {work_dir}/{topic_name}`。若 `next_phase` 仍为 Phase 8（`missing` / `corrupt` 看 `problems`，`redo` 看 `redo_reason`），原样交回 composition agent 限定范围修复，修完 `--finish` 后重验。
 3. **补充项复核**：确认子 agent 报告 `npx hyperframes check` 无错误，且 `storyboard.md` 逐场景完整记录了 template / layout 方案与理由、content 区域、素材分配 / 动画演绎方案及实际借用的模块 `.md` 路径。全部通过后进入 Phase 9。

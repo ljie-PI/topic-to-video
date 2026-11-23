@@ -118,4 +118,4 @@ def test_every_design_doc_yields_reading_and_ui_floors(tmp_path: Path):
         )
         assert proc.returncode == 0, f'{name}: {proc.stderr}'
         report = parse_stdout(proc)
-        assert (report['min_font_size'], report['min_ui_font_size']) == (26, 22), name
+        assert (report['min_font_size'], report['min_ui_font_size']) == (26, 20), name
