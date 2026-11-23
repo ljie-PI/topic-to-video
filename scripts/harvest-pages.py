@@ -195,17 +195,31 @@ async () => {
     return 'html > ' + parts.join(' > ');
   };
   const elements = [];
-  for (const el of document.querySelectorAll('main, article, [role="main"], h1, h2, h3, table, tr, pre, figure, img')) {
+  const seen = new Set();
+  const push = (el, text) => {
     const r = el.getBoundingClientRect();
     const style = getComputedStyle(el);
-    if (r.width <= 0 || r.height <= 0 || style.display === 'none' || style.visibility === 'hidden') continue;
+    if (r.width <= 0 || r.height <= 0 || style.display === 'none' || style.visibility === 'hidden') return;
+    const selector = selectorFor(el);
+    if (seen.has(selector)) return;
+    seen.add(selector);
     elements.push({
-      selector: selectorFor(el),
-      text: (el.getAttribute('alt') || el.textContent || '').trim().slice(0, 120),
+      selector,
+      tag: el.localName,
+      text: (text ?? el.getAttribute('alt') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 120),
       bbox: { x: r.x + scrollX, y: r.y + scrollY, w: r.width, h: r.height },
     });
+  };
+  for (const el of document.querySelectorAll('main, article, [role="main"], h1, h2, h3')) {
     if (elements.length >= 200) break;
+    push(el);
   }
+  for (const el of document.querySelectorAll('section, figure, table, pre, img, tr, li')) {
+    if (elements.length >= 200) break;
+    if ((el.localName === 'section' || el.localName === 'li') && el.getBoundingClientRect().height < 48) continue;
+    push(el);
+  }
+  elements.sort((a, b) => a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x);
   return {
     viewport: { width: innerWidth, height: innerHeight },
     device_scale_factor: devicePixelRatio,

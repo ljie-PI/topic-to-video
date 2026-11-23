@@ -140,7 +140,7 @@ harvest_page/
             "viewport": {"width": 1680, "height": 1680},
             "device_scale_factor": 1,
             "coordinate_space": "document-css-px",
-            "elements": [{"selector": "main", "text": "Claude Code", "bbox": {"x": 280, "y": 160, "w": 1120, "h": 4400}}]
+            "elements": [{"selector": "main", "tag": "main", "text": "Claude Code", "bbox": {"x": 280, "y": 160, "w": 1120, "h": 4400}}]
           }
         },
         {
@@ -201,7 +201,7 @@ harvest_page/
 
 字段要点：
 - `pending_downloads[]` 在磁盘 manifest 中常驻（无待下项时为 `[]`，stdout 无待下项时省略）；同一视频跨多页引用只列一条 pending（附 `also_referenced_by`），只下一次。
-- 长图在 `images[]` 中，`type: "page-screenshot"`；`capture` 记录 viewport / DPR 与最多 200 个正文、标题、表格行、代码和图片的 DOM bbox（文档 CSS 像素，非视口坐标）。DPR 1 且截图 `scale=css`，可直接按 bbox 裁图，归一化用实际 PNG 宽高。截图失败会告警，不登记假素材。
+- 长图在 `images[]` 中，`type: "page-screenshot"`；`capture` 记录 viewport / DPR，以及按纵向排序的正文、标题（`h1–h3`）与高 ≥48px 的节块、列表项、表格、代码和图片 DOM bbox（文档 CSS 像素，非视口坐标）。DPR 1 且截图 `scale=css`，可直接按 bbox 裁图，归一化用实际 PNG 宽高。截图失败会告警，不登记假素材。
 - `scroll_recording` 默认 `null`；兼容选项 `--scroll-record` 可生成旧式录像，不用于网页巡讲。
 - 非 http(s) URL 归入 `rejected[]`；整批全部失败时 `success: false` 且退出码为 `1`。
 

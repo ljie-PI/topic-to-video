@@ -60,7 +60,7 @@ Phase 9（成片检查）：运行 `check-render.py` + `make-contact-sheet.py` +
 - **字体由 composition agent 选定 design 后通过脚本安装到 `composition/assets/fonts/`**，写入 `composition/design.json` 并引入字体 CSS，禁用系统字体，主 agent 不介入字体与 HTML 编写。
 - **字幕默认脚本生成，已有用户编辑不覆盖。** 仅改画面或重渲染时不重跑覆盖已编辑字幕；禁止跨不同版面切点切断英文词或数字。
 - **全部画面设计与渲染委派给 coding agent**（仅加载 `hyperframes` 与 `hyperframes-cli` 两个外部 skill，见 `references/delegation/conventions.md`），主 agent 禁手写或修补 `composition/index.html`。
-- **单 agent 逐场景拆分子合成写盘，优先消费 catalog 元数据。** 各视觉场景拆成独立 `composition/compositions/<scene>.{html,mjs}` 逐个落盘，防单次拼装巨型 `index.html` 触发 `413` 上限；默认优先读取 `material-catalog.json` 的尺寸、语义与 `focal_region`，仅在元数据不足以确定裁剪边界时按需单张查看原图，禁批量打开 `harvest_page/` 全部原图触发多模态 `400` 上限。
+- **单 agent 逐场景拆分子合成写盘，优先消费 catalog 元数据。** 各视觉场景拆成独立 `composition/compositions/<scene>.{html,mjs}` 逐个落盘，防单次拼装巨型 `index.html` 触发 `413` 上限；默认优先读取 `material-catalog.json` 的尺寸、语义与 `regions` / `focal_region`，仅在元数据不足以确定裁剪边界时按需裁局部或单张查看原图，禁批量打开 `harvest_page/` 全部原图触发多模态 `400` 上限。
 
 ---
 

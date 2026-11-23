@@ -541,9 +541,9 @@ def test_harvest_inherits_the_profile_login_state_for_pages_and_media(
         assert screenshot['width'] == 1680 and screenshot['height'] > 2400
         capture = screenshot['capture']
         main = next(el for el in capture['elements'] if el['selector'] == 'html > body:nth-of-type(1) > main:nth-of-type(1)')
-        assert main['bbox'] == {'x': 480, 'y': 8, 'w': 720, 'h': 2400}
+        assert main['tag'] == 'main' and main['bbox'] == {'x': 480, 'y': 8, 'w': 720, 'h': 2400}
         heading = next(el for el in capture['elements'] if el['selector'] == '#who')
-        assert heading['text'] == 'logged-in'
+        assert heading['tag'] == 'h1' and heading['text'] == 'logged-in'
         assert all(Path(output_dir / image['local_path']).is_file() for image in entry['images'])
         persisted = harvest_manifest.load(output_dir)['entries'][0]
         metadata = json.loads((output_dir / entry['slug'] / 'metadata.json').read_text())
