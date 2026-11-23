@@ -566,4 +566,3 @@ def test_dense_layout_audit_checks_panel_escape_unclipped_html_and_long_svg_line
     assert any(c == 'panel_escape' and '#abs-code-line' in issue for c, issue in by_check), by_check
     assert not any('#scene-heading' in issue for _, issue in by_check), by_check
     assert any(c == 'text_overflow' and '#unclipped-card-copy' in issue for c, issue in by_check), by_check
-    assert any(w.startswith('[s1] long_svg_text_line:') and '#svg-code-escape' in w for w in report['warnings']), report['warnings']

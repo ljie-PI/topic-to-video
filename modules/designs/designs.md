@@ -65,7 +65,7 @@
 | `--motion-easing` | 入场缓动（GSAP 风格 ease 名），如 `power2.out` |
 | `--motion-list-interval` | 列表逐行入场的行间隔（秒），如 `0.1s` |
 
-这三个变量给组件和模板的默认动效定节奏；个别强调动效见各主题文档。所有动画只由时间决定：不用 `repeat: -1`，不用随机数；需要随机的地方用固定种子。
+这三个变量给组件、模板及 `GSAP` / `SVG` / `Canvas 2D` / `Three.js` 动画的默认动效定节奏；个别强调动效见各主题文档。所有动画只由时间决定：不用 `repeat: -1`，不用随机数；需要随机的地方用固定种子。
 
 ## 共享排版、形状与通用元素基线
 
@@ -98,7 +98,7 @@
   - **主面板外框与主干焦点路径**：`1.5–2px`（外框用 `--c-border`，主焦点路径用 `--c-focus` 或真实语义色）；
   - **小节点框、数据柱与标签描边**：`1.25–1.5px` `--c-border`（激活态可提至 `1.6–1.8px` `--c-focus`）；
   - **内部坐标刻度、辅助网格与引导虚线**：`1–1.25px` `--c-border` / `--c-ink2`。
-  - **SVG 像素对齐要求**：所有 SVG 舞台须采用与宿主容器像素宽高 **1:1 对应的 `viewBox`**（如宿主 `W×H` px 则设 `viewBox="0 0 W H"`），或在缩放图元上显式声明 `vector-effect: non-scaling-stroke`，禁止在小 `viewBox` 上画粗描边后再放大导致线条发虚变粗。
+  - **SVG 与 Canvas 2D / Three.js / GSAP 规范对齐**：所有 SVG 舞台须采用与宿主容器像素宽高 **1:1 对应的 `viewBox`**（如宿主 `W×H` px 则设 `viewBox="0 0 W H"`），或在缩放图元上显式声明 `vector-effect: non-scaling-stroke`，禁止在小 `viewBox` 上画粗描边后再放大导致线条发虚变粗；内联 SVG 的 `fill` / `stroke` / `font-family` 也必须写 `var(--c-*)` / `var(--font-*)`，禁写死 `#hex` 色值；`Canvas 2D` 与 `Three.js` 经 `getComputedStyle` 读取 `:root` 主题变量以严格遵循相同的填充、边框、字体、字号下限与线宽阶梯，`GSAP` 动效遵循 `--motion-*` 节奏变量。
 - **面板栏与界面条**：面板顶部标题栏用 `--c-surface`（或 `86%` 半透明 `--c-surface`）底 + 下边 `1.5–2px` 线，高 56–60px；界面条用 `--c-chrome` 深色底（横屏顶部导航栏与单行底部字幕条各高 72px、上下对称；竖屏讲解布局顶部导航栏高 88px，右侧显示当前章节、底边是整片进度线，底部双行字幕条高 144px，高度以当前 scene 布局区域为准），主字 `chrome-ink`、次字 `chrome-muted`、当前项下划线 6px `chrome-active`。
 - **图标**：16×16 线性图标，`fill: currentColor`，尺寸为所在行字号的 0.8–0.9 倍，颜色跟随文字或真实语义色。
 - **高亮行、指标药丸与步骤时间线**：高亮行用 `--c-focus-tint` 底 + 左侧 6px `--c-focus` 竖条，行首编号/排名变焦点色；指标小标签用 `positive-tint` 底 / `positive-solid` 边 / `positive-text` 字（不直接用 `--c-positive` 做标签字），焦点小标签用 `focus-tint` 底 + `focus` 字；步骤时间线与流转路径主干用 `1.5–2px` 线串联节点，当前步填 `--c-focus`、已完成盖 `--c-done` 对勾。

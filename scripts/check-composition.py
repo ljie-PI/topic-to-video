@@ -133,8 +133,6 @@ def parse_args() -> argparse.Namespace:
                         help='timeline.json whose scenes list drives scene timing (optional).')
     parser.add_argument('--samples', type=int, default=DEFAULT_SAMPLES_PER_SCENE,
                         help=f'Number of evenly spaced sample timestamps per scene (default: {DEFAULT_SAMPLES_PER_SCENE}).')
-    parser.add_argument('--long-line-px', type=int, default=composition_warnings.DEFAULT_LONG_SVG_LINE_PX,
-                        help=f'SVG ASCII line width threshold in px for long_svg_text_line warnings (default: {composition_warnings.DEFAULT_LONG_SVG_LINE_PX}).')
     parser.add_argument('--output', default=None,
                         help='Optional path to also write the JSON report.')
     parser.add_argument('--chrome-path', default=None,
@@ -167,8 +165,6 @@ def parse_args() -> argparse.Namespace:
         parser.error('--min-ui-font-size must be positive')
     if args.samples <= 0:
         parser.error('--samples must be positive')
-    if args.long_line_px <= 0:
-        parser.error('--long-line-px must be positive')
     return args
 
 
@@ -827,7 +823,6 @@ def build_report(
     viewport_mismatch: bool,
     *,
     visual_scenes: Optional[List[Dict[str, Any]]] = None,
-    long_line_px: int = composition_warnings.DEFAULT_LONG_SVG_LINE_PX,
 ) -> Dict[str, Any]:
     findings: List[Dict[str, Any]] = []
     checked: List[Dict[str, Any]] = []
@@ -910,7 +905,6 @@ def build_report(
         composition_dir=composition_dir,
         region_index_factory=RegionIndex,
         filter_scene=visual_scenes is not None,
-        long_line_px=long_line_px,
     )
     all_warnings = [*warnings, *quality_warnings]
     return {
@@ -1022,7 +1016,6 @@ def main() -> None:
             warnings,
             viewport_mismatch,
             visual_scenes=visual_scenes,
-            long_line_px=args.long_line_px,
         )
         if args.output:
             output_path = Path(args.output).expanduser().resolve()

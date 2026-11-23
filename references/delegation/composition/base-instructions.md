@@ -30,7 +30,7 @@
 ## 二、必须选择并落盘 design
 
 - 先读 `script.txt`、`scene-plan.json`、timeline、素材目录与 `composition_requests` 了解全片内容与用户要求，再按 `modules/designs/designs.md` 选择并落盘 `composition/design.json`：默认从库内注册 preset 中选择与内容最匹配的主题（无特定专题匹配选通用的 `default`；用户在 `composition_requests` 点名注册主题时按作用范围采用，仅当明确要求库外风格时才生成 `custom`）。选定 preset 后必读 `modules/designs/<design>/<design>.md` 并安装字体。
-- 颜色、字体只取落盘 design 的 token；默认时长、缓动与列表间隔跟随主题 token，具体运动编排由你设计。字号守 `composition/design.json` 的 `min_font_px`（界面小字加 `data-text-role="ui"`，细则见 `designs.md`）。
+- 颜色、字体只取落盘 design 的 token；默认时长、缓动与列表间隔跟随主题 token，具体运动编排由你设计。字号守 `composition/design.json` 的 `min_font_px`（界面小字加 `data-text-role="ui"`，细则见 `designs.md`）。内联 SVG 的 `fill` / `stroke` / `font-family` 也必须写 `var(--c-*)` / `var(--font-*)`，禁写死 `#hex` 色值；`Canvas 2D`、`Three.js`、`GSAP` 等动画同样须遵循 `designs` 规范（JS 绘图与材质经 `getComputedStyle` 读取主题 `:root` token，动效时长与缓动对齐 `--motion-*`，线宽与字号守主题基线，禁自造脱离主题的配色或字体）。
 - 模板专属变量写在 design 之后，只增补不替换语义且仅作用于采用它的 scene；用户把某 preset 限定到单个 scene 时，只在该 scene 根作用域覆盖相应 token 并在 storyboard 记录，不自动传播到其他 scene。
 
 ## 三、必须遵守各 scene 的 layout 区域
@@ -50,8 +50,8 @@
 2. **未指定时评估“特别匹配”，而非“勉强可用”。** 预定义模块（template、layout preset、component、motion、transition、pattern）须同时满足四项才采用：① 表达关系与叙事目标一致；② 素材形态、数据、画布、可读性与交互匹配；③ 无需改旁白、视觉 scene、orientation 或用户要求来迁就；④ 比即时生成更清晰可靠（而非只为省代码）。
    - **采用前必读对应具体 `.md` 文档**（禁只看 `.json` / `.html` / `.mjs` 猜参数、`window.VIDEO` 键或资源路径，统一按 `modules/modules.md` 的 `init(...)` 接线）：采用模板场景须读齐 `modules/templates/<t>/<t>.md`、`<t>.json` 与 `<scene>.md`（`preferred_layouts` 为建议非硬门槛）；采用组件读 `components.md` → `<c>/<c>.md`；采用或改写动态模块读 `motions.md` → `<m>/<m>.md`；需要画面形态参考或转场时才按需查阅可选入口 `patterns.md` → `<media|info>/<p>.md`、`transitions.md` → `<tr>/<tr>.md`（自由布局与简单接缝不强制用转场）。
 3. **无特别匹配就即时生成（默认路径）。** 围绕旁白语义、素材与可用区域自主构思构图、视觉隐喻与动效：
-   - **不用真实素材的视觉场景**（无论全片无 catalog 还是该场景未分配真实素材）：**必须按 `SVG → WebGL → Three.js → GSAP` 优先级选择或组合表现手段（如用 GSAP 驱动 1:1 像素 SVG 图示结构与分步状态演进；涉及三维空间、真实深度或着色器模拟时选 WebGL / Three.js），用视觉动画生动讲述 `content_plan`**，把登场对象、结构关系、因果链路、对比差异或分步变化画出来并随旁白推进（保留必要的阅读停留，不做无意义晃动）；文字与 HTML 排版仅作辅助，**严禁退化成静态文字卡片、纯排版列表、文字框轮播或无关装饰动画**。
-   - **采用真实素材的视觉场景**：围绕素材组织构图、局部放大或外置标注（素材本身已清晰直观时简洁稳定呈现即可；连续深讲同一张技术图按第一部分保持无过场局部 zoom 衔接）。
+   - **不用真实素材的视觉场景（及非图片 / 视频素材元素的动画处理）**：**必须使用 `SVG`、`Canvas 2D`、`Three.js`（按 `SVG → Canvas 2D → Three.js` 优先级选择或组合）做视觉动画来生动讲述 `content_plan`**（优先用 `1:1` 像素 `SVG` 绘制图示结构与分步状态演进；高密度点列、波形或连续轨迹自绘用 `Canvas 2D`；涉及真实三维空间、深度相机或着色器模拟时选 `Three.js`），把登场对象、结构关系、因果链路、对比差异或分步变化画出来并随旁白推进（保留必要的阅读停留，不做无意义晃动），全部遵循第二节 `designs` 规范；文字与 HTML 排版仅作辅助，**严禁退化成静态文字卡片、纯排版列表、文字框轮播或无关装饰动画**。
+   - **采用真实素材的视觉场景**：**图片 / 视频素材的控制使用 `GSAP` 动画特效**（围绕素材组织视口推拉、平移、局部放大或外置标注联动，同样遵循 `designs` 的 `--motion-*` 与配色规范；素材本身已清晰直观时简洁稳定呈现即可；连续深讲同一张技术图按第一部分保持无过场局部 zoom 衔接）。
 4. **按实际采用落盘并保持依赖完整。** 不用模板写 `template: null`；不借 layout preset 写 `preset: null` 并落盘完整 `regions` / `caption`；已采用的 template / layout 所声明的 reserved 必要组件不可拆毁（不适合则判定整套方案不匹配）。`storyboard.md` 只记录实际借用的模块、所依据的具体 `.md` 路径与匹配理由（无需列未使用清单，模板选择也不写回 `inputs.json`）。
 
 ### 表达与事实边界
