@@ -1,5 +1,5 @@
 // chart-build.mjs — quantitative bar / line-area / hero-metric motion module (docs: chart-build.md).
-import { addProgressTween, appendTextBlock, clamp, createSvg, cueTime, fitTextBlock, formatMetricValue, inferDecimals, measureTextWidth, num, prepareStage } from "./motion-utils.mjs";
+import { addProgressTween, appendCraftCard, appendTextBlock, clamp, createSvg, cueTime, ensureAreaGradient, ensureHatchPattern, fitTextBlock, formatMetricValue, inferDecimals, measureTextWidth, num, prepareStage } from "./motion-utils.mjs";
 
 const niceMax = (v) => {
   if (!Number.isFinite(v) || v <= 0) return 100;
@@ -37,7 +37,7 @@ const numNode = (parent, x, y, size, weight, fill, anchor = "start", maxW) => {
 
 export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
   const variant = String(params.variant || data?.variant || "bar").toLowerCase(), title = params.title || (variant !== "metric" && data?.title) || "";
-  return prepareStage(root, params, gsap, { prefix: "cb", padX: 28, baseTop: 26, title }, ({ tl, uid, svg, defs, width: W, height: H, isPortrait, enterDuration, easing, padX, contentTop }) => {
+  return prepareStage(root, params, gsap, { prefix: "cb", padX: 28, baseTop: 26, backdrop: { opacity: 0.72 }, title }, ({ tl, uid, svg, defs, width: W, height: H, isPortrait, enterDuration, easing, padX, contentTop }) => {
     const series = normSeries(data), prefix = params.prefix != null ? String(params.prefix) : "", unit = params.unit != null ? String(params.unit) : data?.unit ? String(data.unit) : "";
     const fmt = (v, dec, suf = unit) => formatMetricValue(v, { decimals: dec, prefix, suffix: suf });
     const stepText = (it, p, suf = unit) => p >= 0.995 && it.displayValue != null ? it.displayValue : fmt(it.value * p, it.decimals, suf);
@@ -47,12 +47,12 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
     if (summary) {
       const iw = W - padX * 2 - 40, fit = fitTextBlock(summary, { maxWidth: iw, preferredSize: 26, minSize: 26, preferredLines: 2, svg, weight: 500 });
       const bh = fit.height + 24, by = H - 20 - bh, sg = createSvg("g", { class: "cb-summary" }, svg);
-      createSvg("rect", { x: padX, y: by, width: W - padX * 2, height: bh, rx: 10, fill: "color-mix(in srgb, var(--c-surface) 88%, transparent)", stroke: "var(--c-border)", "stroke-width": "1.25" }, sg);
-      createSvg("rect", { x: padX, y: by, width: 5, height: bh, rx: 2.5, fill: "var(--c-focus)" }, sg);
+      appendCraftCard(sg, { x: padX, y: by, width: W - padX * 2, height: bh, rx: 10, fill: "color-mix(in srgb, var(--c-surface) 88%, transparent)", stroke: "var(--c-border)", strokeWidth: "1.25", accent: "var(--c-focus)" });
       appendTextBlock(sg, fit, { x: padX + 22, topY: by + 12, maxWidth: iw, fill: "var(--c-ink)", weight: 500 });
       fadeIn(sg, cueTime(data?.summaryAt, (series.length ? Math.max(...series.map((s) => s.at)) : 0) + Math.max(0.4, enterDuration)), enterDuration, 10);
       summaryH = bh + 16;
     }
+    const trackHatch = ensureHatchPattern(defs, `${uid}-hatch`, { opacity: 0.2, step: 8 });
     const availW = W - padX * 2, availH = Math.max(180, H - contentTop - 20 - summaryH);
     if (variant === "metric") {
       const hero = series[0] || { label: String(data?.label || title || "核心指标"), detail: String(data?.detail || ""), value: num(data?.value, 0), decimals: inferDecimals(num(data?.value, 0)), displayValue: data?.displayValue ?? null, at: cueTime(data?.at, 0.1), emphasis: data?.emphasis || "focus" };
@@ -67,15 +67,17 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
       while (nf > 44 && blockH() + 32 > availH) nf -= 2;
       const bh = blockH(), ch = Math.max(bh + 32, Math.min(clamp(availH - 16, 220, 460), availH)), cx = Math.round((W - cw) / 2), cy = contentTop + Math.max(0, Math.round((availH - ch) / 2));
       const cg = createSvg("g", { class: "cb-metric-card" }, svg);
-      createSvg("rect", { x: cx, y: cy, width: cw, height: ch, rx: 16, fill: "color-mix(in srgb, var(--c-card) 88%, transparent)", stroke: "var(--c-border)", "stroke-width": "1.5" }, cg);
+      const col = String(hero.emphasis).toLowerCase() === "positive" ? "var(--c-positive)" : "var(--c-focus)";
+      appendCraftCard(cg, { x: cx, y: cy, width: cw, height: ch, rx: 16, fill: "color-mix(in srgb, var(--c-card) 88%, transparent)", stroke: "var(--c-border)", strokeWidth: "1.5", accent: col });
       let y = cy + Math.max(16, Math.round((ch - bh) / 2));
       appendTextBlock(cg, lbl, { x: cx + cpx, topY: y, maxWidth: iw, fill: "var(--c-ink2)", weight: 600 }); y += lbl.height + 16;
-      const col = String(hero.emphasis).toLowerCase() === "positive" ? "var(--c-positive)" : "var(--c-focus)";
       const { tspan: nts } = numNode(cg, cx + cpx, Math.round(y + nf * 0.84), nf, 800, col, "start", iw);
       nts.textContent = fmt(0, hero.decimals, suf); y += Math.round(nf * 1.06) + 18;
-      createSvg("rect", { x: cx + cpx, y, width: iw, height: 10, rx: 5, fill: "var(--c-surface)", stroke: "var(--c-border)", "stroke-width": "1" }, cg);
+      const tg = createSvg("g", { "data-layout-ignore": "true" }, cg);
+      createSvg("rect", { x: cx + cpx, y, width: iw, height: 10, rx: 5, fill: "var(--c-surface)", stroke: "var(--c-border)", "stroke-width": "1" }, tg);
+      createSvg("rect", { x: cx + cpx, y, width: iw, height: 10, rx: 5, fill: trackHatch }, tg);
       const ref = num(data?.maxValue, hero.value > 0 && hero.value <= 100 && unit === "%" ? 100 : hero.value || 1), ratio = clamp(ref > 0 ? hero.value / ref : 1, 0.12, 1);
-      const gf = createSvg("rect", { x: cx + cpx, y, width: 0, height: 10, rx: 5, fill: col }, cg);
+      const gf = createSvg("rect", { x: cx + cpx, y, width: 0, height: 10, rx: 5, fill: col }, tg);
       if (det) appendTextBlock(cg, det, { x: cx + cpx, topY: y + 26, maxWidth: iw, fill: "var(--c-ink2)", weight: 500 });
       fadeIn(cg, hero.at, enterDuration, 14);
       addProgressTween(tl, { at: hero.at, duration: Math.max(0.75, enterDuration * 2.2), ease: "power2.out", onUpdate: (p) => { nts.textContent = stepText(hero, p, suf); gf.setAttribute("width", Math.round(iw * ratio * p)); } });
@@ -105,11 +107,10 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
       rvTs.textContent = fmt(series[0].value, series[0].decimals, suf);
       const grid = drawAxisGrid(svg, plotX, plotW, plotTop, plotBottom, maxVal, false, yAxisW);
       const pts = series.map((it, i) => ({ ...it, px: Math.round((N === 1 ? plotX + plotW / 2 : plotX + (i / (N - 1)) * plotW) * 10) / 10, py: Math.round((plotBottom - clamp(it.value / maxVal, 0, 1) * plotH) * 10) / 10 }));
-      const grad = createSvg("linearGradient", { id: `${uid}-grad`, x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
-      createSvg("stop", { offset: "0%", "stop-color": "var(--c-focus)", "stop-opacity": "0.22" }, grad); createSvg("stop", { offset: "100%", "stop-color": "var(--c-focus)", "stop-opacity": "0.02" }, grad);
+      const areaFill = ensureAreaGradient(defs, `${uid}-grad`, { color: "var(--c-focus)", topOpacity: 0.22, bottomOpacity: 0.02 });
       const clipRect = createSvg("rect", { x: plotX - 2, y: plotTop - 16, width: 0, height: plotH + 24 }, createSvg("clipPath", { id: `${uid}-clip` }, defs));
       const d = pts.map((p, i) => `${i ? "L" : "M"} ${p.px} ${p.py}`).join(" "), sl = createSvg("g", { class: "cb-line-series" }, svg);
-      createSvg("path", { d: `${d} L ${pts[N - 1].px} ${plotBottom} L ${pts[0].px} ${plotBottom} Z`, fill: `url(#${uid}-grad)`, "clip-path": `url(#${uid}-clip)` }, sl);
+      createSvg("path", { d: `${d} L ${pts[N - 1].px} ${plotBottom} L ${pts[0].px} ${plotBottom} Z`, fill: areaFill, "clip-path": `url(#${uid}-clip)` }, sl);
       const curve = createSvg("path", { d, fill: "none", stroke: "var(--c-focus)", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round", pathLength: "1", style: "stroke-dasharray:1;stroke-dashoffset:1" }, sl);
       pts.forEach((pt, i) => {
         if (xFits.has(i)) appendTextBlock(grid, xFits.get(i), { x: pt.px, topY: plotBottom + 12, maxWidth: tickMaxW(i), anchor: i === 0 ? "start" : i === N - 1 ? "end" : "middle", fill: "var(--c-ink2)", weight: 600 });
@@ -144,9 +145,11 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
       let sy = contentTop;
       series.forEach((it, i) => {
         const sh = rawH[i] + (plotH - minH) / N, cy = Math.round(sy + sh / 2), bh = clamp(Math.round(sh * 0.52), 26, 54), c = barColors(it.emphasis); sy += sh;
-        const rg = createSvg("g", { class: "cb-bar-row" }, bars), tw = Math.max(6, Math.round((Math.max(0, it.value) / maxVal) * plotW));
+        const rg = createSvg("g", { class: "cb-bar-row" }, bars), tw = Math.max(6, Math.round((Math.max(0, it.value) / maxVal) * plotW)), by0 = Math.round(cy - bh / 2);
         appendTextBlock(rg, fits[i], { x: padX + lw, topY: Math.round(cy - fits[i].height / 2), maxWidth: lw - 8, anchor: "end", fill: it.emphasis ? "var(--c-ink)" : "var(--c-ink2)", weight: it.emphasis ? 700 : 600 });
-        const br = createSvg("rect", { x: plotX, y: Math.round(cy - bh / 2), width: 0, height: bh, rx: 7, fill: c.fill, stroke: c.stroke, "stroke-width": it.emphasis ? "1.6" : "1.35" }, createSvg("g", { class: "cb-bar-shape" }, rg));
+        const bgSlot = createSvg("g", { class: "cb-bar-shape" }, rg);
+        createSvg("rect", { x: plotX, y: by0, width: plotW, height: bh, rx: 7, fill: trackHatch, "data-layout-ignore": "true" }, bgSlot);
+        const br = createSvg("rect", { x: plotX, y: by0, width: 0, height: bh, rx: 7, fill: c.fill, stroke: c.stroke, "stroke-width": it.emphasis ? "1.6" : "1.35" }, bgSlot);
         const { tspan: vts } = numNode(rg, plotX + plotW + 16, Math.round(cy + 9), 27, 700, c.val);
         vts.textContent = fmt(0, it.decimals); fadeIn(rg, it.at);
         addProgressTween(tl, { at: it.at, duration: Math.max(0.45, enterDuration * 1.4), ease: easing, onUpdate: (p) => { br.setAttribute("width", Math.round(tw * p)); vts.textContent = stepText(it, p); } });

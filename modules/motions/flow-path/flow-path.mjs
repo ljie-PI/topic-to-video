@@ -2,7 +2,7 @@
 // (docs: flow-path.md). Explicit init per modules/modules.md.
 
 import {
-  appendTextBlock, clamp, createSvg, cueTime,
+  appendCraftCard, appendPortRing, appendTextBlock, clamp, createSvg, cueTime,
   fitTextBlock, measureTextWidth, prepareStage,
 } from "./motion-utils.mjs";
 
@@ -25,7 +25,7 @@ function connectPorts(a, b) {
     const d = Math.abs(sy - ty) < 4 ? `M ${sx} ${sy} L ${tx} ${ty}` : `M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ty}, ${tx} ${ty}`;
     const tip = dir > 0 ? b.x - 1 : b.x + b.w + 1;
     const arrowPts = dir > 0 ? `${tip},${ty} ${tip - 9},${ty - 5} ${tip - 9},${ty + 5}` : `${tip},${ty} ${tip + 9},${ty - 5} ${tip + 9},${ty + 5}`;
-    return { d, arrowPts, lx: mx, ly: Math.round((sy + ty) / 2) - 18 };
+    return { d, arrowPts, sx, sy, lx: mx, ly: Math.round((sy + ty) / 2) - 18 };
   }
   const dir = dy >= 0 ? 1 : -1;
   const sx = Math.round(ax), sy = dir > 0 ? a.y + a.h : a.y;
@@ -33,7 +33,7 @@ function connectPorts(a, b) {
   const d = Math.abs(sx - tx) < 4 ? `M ${sx} ${sy} L ${tx} ${ty}` : `M ${sx} ${sy} C ${sx} ${my}, ${tx} ${my}, ${tx} ${ty}`;
   const tip = dir > 0 ? b.y - 1 : b.y + b.h + 1;
   const arrowPts = dir > 0 ? `${tx},${tip} ${tx - 5},${tip - 9} ${tx + 5},${tip - 9}` : `${tx},${tip} ${tx - 5},${tip + 9} ${tx + 5},${tip + 9}`;
-  return { d, arrowPts, lx: Math.round((sx + tx) / 2), ly: my, vertical: true };
+  return { d, arrowPts, sx, sy, lx: Math.round((sx + tx) / 2), ly: my, vertical: true };
 }
 
 export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
@@ -108,16 +108,17 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
       }
     }
 
-    const edgesLayer = createSvg("g", { class: "fp-edges" }, svg), nodesLayer = createSvg("g", { class: "fp-nodes" }, svg);
+    const edgesLayer = createSvg("g", { class: "fp-edges" }, svg), nodesLayer = createSvg("g", { class: "fp-nodes" }, svg), portsLayer = createSvg("g", { class: "fp-ports" }, svg);
     const byId = new Map(), byTime = nodes.slice().sort((a, b) => a.at - b.at || a.index - b.index);
 
     nodes.forEach((node, idx) => {
       const b = boxes[idx], pal = statusStyle(node.status);
       const g = createSvg("g", { class: "fp-node", id: `${uid}-node-${idx}` }, nodesLayer);
-      g.style.setProperty("--node-fill", "color-mix(in srgb, var(--c-card) 86%, transparent)");
+      g.style.setProperty("--node-fill", "color-mix(in srgb, var(--c-card) 87%, transparent)");
       g.style.setProperty("--node-stroke", "var(--c-border)");
       g.style.setProperty("--node-sw", "1.35");
-      createSvg("rect", { x: b.x, y: b.y, width: b.w, height: b.h, rx: 12, fill: "var(--node-fill)", stroke: "var(--node-stroke)", "stroke-width": "var(--node-sw)" }, g);
+      g.style.setProperty("--node-title", "var(--c-ink)");
+      appendCraftCard(g, { x: b.x, y: b.y, width: b.w, height: b.h, rx: 12, fill: "var(--node-fill)", stroke: "var(--node-stroke)", strokeWidth: "var(--node-sw)", accent: "var(--node-stroke)" });
 
       const bg = createSvg("g", { class: "fp-badge", "data-text-role": "ui" }, g);
       bg.style.setProperty("--badge-fill", "var(--c-surface)");
@@ -130,19 +131,23 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
       const tx = b.vert ? b.x + b.textXOff : b.x + b.padSide;
       const th = b.lbl.height + (b.det ? b.detGap + b.det.height : 0);
       const ty = b.vert ? Math.round(b.y + (b.h - th) / 2) : by + b.badgeH + 10;
-      appendTextBlock(g, b.lbl, { x: tx, topY: ty, maxWidth: b.innerW, fill: "var(--c-ink)", weight: 700 });
+      appendTextBlock(g, b.lbl, { x: tx, topY: ty, maxWidth: b.innerW, fill: "var(--node-title)", weight: 700 });
       if (b.det) appendTextBlock(g, b.det, { x: tx, topY: ty + b.lbl.height + b.detGap, maxWidth: b.innerW, fill: "var(--c-ink2)", weight: 500, ui: true });
 
       if (node.at > 0) {
         tl.set(g, { opacity: 0, y: 12 }, 0);
         tl.fromTo(g, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: enterDuration, ease: easing }, node.at);
       } else tl.set(g, { opacity: 1, y: 0 }, 0);
-      tl.set(g, { "--node-fill": pal.fill, "--node-stroke": pal.stroke, "--node-sw": "1.75" }, node.at);
+      tl.set(g, { "--node-fill": pal.fill, "--node-stroke": pal.stroke, "--node-sw": "1.75", "--node-title": "var(--c-ink)" }, node.at);
       tl.set(bg, { "--badge-fill": pal.bf, "--badge-stroke": pal.bs, "--badge-text": pal.bt }, node.at);
 
       const next = byTime[byTime.findIndex((n) => n.id === node.id) + 1];
       if (next && node.status === "default" && next.at > node.at) {
-        tl.set(g, { "--node-fill": "color-mix(in srgb, var(--c-card) 86%, transparent)", "--node-stroke": "var(--c-done)", "--node-sw": "1.35" }, next.at);
+        tl.set(g, {
+          "--node-fill": "color-mix(in srgb, var(--c-surface) 74%, transparent)",
+          "--node-stroke": "var(--c-done)",
+          "--node-sw": "1.2", "--node-title": "var(--c-ink2)", "--card-filter": "none",
+        }, next.at);
         tl.set(bg, { "--badge-fill": "var(--c-surface)", "--badge-stroke": "var(--c-done)", "--badge-text": "var(--c-done)" }, next.at);
       }
       byId.set(node.id, { node, box: b });
@@ -154,8 +159,10 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
       const g = connectPorts(f.box, t.box), at = cueTime(edge.at, Math.max(f.node.at, t.node.at - 0.25)), dur = Math.max(0.24, enterDuration * 0.9);
       createSvg("path", { d: g.d, fill: "none", stroke: "var(--c-border)", "stroke-width": "1.15", "stroke-dasharray": "4 4", opacity: "0.55" }, edgesLayer);
       const path = createSvg("path", { d: g.d, fill: "none", stroke: "var(--c-focus)", "stroke-width": "1.75", "stroke-linecap": "round", pathLength: "1", style: "stroke-dasharray:1;stroke-dashoffset:1;opacity:0" }, edgesLayer);
+      const port = appendPortRing(portsLayer, { cx: g.sx, cy: g.sy, r: 4, color: "var(--c-focus)", style: "opacity:0" });
       const arrow = createSvg("polygon", { points: g.arrowPts, fill: "var(--c-focus)", style: "opacity:0" }, edgesLayer);
-      if (at > 0) { tl.set(path, { strokeDashoffset: 1, opacity: 0 }, 0); tl.set(arrow, { opacity: 0 }, 0); }
+      if (at > 0) { tl.set(path, { strokeDashoffset: 1, opacity: 0 }, 0); tl.set(port, { opacity: 0 }, 0); tl.set(arrow, { opacity: 0 }, 0); }
+      tl.fromTo(port, { opacity: 0 }, { opacity: 1, duration: 0.14, ease: easing }, at);
       tl.fromTo(path, { strokeDashoffset: 1, opacity: 1 }, { strokeDashoffset: 0, opacity: 1, duration: dur, ease: easing }, at);
       tl.fromTo(arrow, { opacity: 0 }, { opacity: 1, duration: Math.max(0.12, dur * 0.35), ease: easing }, at + dur * 0.65);
 

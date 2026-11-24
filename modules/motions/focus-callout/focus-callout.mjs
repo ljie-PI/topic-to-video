@@ -2,7 +2,7 @@
 // (docs: focus-callout.md). Explicit init per modules/modules.md.
 
 import {
-  addProgressTween, appendTextBlock, clamp, createSvg, cueTime,
+  addProgressTween, appendCraftCard, appendPortRing, appendTextBlock, clamp, createSvg, cueTime,
   fitTextBlock, measureTextWidth, num, prepareStage,
 } from "./motion-utils.mjs";
 
@@ -142,21 +142,23 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
         const d = side === "left" || side === "right" ? `M ${a.x} ${a.y} L ${mx} ${a.y} L ${mx} ${p.y} L ${p.x} ${p.y}` : `M ${a.x} ${a.y} L ${a.x} ${my} L ${p.x} ${my} L ${p.x} ${p.y}`;
 
         const lg = createSvg("g", { class: "fc-leader-item" }, leadersLayer);
-        const pin = createSvg("circle", { cx: a.x, cy: a.y, r: "4.5", fill: "var(--c-focus)", style: stop.at > 0 ? "opacity:0" : "opacity:1" }, lg);
         const path = createSvg("path", { d, fill: "none", stroke: "var(--c-focus)", "stroke-width": "1.65", "stroke-linecap": "round", "stroke-linejoin": "round", pathLength: "1", style: stop.at > 0 ? "stroke-dasharray:1;stroke-dashoffset:1;opacity:0" : "stroke-dasharray:1;stroke-dashoffset:0;opacity:1" }, lg);
+        const pin = appendPortRing(lg, { cx: a.x, cy: a.y, r: 4.5, color: "var(--c-focus)", style: stop.at > 0 ? "opacity:0" : "opacity:1" });
 
         const cg = createSvg("g", { class: "fc-card", id: `${uid}-c-${stop.index}` }, cardsLayer);
         cg.style.setProperty("--card-fill", "color-mix(in srgb, var(--c-focus-tint) 88%, transparent)");
         cg.style.setProperty("--card-stroke", "var(--c-focus)"); cg.style.setProperty("--card-sw", "1.7");
-        createSvg("rect", { x: box.x, y: box.y, width: box.w, height: h, rx: 12, fill: "var(--card-fill)", stroke: "var(--card-stroke)", "stroke-width": "var(--card-sw)" }, cg);
+        cg.style.setProperty("--card-title", "var(--c-ink)");
+        appendCraftCard(cg, { x: box.x, y: box.y, width: box.w, height: h, rx: 12, fill: "var(--card-fill)", stroke: "var(--card-stroke)", strokeWidth: "var(--card-sw)", accent: "var(--card-stroke)" });
 
         const bg = createSvg("g", { class: "fc-badge", "data-text-role": "ui" }, cg);
+        bg.style.setProperty("--badge-text", "var(--c-focus)");
         const bh = badgeTop ? 30 : 32, bx = box.x + (badgeTop ? padX : 16), by = badgeTop ? box.y + 10 : Math.round(box.y + (h - bh) / 2);
         createSvg("rect", { x: bx, y: by, width: badgeW, height: bh, rx: Math.round(bh / 2), fill: "var(--c-surface)", stroke: "var(--card-stroke)", "stroke-width": "1.2" }, bg);
-        appendTextBlock(bg, { fontSize: 22, lines: [String(stop.index + 1).padStart(2, "0")], lineHeight: 26, height: 24 }, { x: bx + Math.round(badgeW / 2), topY: by + Math.round((bh - 24) / 2), maxWidth: badgeW - 8, anchor: "middle", fill: "var(--c-focus)", weight: 700, mono: true, tabular: true });
+        appendTextBlock(bg, { fontSize: 22, lines: [String(stop.index + 1).padStart(2, "0")], lineHeight: 26, height: 24 }, { x: bx + Math.round(badgeW / 2), topY: by + Math.round((bh - 24) / 2), maxWidth: badgeW - 8, anchor: "middle", fill: "var(--badge-text)", weight: 700, mono: true, tabular: true });
 
         const tx = box.x + textX, ty = badgeTop ? by + bh + 8 : Math.round(box.y + (h - (lbl.height + (det ? detGap + det.height : 0))) / 2);
-        appendTextBlock(cg, lbl, { x: tx, topY: ty, maxWidth: innerW, fill: "var(--c-ink)", weight: 700 });
+        appendTextBlock(cg, lbl, { x: tx, topY: ty, maxWidth: innerW, fill: "var(--card-title)", weight: 700 });
         if (det) appendTextBlock(cg, det, { x: tx, topY: ty + lbl.height + detGap, maxWidth: innerW, fill: "var(--c-ink2)", weight: 500, ui: true });
 
         const drawDur = Math.max(0.24, enterDuration * 0.8);
@@ -170,7 +172,12 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
         const next = ordered[ordered.findIndex((x) => x.stop.index === stop.index) + 1];
         if (next && next.stop.at > stop.at) {
           if (canStack) {
-            tl.set(cg, { "--card-fill": "color-mix(in srgb, var(--c-card) 86%, transparent)", "--card-stroke": "var(--c-done)", "--card-sw": "1.3" }, next.stop.at);
+            tl.set(cg, {
+              "--card-fill": "color-mix(in srgb, var(--c-surface) 74%, transparent)",
+              "--card-stroke": "var(--c-done)",
+              "--card-sw": "1.2", "--card-title": "var(--c-ink2)", "--card-filter": "none",
+            }, next.stop.at);
+            tl.set(bg, { "--badge-text": "var(--c-done)" }, next.stop.at);
             tl.set(path, { opacity: 0.32 }, next.stop.at); tl.set(pin, { opacity: 0.45 }, next.stop.at);
           } else {
             tl.set(cg, { opacity: 0 }, next.stop.at); tl.set(path, { opacity: 0 }, next.stop.at); tl.set(pin, { opacity: 0 }, next.stop.at);

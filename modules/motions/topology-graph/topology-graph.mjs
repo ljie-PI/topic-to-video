@@ -2,8 +2,8 @@
 // (docs: topology-graph.md). Explicit init per modules/modules.md.
 
 import {
-  addProgressTween, appendTextBlock, clamp, createSvg,
-  cueTime, fitTextBlock, num, prepareStage,
+  addProgressTween, appendCraftCard, appendPortRing, appendTextBlock, clamp, createSvg,
+  cueTime, ensureHatchPattern, fitTextBlock, num, prepareStage,
 } from "./motion-utils.mjs";
 
 const EMP = {
@@ -61,9 +61,10 @@ function linkCurve(a, b) {
 export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
   return prepareStage(root, params, gsap, {
     prefix: "tg", padX: 26, baseTop: 24, backdrop: { step: 22 }, title: params.title || data?.title || "",
-  }, ({ tl, uid, svg, width: W, height: H, isPortrait, enterDuration, easing, padX, contentTop }) => {
+  }, ({ tl, uid, svg, defs, width: W, height: H, isPortrait, enterDuration, easing, padX, contentTop }) => {
     const { layers, nodes, links, focusSequence } = normalizeTopology(data);
     if (!nodes.length) return;
+    const bandHatch = ensureHatchPattern(defs, `${uid}-band-hatch`, { opacity: 0.14, step: 10 });
     const bandsLayer = createSvg("g", { class: "tg-bands" }, svg), linksLayer = createSvg("g", { class: "tg-links" }, svg), nodesLayer = createSvg("g", { class: "tg-nodes" }, svg);
     const railW = !isPortrait && W >= 880 && layers.some((l) => Boolean(l.label)) ? 136 : 0;
     const graphX = padX + railW, graphW = W - graphX - padX, availH = H - contentTop - 20, boxes = new Map();
@@ -110,7 +111,7 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
           createSvg("rect", { x: padX, y: py, width: railW - 16, height: r.railH, rx: 10, fill: "color-mix(in srgb, var(--c-surface) 88%, transparent)", stroke: "var(--c-border)", "stroke-width": "1.15" }, rg);
           appendTextBlock(rg, r.rail, { x: padX + Math.round((railW - 16) / 2), topY: py + 8, maxWidth: railW - 28, anchor: "middle", fill: "var(--c-ink2)", weight: 600 });
         }
-        createSvg("rect", { x: graphX - 6, y: Math.max(4, curY - 5), width: graphW + 12, height: Math.max(12, Math.min(H - 4, curY + r.rowH + 5) - Math.max(4, curY - 5)), rx: 12, fill: "none", stroke: "var(--c-border)", "stroke-width": "1", "stroke-dasharray": "5 5", opacity: "0.35" }, bandsLayer);
+        createSvg("rect", { x: graphX - 6, y: Math.max(4, curY - 5), width: graphW + 12, height: Math.max(12, Math.min(H - 4, curY + r.rowH + 5) - Math.max(4, curY - 5)), rx: 12, fill: bandHatch, stroke: "var(--c-border)", "stroke-width": "1", "stroke-dasharray": "5 5", opacity: "0.52", "data-layout-ignore": "true" }, bandsLayer);
         const sx = graphX + Math.round((graphW - (r.items.length * r.colW + (r.items.length - 1) * r.gapX)) / 2);
         r.items.forEach((it, ci) => boxes.set(it.node.id, { ...it, x: sx + ci * (r.colW + r.gapX), y: curY, w: r.colW, h: r.rowH }));
         curY += r.rowH + gapY;
@@ -123,12 +124,12 @@ export function init(root, { params = {}, data = {}, duration = 0, gsap }) {
       const fill = node.emphasis ? emp.fill : "color-mix(in srgb, var(--c-card) 86%, transparent)";
       const stroke = node.emphasis ? emp.stroke : "var(--c-border)", sw = node.emphasis ? "1.7" : "1.35";
       const g = createSvg("g", { class: "tg-node", id: `${uid}-n-${idx}` }, nodesLayer);
-      g.style.setProperty("--node-fill", fill); g.style.setProperty("--node-stroke", stroke); g.style.setProperty("--node-sw", sw);
-      createSvg("rect", { x: b.x, y: b.y, width: b.w, height: b.h, rx: 10, fill: "var(--node-fill)", stroke: "var(--node-stroke)", "stroke-width": "var(--node-sw)" }, g);
-      createSvg("circle", { cx: Math.round(b.x + b.w / 2), cy: b.y, r: "3.5", fill: stroke }, g);
-      createSvg("circle", { cx: Math.round(b.x + b.w / 2), cy: b.y + b.h, r: "3.5", fill: stroke }, g);
+      g.style.setProperty("--node-fill", fill); g.style.setProperty("--node-stroke", stroke); g.style.setProperty("--node-sw", sw); g.style.setProperty("--node-title", "var(--c-ink)");
+      appendCraftCard(g, { x: b.x, y: b.y, width: b.w, height: b.h, rx: 10, fill: "var(--node-fill)", stroke: "var(--node-stroke)", strokeWidth: "var(--node-sw)", accent: node.emphasis ? "var(--node-stroke)" : null });
+      appendPortRing(g, { cx: Math.round(b.x + b.w / 2), cy: b.y, r: 4, color: "var(--node-stroke)" });
+      appendPortRing(g, { cx: Math.round(b.x + b.w / 2), cy: b.y + b.h, r: 4, color: "var(--node-stroke)" });
       const th = b.lbl.height + (b.det ? 6 + b.det.height : 0), ty = Math.round(b.y + (b.h - th) / 2);
-      appendTextBlock(g, b.lbl, { x: Math.round(b.x + b.w / 2), topY: ty, maxWidth: b.iw, anchor: "middle", fill: "var(--c-ink)", weight: 700 });
+      appendTextBlock(g, b.lbl, { x: Math.round(b.x + b.w / 2), topY: ty, maxWidth: b.iw, anchor: "middle", fill: "var(--node-title)", weight: 700 });
       if (b.det) appendTextBlock(g, b.det, { x: Math.round(b.x + b.w / 2), topY: ty + b.lbl.height + 6, maxWidth: b.iw, anchor: "middle", fill: "var(--c-ink2)", weight: 500, ui: true });
       if (node.at > 0) { tl.set(g, { opacity: 0, y: 12 }, 0); tl.fromTo(g, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: enterDuration, ease: easing }, node.at); }
       else tl.set(g, { opacity: 1, y: 0 }, 0);
