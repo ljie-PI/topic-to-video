@@ -112,10 +112,32 @@ def find_chrome(explicit: Optional[str]) -> Optional[str]:
     return None
 
 
+def ensure_loopback_no_proxy() -> None:
+    """将本地回环加入 NO_PROXY/no_proxy，防止 HTTP_PROXY/ALL_PROXY 劫持本地 CDP（127.0.0.1/localhost）。"""
+    raw = os.environ.get('NO_PROXY') or os.environ.get('no_proxy') or ''
+    items = [item.strip() for item in raw.split(',') if item.strip()]
+    existing = {item.lower() for item in items}
+    changed = False
+    for host in ('127.0.0.1', 'localhost', '::1'):
+        if host not in existing:
+            items.append(host)
+            changed = True
+    if changed or (items and ('NO_PROXY' not in os.environ or 'no_proxy' not in os.environ)):
+        merged = ','.join(items)
+        os.environ['NO_PROXY'] = merged
+        os.environ['no_proxy'] = merged
+
+
 def cdp_ready(url: str) -> bool:
-    """返回 Chrome DevTools 端点是否响应 ``/json/version``。"""
+    """返回 Chrome DevTools 端点是否响应 ``/json/version``（本地回环直连，不经代理）。"""
+    host = (urlparse(url).hostname or '').lower()
+    opener = (
+        urlrequest.build_opener(urlrequest.ProxyHandler({}))
+        if host in {'127.0.0.1', 'localhost', '::1'}
+        else urlrequest.build_opener()
+    )
     try:
-        with urlrequest.urlopen(f'{url.rstrip("/")}/json/version', timeout=2.0) as response:
+        with opener.open(f'{url.rstrip("/")}/json/version', timeout=2.0) as response:
             return response.status == 200
     except (urlerror.URLError, urlerror.HTTPError, TimeoutError, ConnectionError, OSError):
         return False
@@ -204,6 +226,7 @@ def attach_or_launch(
     """连接到已就绪的 CDP，或启动使用指定共享 profile 的 Chrome。"""
     from playwright.sync_api import sync_playwright
 
+    ensure_loopback_no_proxy()
     reused = cdp_ready(cdp_url)
     ignored = compute_ignored_flags(
         reused,
@@ -229,7 +252,7 @@ def attach_or_launch(
                 'System Chrome not found. Tried: '
                 f'{", ".join(_chrome_candidates())}. Install Chrome or pass --chrome-path.'
             )
-        profile = Path(profile_dir).expanduser()
+        profile = Path(profile_dir).expanduser().resolve()
         process = _launch_chrome(
             executable,
             cdp_url,

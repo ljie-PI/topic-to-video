@@ -9,5 +9,5 @@ Pillow>=10
 playwright>=1.40
 requests>=2.31
 psutil>=5.9
-yt-dlp>=2025.1.15
-bgutil-ytdlp-pot-provider>=1.0.0
+yt-dlp[default]>=2026.11.23
+bgutil-ytdlp-pot-provider>=2.0.0

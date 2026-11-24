@@ -107,7 +107,7 @@ def test_harvest_download_uses_suggested_dir_and_updates_manifest_and_mirror(
     convert = args.index('--convert-subs')
     assert args[convert + 1] == 'srt'
     fmt = args.index('--format')
-    assert args[fmt + 1] == 'bv*+ba/b'
+    assert 'bv*[height<=1080][filesize<=200M]+ba' in args[fmt + 1]
     out_template = Path(args[args.index('--output') + 1])
     assert out_template.parent.name.startswith('.ytdlp-')
     videos_dir = harvest_dir / 'source' / 'videos'
@@ -332,7 +332,7 @@ def test_subtitles_only_moves_only_new_subtitles_without_format_flag(tmp_path: P
 
     proc = subprocess.run(
         [sys.executable, str(SCRIPT), '--url', URL, '--output-dir', str(out_dir), '--subtitles-only'],
-        capture_output=True, text=True, env=env, timeout=60, check=False,
+        capture_output=True, text=True, env=dict(env, NO_PROXY='example.internal'), timeout=60, check=False,
     )
 
     assert proc.returncode == 0, proc.stderr
@@ -344,6 +344,21 @@ def test_subtitles_only_moves_only_new_subtitles_without_format_flag(tmp_path: P
     args = Path(env['YTDLP_ARGS']).read_text(encoding='utf-8').splitlines()
     assert '--skip-download' in args
     assert '--format' not in args
+
+    mod = load_script_module('video-download.py', 'video_download_helpers')
+    merged_env = mod.build_ytdlp_env()
+    assert '127.0.0.1' in merged_env['NO_PROXY'] and 'localhost' in merged_env['NO_PROXY']
+    cookie_path = tmp_path / 'cookies.txt'
+    kept = mod.write_netscape_cookies(
+        [
+            {'domain': '.youtube.com', 'path': '/', 'secure': True, 'expires': 1893456000, 'name': 'SID', 'value': 'abc'},
+            {'domain': '.unrelated.org', 'path': '/', 'secure': False, 'expires': -1, 'name': 'skip', 'value': '1'},
+        ],
+        cookie_path,
+        URL,
+    )
+    assert kept == 1
+    assert '.youtube.com\tTRUE\t/\tTRUE\t1893456000\tSID\tabc' in cookie_path.read_text(encoding='utf-8')
 
 
 def test_missing_ffprobe_accepts_nonempty_video_and_rejects_empty_video(

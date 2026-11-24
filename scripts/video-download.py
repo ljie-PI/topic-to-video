@@ -9,19 +9,30 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+from urllib import request as urlrequest
+from urllib.parse import urlparse
 
+import chrome_cdp
 import cli
 import harvest_manifest
 import media
 
 TOOL_NAME = 'video-download'
+DEFAULT_CDP_URL = 'http://localhost:9222'
+COOKIE_DOMAIN_SUFFIXES = (
+    'youtube.com',
+    'google.com',
+    'bilibili.com',
+)
 
 log = cli.make_logger(TOOL_NAME)
 
@@ -31,6 +42,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--url', required=True, help='Video URL to download')
     parser.add_argument('--output-dir', default=None, help='Output directory (default: pending manifest directory, or downloads)')
     parser.add_argument('--harvest-dir', default=None, help='harvest_page directory to update after download')
+    parser.add_argument(
+        '--profile-dir',
+        default=None,
+        help='Shared Chrome profile dir to inherit login cookies over CDP (auto-inferred from --harvest-dir when omitted).',
+    )
+    parser.add_argument('--cdp-url', default=None, help=f'CDP endpoint (default {DEFAULT_CDP_URL}).')
+    parser.add_argument('--chrome-path', default=None, help='Path to Chrome executable when launching for profile cookies.')
+    parser.add_argument('--headless', default=None, choices=('auto', 'on', 'off'), help='Chrome headless mode when launching for cookies.')
+    parser.add_argument('--no-sandbox', action='store_true', default=None, help='Pass --no-sandbox when launching Chrome.')
     parser.add_argument(
         '--subtitles-only',
         action='store_true',
@@ -42,6 +62,8 @@ def parse_args() -> argparse.Namespace:
         help='Max video size for yt-dlp (default: 200M)',
     )
     args = parser.parse_args()
+    args.explicit_cdp_url = args.cdp_url
+    args.cdp_url = args.cdp_url or DEFAULT_CDP_URL
     if args.subtitles_only and args.harvest_dir:
         parser.error('--subtitles-only cannot be used with --harvest-dir')
     return args
@@ -115,7 +137,19 @@ def detect_common_issue(output: str) -> Tuple[str, str]:
     return 'unknown', tail_text(output) or 'yt-dlp failed with an unknown error.'
 
 
-def build_command(args: argparse.Namespace, target_dir: Path) -> List[str]:
+def build_format_selector(max_file_size: str) -> str:
+    size = (max_file_size or '').strip()
+    if size:
+        return (
+            f'bv*[height<=1080][filesize<={size}]+ba/'
+            f'bv*[height<=1080][filesize_approx<={size}]+ba/'
+            f'b[height<=1080][filesize<={size}]/'
+            f'bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b'
+        )
+    return 'bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b'
+
+
+def build_command(args: argparse.Namespace, target_dir: Path, cookie_file: Optional[Path] = None) -> List[str]:
     command = [
         resolve_ytdlp_binary(),
         '--write-subs',
@@ -127,12 +161,145 @@ def build_command(args: argparse.Namespace, target_dir: Path) -> List[str]:
         '--output',
         str(target_dir / '%(id)s.%(ext)s'),
     ]
+    if cookie_file is not None:
+        command.extend(['--cookies', str(cookie_file)])
     if args.subtitles_only:
         command.append('--skip-download')
     else:
-        command.extend(['--format', 'bv*+ba/b', '--max-filesize', args.max_file_size])
+        command.extend(['--format', build_format_selector(args.max_file_size), '--max-filesize', args.max_file_size])
     command.append(args.url)
     return command
+
+
+def build_ytdlp_env() -> Dict[str, str]:
+    """确保本地回环地址（如 127.0.0.1:4416 的 bgutil PO Token HTTP 服务）不走代理。"""
+    env = dict(os.environ)
+    raw = env.get('NO_PROXY') or env.get('no_proxy') or ''
+    items = [item.strip() for item in raw.split(',') if item.strip()]
+    existing = {item.lower() for item in items}
+    for host in ('127.0.0.1', 'localhost', '::1'):
+        if host not in existing:
+            items.append(host)
+    merged = ','.join(items)
+    env['NO_PROXY'] = merged
+    env['no_proxy'] = merged
+    return env
+
+
+def resolve_profile_dir(explicit: Optional[str], harvest_dir: Optional[Path]) -> Optional[Path]:
+    """显式 `--profile-dir` 优先；否则从 `{work_dir}/{topic}/harvest_page` 推断 `{work_dir}/chrome_profile`。"""
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+    if harvest_dir is not None:
+        for base in (harvest_dir, harvest_dir.resolve()):
+            candidate = base.parent.parent / 'chrome_profile'
+            if candidate.exists():
+                return candidate.resolve()
+    return None
+
+
+def _relevant_cookie(domain: str, url_host: str) -> bool:
+    clean = domain.lstrip('.').lower()
+    if not clean:
+        return False
+    if url_host and (url_host == clean or url_host.endswith('.' + clean) or clean.endswith('.' + url_host)):
+        return True
+    return any(clean == suffix or clean.endswith('.' + suffix) for suffix in COOKIE_DOMAIN_SUFFIXES)
+
+
+def write_netscape_cookies(cookies: Sequence[Dict[str, Any]], dest: Path, url: str) -> int:
+    url_host = (urlparse(url).hostname or '').lower()
+    kept = [
+        c for c in cookies
+        if isinstance(c, dict) and c.get('name') and c.get('domain') and _relevant_cookie(str(c['domain']), url_host)
+    ]
+    if not kept:
+        return 0
+    lines = ['# Netscape HTTP Cookie File']
+    for cookie in kept:
+        domain = str(cookie['domain']).replace('\t', ' ').replace('\n', '').replace('\r', '')
+        include_sub = 'TRUE' if domain.startswith('.') else 'FALSE'
+        path = str(cookie.get('path') or '/').replace('\t', ' ').replace('\n', '').replace('\r', '')
+        secure = 'TRUE' if cookie.get('secure') else 'FALSE'
+        raw_exp = cookie.get('expires')
+        expires = int(raw_exp) if isinstance(raw_exp, (int, float)) and raw_exp > 0 else 0
+        name = str(cookie['name']).replace('\t', ' ').replace('\n', '').replace('\r', '')
+        value = str(cookie.get('value') or '').replace('\t', ' ').replace('\n', '').replace('\r', '')
+        lines.append(f'{domain}\t{include_sub}\t{path}\t{secure}\t{expires}\t{name}\t{value}')
+    fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+        handle.write('\n'.join(lines) + '\n')
+    return len(kept)
+
+
+def _read_cdp_ws_cookies(cdp_url: str) -> List[Dict[str, Any]]:
+    """直接经浏览器级 CDP WebSocket 调 Storage.getCookies（避开 Chrome 158 弹出框导致 Playwright connect_over_cdp 失败）。"""
+    import websockets
+
+    host = (urlparse(cdp_url).hostname or '').lower()
+    opener = (
+        urlrequest.build_opener(urlrequest.ProxyHandler({}))
+        if host in {'127.0.0.1', 'localhost', '::1'}
+        else urlrequest.build_opener()
+    )
+    with opener.open(f'{cdp_url.rstrip("/")}/json/version', timeout=3.0) as resp:
+        ws_url = json.loads(resp.read().decode('utf-8'))['webSocketDebuggerUrl']
+
+    async def _fetch() -> List[Dict[str, Any]]:
+        async with websockets.connect(ws_url, proxy=None, open_timeout=5.0, close_timeout=2.0) as ws:
+            await ws.send(json.dumps({'id': 1, 'method': 'Storage.getCookies'}))
+            while True:
+                msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=5.0))
+                if msg.get('id') == 1:
+                    return msg.get('result', {}).get('cookies', []) or []
+
+    return asyncio.run(_fetch())
+
+
+def export_cdp_cookies(args: argparse.Namespace, harvest_dir: Optional[Path], dest: Path) -> Optional[Path]:
+    """从共享 `chrome_profile`（或已就绪 CDP）导出临时 Netscape cookies。"""
+    profile_dir = resolve_profile_dir(args.profile_dir, harvest_dir)
+    if profile_dir is None and args.explicit_cdp_url is None:
+        return None
+    cdp_up = chrome_cdp.cdp_ready(args.cdp_url)
+    if not cdp_up and profile_dir is None:
+        return None
+    if not cdp_up and profile_dir is not None and args.profile_dir is None:
+        cookie_db = profile_dir / 'Default' / 'Cookies'
+        if not cookie_db.is_file():
+            return None
+
+    launched_proc: Optional[subprocess.Popen] = None
+    try:
+        chrome_cdp.ensure_loopback_no_proxy()
+        if not cdp_up:
+            executable = chrome_cdp.find_chrome(args.chrome_path)
+            if not executable:
+                raise RuntimeError('System Chrome not found')
+            launched_proc = chrome_cdp._launch_chrome(
+                executable,
+                args.cdp_url,
+                profile_dir.resolve(),
+                headless=args.headless if args.headless is not None else 'on',
+                window_size='1280,720',
+                no_sandbox=args.no_sandbox,
+            )
+            chrome_cdp._wait_for_cdp(args.cdp_url, profile_dir.resolve(), launched_proc)
+        raw_cookies = _read_cdp_ws_cookies(args.cdp_url)
+        count = write_netscape_cookies(raw_cookies, dest, args.url)
+        if count > 0:
+            log(f'Inherited {count} login cookie(s) from shared Chrome profile via CDP')
+            return dest
+    except Exception as exc:
+        log(f'warning: could not read Chrome profile cookies ({type(exc).__name__}: {exc}); continuing without cookies')
+    finally:
+        if launched_proc is not None:
+            try:
+                launched_proc.terminate()
+                launched_proc.wait(timeout=5)
+            except Exception:
+                launched_proc.kill()
+    return None
 
 
 def _probe_staged_video(video_path: Path) -> Tuple[bool, Dict[str, Any]]:
@@ -170,7 +337,7 @@ def _probe_staged_video(video_path: Path) -> Tuple[bool, Dict[str, Any]]:
 
 def main() -> int:
     args = parse_args()
-    harvest_dir = Path(args.harvest_dir).expanduser().resolve() if args.harvest_dir else None
+    harvest_dir = Path(os.path.abspath(os.path.expanduser(args.harvest_dir))) if args.harvest_dir else None
 
     try:
         if args.output_dir:
@@ -199,14 +366,18 @@ def main() -> int:
         log(f'Downloading {"subtitles only" if args.subtitles_only else "video+subtitles"} from {args.url} -> {output_dir}')
         with tempfile.TemporaryDirectory(prefix='.ytdlp-', dir=output_dir) as raw_temp_dir:
             temp_dir = Path(raw_temp_dir)
-            command = build_command(args, temp_dir)
+            cookie_file = export_cdp_cookies(args, harvest_dir, temp_dir / 'cookies.txt')
+            command = build_command(args, temp_dir, cookie_file=cookie_file)
             completed = subprocess.run(
                 command,
                 capture_output=True,
                 text=True,
+                env=build_ytdlp_env(),
                 timeout=timeout,
                 check=False,
             )
+            if cookie_file is not None:
+                cookie_file.unlink(missing_ok=True)
             combined_output = '\n'.join(part for part in [completed.stdout, completed.stderr] if part)
             returncode = completed.returncode
 
@@ -223,6 +394,14 @@ def main() -> int:
                         if is_valid:
                             valid_video_names.add(video_file.name)
                     if not valid_video_names:
+                        lowered = combined_output.lower()
+                        if 'file is larger than max-filesize' in lowered:
+                            cli.print_json({
+                                'success': False,
+                                'failure_kind': 'max_filesize',
+                                'error': 'Video exceeds the configured max file size limit.',
+                            })
+                            return 1
                         if any(p.suffix.lower() == '.mhtml' for p in staged_files):
                             storyboard_error = (
                                 'yt-dlp downloaded only storyboard files (.mhtml) without a playable video stream.'
