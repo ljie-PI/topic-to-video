@@ -239,12 +239,15 @@ harvest_page/
 
 ```bash
 # 对 manifest.pending_downloads 里的每一项（每项只运行这一条命令）：
-source .venv/bin/activate && python3 scripts/video-download.py --url "<item.url>" --harvest-dir "{work_dir}/{topic_name}/harvest_page/"
+source .venv/bin/activate && python3 scripts/video-download.py \
+  --url "<item.url>" \
+  --harvest-dir "{work_dir}/{topic_name}/harvest_page/" \
+  --profile-dir "{work_dir}/chrome_profile"
 ```
 
 规则：
 
-- **必须顺序执行**，避免 `yt-dlp` 并行限速 / 封 IP。
+- **必须顺序执行**，避免 `yt-dlp` 并行限速 / 封 IP；经 CDP 自动继承共享 `chrome_profile` 临时登录 cookies（用完即删，不落盘产物）。
 - 默认使用该项 `suggested_output_dir`，先在独立临时子目录下载并校验有效视频流，通过后移入 `harvest_page/<source_slug>/videos/`；文件名为 `<video_id>.<ext>`（字幕为同名 `.srt` sidecar），跨 entry 引用同一 URL 共用同一文件。
 - 下载成功后自动将 `download_required` 置 `false`，写入相对 `local_path`、可选 `subtitle_path`、`id`（文件 stem）、宽高与时长，从 `pending_downloads[]` 移除并同步所有引用 entry 及 `metadata.json`。
 - 返回 `{"success": false, "failure_kind": "...", "error": "..."}` 时：保留 `download_required: true` 并跳过（自动清理 `.ytdlp-*` 临时目录，不改动已有文件与 manifest）。遇 `"bot_check"`（如 `Sign in to confirm you’re not a bot` / `LOGIN_REQUIRED`）或 `"storyboard_only"`（无有效视频流）时**单次尝试即早停**，记入 `search-notes.md` 后直接继续下游；仅当话题强依赖该片段时，才用 `web_search` 找替代源更新清单重跑。

@@ -119,7 +119,7 @@ python3 scripts/transcribe.py --resolve-backend
 
 ### YouTube 下载与 PO Token 配置
 
-`requirements.txt` 已将 `yt-dlp` 与 `bgutil-ytdlp-pot-provider` 一并装入项目 `.venv`。`scripts/video-download.py` 按 `YTDLP_BIN` → 当前 Python 解释器同目录的 `yt-dlp`（`.venv/bin/yt-dlp`）→ `PATH` 的顺序解析二进制，避免宿主 `PATH` 上先出现的 Homebrew / 系统 `yt-dlp` 绕过 `.venv` 而找不到插件。
+`requirements.txt` 已将 `yt-dlp[default]`（含 `yt-dlp-ejs` JS 挑战求解脚本）与 `bgutil-ytdlp-pot-provider` 一并装入项目 `.venv`。`scripts/video-download.py` 按 `YTDLP_BIN` → 当前 Python 解释器同目录的 `yt-dlp`（`.venv/bin/yt-dlp`）→ `PATH` 的顺序解析二进制，避免宿主 `PATH` 上先出现的 Homebrew / 系统 `yt-dlp` 绕过 `.venv` 而找不到插件；同时支持经 CDP 从共享 `{work_dir}/chrome_profile`（`--profile-dir` 显式传入或从 `--harvest-dir` 自动推断）导出临时登录 cookies（避免 macOS `--cookies-from-browser` 触发系统钥匙串弹窗，下载后即清除），并自动将 `127.0.0.1,localhost` 加入 `NO_PROXY` 以免本地 PO Token 服务被代理劫持。
 
 需注意职责边界：**同一 `.venv` 内安装 `yt-dlp` 与 `bgutil-ytdlp-pot-provider` 解决的是插件加载隔离问题；YouTube 在受限网络或风控环境下能否实际拿到可播放流，仍取决于宿主的外部 PO Token 服务、登录 cookies 或网络代理配置。**
 

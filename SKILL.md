@@ -67,7 +67,7 @@ description: 当用户提供一个主题、文章 URL、论文 PDF 或链接、�
 
 **环境预检与按需准备（首次运行或缺依赖时）：**
 
-1. 检查 Python、`ffmpeg` / `ffprobe`、系统 Chrome、Node.js，以及 skill 根目录的 `.venv`（含 `requirements.txt` 中的 `yt-dlp` 与 `bgutil-ytdlp-pot-provider` 插件）；已有环境直接复用，不重复安装。YouTube 如遇反机器人校验，还取决于宿主的 PO Token 服务、cookies 或代理等原生 `yt-dlp` 配置（见 `README.md`）。
+1. 检查 Python、`ffmpeg` / `ffprobe`、系统 Chrome、Node.js，以及 skill 根目录的 `.venv`（含 `requirements.txt` 中的 `yt-dlp[default]` 与 `bgutil-ytdlp-pot-provider` 插件）；已有环境直接复用，不重复安装。YouTube 如遇反机器人校验，通过共享 `chrome_profile` 继承登录态或宿主 PO Token / 代理配置处理（见 `README.md`）。
 2. 按实际硬件选择后端：Apple Silicon 用 MLX，Linux + NVIDIA 用 Qwen / PyTorch，没有可用本地后端再考虑云端。只安装所选后端需要的依赖；平台、库、模型和 KEY 的细节见 `README.md`，版本以 `requirements*.txt` 为准。
 3. 宿主权限允许且用户授权时，agent 可创建 `.venv` 并在其中安装项目依赖；系统软件、驱动和系统 CUDA Toolkit 的安装、升级或重启由用户 / 管理员处理。
 4. 下载大模型或需要明显磁盘、显存、网络资源前，先说明资源需求并取得授权；优先复用已有缓存或用户指定目录。
